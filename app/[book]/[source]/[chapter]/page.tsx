@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { getChapterWords, getBook, getChapterCount, getAvailableTranslationsForChapter, getTranslationVerses, getChapterParagraphBreaks, getCharacters, getChapterCharacterRefs, getChapterSpeechSections } from "@/lib/db/queries";
+import Image from "next/image";
+import { getChapterWords, getBook, getChapterCount, getAvailableTranslationsForChapter, getTranslationVerses, getChapterParagraphBreaks, getCharacters, getChapterCharacterRefs, getChapterSpeechSections, getWordTags, getChapterWordTagRefs } from "@/lib/db/queries";
 import type { TranslationVerse } from "@/lib/db/schema";
 import type { TextSource } from "@/lib/morphology/types";
 import ChapterDisplay from "@/components/text/ChapterDisplay";
@@ -33,12 +34,15 @@ export default async function ChapterPage({ params }: PageProps) {
   if (!words || words.length === 0) notFound();
 
   const [availableTranslations, initialParagraphBreakIds, initialCharacters,
-         initialCharacterRefs, initialSpeechSections] = await Promise.all([
+         initialCharacterRefs, initialSpeechSections,
+         initialWordTags, initialWordTagRefs] = await Promise.all([
     getAvailableTranslationsForChapter(osisBook, chapter),
     getChapterParagraphBreaks(osisBook, chapter),
     getCharacters(osisBook),
     getChapterCharacterRefs(osisBook, chapter),
     getChapterSpeechSections(osisBook, chapter, textSource),
+    getWordTags(osisBook),
+    getChapterWordTagRefs(osisBook, chapter),
   ]);
   const translationVerseData: Record<number, TranslationVerse[]> = {};
   await Promise.all(
@@ -52,28 +56,32 @@ export default async function ChapterPage({ params }: PageProps) {
 
   return (
     <div className="flex flex-col h-screen" style={{ backgroundColor: "var(--background)" }}>
-      {/* Nav bar */}
+      {/* Nav bar — dark navy, brand-coloured */}
       <nav
-        className="shrink-0 border-b px-4 py-2 flex items-center gap-4"
-        style={{ borderColor: "var(--border)", backgroundColor: "var(--surface)" }}
+        className="shrink-0 border-b px-4 py-0 flex items-center gap-3 h-12"
+        style={{ borderColor: "var(--nav-border)", backgroundColor: "var(--nav-bg)" }}
       >
-        <Link
-          href="/"
-          className="text-sm font-semibold tracking-tight"
-          style={{ color: "var(--foreground)" }}
-        >
-          Structura
+        {/* Logo mark linking home */}
+        <Link href="/" className="shrink-0 flex items-center" aria-label="Structura home">
+          <Image
+            src="/structura-icon.svg"
+            alt="Structura"
+            width={28}
+            height={28}
+            className="opacity-90"
+            style={{ filter: "brightness(0) invert(1)" }}
+          />
         </Link>
 
-        <span style={{ color: "var(--border-muted)" }}>/</span>
+        <span style={{ color: "var(--nav-border)" }} className="text-lg select-none">|</span>
 
-        {/* Book name + source */}
-        <span className="text-sm font-medium" style={{ color: "var(--foreground)" }}>
+        {/* Book name + source badge */}
+        <span className="text-sm font-semibold" style={{ color: "var(--nav-fg)" }}>
           {bookName}
         </span>
         <span
           className="text-xs px-1.5 py-0.5 rounded font-mono"
-          style={{ backgroundColor: "var(--surface-muted)", color: "var(--text-muted)" }}
+          style={{ backgroundColor: "rgba(200,155,60,0.18)", color: "var(--accent)" }}
         >
           {textSource}
         </span>
@@ -81,34 +89,34 @@ export default async function ChapterPage({ params }: PageProps) {
         {/* Import link */}
         <Link
           href="/import"
-          className="text-xs px-2 py-1 rounded transition-colors hover:bg-stone-100 dark:hover:bg-stone-800"
-          style={{ color: "var(--text-muted)" }}
+          className="text-xs px-2 py-1 rounded transition-colors"
+          style={{ color: "var(--nav-fg-muted)" }}
         >
           + Import
         </Link>
 
-        {/* Chapter navigation */}
-        <div className="ml-auto flex items-center gap-2">
+        {/* Chapter navigation — right-aligned */}
+        <div className="ml-auto flex items-center gap-1">
           {chapter > 1 && (
             <Link
               href={`/${encodeURIComponent(osisBook)}/${textSource}/${chapter - 1}`}
-              className="px-2 py-1 rounded text-sm hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors"
-              style={{ color: "var(--foreground)" }}
+              className="px-2 py-1 rounded text-sm transition-colors"
+              style={{ color: "var(--nav-fg-muted)" }}
             >
               ← {chapter - 1}
             </Link>
           )}
           <span
             className="text-sm font-medium px-2"
-            style={{ color: "var(--foreground)" }}
+            style={{ color: "var(--nav-fg)" }}
           >
             Ch. {chapter}
           </span>
           {chapter < chapterCount && (
             <Link
               href={`/${encodeURIComponent(osisBook)}/${textSource}/${chapter + 1}`}
-              className="px-2 py-1 rounded text-sm hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors"
-              style={{ color: "var(--foreground)" }}
+              className="px-2 py-1 rounded text-sm transition-colors"
+              style={{ color: "var(--nav-fg-muted)" }}
             >
               {chapter + 1} →
             </Link>
@@ -118,11 +126,11 @@ export default async function ChapterPage({ params }: PageProps) {
 
       {/* Chapter heading */}
       <div
-        className="shrink-0 px-6 pt-4 pb-2"
-        style={{ color: "var(--text-muted)" }}
+        className="shrink-0 px-6 pt-4 pb-2 border-b"
+        style={{ borderColor: "var(--border)", color: "var(--text-muted)" }}
       >
-        <h1 className="text-xl font-bold" style={{ color: "var(--foreground)" }}>
-          {bookName} {chapter}
+        <h1 className="text-xl font-bold tracking-tight" style={{ color: "var(--foreground)", fontFamily: "Georgia, 'Times New Roman', serif" }}>
+          {bookName} <span style={{ color: "var(--accent)" }}>{chapter}</span>
         </h1>
         <p className="text-xs mt-0.5">{words.length.toLocaleString()} words</p>
       </div>
@@ -140,6 +148,8 @@ export default async function ChapterPage({ params }: PageProps) {
           initialCharacters={initialCharacters}
           initialCharacterRefs={initialCharacterRefs}
           initialSpeechSections={initialSpeechSections}
+          initialWordTags={initialWordTags}
+          initialWordTagRefs={initialWordTagRefs}
         />
       </div>
     </div>

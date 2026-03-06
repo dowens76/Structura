@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState, useEffect } from "react";
-import type { Word, Character, CharacterRef, SpeechSection } from "@/lib/db/schema";
+import type { Word, Character, CharacterRef, SpeechSection, WordTag, WordTagRef } from "@/lib/db/schema";
 import type { Translation, TranslationVerse } from "@/lib/db/schema";
 import type { DisplayMode, GrammarFilterState, TranslationTextEntry } from "@/lib/morphology/types";
 import VerseDisplay from "./VerseDisplay";
@@ -10,6 +10,7 @@ import GrammarFilter from "@/components/controls/GrammarFilter";
 import DisplayModeToggle from "@/components/controls/DisplayModeToggle";
 import ColorRulePanel from "@/components/controls/ColorRulePanel";
 import CharacterPanel from "@/components/controls/CharacterPanel";
+import WordTagPanel from "@/components/controls/WordTagPanel";
 import type { ColorRule } from "@/lib/morphology/colorRules";
 
 interface ChapterDisplayProps {
@@ -23,6 +24,8 @@ interface ChapterDisplayProps {
   initialCharacters: Character[];
   initialCharacterRefs: CharacterRef[];
   initialSpeechSections: SpeechSection[];
+  initialWordTags: WordTag[];
+  initialWordTagRefs: WordTagRef[];
 }
 
 const DEFAULT_FILTER: GrammarFilterState = {
@@ -30,6 +33,20 @@ const DEFAULT_FILTER: GrammarFilterState = {
   preposition: true, conjunction: true, pronoun: true,
   particle: true, article: true, interjection: true,
 };
+
+// ── Persistent settings helpers ───────────────────────────────────────────
+function readLocal<T>(key: string, fallback: T): T {
+  if (typeof window === "undefined") return fallback;
+  try {
+    const raw = localStorage.getItem(key);
+    return raw === null ? fallback : (JSON.parse(raw) as T);
+  } catch {
+    return fallback;
+  }
+}
+function writeLocal<T>(key: string, value: T): void {
+  try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* quota exceeded */ }
+}
 
 export default function ChapterDisplay({
   words,
@@ -42,18 +59,33 @@ export default function ChapterDisplay({
   initialCharacters,
   initialCharacterRefs,
   initialSpeechSections,
+  initialWordTags,
+  initialWordTagRefs,
 }: ChapterDisplayProps) {
-  const [displayMode, setDisplayMode] = useState<DisplayMode>("clean");
+  const [displayMode, setDisplayMode] = useState<DisplayMode>(() =>
+    readLocal<DisplayMode>("structura:displayMode", "clean")
+  );
   const [grammarFilter, setGrammarFilter] = useState<GrammarFilterState>(DEFAULT_FILTER);
   const [selectedWord, setSelectedWord] = useState<Word | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
   const [showTooltips, setShowTooltips] = useState(false);
-  const [activeTranslationIds, setActiveTranslationIds] = useState<Set<number>>(new Set());
+  // Store active translations by abbreviation so they survive cross-book navigation
+  const [activeTranslationAbbrs, setActiveTranslationAbbrs] = useState<Set<string>>(() =>
+    new Set(readLocal<string[]>("structura:activeTranslations", []))
+  );
   const [colorRules, setColorRules] = useState<ColorRule[]>([]);
-  const [useLinguisticTerms, setUseLinguisticTerms] = useState(false);
-  const [hebrewFontSize, setHebrewFontSize] = useState(1.375);
-  const [greekFontSize, setGreekFontSize] = useState(1.25);
-  const [translationFontSize, setTranslationFontSize] = useState(0.875);
+  const [useLinguisticTerms, setUseLinguisticTerms] = useState(() =>
+    readLocal<boolean>("structura:useLinguisticTerms", false)
+  );
+  const [hebrewFontSize, setHebrewFontSize] = useState(() =>
+    readLocal<number>("structura:hebrewFontSize", 1.375)
+  );
+  const [greekFontSize, setGreekFontSize] = useState(() =>
+    readLocal<number>("structura:greekFontSize", 1.25)
+  );
+  const [translationFontSize, setTranslationFontSize] = useState(() =>
+    readLocal<number>("structura:translationFontSize", 0.875)
+  );
   const [editingParagraphs, setEditingParagraphs] = useState(false);
   const [paragraphBreakIds, setParagraphBreakIds] = useState<Set<string>>(
     () => new Set(initialParagraphBreakIds)
@@ -73,6 +105,25 @@ export default function ChapterDisplay({
   const [speechSections, setSpeechSections] = useState<SpeechSection[]>(initialSpeechSections);
   // Pending first-click word for two-click speech section selection
   const [speechRangeStart, setSpeechRangeStart] = useState<Word | null>(null);
+
+  // ── Word / concept tag state ────────────────────────────────────────────────
+  const [wordTags, setWordTags] = useState<WordTag[]>(initialWordTags);
+  const [wordTagRefMap, setWordTagRefMap] = useState<Map<string, WordTagRef>>(
+    () => new Map(initialWordTagRefs.map((r) => [r.wordId, r]))
+  );
+  const [editingWordTags, setEditingWordTags] = useState(false);
+  const [activeWordTagId, setActiveWordTagId] = useState<number | null>(
+    initialWordTags[0]?.id ?? null
+  );
+  const [highlightWordTagIds, setHighlightWordTagIds] = useState<Set<number>>(new Set());
+  // When true, the next source-word click creates a "word"-type tag using its lemma
+  const [pendingWordTag, setPendingWordTag] = useState(false);
+  const [pendingWordTagColor, setPendingWordTagColor] = useState<string | null>(null);
+
+  const wordTagMap = useMemo(
+    () => new Map(wordTags.map((t) => [t.id, t])),
+    [wordTags]
+  );
 
   // ── Undo stack ─────────────────────────────────────────────────────────────
   type UndoEntry = { label: string; undo: () => void | Promise<void> };
@@ -98,6 +149,13 @@ export default function ChapterDisplay({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
+  // Persist sticky settings whenever they change
+  useEffect(() => { writeLocal("structura:displayMode", displayMode); }, [displayMode]);
+  useEffect(() => { writeLocal("structura:useLinguisticTerms", useLinguisticTerms); }, [useLinguisticTerms]);
+  useEffect(() => { writeLocal("structura:hebrewFontSize", hebrewFontSize); }, [hebrewFontSize]);
+  useEffect(() => { writeLocal("structura:greekFontSize", greekFontSize); }, [greekFontSize]);
+  useEffect(() => { writeLocal("structura:translationFontSize", translationFontSize); }, [translationFontSize]);
+
   const isHebrew = words[0]?.language === "hebrew";
 
   // Group words by verse (stable for the chapter)
@@ -115,6 +173,16 @@ export default function ChapterDisplay({
   const characterMap = useMemo(
     () => new Map(characters.map((c) => [c.id, c])),
     [characters]
+  );
+
+  // Resolve stored abbreviations → numeric IDs for the current chapter's translations
+  const activeTranslationIds = useMemo(
+    () => new Set(
+      availableTranslations
+        .filter((t) => activeTranslationAbbrs.has(t.abbreviation))
+        .map((t) => t.id)
+    ),
+    [activeTranslationAbbrs, availableTranslations]
   );
 
   // wordId → SpeechSection (derived from ordered word list + section bounds)
@@ -148,10 +216,13 @@ export default function ChapterDisplay({
   const hasActiveTranslations = activeTranslationIds.size > 0;
 
   function toggleTranslation(id: number) {
-    setActiveTranslationIds((prev) => {
+    const abbr = availableTranslations.find((t) => t.id === id)?.abbreviation;
+    if (!abbr) return;
+    setActiveTranslationAbbrs((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
+      if (next.has(abbr)) next.delete(abbr);
+      else next.add(abbr);
+      writeLocal("structura:activeTranslations", [...next]);
       return next;
     });
   }
@@ -178,6 +249,10 @@ export default function ChapterDisplay({
     if (editingSpeech) {
       if (activeCharId === null) return;
       handleToggleSpeechSection(word, shiftHeld);
+      return;
+    }
+    if (editingWordTags) {
+      handleToggleWordTagRef(word);
       return;
     }
     setSelectedWord(word);
@@ -332,10 +407,156 @@ export default function ChapterDisplay({
     return handleToggleCharacterRefById(word.wordId, textSource);
   }
 
-  // Called when a translation word is clicked in refs-editing mode.
+  // Called when a translation word is clicked in refs-editing or word-tag-editing mode.
   function handleSelectTranslationWord(wordId: string, abbr: string) {
-    if (!editingRefs || activeCharId === null) return;
-    handleToggleCharacterRefById(wordId, abbr);
+    if (editingRefs && activeCharId !== null) {
+      handleToggleCharacterRefById(wordId, abbr);
+    } else if (editingWordTags && activeWordTagId !== null && !pendingWordTag) {
+      handleToggleWordTagRefById(wordId, abbr);
+    }
+  }
+
+  // ── Word / concept tag handlers ──────────────────────────────────────────
+
+  async function handleToggleWordTagRefById(wordId: string, source: string) {
+    if (activeWordTagId === null) return;
+    const existing = wordTagRefMap.get(wordId);
+    const isRemove = existing?.tagId === activeWordTagId;
+    const tagId = isRemove ? null : activeWordTagId;
+
+    // Optimistic update
+    setWordTagRefMap((prev) => {
+      const next = new Map(prev);
+      if (isRemove) next.delete(wordId);
+      else next.set(wordId, { id: -1, wordId, tagId: activeWordTagId!, textSource: source, book, chapter });
+      return next;
+    });
+
+    try {
+      await fetch("/api/word-tag-refs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ wordId, tagId, book, chapter, source }),
+      });
+    } catch {
+      // Rollback
+      setWordTagRefMap((prev) => {
+        const next = new Map(prev);
+        if (existing) next.set(wordId, existing);
+        else next.delete(wordId);
+        return next;
+      });
+    }
+  }
+
+  async function handleToggleWordTagRef(word: Word) {
+    if (pendingWordTag && pendingWordTagColor !== null) {
+      // "Word" type: create a new tag named after the lemma and immediately tag this word
+      const lemma = word.lemma ?? word.surfaceText ?? "?";
+      await handleCreateTag("word", lemma, pendingWordTagColor, word.wordId, textSource);
+      setPendingWordTag(false);
+      setPendingWordTagColor(null);
+      return;
+    }
+    if (activeWordTagId === null) return;
+    await handleToggleWordTagRefById(word.wordId, textSource);
+  }
+
+  async function handleCreateTag(
+    type: "word" | "concept",
+    name: string,
+    color: string,
+    firstWordId?: string,
+    firstWordSource?: string
+  ) {
+    const tempTag: WordTag = {
+      id: -(Date.now()), book, name, color, type,
+      createdAt: new Date().toISOString(),
+    };
+    setWordTags((prev) => [...prev, tempTag]);
+    setActiveWordTagId(tempTag.id);
+
+    try {
+      const res = await fetch("/api/word-tags", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, color, type, book }),
+      });
+      const data = await res.json();
+      const realTag: WordTag = data.tag;
+      setWordTags((prev) => prev.map((t) => t.id === tempTag.id ? realTag : t));
+      setActiveWordTagId(realTag.id);
+
+      // If a source word was provided, create the ref immediately
+      if (firstWordId && firstWordSource) {
+        const ref: WordTagRef = {
+          id: -1, wordId: firstWordId, tagId: realTag.id,
+          textSource: firstWordSource, book, chapter,
+        };
+        setWordTagRefMap((prev) => new Map(prev).set(firstWordId, ref));
+        await fetch("/api/word-tag-refs", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ wordId: firstWordId, tagId: realTag.id, book, chapter, source: firstWordSource }),
+        });
+      }
+    } catch {
+      setWordTags((prev) => prev.filter((t) => t.id !== tempTag.id));
+      setActiveWordTagId(wordTags[0]?.id ?? null);
+    }
+  }
+
+  function handleCreateConceptTag(name: string, color: string) {
+    return handleCreateTag("concept", name, color);
+  }
+
+  function handleCreatePendingWordTag(color: string) {
+    setPendingWordTag(true);
+    setPendingWordTagColor(color);
+  }
+
+  async function handleDeleteWordTag(id: number) {
+    const prevTags = wordTags;
+    setWordTags((prev) => prev.filter((t) => t.id !== id));
+    // Remove all refs for this tag
+    setWordTagRefMap((prev) => {
+      const next = new Map(prev);
+      for (const [wid, ref] of next) {
+        if (ref.tagId === id) next.delete(wid);
+      }
+      return next;
+    });
+    if (activeWordTagId === id) {
+      setActiveWordTagId(wordTags.find((t) => t.id !== id)?.id ?? null);
+    }
+    try {
+      await fetch(`/api/word-tags/${id}`, { method: "DELETE" });
+    } catch {
+      setWordTags(prevTags);
+    }
+  }
+
+  async function handleUpdateWordTag(id: number, name: string, color: string) {
+    const prev = wordTags.find((t) => t.id === id);
+    setWordTags((ts) => ts.map((t) => t.id === id ? { ...t, name, color } : t));
+    try {
+      await fetch(`/api/word-tags/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, color }),
+      });
+    } catch {
+      if (prev) setWordTags((ts) => ts.map((t) => t.id === id ? prev : t));
+    }
+  }
+
+  function handleToggleWordTagHighlight(id: number) {
+    setHighlightWordTagIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   }
 
   async function handleDeleteSpeechSection(sectionId: number) {
@@ -374,32 +595,45 @@ export default function ChapterDisplay({
   async function handleToggleSpeechSection(word: Word, _shiftHeld = false) {
     if (activeCharId === null) return;
 
-    // Snap to whole-verse boundaries: a speech section always begins at a
-    // verse's first word and ends at a verse's last word.
-    const clickedVerseWords = verseGroups.get(word.verse) ?? [word];
+    // ── Helpers: split verse words into paragraph segments ─────────────────
+    const splitIntoSegments = (vWords: Word[]): Word[][] => {
+      const segs: Word[][] = [];
+      let cur: Word[] = [];
+      vWords.forEach((w, i) => {
+        if (i > 0 && paragraphBreakIds.has(w.wordId)) { segs.push(cur); cur = []; }
+        cur.push(w);
+      });
+      if (cur.length > 0) segs.push(cur);
+      return segs;
+    };
+    const findSeg = (wId: string, vWords: Word[]): Word[] =>
+      splitIntoSegments(vWords).find(s => s.some(w => w.wordId === wId)) ?? vWords.slice(0, 1);
 
-    // First click: record the first word of this verse as range start
+    // Snap to paragraph boundaries instead of verse boundaries
+    const clickedVerseWords = verseGroups.get(word.verse) ?? [word];
+    const clickedSeg = findSeg(word.wordId, clickedVerseWords);
+
+    // First click: record the first word of the clicked paragraph as range start
     if (!speechRangeStart) {
-      setSpeechRangeStart(clickedVerseWords[0]);
+      setSpeechRangeStart(clickedSeg[0]);
       return;
     }
 
-    // Second click: compute the full verse-aligned range then clear the start marker
+    // Second click: snap to the paragraph segment's last word; handle reverse order
     const startVerseWords = verseGroups.get(speechRangeStart.verse) ?? [speechRangeStart];
+    const startSeg = findSeg(speechRangeStart.wordId, startVerseWords);
     const posMap = new Map(words.map((w, i) => [w.wordId, i]));
-    const startVerseFirstPos = posMap.get(startVerseWords[0].wordId) ?? 0;
-    const endVerseFirstPos   = posMap.get(clickedVerseWords[0].wordId) ?? 0;
+    const sp = posMap.get(startSeg[0].wordId) ?? 0;
+    const ep = posMap.get(clickedSeg[0].wordId) ?? 0;
 
     let orderedStart: string;
     let orderedEnd: string;
-    if (startVerseFirstPos <= endVerseFirstPos) {
-      // Forward: first-clicked verse → second-clicked verse
-      orderedStart = startVerseWords[0].wordId;
-      orderedEnd   = clickedVerseWords[clickedVerseWords.length - 1].wordId;
+    if (sp <= ep) {
+      orderedStart = startSeg[0].wordId;
+      orderedEnd   = clickedSeg[clickedSeg.length - 1].wordId;
     } else {
-      // Backward: second-clicked verse is earlier, swap so DB range is ordered
-      orderedStart = clickedVerseWords[0].wordId;
-      orderedEnd   = startVerseWords[startVerseWords.length - 1].wordId;
+      orderedStart = clickedSeg[0].wordId;
+      orderedEnd   = startSeg[startSeg.length - 1].wordId;
     }
 
     setSpeechRangeStart(null);
@@ -588,6 +822,8 @@ export default function ChapterDisplay({
             onClick={() => {
               setEditingRefs((v) => !v);
               setEditingSpeech(false);
+              setEditingWordTags(false);
+              setPendingWordTag(false);
               setSpeechRangeStart(null);
             }}
             title={editingRefs ? "Exit reference tagging" : "Tag words as referring to a character"}
@@ -606,6 +842,8 @@ export default function ChapterDisplay({
             onClick={() => {
               setEditingSpeech((v) => !v);
               setEditingRefs(false);
+              setEditingWordTags(false);
+              setPendingWordTag(false);
               setSpeechRangeStart(null);
             }}
             title={editingSpeech
@@ -619,6 +857,28 @@ export default function ChapterDisplay({
             ].join(" ")}
           >
             💬
+          </button>
+
+          {/* Word / concept tag mode */}
+          <button
+            onClick={() => {
+              setEditingWordTags((v) => !v);
+              setEditingRefs(false);
+              setEditingSpeech(false);
+              setSpeechRangeStart(null);
+              setPendingWordTag(false);
+            }}
+            title={editingWordTags
+              ? "Exit word/concept tag mode"
+              : "Tag words or concepts with colour highlights"}
+            className={[
+              "px-2.5 py-1 rounded text-xs font-medium transition-colors",
+              editingWordTags
+                ? "bg-yellow-500 text-white"
+                : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
+            ].join(" ")}
+          >
+            🏷
           </button>
 
           {/* Undo button */}
@@ -721,7 +981,33 @@ export default function ChapterDisplay({
         {/* Speech range start hint */}
         {editingSpeech && speechRangeStart && (
           <div className="px-6 py-1 text-xs bg-violet-50 dark:bg-violet-950 border-b border-violet-200 dark:border-violet-800 text-violet-700 dark:text-violet-300">
-            Start verse set — now click any word in the end verse to complete the speech section
+            Start paragraph set — now click any word in the end paragraph to complete the speech section
+          </div>
+        )}
+
+        {/* Word/concept tag palette bar */}
+        {editingWordTags && (
+          <WordTagPanel
+            tags={wordTags}
+            activeTagId={activeWordTagId}
+            highlightedTagIds={highlightWordTagIds}
+            pendingWordTag={pendingWordTag}
+            onSelectTag={(id) => {
+              setActiveWordTagId(id);
+              setPendingWordTag(false);
+            }}
+            onCreateConceptTag={handleCreateConceptTag}
+            onCreatePendingWordTag={handleCreatePendingWordTag}
+            onDeleteTag={handleDeleteWordTag}
+            onUpdateTag={handleUpdateWordTag}
+            onToggleHighlight={handleToggleWordTagHighlight}
+          />
+        )}
+
+        {/* Pending word tag hint */}
+        {editingWordTags && pendingWordTag && (
+          <div className="px-6 py-1 text-xs bg-yellow-50 dark:bg-yellow-950 border-b border-yellow-200 dark:border-yellow-800 text-yellow-700 dark:text-yellow-300">
+            Click a source word to name this tag by its lemma
           </div>
         )}
 
@@ -770,6 +1056,10 @@ export default function ChapterDisplay({
                 onToggleTranslationParagraphBreak={handleToggleTranslationParagraphBreak}
                 highlightCharIds={highlightCharIds}
                 onDeleteSpeechSection={handleDeleteSpeechSection}
+                wordTagRefMap={wordTagRefMap}
+                wordTagMap={wordTagMap}
+                editingWordTags={editingWordTags}
+                highlightWordTagIds={highlightWordTagIds}
               />
             );
           })}

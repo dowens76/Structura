@@ -1,7 +1,7 @@
 import { eq, and, asc, inArray } from "drizzle-orm";
 import { db } from "./index";
-import { books, words, verses, translations, translationVerses, paragraphBreaks, characters, characterRefs, speechSections } from "./schema";
-import type { Book, Word, Translation, TranslationVerse, Character, CharacterRef, SpeechSection } from "./schema";
+import { books, words, verses, translations, translationVerses, paragraphBreaks, characters, characterRefs, speechSections, wordTags, wordTagRefs } from "./schema";
+import type { Book, Word, Translation, TranslationVerse, Character, CharacterRef, SpeechSection, WordTag, WordTagRef } from "./schema";
 import type { TextSource, Testament } from "@/lib/morphology/types";
 
 export async function getBooks(testament?: Testament): Promise<Book[]> {
@@ -401,4 +401,60 @@ export async function removeSpeechSectionContaining(
   }
 
   return getChapterSpeechSections(book, chapter, textSource);
+}
+
+// ── Word / Concept Tags (book-scoped) ─────────────────────────────────────────
+
+export async function getWordTags(book: string): Promise<WordTag[]> {
+  return db.select().from(wordTags).where(eq(wordTags.book, book)).orderBy(asc(wordTags.id));
+}
+
+export async function createWordTag(
+  name: string,
+  color: string,
+  type: string,
+  book: string
+): Promise<WordTag> {
+  const result = await db.insert(wordTags).values({ name, color, type, book }).returning();
+  return result[0];
+}
+
+export async function updateWordTag(id: number, name: string, color: string): Promise<WordTag> {
+  const result = await db
+    .update(wordTags)
+    .set({ name, color })
+    .where(eq(wordTags.id, id))
+    .returning();
+  return result[0];
+}
+
+export async function deleteWordTag(id: number): Promise<void> {
+  await db.delete(wordTags).where(eq(wordTags.id, id));
+}
+
+// ── Word Tag Refs (chapter-scoped) ────────────────────────────────────────────
+
+export async function getChapterWordTagRefs(book: string, chapter: number): Promise<WordTagRef[]> {
+  return db
+    .select()
+    .from(wordTagRefs)
+    .where(and(eq(wordTagRefs.book, book), eq(wordTagRefs.chapter, chapter)));
+}
+
+/** Upsert a word tag ref — wordId is unique so conflict updates tagId. */
+export async function upsertWordTagRef(
+  wordId: string,
+  tagId: number,
+  textSource: string,
+  book: string,
+  chapter: number
+): Promise<void> {
+  await db
+    .insert(wordTagRefs)
+    .values({ wordId, tagId, textSource, book, chapter })
+    .onConflictDoUpdate({ target: wordTagRefs.wordId, set: { tagId, textSource, book, chapter } });
+}
+
+export async function removeWordTagRef(wordId: string): Promise<void> {
+  await db.delete(wordTagRefs).where(eq(wordTagRefs.wordId, wordId));
 }

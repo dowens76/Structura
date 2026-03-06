@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import { getBooks } from "@/lib/db/queries";
 import type { Book } from "@/lib/db/schema";
 import type { Testament } from "@/lib/morphology/types";
@@ -15,7 +16,7 @@ function BookGrid({ books, title }: { books: Book[]; title: string }) {
           <Link
             key={`${book.osisCode}-${book.textSource}`}
             href={`/${encodeURIComponent(book.osisCode)}/${book.textSource}/1`}
-            className="block px-3 py-2 rounded-lg border hover:border-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950 text-sm transition-colors text-center"
+            className="block px-3 py-2 rounded-lg border text-sm transition-colors text-center hover:border-[var(--accent)] hover:bg-[var(--surface-muted)]"
             style={{ backgroundColor: "var(--surface)", borderColor: "var(--border)", color: "var(--foreground)" }}
             title={book.name}
           >
@@ -47,12 +48,14 @@ export default async function Home() {
     <main className="min-h-screen" style={{ backgroundColor: "var(--background)" }}>
       <div className="max-w-5xl mx-auto px-6 py-12">
         <header className="mb-12">
-          <h1 className="text-4xl font-bold tracking-tight" style={{ color: "var(--foreground)" }}>
-            Structura
-          </h1>
-          <p className="mt-2 text-lg" style={{ color: "var(--text-muted)" }}>
-            Visual Bible Analysis — Hebrew, Greek &amp; Septuagint
-          </p>
+          <Image
+            src="/structura-full-logo.svg"
+            alt="Structura — Visual Bible Analysis"
+            width={540}
+            height={252}
+            priority
+            className="w-72 sm:w-96"
+          />
         </header>
 
         {hasData ? (
@@ -75,7 +78,8 @@ export default async function Home() {
         <div className="mt-10">
           <Link
             href="/import"
-            className="text-sm text-blue-600 dark:text-blue-400 hover:underline"
+            className="text-sm hover:underline"
+            style={{ color: "var(--accent)" }}
           >
             + Import translation →
           </Link>

@@ -150,6 +150,37 @@ export const speechSections = sqliteTable(
   (t) => [index("ss_book_ch_src_idx").on(t.book, t.chapter, t.textSource)]
 );
 
+// Book-scoped word/concept tags
+export const wordTags = sqliteTable(
+  "word_tags",
+  {
+    id:        integer("id").primaryKey({ autoIncrement: true }),
+    book:      text("book").notNull(),
+    name:      text("name").notNull(),
+    color:     text("color").notNull(),
+    type:      text("type").notNull().default("concept"), // "word" | "concept"
+    createdAt: text("created_at").$defaultFn(() => new Date().toISOString()),
+  },
+  (t) => [index("wt_book_idx").on(t.book)]
+);
+
+// Word-level tag references (one tag per word position)
+export const wordTagRefs = sqliteTable(
+  "word_tag_refs",
+  {
+    id:         integer("id").primaryKey({ autoIncrement: true }),
+    wordId:     text("word_id").notNull().unique(),
+    tagId:      integer("tag_id").notNull().references(() => wordTags.id, { onDelete: "cascade" }),
+    textSource: text("text_source").notNull(),
+    book:       text("book").notNull(),
+    chapter:    integer("chapter").notNull(),
+  },
+  (t) => [
+    index("wtr_tag_id_idx").on(t.tagId),
+    index("wtr_book_ch_idx").on(t.book, t.chapter),
+  ]
+);
+
 export type Book = typeof books.$inferSelect;
 export type Word = typeof words.$inferSelect;
 export type Verse = typeof verses.$inferSelect;
@@ -162,3 +193,5 @@ export type ParagraphBreak = typeof paragraphBreaks.$inferSelect;
 export type Character = typeof characters.$inferSelect;
 export type CharacterRef = typeof characterRefs.$inferSelect;
 export type SpeechSection = typeof speechSections.$inferSelect;
+export type WordTag = typeof wordTags.$inferSelect;
+export type WordTagRef = typeof wordTagRefs.$inferSelect;

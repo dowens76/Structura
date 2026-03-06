@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import type { Word, CharacterRef, Character } from "@/lib/db/schema";
+import type { Word, CharacterRef, Character, WordTag, WordTagRef } from "@/lib/db/schema";
 import type { DisplayMode, GrammarFilterState } from "@/lib/morphology/types";
 import { POS_COLORS } from "@/lib/morphology/types";
 import { getPosKey, matchesColorRule, type ColorRule } from "@/lib/morphology/colorRules";
@@ -24,6 +24,11 @@ interface WordTokenProps {
   editingSpeech: boolean;
   isRangeStart: boolean;
   highlightCharIds: Set<number>;
+  // Word / concept tag highlighting
+  wordTagRef?: WordTagRef | null;
+  wordTagMap?: Map<number, WordTag>;
+  editingWordTags?: boolean;
+  highlightWordTagIds?: Set<number>;
 }
 
 function getInterlinearLabel(word: Word): string {
@@ -50,6 +55,10 @@ export default function WordToken({
   editingSpeech,
   isRangeStart,
   highlightCharIds,
+  wordTagRef,
+  wordTagMap,
+  editingWordTags,
+  highlightWordTagIds,
 }: WordTokenProps) {
   const [hovering, setHovering] = useState(false);
   const [tooltipBelow, setTooltipBelow] = useState(false);
@@ -101,11 +110,28 @@ export default function WordToken({
     highlightCharIds.has(characterRef.character1Id) ||
     (characterRef.character2Id != null && highlightCharIds.has(characterRef.character2Id))
   );
-  const haloStyle: React.CSSProperties = isHighlighted ? {
-    boxShadow: "0 0 0 3px rgba(253, 224, 71, 0.85)",
-  } : {};
 
-  const style: React.CSSProperties = { ...colorStyle, ...underlineStyle, ...haloStyle };
+  // ── Word / concept tag ring ────────────────────────────────────────────────
+  // box-shadow is used instead of backgroundColor so the indicator is independent
+  // of any parent background tint (e.g. speech-section boxes).
+  const wordTag = wordTagRef && wordTagMap ? wordTagMap.get(wordTagRef.tagId) : null;
+  const isWordTagHighlighted = !!wordTag && !!(highlightWordTagIds?.has(wordTag.id));
+
+  // Combine character halo + word-tag ring into one box-shadow value
+  const shadows: string[] = [];
+  if (isHighlighted) shadows.push("0 0 0 3px rgba(253, 224, 71, 0.85)");
+  if (wordTag) {
+    shadows.push(
+      isWordTagHighlighted
+        ? `0 0 0 2px ${wordTag.color}`
+        : `0 0 0 1.5px ${wordTag.color}66`,
+    );
+  }
+  const shadowStyle: React.CSSProperties = shadows.length > 0
+    ? { boxShadow: shadows.join(", "), borderRadius: "2px" }
+    : {};
+
+  const style: React.CSSProperties = { ...colorStyle, ...underlineStyle, ...shadowStyle };
 
   const isInterlinear = displayMode === "interlinear";
 
@@ -117,13 +143,15 @@ export default function WordToken({
     setHovering(true);
   }
 
-  const isEditing = editingParagraphs || editingRefs || editingSpeech;
+  const isEditing = editingParagraphs || editingRefs || editingSpeech || !!editingWordTags;
 
   const baseClasses = [
     "relative transition-all duration-100",
     "rounded px-0.5 -mx-0.5",
     editingParagraphs
       ? "cursor-crosshair hover:bg-amber-100 dark:hover:bg-amber-900/40"
+      : editingWordTags
+        ? "cursor-crosshair hover:bg-yellow-100 dark:hover:bg-yellow-900/40"
       : (editingRefs || editingSpeech)
         ? [
             "cursor-crosshair hover:bg-violet-100 dark:hover:bg-violet-900/40",
@@ -156,7 +184,7 @@ export default function WordToken({
         <span
           ref={wordRef}
           className={baseClasses}
-          style={{ ...underlineStyle, ...haloStyle }}
+          style={{ ...underlineStyle, ...shadowStyle }}
           data-word-id={word.wordId}
           onClick={(e) => onSelect(word, e.shiftKey)}
           onMouseEnter={handleMouseEnter}

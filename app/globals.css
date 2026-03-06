@@ -1,28 +1,39 @@
 @import "tailwindcss";
 
+/* Brand palette derived from the Structura logo:
+   Navy  #1f2f3f  — structural lines, headings, nav background
+   Gold  #c89b3c  — subtitle, accent, hover states                */
 :root {
-  --background: #fafaf9;
-  --foreground: #1c1917;
+  --background: #f8f6f2;
+  --foreground: #1f2f3f;
   --surface: #ffffff;
-  --surface-muted: #f5f5f4;
-  --border: #e7e5e4;
-  --border-muted: #d6d3d1;
-  --text-muted: #78716c;
-  --accent: #2563eb;
-  --accent-hover: #1d4ed8;
+  --surface-muted: #f1ede5;
+  --border: #ddd8ce;
+  --border-muted: #ccc5b8;
+  --text-muted: #7a6e5e;
+  --accent: #c89b3c;
+  --accent-hover: #a87d28;
+  --nav-bg: #1f2f3f;
+  --nav-fg: #f8f6f2;
+  --nav-fg-muted: #a8b8c8;
+  --nav-border: #2e4256;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0c0a09;
-    --foreground: #f5f5f4;
-    --surface: #1c1917;
-    --surface-muted: #292524;
-    --border: #292524;
-    --border-muted: #44403c;
-    --text-muted: #a8a29e;
-    --accent: #3b82f6;
-    --accent-hover: #60a5fa;
+    --background: #111a24;
+    --foreground: #ede8df;
+    --surface: #1a2535;
+    --surface-muted: #1f2f3f;
+    --border: #2a3a4a;
+    --border-muted: #3a4e62;
+    --text-muted: #8a9aaa;
+    --accent: #d4aa50;
+    --accent-hover: #e0be70;
+    --nav-bg: #0f1820;
+    --nav-fg: #ede8df;
+    --nav-fg-muted: #7a9ab8;
+    --nav-border: #1a2c3e;
   }
 }
 
@@ -36,6 +47,10 @@
   --color-text-muted: var(--text-muted);
   --color-accent: var(--accent);
   --color-accent-hover: var(--accent-hover);
+  --color-nav-bg: var(--nav-bg);
+  --color-nav-fg: var(--nav-fg);
+  --color-nav-fg-muted: var(--nav-fg-muted);
+  --color-nav-border: var(--nav-border);
 
   /* POS color scheme for grammatical highlighting */
   --color-pos-noun: #2563eb;
