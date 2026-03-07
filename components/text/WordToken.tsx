@@ -6,6 +6,7 @@ import type { DisplayMode, GrammarFilterState } from "@/lib/morphology/types";
 import { POS_COLORS } from "@/lib/morphology/types";
 import { getPosKey, matchesColorRule, type ColorRule } from "@/lib/morphology/colorRules";
 import ParseTooltip from "./ParseTooltip";
+import hebrewLemmas from "@/lib/data/hebrew-lemmas.json";
 
 interface WordTokenProps {
   word: Word;
@@ -32,11 +33,15 @@ interface WordTokenProps {
 }
 
 function getInterlinearLabel(word: Word): string {
-  const parts: string[] = [];
-  if (word.strongNumber) parts.push(word.strongNumber);
-  if (word.lemma) parts.push(word.lemma);
-  else if (word.partOfSpeech) parts.push(word.partOfSpeech.slice(0, 4));
-  return parts.join(" ") || "—";
+  if (word.language === "hebrew") {
+    // Look up the actual Hebrew word form from the Strong's number
+    const lemma = word.strongNumber
+      ? (hebrewLemmas as Record<string, string>)[word.strongNumber]
+      : null;
+    return lemma ?? word.lemma ?? "—";
+  }
+  // Greek (SBLGNT/MorphGNT): word.lemma already contains the Greek lemma text
+  return word.lemma ?? word.partOfSpeech?.slice(0, 4) ?? "—";
 }
 
 export default function WordToken({
@@ -123,8 +128,10 @@ export default function WordToken({
   if (wordTag) {
     shadows.push(
       isWordTagHighlighted
-        ? `0 0 0 2px ${wordTag.color}`
-        : `0 0 0 1.5px ${wordTag.color}66`,
+        // Highlighted: solid ring + outer glow for emphasis
+        ? `0 0 0 2px ${wordTag.color}, 0 0 6px 1px ${wordTag.color}88`
+        // Always-on: full-opacity ring so tags are visible while reading
+        : `0 0 0 1.5px ${wordTag.color}`,
     );
   }
   const shadowStyle: React.CSSProperties = shadows.length > 0

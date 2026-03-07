@@ -44,6 +44,11 @@ interface VerseDisplayProps {
   wordTagMap: Map<number, WordTag>;
   editingWordTags: boolean;
   highlightWordTagIds: Set<number>;
+  // Paragraph indentation
+  lineIndentMap: Map<string, number>;
+  wordToParaStart: Map<string, string>;
+  editingIndents: boolean;
+  onSetSegmentIndent: (paraStartWordId: string, level: number) => void;
 }
 
 // Split a word array into paragraph segments at break boundaries.
@@ -91,6 +96,10 @@ export default function VerseDisplay({
   wordTagMap,
   editingWordTags,
   highlightWordTagIds,
+  lineIndentMap,
+  wordToParaStart,
+  editingIndents,
+  onSetSegmentIndent,
 }: VerseDisplayProps) {
   const firstWordId = words[0]?.wordId;
   const verseStartsNewParagraph = firstWordId ? paragraphBreakIds.has(firstWordId) : false;
@@ -289,26 +298,57 @@ export default function VerseDisplay({
         {sourceSegments.map((seg, si) => {
           const { segSpeech, segSpeaker, isSegStart, isSegEnd } = getSegSpeech(seg, si);
           const runs = computeRuns(seg, segSpeech);
+          const paraStartId = wordToParaStart.get(seg[0].wordId) ?? seg[0].wordId;
+          const indentLevel = lineIndentMap.get(paraStartId) ?? 0;
           return (
             <div
               key={si}
-              style={segBoxStyle(segSpeaker, isSegStart, isSegEnd)}
-              className={`flex items-center gap-3${editingSpeech ? " cursor-crosshair" : ""}${si > 0 ? " mt-1" : ""}`}
-              dir={isHebrew ? "rtl" : "ltr"}
+              style={{
+                paddingLeft: !isHebrew && indentLevel > 0 ? `${indentLevel * 2}rem` : undefined,
+                paddingRight: isHebrew && indentLevel > 0 ? `${indentLevel * 2}rem` : undefined,
+              }}
             >
-              {renderDeleteBtn(segSpeaker, segSpeech, isSegStart)}
-              <span
-                className="text-stone-400 dark:text-stone-600 text-sm font-mono shrink-0"
-                style={{ minWidth: "1.75rem", textAlign: isHebrew ? "right" : "left" }}
+              <div
+                style={segBoxStyle(segSpeaker, isSegStart, isSegEnd)}
+                className={`flex items-center gap-3${editingSpeech ? " cursor-crosshair" : ""}${si > 0 ? " mt-1" : ""}`}
+                dir={isHebrew ? "rtl" : "ltr"}
               >
-                {paraLabels[si]}
-              </span>
-              <span
-                className={`flex-1 ${isHebrew ? "text-hebrew" : "text-greek"} leading-loose`}
-                lang={isHebrew ? "he" : "grc"}
-              >
-                {renderRuns(runs)}
-              </span>
+                {renderDeleteBtn(segSpeaker, segSpeech, isSegStart)}
+                {editingIndents ? (
+                  <div className="flex items-center gap-0.5 shrink-0" style={{ minWidth: "3.5rem" }}>
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); onSetSegmentIndent(paraStartId, Math.max(0, indentLevel - 1)); }}
+                      disabled={indentLevel === 0}
+                      className="w-5 h-5 flex items-center justify-center text-xs rounded text-stone-500 dark:text-stone-400 hover:bg-stone-200 dark:hover:bg-stone-600 disabled:opacity-25 transition-colors"
+                      title="Decrease indent"
+                    >−</button>
+                    <span className="text-teal-600 dark:text-teal-400 text-[10px] font-mono w-4 text-center select-none">
+                      {indentLevel > 0 ? indentLevel : "·"}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); onSetSegmentIndent(paraStartId, Math.min(6, indentLevel + 1)); }}
+                      disabled={indentLevel >= 6}
+                      className="w-5 h-5 flex items-center justify-center text-xs rounded text-stone-500 dark:text-stone-400 hover:bg-stone-200 dark:hover:bg-stone-600 disabled:opacity-25 transition-colors"
+                      title="Increase indent"
+                    >+</button>
+                  </div>
+                ) : (
+                  <span
+                    className="text-stone-400 dark:text-stone-600 text-sm font-mono shrink-0"
+                    style={{ minWidth: "1.75rem", textAlign: isHebrew ? "right" : "left" }}
+                  >
+                    {paraLabels[si]}
+                  </span>
+                )}
+                <span
+                  className={`flex-1 ${isHebrew ? "text-hebrew" : "text-greek"} leading-loose`}
+                  lang={isHebrew ? "he" : "grc"}
+                >
+                  {renderRuns(runs)}
+                </span>
+              </div>
             </div>
           );
         })}
@@ -434,8 +474,8 @@ export default function VerseDisplay({
                       if (tvTag) {
                         tvShadows.push(
                           isTvTagHighlighted
-                            ? `0 0 0 2px ${tvTag.color}`
-                            : `0 0 0 1.5px ${tvTag.color}66`,
+                            ? `0 0 0 2px ${tvTag.color}, 0 0 6px 1px ${tvTag.color}88`
+                            : `0 0 0 1.5px ${tvTag.color}`,
                         );
                       }
                       const tvShadowStyle: React.CSSProperties = tvShadows.length > 0
@@ -514,37 +554,73 @@ export default function VerseDisplay({
           );
         });
 
+        const paraStartId = wordToParaStart.get(seg[0].wordId) ?? seg[0].wordId;
+        const indentLevel = lineIndentMap.get(paraStartId) ?? 0;
+
         return (
-          <div
-            key={si}
-            className={`grid gap-x-6 items-center${editingSpeech ? " cursor-crosshair" : ""}`}
-            style={{ gridTemplateColumns: "1fr auto 1fr", ...segBoxStyle(segSpeaker, isSegStart, isSegEnd) }}
-          >
-            {renderDeleteBtn(segSpeaker, segSpeech, isSegStart)}
+          <div key={si}>
+            <div
+              className={`grid gap-x-6 items-center${editingSpeech ? " cursor-crosshair" : ""}`}
+              style={{ gridTemplateColumns: "1fr auto 1fr", ...segBoxStyle(segSpeaker, isSegStart, isSegEnd) }}
+            >
+              {renderDeleteBtn(segSpeaker, segSpeech, isSegStart)}
 
-            {/* Source words */}
-            <div dir={isHebrew ? "rtl" : "ltr"}>
-              <span
-                className={`${isHebrew ? "text-hebrew" : "text-greek"} leading-loose`}
-                lang={isHebrew ? "he" : "grc"}
+              {/* Source words — indent towards the source text's reading direction:
+                  Hebrew (RTL) shifts left via paddingRight; Greek (LTR) shifts right via paddingLeft. */}
+              <div
+                dir={isHebrew ? "rtl" : "ltr"}
+                style={{
+                  paddingRight: isHebrew && indentLevel > 0 ? `${indentLevel * 2}rem` : undefined,
+                  paddingLeft:  !isHebrew && indentLevel > 0 ? `${indentLevel * 2}rem` : undefined,
+                }}
               >
-                {renderRuns(runs)}
-              </span>
-            </div>
+                <span
+                  className={`${isHebrew ? "text-hebrew" : "text-greek"} leading-loose`}
+                  lang={isHebrew ? "he" : "grc"}
+                >
+                  {renderRuns(runs)}
+                </span>
+              </div>
 
-            {/* Centre: paragraph label */}
-            <div className="flex items-center justify-center">
-              <span
-                className="text-stone-400 dark:text-stone-600 text-sm font-mono select-none"
-                style={{ minWidth: "2.5rem", textAlign: "center" }}
+              {/* Centre: paragraph label / indent controls */}
+              <div className="flex items-center justify-center">
+                {editingIndents ? (
+                  <div className="flex items-center gap-0.5">
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); onSetSegmentIndent(paraStartId, Math.max(0, indentLevel - 1)); }}
+                      disabled={indentLevel === 0}
+                      className="w-5 h-5 flex items-center justify-center text-xs rounded text-stone-500 dark:text-stone-400 hover:bg-stone-200 dark:hover:bg-stone-600 disabled:opacity-25 transition-colors"
+                      title="Decrease indent"
+                    >−</button>
+                    <span className="text-teal-600 dark:text-teal-400 text-[10px] font-mono w-4 text-center select-none">
+                      {indentLevel > 0 ? indentLevel : "·"}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); onSetSegmentIndent(paraStartId, Math.min(6, indentLevel + 1)); }}
+                      disabled={indentLevel >= 6}
+                      className="w-5 h-5 flex items-center justify-center text-xs rounded text-stone-500 dark:text-stone-400 hover:bg-stone-200 dark:hover:bg-stone-600 disabled:opacity-25 transition-colors"
+                      title="Increase indent"
+                    >+</button>
+                  </div>
+                ) : (
+                  <span
+                    className="text-stone-400 dark:text-stone-600 text-sm font-mono select-none"
+                    style={{ minWidth: "2.5rem", textAlign: "center" }}
+                  >
+                    {paraLabels[si]}
+                  </span>
+                )}
+              </div>
+
+              {/* Translation content — English always indents rightward. */}
+              <div
+                className="flex flex-col gap-1"
+                style={{ paddingLeft: indentLevel > 0 ? `${indentLevel * 2}rem` : undefined }}
               >
-                {paraLabels[si]}
-              </span>
-            </div>
-
-            {/* Translation content for this paragraph row */}
-            <div className="flex flex-col gap-1">
-              {tvRowContent}
+                {tvRowContent}
+              </div>
             </div>
           </div>
         );

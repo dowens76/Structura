@@ -1,7 +1,7 @@
-import { eq, and, asc, inArray } from "drizzle-orm";
+import { eq, and, asc, inArray, or, gte, lte, gt, lt, sql } from "drizzle-orm";
 import { db } from "./index";
-import { books, words, verses, translations, translationVerses, paragraphBreaks, characters, characterRefs, speechSections, wordTags, wordTagRefs } from "./schema";
-import type { Book, Word, Translation, TranslationVerse, Character, CharacterRef, SpeechSection, WordTag, WordTagRef } from "./schema";
+import { books, words, verses, translations, translationVerses, paragraphBreaks, characters, characterRefs, speechSections, wordTags, wordTagRefs, lineIndents, passages } from "./schema";
+import type { Book, Word, Translation, TranslationVerse, Character, CharacterRef, SpeechSection, WordTag, WordTagRef, Passage } from "./schema";
 import type { TextSource, Testament } from "@/lib/morphology/types";
 
 export async function getBooks(testament?: Testament): Promise<Book[]> {
@@ -457,4 +457,154 @@ export async function upsertWordTagRef(
 
 export async function removeWordTagRef(wordId: string): Promise<void> {
   await db.delete(wordTagRefs).where(eq(wordTagRefs.wordId, wordId));
+}
+
+// ── Line Indents (chapter-scoped) ─────────────────────────────────────────────
+
+/** Returns all paragraph indent levels for a chapter. */
+export async function getChapterLineIndents(
+  book: string,
+  chapter: number
+): Promise<{ wordId: string; indentLevel: number }[]> {
+  return db
+    .select({ wordId: lineIndents.wordId, indentLevel: lineIndents.indentLevel })
+    .from(lineIndents)
+    .where(and(eq(lineIndents.book, book), eq(lineIndents.chapter, chapter)));
+}
+
+/**
+ * Upsert an indent level for the paragraph that starts at `wordId`.
+ * Pass `indentLevel = 0` to remove the record (reset to no indent).
+ */
+export async function setLineIndent(
+  wordId: string,
+  indentLevel: number,
+  textSource: string,
+  book: string,
+  chapter: number
+): Promise<void> {
+  if (indentLevel <= 0) {
+    await db.delete(lineIndents).where(eq(lineIndents.wordId, wordId));
+  } else {
+    await db
+      .insert(lineIndents)
+      .values({ wordId, indentLevel, textSource, book, chapter })
+      .onConflictDoUpdate({ target: lineIndents.wordId, set: { indentLevel } });
+  }
+}
+
+// ── Passages ──────────────────────────────────────────────────────────────────
+
+export async function getPassagesForBook(
+  book: string,
+  textSource: string
+): Promise<Passage[]> {
+  return db
+    .select()
+    .from(passages)
+    .where(and(eq(passages.book, book), eq(passages.textSource, textSource)))
+    .orderBy(asc(passages.startChapter), asc(passages.startVerse));
+}
+
+export async function getPassage(id: number): Promise<Passage | undefined> {
+  const results = await db
+    .select()
+    .from(passages)
+    .where(eq(passages.id, id))
+    .limit(1);
+  return results[0];
+}
+
+export async function createPassage(
+  book: string,
+  textSource: string,
+  label: string,
+  startChapter: number,
+  startVerse: number,
+  endChapter: number,
+  endVerse: number
+): Promise<Passage> {
+  const result = await db
+    .insert(passages)
+    .values({ book, textSource, label, startChapter, startVerse, endChapter, endVerse })
+    .returning();
+  return result[0];
+}
+
+export async function updatePassage(
+  id: number,
+  updates: Partial<Pick<Passage, "label" | "startChapter" | "startVerse" | "endChapter" | "endVerse">>
+): Promise<Passage> {
+  const result = await db
+    .update(passages)
+    .set(updates)
+    .where(eq(passages.id, id))
+    .returning();
+  return result[0];
+}
+
+export async function deletePassage(id: number): Promise<void> {
+  await db.delete(passages).where(eq(passages.id, id));
+}
+
+/**
+ * Fetch all words in a passage range. Handles single-chapter and multi-chapter
+ * passages, filtering by chapter/verse boundaries on both ends.
+ */
+export async function getPassageWords(
+  osisBook: string,
+  textSource: string,
+  startChapter: number,
+  startVerse: number,
+  endChapter: number,
+  endVerse: number
+): Promise<Word[]> {
+  const book = await getBook(osisBook);
+  if (!book) return [];
+
+  const baseFilter = and(
+    eq(words.bookId, book.id),
+    eq(words.textSource, textSource)
+  );
+
+  const rangeFilter =
+    startChapter === endChapter
+      ? and(
+          eq(words.chapter, startChapter),
+          gte(words.verse, startVerse),
+          lte(words.verse, endVerse)
+        )
+      : or(
+          and(eq(words.chapter, startChapter), gte(words.verse, startVerse)),
+          and(gt(words.chapter, startChapter), lt(words.chapter, endChapter)),
+          and(eq(words.chapter, endChapter), lte(words.verse, endVerse))
+        );
+
+  return db
+    .select()
+    .from(words)
+    .where(and(baseFilter, rangeFilter))
+    .orderBy(asc(words.chapter), asc(words.verse), asc(words.positionInVerse));
+}
+
+/** Returns the highest verse number in a given chapter (used for passage boundary navigation). */
+export async function getChapterMaxVerse(
+  osisBook: string,
+  chapter: number,
+  textSource: string
+): Promise<number> {
+  const book = await getBook(osisBook);
+  if (!book) return 0;
+
+  const result = await db
+    .select({ maxVerse: sql<number>`max(${words.verse})` })
+    .from(words)
+    .where(
+      and(
+        eq(words.bookId, book.id),
+        eq(words.chapter, chapter),
+        eq(words.textSource, textSource)
+      )
+    );
+  return result[0]?.maxVerse ?? 0;
 }

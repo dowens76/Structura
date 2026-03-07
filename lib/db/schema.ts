@@ -181,6 +181,36 @@ export const wordTagRefs = sqliteTable(
   ]
 );
 
+// Paragraph-level indentation (marks the first word of an indented paragraph)
+export const lineIndents = sqliteTable(
+  "line_indents",
+  {
+    id:          integer("id").primaryKey({ autoIncrement: true }),
+    wordId:      text("word_id").notNull().unique(), // first word of the indented paragraph
+    indentLevel: integer("indent_level").notNull(),  // 1, 2, 3 … (not stored for level 0)
+    textSource:  text("text_source").notNull(),
+    book:        text("book").notNull(),
+    chapter:     integer("chapter").notNull(),
+  },
+  (t) => [index("li_book_ch_idx").on(t.book, t.chapter)]
+);
+
+// User-defined passage ranges (can span multiple chapters or be a sub-chapter slice)
+export const passages = sqliteTable(
+  "passages",
+  {
+    id:           integer("id").primaryKey({ autoIncrement: true }),
+    book:         text("book").notNull(),
+    textSource:   text("text_source").notNull(),
+    label:        text("label").notNull().default(""),
+    startChapter: integer("start_chapter").notNull(),
+    startVerse:   integer("start_verse").notNull(),
+    endChapter:   integer("end_chapter").notNull(),
+    endVerse:     integer("end_verse").notNull(),
+  },
+  (t) => [index("passages_book_src_idx").on(t.book, t.textSource)]
+);
+
 export type Book = typeof books.$inferSelect;
 export type Word = typeof words.$inferSelect;
 export type Verse = typeof verses.$inferSelect;
@@ -195,3 +225,5 @@ export type CharacterRef = typeof characterRefs.$inferSelect;
 export type SpeechSection = typeof speechSections.$inferSelect;
 export type WordTag = typeof wordTags.$inferSelect;
 export type WordTagRef = typeof wordTagRefs.$inferSelect;
+export type LineIndent = typeof lineIndents.$inferSelect;
+export type Passage = typeof passages.$inferSelect;

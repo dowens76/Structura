@@ -12,6 +12,7 @@ import ColorRulePanel from "@/components/controls/ColorRulePanel";
 import CharacterPanel from "@/components/controls/CharacterPanel";
 import WordTagPanel from "@/components/controls/WordTagPanel";
 import type { ColorRule } from "@/lib/morphology/colorRules";
+import hebrewLemmas from "@/lib/data/hebrew-lemmas.json";
 
 interface ChapterDisplayProps {
   words: Word[];
@@ -26,6 +27,7 @@ interface ChapterDisplayProps {
   initialSpeechSections: SpeechSection[];
   initialWordTags: WordTag[];
   initialWordTagRefs: WordTagRef[];
+  initialLineIndents: { wordId: string; indentLevel: number }[];
 }
 
 const DEFAULT_FILTER: GrammarFilterState = {
@@ -61,6 +63,7 @@ export default function ChapterDisplay({
   initialSpeechSections,
   initialWordTags,
   initialWordTagRefs,
+  initialLineIndents,
 }: ChapterDisplayProps) {
   const [displayMode, setDisplayMode] = useState<DisplayMode>(() =>
     readLocal<DisplayMode>("structura:displayMode", "clean")
@@ -124,6 +127,24 @@ export default function ChapterDisplay({
     () => new Map(wordTags.map((t) => [t.id, t])),
     [wordTags]
   );
+
+  // ── Paragraph indentation state ─────────────────────────────────────────────
+  const [lineIndentMap, setLineIndentMap] = useState<Map<string, number>>(
+    () => new Map(initialLineIndents.map((li) => [li.wordId, li.indentLevel]))
+  );
+  const [editingIndents, setEditingIndents] = useState(false);
+
+  // Maps every word in the chapter to the first word of its paragraph.
+  // Used by VerseDisplay to look up indent levels for paragraph continuations.
+  const wordToParaStart = useMemo(() => {
+    const map = new Map<string, string>();
+    let currentStart = words[0]?.wordId ?? "";
+    for (const word of words) {
+      if (paragraphBreakIds.has(word.wordId)) currentStart = word.wordId;
+      map.set(word.wordId, currentStart);
+    }
+    return map;
+  }, [words, paragraphBreakIds]);
 
   // ── Undo stack ─────────────────────────────────────────────────────────────
   type UndoEntry = { label: string; undo: () => void | Promise<void> };
@@ -451,8 +472,14 @@ export default function ChapterDisplay({
 
   async function handleToggleWordTagRef(word: Word) {
     if (pendingWordTag && pendingWordTagColor !== null) {
-      // "Word" type: create a new tag named after the lemma and immediately tag this word
-      const lemma = word.lemma ?? word.surfaceText ?? "?";
+      // "Word" type: create a new tag named after the lemma and immediately tag this word.
+      // For Hebrew words use the lexicon lookup (same as the interlinear label); for Greek
+      // word.lemma already holds the Greek text.
+      const lemma = word.language === "hebrew"
+        ? ((hebrewLemmas as Record<string, string>)[word.strongNumber ?? ""]
+            ?? word.surfaceText?.replace(/\//g, "")
+            ?? "?")
+        : (word.lemma ?? word.surfaceText ?? "?");
       await handleCreateTag("word", lemma, pendingWordTagColor, word.wordId, textSource);
       setPendingWordTag(false);
       setPendingWordTagColor(null);
@@ -744,6 +771,34 @@ export default function ChapterDisplay({
     });
   }
 
+  // ── Indent handler ────────────────────────────────────────────────────────
+
+  async function handleSetIndent(paraStartWordId: string, level: number) {
+    const prevLevel = lineIndentMap.get(paraStartWordId) ?? 0;
+    // Optimistic update
+    setLineIndentMap((prev) => {
+      const next = new Map(prev);
+      if (level <= 0) next.delete(paraStartWordId);
+      else next.set(paraStartWordId, level);
+      return next;
+    });
+    try {
+      await fetch("/api/line-indents", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ wordId: paraStartWordId, indentLevel: level, textSource, book, chapter }),
+      });
+    } catch {
+      // Rollback on error
+      setLineIndentMap((prev) => {
+        const next = new Map(prev);
+        if (prevLevel <= 0) next.delete(paraStartWordId);
+        else next.set(paraStartWordId, prevLevel);
+        return next;
+      });
+    }
+  }
+
   async function handleUpdateCharacter(id: number, name: string, color: string) {
     const prev = characters.find((c) => c.id === id);
     if (prev) {
@@ -865,6 +920,7 @@ export default function ChapterDisplay({
               setEditingWordTags((v) => !v);
               setEditingRefs(false);
               setEditingSpeech(false);
+              setEditingIndents(false);
               setSpeechRangeStart(null);
               setPendingWordTag(false);
             }}
@@ -879,6 +935,29 @@ export default function ChapterDisplay({
             ].join(" ")}
           >
             🏷
+          </button>
+
+          {/* Paragraph indent mode */}
+          <button
+            onClick={() => {
+              setEditingIndents((v) => !v);
+              setEditingRefs(false);
+              setEditingSpeech(false);
+              setEditingWordTags(false);
+              setSpeechRangeStart(null);
+              setPendingWordTag(false);
+            }}
+            title={editingIndents
+              ? "Exit indent mode"
+              : "Indent paragraphs to indicate subordinate clauses (use − / + next to the paragraph label)"}
+            className={[
+              "px-2.5 py-1 rounded text-xs font-medium transition-colors",
+              editingIndents
+                ? "bg-teal-600 text-white"
+                : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
+            ].join(" ")}
+          >
+            ↳
           </button>
 
           {/* Undo button */}
@@ -1060,6 +1139,10 @@ export default function ChapterDisplay({
                 wordTagMap={wordTagMap}
                 editingWordTags={editingWordTags}
                 highlightWordTagIds={highlightWordTagIds}
+                lineIndentMap={lineIndentMap}
+                wordToParaStart={wordToParaStart}
+                editingIndents={editingIndents}
+                onSetSegmentIndent={handleSetIndent}
               />
             );
           })}

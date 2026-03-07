@@ -12,7 +12,8 @@
     "import:oshb": "tsx scripts/import-oshb.ts",
     "import:morphgnt": "tsx scripts/import-morphgnt.ts",
     "import:lxx": "tsx scripts/import-lxx.ts",
-    "import:all": "tsx scripts/import-oshb.ts && tsx scripts/import-morphgnt.ts && tsx scripts/import-lxx.ts"
+    "import:all": "tsx scripts/import-oshb.ts && tsx scripts/import-morphgnt.ts && tsx scripts/import-lxx.ts",
+    "build:hebrew-lemmas": "tsx scripts/build-hebrew-lemmas.ts"
   },
   "dependencies": {
     "@fontsource/gentium-plus": "^5.2.7",

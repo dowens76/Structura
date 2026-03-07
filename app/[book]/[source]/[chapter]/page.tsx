@@ -1,10 +1,11 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
-import { getChapterWords, getBook, getChapterCount, getAvailableTranslationsForChapter, getTranslationVerses, getChapterParagraphBreaks, getCharacters, getChapterCharacterRefs, getChapterSpeechSections, getWordTags, getChapterWordTagRefs } from "@/lib/db/queries";
+import { getChapterWords, getBook, getChapterCount, getAvailableTranslationsForChapter, getTranslationVerses, getChapterParagraphBreaks, getCharacters, getChapterCharacterRefs, getChapterSpeechSections, getWordTags, getChapterWordTagRefs, getChapterLineIndents } from "@/lib/db/queries";
 import type { TranslationVerse } from "@/lib/db/schema";
 import type { TextSource } from "@/lib/morphology/types";
 import ChapterDisplay from "@/components/text/ChapterDisplay";
+import PassageNavButtons from "@/components/passage/PassageNavButtons";
 import { OSIS_BOOK_NAMES } from "@/lib/utils/osis";
 
 interface PageProps {
@@ -35,7 +36,7 @@ export default async function ChapterPage({ params }: PageProps) {
 
   const [availableTranslations, initialParagraphBreakIds, initialCharacters,
          initialCharacterRefs, initialSpeechSections,
-         initialWordTags, initialWordTagRefs] = await Promise.all([
+         initialWordTags, initialWordTagRefs, initialLineIndents] = await Promise.all([
     getAvailableTranslationsForChapter(osisBook, chapter),
     getChapterParagraphBreaks(osisBook, chapter),
     getCharacters(osisBook),
@@ -43,6 +44,7 @@ export default async function ChapterPage({ params }: PageProps) {
     getChapterSpeechSections(osisBook, chapter, textSource),
     getWordTags(osisBook),
     getChapterWordTagRefs(osisBook, chapter),
+    getChapterLineIndents(osisBook, chapter),
   ]);
   const translationVerseData: Record<number, TranslationVerse[]> = {};
   await Promise.all(
@@ -94,6 +96,15 @@ export default async function ChapterPage({ params }: PageProps) {
         >
           + Import
         </Link>
+
+        {/* Passages — client button with dropdown */}
+        <PassageNavButtons
+          book={osisBook}
+          textSource={textSource}
+          bookName={bookName}
+          currentChapter={chapter}
+          chapterCount={chapterCount}
+        />
 
         {/* Chapter navigation — right-aligned */}
         <div className="ml-auto flex items-center gap-1">
@@ -150,6 +161,7 @@ export default async function ChapterPage({ params }: PageProps) {
           initialSpeechSections={initialSpeechSections}
           initialWordTags={initialWordTags}
           initialWordTagRefs={initialWordTagRefs}
+          initialLineIndents={initialLineIndents}
         />
       </div>
     </div>
