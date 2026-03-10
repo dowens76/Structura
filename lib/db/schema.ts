@@ -211,6 +211,53 @@ export const passages = sqliteTable(
   (t) => [index("passages_book_src_idx").on(t.book, t.textSource)]
 );
 
+// Clause-to-clause logical relationships (segments identified by first word ID)
+export const clauseRelationships = sqliteTable(
+  "clause_relationships",
+  {
+    id:            integer("id").primaryKey({ autoIncrement: true }),
+    fromSegWordId: text("from_seg_word_id").notNull(), // first word ID of the "from" paragraph segment
+    toSegWordId:   text("to_seg_word_id").notNull(),   // first word ID of the "to" paragraph segment
+    relType:       text("rel_type").notNull(),          // e.g. "cause", "purpose", "contrast"
+    textSource:    text("text_source").notNull(),
+    book:          text("book").notNull(),
+    chapter:       integer("chapter").notNull(),
+    createdAt:     text("created_at").$defaultFn(() => new Date().toISOString()),
+  },
+  (t) => [index("clrel_book_ch_src_idx").on(t.book, t.chapter, t.textSource)]
+);
+
+// Free-form word-to-word arrows (displayed as bezier curves below the text)
+export const wordArrows = sqliteTable(
+  "word_arrows",
+  {
+    id:         integer("id").primaryKey({ autoIncrement: true }),
+    fromWordId: text("from_word_id").notNull(),
+    toWordId:   text("to_word_id").notNull(),
+    label:      text("label"),             // optional text label on the arrow
+    textSource: text("text_source").notNull(),
+    book:       text("book").notNull(),
+    chapter:    integer("chapter").notNull(), // chapter of fromWordId
+    createdAt:  text("created_at").$defaultFn(() => new Date().toISOString()),
+  },
+  (t) => [index("wa_book_ch_src_idx").on(t.book, t.chapter, t.textSource)]
+);
+
+// Per-word bold/italic formatting
+export const wordFormatting = sqliteTable(
+  "word_formatting",
+  {
+    id:         integer("id").primaryKey({ autoIncrement: true }),
+    wordId:     text("word_id").notNull().unique(), // one row per word
+    isBold:     integer("is_bold",   { mode: "boolean" }).notNull().default(false),
+    isItalic:   integer("is_italic", { mode: "boolean" }).notNull().default(false),
+    textSource: text("text_source").notNull(),
+    book:       text("book").notNull(),
+    chapter:    integer("chapter").notNull(),
+  },
+  (t) => [index("wfmt_book_ch_idx").on(t.book, t.chapter)]
+);
+
 export type Book = typeof books.$inferSelect;
 export type Word = typeof words.$inferSelect;
 export type Verse = typeof verses.$inferSelect;
@@ -227,3 +274,6 @@ export type WordTag = typeof wordTags.$inferSelect;
 export type WordTagRef = typeof wordTagRefs.$inferSelect;
 export type LineIndent = typeof lineIndents.$inferSelect;
 export type Passage = typeof passages.$inferSelect;
+export type ClauseRelationship = typeof clauseRelationships.$inferSelect;
+export type WordArrow = typeof wordArrows.$inferSelect;
+export type WordFormatting = typeof wordFormatting.$inferSelect;

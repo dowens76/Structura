@@ -75,13 +75,20 @@ export default async function Home() {
           </div>
         )}
 
-        <div className="mt-10">
+        <div className="mt-10 flex flex-col gap-2">
           <Link
             href="/import"
             className="text-sm hover:underline"
             style={{ color: "var(--accent)" }}
           >
             + Import translation →
+          </Link>
+          <Link
+            href="/backup"
+            className="text-sm hover:underline"
+            style={{ color: "var(--accent)" }}
+          >
+            Backup & Restore →
           </Link>
         </div>
 

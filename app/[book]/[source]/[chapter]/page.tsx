@@ -1,11 +1,13 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
-import { getChapterWords, getBook, getChapterCount, getAvailableTranslationsForChapter, getTranslationVerses, getChapterParagraphBreaks, getCharacters, getChapterCharacterRefs, getChapterSpeechSections, getWordTags, getChapterWordTagRefs, getChapterLineIndents } from "@/lib/db/queries";
+import { getChapterWords, getBook, getBooksBySource, getChapterCount, getAvailableTranslationsForChapter, getTranslationVerses, getChapterParagraphBreaks, getCharacters, getChapterCharacterRefs, getChapterSpeechSections, getWordTags, getChapterWordTagRefs, getChapterLineIndents, getChapterClauseRelationships, getChapterWordArrows, getChapterWordFormatting } from "@/lib/db/queries";
 import type { TranslationVerse } from "@/lib/db/schema";
 import type { TextSource } from "@/lib/morphology/types";
 import ChapterDisplay from "@/components/text/ChapterDisplay";
 import PassageNavButtons from "@/components/passage/PassageNavButtons";
+import ChapterDropdown from "@/components/navigation/ChapterDropdown";
+import BookDropdown from "@/components/navigation/BookDropdown";
 import { OSIS_BOOK_NAMES } from "@/lib/utils/osis";
 
 interface PageProps {
@@ -23,10 +25,12 @@ export default async function ChapterPage({ params }: PageProps) {
 
   let words;
   let bookRecord;
+  let sourceBooks;
   try {
-    [words, bookRecord] = await Promise.all([
+    [words, bookRecord, sourceBooks] = await Promise.all([
       getChapterWords(osisBook, chapter, textSource),
       getBook(osisBook),
+      getBooksBySource(source),
     ]);
   } catch {
     notFound();
@@ -36,7 +40,8 @@ export default async function ChapterPage({ params }: PageProps) {
 
   const [availableTranslations, initialParagraphBreakIds, initialCharacters,
          initialCharacterRefs, initialSpeechSections,
-         initialWordTags, initialWordTagRefs, initialLineIndents] = await Promise.all([
+         initialWordTags, initialWordTagRefs, initialLineIndents,
+         initialClauseRelationships, initialWordArrows, initialWordFormatting] = await Promise.all([
     getAvailableTranslationsForChapter(osisBook, chapter),
     getChapterParagraphBreaks(osisBook, chapter),
     getCharacters(osisBook),
@@ -45,6 +50,9 @@ export default async function ChapterPage({ params }: PageProps) {
     getWordTags(osisBook),
     getChapterWordTagRefs(osisBook, chapter),
     getChapterLineIndents(osisBook, chapter),
+    getChapterClauseRelationships(osisBook, chapter, textSource),
+    getChapterWordArrows(osisBook, chapter, textSource),
+    getChapterWordFormatting(osisBook, chapter),
   ]);
   const translationVerseData: Record<number, TranslationVerse[]> = {};
   await Promise.all(
@@ -96,6 +104,31 @@ export default async function ChapterPage({ params }: PageProps) {
         >
           + Import
         </Link>
+
+        {/* Backup link */}
+        <Link
+          href="/backup"
+          className="text-xs px-2 py-1 rounded transition-colors"
+          style={{ color: "var(--nav-fg-muted)" }}
+        >
+          Backup
+        </Link>
+
+        {/* Book selector dropdown */}
+        <BookDropdown
+          books={sourceBooks ?? []}
+          currentOsisBook={osisBook}
+          textSource={textSource}
+          bookName={bookName}
+        />
+
+        {/* Chapter selector dropdown */}
+        <ChapterDropdown
+          chapter={chapter}
+          chapterCount={chapterCount}
+          osisBook={osisBook}
+          textSource={textSource}
+        />
 
         {/* Passages — client button with dropdown */}
         <PassageNavButtons
@@ -162,6 +195,9 @@ export default async function ChapterPage({ params }: PageProps) {
           initialWordTags={initialWordTags}
           initialWordTagRefs={initialWordTagRefs}
           initialLineIndents={initialLineIndents}
+          initialClauseRelationships={initialClauseRelationships}
+          initialWordArrows={initialWordArrows}
+          initialWordFormatting={initialWordFormatting}
         />
       </div>
     </div>

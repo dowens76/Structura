@@ -15,6 +15,8 @@ import {
   getChapterLineIndents,
   getAvailableTranslationsForChapter,
   getTranslationVerses,
+  getChapterClauseRelationships,
+  getChapterWordArrows,
 } from "@/lib/db/queries";
 import { OSIS_BOOK_NAMES } from "@/lib/utils/osis";
 import type { TextSource } from "@/lib/morphology/types";
@@ -80,17 +82,21 @@ export default async function PassagePage({ params }: PageProps) {
           getChapterSpeechSections(osisBook, ch, textSource),
           getChapterWordTagRefs(osisBook, ch),
           getChapterLineIndents(osisBook, ch),
+          getChapterClauseRelationships(osisBook, ch, textSource),
+          getChapterWordArrows(osisBook, ch, textSource),
         ])
       )
     ),
   ]);
 
   // Flatten per-chapter editing data
-  const initialParagraphBreakIds = perChapterResults.flatMap(([p]) => p);
-  const initialCharacterRefs     = perChapterResults.flatMap(([, r]) => r);
-  const initialSpeechSections    = perChapterResults.flatMap(([,, s]) => s);
-  const initialWordTagRefs       = perChapterResults.flatMap(([,,, t]) => t);
-  const initialLineIndents       = perChapterResults.flatMap(([,,,, l]) => l);
+  const initialParagraphBreakIds     = perChapterResults.flatMap(([p]) => p);
+  const initialCharacterRefs         = perChapterResults.flatMap(([, r]) => r);
+  const initialSpeechSections        = perChapterResults.flatMap(([,, s]) => s);
+  const initialWordTagRefs           = perChapterResults.flatMap(([,,, t]) => t);
+  const initialLineIndents           = perChapterResults.flatMap(([,,,, l]) => l);
+  const initialClauseRelationships   = perChapterResults.flatMap(([,,,,, cr]) => cr);
+  const initialWordArrows            = perChapterResults.flatMap(([,,,,,, wa]) => wa);
 
   // Translations — available from the first chapter (book-wide); fetch verses for all chapters
   const availableTranslations = await getAvailableTranslationsForChapter(osisBook, passage.startChapter);
@@ -184,6 +190,8 @@ export default async function PassagePage({ params }: PageProps) {
           initialLineIndents={initialLineIndents}
           availableTranslations={availableTranslations}
           translationVerseData={translationVerseData}
+          initialClauseRelationships={initialClauseRelationships}
+          initialWordArrows={initialWordArrows}
         />
       </div>
     </div>

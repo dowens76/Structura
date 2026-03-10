@@ -1,7 +1,7 @@
 import { eq, and, asc, inArray, or, gte, lte, gt, lt, sql } from "drizzle-orm";
 import { db } from "./index";
-import { books, words, verses, translations, translationVerses, paragraphBreaks, characters, characterRefs, speechSections, wordTags, wordTagRefs, lineIndents, passages } from "./schema";
-import type { Book, Word, Translation, TranslationVerse, Character, CharacterRef, SpeechSection, WordTag, WordTagRef, Passage } from "./schema";
+import { books, words, verses, translations, translationVerses, paragraphBreaks, characters, characterRefs, speechSections, wordTags, wordTagRefs, lineIndents, passages, clauseRelationships, wordArrows, wordFormatting } from "./schema";
+import type { Book, Word, Translation, TranslationVerse, Character, CharacterRef, SpeechSection, WordTag, WordTagRef, Passage, ClauseRelationship, WordArrow } from "./schema";
 import type { TextSource, Testament } from "@/lib/morphology/types";
 
 export async function getBooks(testament?: Testament): Promise<Book[]> {
@@ -13,6 +13,14 @@ export async function getBooks(testament?: Testament): Promise<Book[]> {
       .orderBy(asc(books.bookNumber));
   }
   return db.select().from(books).orderBy(asc(books.bookNumber));
+}
+
+export async function getBooksBySource(textSource: string): Promise<Book[]> {
+  return db
+    .select()
+    .from(books)
+    .where(eq(books.textSource, textSource))
+    .orderBy(asc(books.bookNumber));
 }
 
 export async function getBook(osisCode: string): Promise<Book | undefined> {
@@ -585,6 +593,117 @@ export async function getPassageWords(
     .from(words)
     .where(and(baseFilter, rangeFilter))
     .orderBy(asc(words.chapter), asc(words.verse), asc(words.positionInVerse));
+}
+
+// ── Clause Relationships ──────────────────────────────────────────────────────
+
+export async function getChapterClauseRelationships(
+  book: string,
+  chapter: number,
+  textSource: string
+): Promise<ClauseRelationship[]> {
+  return db
+    .select()
+    .from(clauseRelationships)
+    .where(
+      and(
+        eq(clauseRelationships.book, book),
+        eq(clauseRelationships.chapter, chapter),
+        eq(clauseRelationships.textSource, textSource)
+      )
+    );
+}
+
+export async function createClauseRelationship(
+  fromSegWordId: string,
+  toSegWordId: string,
+  relType: string,
+  book: string,
+  chapter: number,
+  textSource: string
+): Promise<ClauseRelationship> {
+  const [row] = await db
+    .insert(clauseRelationships)
+    .values({ fromSegWordId, toSegWordId, relType, book, chapter, textSource })
+    .returning();
+  return row;
+}
+
+export async function deleteClauseRelationship(id: number): Promise<void> {
+  await db.delete(clauseRelationships).where(eq(clauseRelationships.id, id));
+}
+
+// ── Word Arrows ───────────────────────────────────────────────────────────────
+
+export async function getChapterWordArrows(
+  book: string,
+  chapter: number,
+  textSource: string
+): Promise<WordArrow[]> {
+  return db
+    .select()
+    .from(wordArrows)
+    .where(
+      and(
+        eq(wordArrows.book, book),
+        eq(wordArrows.chapter, chapter),
+        eq(wordArrows.textSource, textSource)
+      )
+    );
+}
+
+export async function createWordArrow(
+  fromWordId: string,
+  toWordId: string,
+  book: string,
+  chapter: number,
+  textSource: string,
+  label?: string
+): Promise<WordArrow> {
+  const [row] = await db
+    .insert(wordArrows)
+    .values({ fromWordId, toWordId, book, chapter, textSource, label: label ?? null })
+    .returning();
+  return row;
+}
+
+export async function deleteWordArrow(id: number): Promise<void> {
+  await db.delete(wordArrows).where(eq(wordArrows.id, id));
+}
+
+// ── Word Formatting (chapter-scoped) ──────────────────────────────────────────
+
+/** Returns all bold/italic formatting entries for a chapter. */
+export async function getChapterWordFormatting(
+  book: string,
+  chapter: number
+): Promise<{ wordId: string; isBold: boolean; isItalic: boolean }[]> {
+  return db
+    .select({ wordId: wordFormatting.wordId, isBold: wordFormatting.isBold, isItalic: wordFormatting.isItalic })
+    .from(wordFormatting)
+    .where(and(eq(wordFormatting.book, book), eq(wordFormatting.chapter, chapter)));
+}
+
+/**
+ * Upsert bold/italic formatting for a word.
+ * If both isBold and isItalic are false, the record is deleted (reset to no formatting).
+ */
+export async function setWordFormatting(
+  wordId: string,
+  isBold: boolean,
+  isItalic: boolean,
+  textSource: string,
+  book: string,
+  chapter: number
+): Promise<void> {
+  if (!isBold && !isItalic) {
+    await db.delete(wordFormatting).where(eq(wordFormatting.wordId, wordId));
+  } else {
+    await db
+      .insert(wordFormatting)
+      .values({ wordId, isBold, isItalic, textSource, book, chapter })
+      .onConflictDoUpdate({ target: wordFormatting.wordId, set: { isBold, isItalic } });
+  }
 }
 
 /** Returns the highest verse number in a given chapter (used for passage boundary navigation). */

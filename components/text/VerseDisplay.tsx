@@ -49,6 +49,14 @@ interface VerseDisplayProps {
   wordToParaStart: Map<string, string>;
   editingIndents: boolean;
   onSetSegmentIndent: (paraStartWordId: string, level: number) => void;
+  // Bold / italic formatting
+  wordFormattingMap?: Map<string, { isBold: boolean; isItalic: boolean }>;
+  editingFormatting?: boolean;
+  // Source text visibility
+  hideSourceText?: boolean;
+  // Translation text editing
+  editingTranslation?: boolean;
+  onUpdateTranslationVerse?: (abbr: string, verse: number, newText: string) => void;
 }
 
 // Split a word array into paragraph segments at break boundaries.
@@ -100,6 +108,11 @@ export default function VerseDisplay({
   wordToParaStart,
   editingIndents,
   onSetSegmentIndent,
+  wordFormattingMap = new Map() as Map<string, { isBold: boolean; isItalic: boolean }>,
+  editingFormatting = false,
+  hideSourceText = false,
+  editingTranslation = false,
+  onUpdateTranslationVerse,
 }: VerseDisplayProps) {
   const firstWordId = words[0]?.wordId;
   const verseStartsNewParagraph = firstWordId ? paragraphBreakIds.has(firstWordId) : false;
@@ -267,6 +280,8 @@ export default function VerseDisplay({
                 wordTagMap={wordTagMap}
                 editingWordTags={editingWordTags}
                 highlightWordTagIds={highlightWordTagIds}
+                wordFormatting={wordFormattingMap.get(word.wordId) ?? null}
+                editingFormatting={editingFormatting}
               />
               {wi < run.words.length - 1 && " "}
             </span>
@@ -308,14 +323,18 @@ export default function VerseDisplay({
                 paddingRight: isHebrew && indentLevel > 0 ? `${indentLevel * 2}rem` : undefined,
               }}
             >
+              {/* 3-column grid: label | arc-col | source-text.
+                  dir="rtl" reverses column order for Hebrew (→ source-text | arc-col | label),
+                  so the same template works for both LTR and RTL. */}
               <div
-                style={segBoxStyle(segSpeaker, isSegStart, isSegEnd)}
-                className={`flex items-center gap-3${editingSpeech ? " cursor-crosshair" : ""}${si > 0 ? " mt-1" : ""}`}
+                style={{ gridTemplateColumns: "auto 80px 1fr", ...segBoxStyle(segSpeaker, isSegStart, isSegEnd) }}
+                className={`grid items-center${editingSpeech ? " cursor-crosshair" : ""}${si > 0 ? " mt-1" : ""}`}
                 dir={isHebrew ? "rtl" : "ltr"}
               >
                 {renderDeleteBtn(segSpeaker, segSpeech, isSegStart)}
+                {/* Col 1 — Paragraph label / indent controls */}
                 {editingIndents ? (
-                  <div className="flex items-center gap-0.5 shrink-0" style={{ minWidth: "3.5rem" }}>
+                  <div className="flex items-center gap-0.5" data-seg-label={seg[0].wordId} style={{ minWidth: "3.5rem" }}>
                     <button
                       type="button"
                       onClick={(e) => { e.stopPropagation(); onSetSegmentIndent(paraStartId, Math.max(0, indentLevel - 1)); }}
@@ -336,14 +355,19 @@ export default function VerseDisplay({
                   </div>
                 ) : (
                   <span
-                    className="text-stone-400 dark:text-stone-600 text-sm font-mono shrink-0"
+                    className="text-stone-400 dark:text-stone-600 text-sm font-mono"
+                    data-seg-label={seg[0].wordId}
+                    data-osis-ref={`${book}.${chapter}.${verseNum}`}
                     style={{ minWidth: "1.75rem", textAlign: isHebrew ? "right" : "left" }}
                   >
                     {paraLabels[si]}
                   </span>
                 )}
+                {/* Col 2 — Arc column (80px, empty — space for ClauseRelationshipOverlay SVG) */}
+                <div />
+                {/* Col 3 — Source text */}
                 <span
-                  className={`flex-1 ${isHebrew ? "text-hebrew" : "text-greek"} leading-loose`}
+                  className={`${isHebrew ? "text-hebrew" : "text-greek"} leading-loose`}
                   lang={isHebrew ? "he" : "grc"}
                 >
                   {renderRuns(runs)}
@@ -377,7 +401,7 @@ export default function VerseDisplay({
       cur.push(token);
     });
     if (cur.length > 0) segs.push({ startIdx: curStart, tokens: cur });
-    return { abbr, tvSegs: segs };
+    return { abbr, text, tvSegs: segs };
   });
 
   return (
@@ -390,8 +414,8 @@ export default function VerseDisplay({
     >
       {verseSeparator}
 
-      {/* Each source paragraph is its own 3-cell grid row so the speech-box
-          background/border wraps the source, label AND translation together. */}
+      {/* Each source paragraph is its own 5-cell grid row so the speech-box
+          background/border wraps the source, arc columns, label AND translation together. */}
       {sourceSegments.map((seg, si) => {
         const { segSpeech, segSpeaker, isSegStart, isSegEnd } = getSegSpeech(seg, si);
         const runs = computeRuns(seg, segSpeech);
@@ -399,7 +423,8 @@ export default function VerseDisplay({
         // Translation content for this row:
         //   • All rows except the last get only tvSegs[si] (if it exists).
         //   • The last source row gets tvSegs[si…end] (all remaining tv paragraphs).
-        const tvRowContent = allTvSegs.map(({ abbr, tvSegs }) => {
+        const tvRowContent = allTvSegs.map(({ abbr, text: tvFullText, tvSegs }) => {
+          const isLastRow = si === sourceSegments.length - 1;
           const rowSegs: TvSeg[] = si < sourceSegments.length - 1
             ? (tvSegs[si] ? [tvSegs[si]] : [])
             : tvSegs.slice(si);
@@ -407,6 +432,32 @@ export default function VerseDisplay({
           // Verse-level translation paragraph separator (first row only)
           const tvStartsNewParagraph = si === 0
             && paragraphBreakIds.has(`tv:${abbr}:${book}.${chapter}.${verseNum}.0`);
+
+          // ── Translation edit mode: show a plain textarea for direct text editing ──
+          if (editingTranslation) {
+            if (!isLastRow) return null; // only show edit area in the last (or only) row
+            return (
+              <div key={abbr}>
+                {translationTexts.length > 1 && (
+                  <span className="block text-[10px] font-mono font-semibold text-stone-400 dark:text-stone-500 uppercase tracking-wider mb-0.5">
+                    {abbr}
+                  </span>
+                )}
+                <textarea
+                  key={`${abbr}-${verseNum}`}
+                  defaultValue={tvFullText}
+                  onBlur={(e) => onUpdateTranslationVerse?.(abbr, verseNum, e.target.value.trim())}
+                  rows={3}
+                  className="w-full resize-y rounded border border-stone-300 dark:border-stone-600 bg-stone-50 dark:bg-stone-900 px-2 py-1 focus:outline-none focus:ring-1 focus:ring-sky-500 dark:text-stone-100"
+                  style={{
+                    fontSize: "var(--translation-font-size, 0.875rem)",
+                    lineHeight: 1.6,
+                  }}
+                  spellCheck={false}
+                />
+              </div>
+            );
+          }
 
           const hasContent = rowSegs.length > 0;
 
@@ -487,7 +538,16 @@ export default function VerseDisplay({
                       // Between adjacent tvSegs in the same row: add a visual ¶ separator
                       const isInterSegBreak = segIdx > 0 && localWi === 0;
 
-                      const tokenClassName = editingRefs
+                      // ── Bold / italic formatting for translation tokens ──────
+                      const tvFormatting = wordFormattingMap.get(wordId);
+                      const tvFormattingStyle: React.CSSProperties = {
+                        fontWeight: tvFormatting?.isBold ? "bold" : undefined,
+                        fontStyle:  tvFormatting?.isItalic ? "italic" : undefined,
+                      };
+
+                      const tokenClassName = editingFormatting
+                        ? "cursor-crosshair rounded px-0.5 -mx-0.5 hover:bg-amber-50 dark:hover:bg-amber-950/40 transition-colors"
+                        : editingRefs
                         ? "cursor-crosshair rounded px-0.5 -mx-0.5 hover:bg-violet-100 dark:hover:bg-violet-900/40 transition-colors"
                         : editingParagraphs
                         ? "cursor-crosshair rounded px-0.5 -mx-0.5 hover:bg-amber-100 dark:hover:bg-amber-900/40 transition-colors"
@@ -497,7 +557,9 @@ export default function VerseDisplay({
                         ? "cursor-crosshair rounded px-0.5 -mx-0.5 hover:bg-yellow-100 dark:hover:bg-yellow-900/40 transition-colors"
                         : undefined;
 
-                      const handleClick = editingRefs
+                      const handleClick = editingFormatting
+                        ? () => onSelectTranslationWord(wordId, abbr)
+                        : editingRefs
                         ? () => onSelectTranslationWord(wordId, abbr)
                         : editingParagraphs
                         ? () => onToggleTranslationParagraphBreak(wordId, abbr)
@@ -537,7 +599,7 @@ export default function VerseDisplay({
                             </>
                           )}
                           <span
-                            style={{ ...underlineStyle, ...tvShadowStyle }}
+                            style={{ ...underlineStyle, ...tvShadowStyle, ...tvFormattingStyle }}
                             className={tokenClassName}
                             onClick={handleClick}
                           >
@@ -559,33 +621,48 @@ export default function VerseDisplay({
 
         return (
           <div key={si}>
+            {/* Grid layout:
+                5-col (with source): source | source-arc-col | verse-label | translation-arc-col | translation
+                3-col (hideSourceText): verse-label | translation-arc-col | translation
+                The 80px arc columns provide dedicated space for the SVG arc overlay. */}
             <div
-              className={`grid gap-x-6 items-center${editingSpeech ? " cursor-crosshair" : ""}`}
-              style={{ gridTemplateColumns: "1fr auto 1fr", ...segBoxStyle(segSpeaker, isSegStart, isSegEnd) }}
+              className={`grid items-center${editingSpeech ? " cursor-crosshair" : ""}`}
+              style={{
+                gridTemplateColumns: hideSourceText ? "auto 80px 1fr" : "1fr 80px auto 80px 1fr",
+                ...segBoxStyle(segSpeaker, isSegStart, isSegEnd),
+              }}
             >
               {renderDeleteBtn(segSpeaker, segSpeech, isSegStart)}
 
-              {/* Source words — indent towards the source text's reading direction:
-                  Hebrew (RTL) shifts left via paddingRight; Greek (LTR) shifts right via paddingLeft. */}
-              <div
-                dir={isHebrew ? "rtl" : "ltr"}
-                style={{
-                  paddingRight: isHebrew && indentLevel > 0 ? `${indentLevel * 2}rem` : undefined,
-                  paddingLeft:  !isHebrew && indentLevel > 0 ? `${indentLevel * 2}rem` : undefined,
-                }}
-              >
-                <span
-                  className={`${isHebrew ? "text-hebrew" : "text-greek"} leading-loose`}
-                  lang={isHebrew ? "he" : "grc"}
-                >
-                  {renderRuns(runs)}
-                </span>
-              </div>
+              {/* Cols 1–2 — Source words + source arc column (hidden in translation-only mode) */}
+              {!hideSourceText && (
+                <>
+                  {/* Col 1 — Source words. Indent towards the source text's reading direction:
+                      Hebrew (RTL) shifts left via paddingRight; Greek (LTR) shifts right via paddingLeft. */}
+                  <div
+                    dir={isHebrew ? "rtl" : "ltr"}
+                    style={{
+                      paddingRight: isHebrew && indentLevel > 0 ? `${indentLevel * 2}rem` : undefined,
+                      paddingLeft:  !isHebrew && indentLevel > 0 ? `${indentLevel * 2}rem` : undefined,
+                    }}
+                  >
+                    <span
+                      className={`${isHebrew ? "text-hebrew" : "text-greek"} leading-loose`}
+                      lang={isHebrew ? "he" : "grc"}
+                    >
+                      {renderRuns(runs)}
+                    </span>
+                  </div>
 
-              {/* Centre: paragraph label / indent controls */}
+                  {/* Col 2 — Source arc column (80px, empty — filled by ClauseRelationshipOverlay SVG) */}
+                  <div />
+                </>
+              )}
+
+              {/* Col 3 — Paragraph label / indent controls */}
               <div className="flex items-center justify-center">
                 {editingIndents ? (
-                  <div className="flex items-center gap-0.5">
+                  <div className="flex items-center gap-0.5" data-seg-label={seg[0].wordId}>
                     <button
                       type="button"
                       onClick={(e) => { e.stopPropagation(); onSetSegmentIndent(paraStartId, Math.max(0, indentLevel - 1)); }}
@@ -607,6 +684,8 @@ export default function VerseDisplay({
                 ) : (
                   <span
                     className="text-stone-400 dark:text-stone-600 text-sm font-mono select-none"
+                    data-seg-label={seg[0].wordId}
+                    data-osis-ref={`${book}.${chapter}.${verseNum}`}
                     style={{ minWidth: "2.5rem", textAlign: "center" }}
                   >
                     {paraLabels[si]}
@@ -614,7 +693,10 @@ export default function VerseDisplay({
                 )}
               </div>
 
-              {/* Translation content — English always indents rightward. */}
+              {/* Col 4 — Translation arc column (80px, empty — filled by ClauseRelationshipOverlay SVG) */}
+              <div />
+
+              {/* Col 5 — Translation content. English always indents rightward. */}
               <div
                 className="flex flex-col gap-1"
                 style={{ paddingLeft: indentLevel > 0 ? `${indentLevel * 2}rem` : undefined }}

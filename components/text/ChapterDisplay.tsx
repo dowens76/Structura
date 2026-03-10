@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo, useState, useEffect } from "react";
-import type { Word, Character, CharacterRef, SpeechSection, WordTag, WordTagRef } from "@/lib/db/schema";
+import { useMemo, useState, useEffect, useRef } from "react";
+import type { Word, Character, CharacterRef, SpeechSection, WordTag, WordTagRef, ClauseRelationship, WordArrow } from "@/lib/db/schema";
 import type { Translation, TranslationVerse } from "@/lib/db/schema";
 import type { DisplayMode, GrammarFilterState, TranslationTextEntry } from "@/lib/morphology/types";
 import VerseDisplay from "./VerseDisplay";
@@ -11,7 +11,10 @@ import DisplayModeToggle from "@/components/controls/DisplayModeToggle";
 import ColorRulePanel from "@/components/controls/ColorRulePanel";
 import CharacterPanel from "@/components/controls/CharacterPanel";
 import WordTagPanel from "@/components/controls/WordTagPanel";
+import ClauseRelationshipOverlay from "./ClauseRelationshipOverlay";
+import WordArrowOverlay from "./WordArrowOverlay";
 import type { ColorRule } from "@/lib/morphology/colorRules";
+import { RELATIONSHIP_TYPES } from "@/lib/morphology/clauseRelationships";
 import hebrewLemmas from "@/lib/data/hebrew-lemmas.json";
 
 interface ChapterDisplayProps {
@@ -28,6 +31,9 @@ interface ChapterDisplayProps {
   initialWordTags: WordTag[];
   initialWordTagRefs: WordTagRef[];
   initialLineIndents: { wordId: string; indentLevel: number }[];
+  initialClauseRelationships: ClauseRelationship[];
+  initialWordArrows: WordArrow[];
+  initialWordFormatting: { wordId: string; isBold: boolean; isItalic: boolean }[];
 }
 
 const DEFAULT_FILTER: GrammarFilterState = {
@@ -64,31 +70,23 @@ export default function ChapterDisplay({
   initialWordTags,
   initialWordTagRefs,
   initialLineIndents,
+  initialClauseRelationships,
+  initialWordArrows,
+  initialWordFormatting,
 }: ChapterDisplayProps) {
-  const [displayMode, setDisplayMode] = useState<DisplayMode>(() =>
-    readLocal<DisplayMode>("structura:displayMode", "clean")
-  );
+  // Use fallback defaults for SSR — localStorage values are loaded in useEffect after hydration
+  const [displayMode, setDisplayMode] = useState<DisplayMode>("clean");
   const [grammarFilter, setGrammarFilter] = useState<GrammarFilterState>(DEFAULT_FILTER);
   const [selectedWord, setSelectedWord] = useState<Word | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
   const [showTooltips, setShowTooltips] = useState(false);
   // Store active translations by abbreviation so they survive cross-book navigation
-  const [activeTranslationAbbrs, setActiveTranslationAbbrs] = useState<Set<string>>(() =>
-    new Set(readLocal<string[]>("structura:activeTranslations", []))
-  );
+  const [activeTranslationAbbrs, setActiveTranslationAbbrs] = useState<Set<string>>(new Set());
   const [colorRules, setColorRules] = useState<ColorRule[]>([]);
-  const [useLinguisticTerms, setUseLinguisticTerms] = useState(() =>
-    readLocal<boolean>("structura:useLinguisticTerms", false)
-  );
-  const [hebrewFontSize, setHebrewFontSize] = useState(() =>
-    readLocal<number>("structura:hebrewFontSize", 1.375)
-  );
-  const [greekFontSize, setGreekFontSize] = useState(() =>
-    readLocal<number>("structura:greekFontSize", 1.25)
-  );
-  const [translationFontSize, setTranslationFontSize] = useState(() =>
-    readLocal<number>("structura:translationFontSize", 0.875)
-  );
+  const [useLinguisticTerms, setUseLinguisticTerms] = useState(false);
+  const [hebrewFontSize, setHebrewFontSize] = useState(1.375);
+  const [greekFontSize, setGreekFontSize] = useState(1.25);
+  const [translationFontSize, setTranslationFontSize] = useState(0.875);
   const [editingParagraphs, setEditingParagraphs] = useState(false);
   const [paragraphBreakIds, setParagraphBreakIds] = useState<Set<string>>(
     () => new Set(initialParagraphBreakIds)
@@ -134,6 +132,40 @@ export default function ChapterDisplay({
   );
   const [editingIndents, setEditingIndents] = useState(false);
 
+  // ── Clause relationships state ────────────────────────────────────────────
+  const [clauseRelationships, setClauseRelationships] = useState<ClauseRelationship[]>(initialClauseRelationships);
+  const [editingRelationships, setEditingRelationships] = useState(false);
+  const [relFromSegWordId, setRelFromSegWordId] = useState<string | null>(null);
+  const [relToSegWordId, setRelToSegWordId]     = useState<string | null>(null);
+  const [showRelPicker, setShowRelPicker]       = useState(false);
+
+  // ── Word arrows state ──────────────────────────────────────────────────────
+  const [wordArrowsState, setWordArrowsState] = useState<WordArrow[]>(initialWordArrows);
+  const [editingArrows, setEditingArrows]     = useState(false);
+  const [arrowFromWordId, setArrowFromWordId] = useState<string | null>(null);
+
+  // ── Word formatting (bold / italic) state ─────────────────────────────────
+  const [wordFormattingMap, setWordFormattingMap] = useState<Map<string, { isBold: boolean; isItalic: boolean }>>(
+    () => new Map(initialWordFormatting.map((f) => [f.wordId, { isBold: f.isBold, isItalic: f.isItalic }]))
+  );
+  const [editingBold, setEditingBold]     = useState(false);
+  const [editingItalic, setEditingItalic] = useState(false);
+
+  // ── Source text visibility ─────────────────────────────────────────────────
+  // When true, source text columns are hidden so the user works with translation only.
+  const [hideSourceText, setHideSourceText] = useState(false);
+
+  // ── Translation text editing ───────────────────────────────────────────────
+  // Local mutable copy of translationVerseData so edits can be reflected immediately.
+  const [localTranslationVerseData, setLocalTranslationVerseData] = useState(translationVerseData);
+  const [editingTranslation, setEditingTranslation] = useState(false);
+
+  // ── Overlay refs ───────────────────────────────────────────────────────────
+  const textContainerRef = useRef<HTMLDivElement>(null);
+  // outerRef wraps textContainerRef without overflow clipping, so SVG arcs can
+  // extend in any direction without being cut off by overflow-y: auto.
+  const outerRef = useRef<HTMLDivElement>(null);
+
   // Maps every word in the chapter to the first word of its paragraph.
   // Used by VerseDisplay to look up indent levels for paragraph continuations.
   const wordToParaStart = useMemo(() => {
@@ -144,6 +176,21 @@ export default function ChapterDisplay({
       map.set(word.wordId, currentStart);
     }
     return map;
+  }, [words, paragraphBreakIds]);
+
+  // First word ID of every paragraph segment (for clause relationship selectors).
+  // Includes: chapter start (i=0), explicit ¶ breaks, and the first word of every verse
+  // so that the implicit "first paragraph" within each verse always has a selector dot.
+  const paragraphFirstWordIds = useMemo(() => {
+    if (!words.length) return [];
+    const breakSet = new Set(paragraphBreakIds);
+    return words
+      .filter((w, i) =>
+        i === 0 ||
+        breakSet.has(w.wordId) ||
+        words[i - 1].verse !== w.verse
+      )
+      .map((w) => w.wordId);
   }, [words, paragraphBreakIds]);
 
   // ── Undo stack ─────────────────────────────────────────────────────────────
@@ -170,12 +217,25 @@ export default function ChapterDisplay({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
+  // Restore persisted settings after hydration — avoids server/client HTML mismatch
+  // (reading localStorage in useState initializers causes hydration errors)
+  useEffect(() => {
+    setDisplayMode(readLocal<DisplayMode>("structura:displayMode", "clean"));
+    setActiveTranslationAbbrs(new Set(readLocal<string[]>("structura:activeTranslations", [])));
+    setUseLinguisticTerms(readLocal<boolean>("structura:useLinguisticTerms", false));
+    setHebrewFontSize(readLocal<number>("structura:hebrewFontSize", 1.375));
+    setGreekFontSize(readLocal<number>("structura:greekFontSize", 1.25));
+    setTranslationFontSize(readLocal<number>("structura:translationFontSize", 0.875));
+    setHideSourceText(readLocal<boolean>("structura:hideSourceText", false));
+  }, []); // empty deps → runs once after first render (client only)
+
   // Persist sticky settings whenever they change
   useEffect(() => { writeLocal("structura:displayMode", displayMode); }, [displayMode]);
   useEffect(() => { writeLocal("structura:useLinguisticTerms", useLinguisticTerms); }, [useLinguisticTerms]);
   useEffect(() => { writeLocal("structura:hebrewFontSize", hebrewFontSize); }, [hebrewFontSize]);
   useEffect(() => { writeLocal("structura:greekFontSize", greekFontSize); }, [greekFontSize]);
   useEffect(() => { writeLocal("structura:translationFontSize", translationFontSize); }, [translationFontSize]);
+  useEffect(() => { writeLocal("structura:hideSourceText", hideSourceText); }, [hideSourceText]);
 
   const isHebrew = words[0]?.language === "hebrew";
 
@@ -224,7 +284,7 @@ export default function ChapterDisplay({
     const map = new Map<number, TranslationTextEntry[]>();
     for (const t of availableTranslations) {
       if (!activeTranslationIds.has(t.id)) continue;
-      const verses = translationVerseData[t.id] ?? [];
+      const verses = localTranslationVerseData[t.id] ?? [];
       for (const tv of verses) {
         const existing = map.get(tv.verse) ?? [];
         existing.push({ abbr: t.abbreviation, text: tv.text });
@@ -232,7 +292,7 @@ export default function ChapterDisplay({
       }
     }
     return map;
-  }, [activeTranslationIds, availableTranslations, translationVerseData]);
+  }, [activeTranslationIds, availableTranslations, localTranslationVerseData]);
 
   const hasActiveTranslations = activeTranslationIds.size > 0;
 
@@ -258,6 +318,14 @@ export default function ChapterDisplay({
   }
 
   function handleSelectWord(word: Word, shiftHeld = false) {
+    if (editingBold || editingItalic) {
+      handleToggleWordFormatting(word);
+      return;
+    }
+    if (editingArrows) {
+      handleSelectArrowWord(word);
+      return;
+    }
     if (editingParagraphs) {
       handleToggleParagraphBreak(word.wordId);
       return;
@@ -428,8 +496,13 @@ export default function ChapterDisplay({
     return handleToggleCharacterRefById(word.wordId, textSource);
   }
 
-  // Called when a translation word is clicked in refs-editing or word-tag-editing mode.
+  // Called when a translation word is clicked in refs-editing, word-tag-editing,
+  // or formatting mode.
   function handleSelectTranslationWord(wordId: string, abbr: string) {
+    if (editingBold || editingItalic) {
+      handleToggleFormattingById(wordId, abbr);
+      return;
+    }
     if (editingRefs && activeCharId !== null) {
       handleToggleCharacterRefById(wordId, abbr);
     } else if (editingWordTags && activeWordTagId !== null && !pendingWordTag) {
@@ -830,10 +903,189 @@ export default function ChapterDisplay({
     }
   }
 
+  // ── Clause relationship handlers ──────────────────────────────────────────
+  function handleSelectSegment(wordId: string) {
+    if (!relFromSegWordId) {
+      setRelFromSegWordId(wordId);
+    } else if (wordId === relFromSegWordId) {
+      setRelFromSegWordId(null); // deselect
+    } else {
+      setRelToSegWordId(wordId);
+      setShowRelPicker(true);
+    }
+  }
+
+  async function handleCreateRelationship(relType: string) {
+    if (!relFromSegWordId || !relToSegWordId) return;
+    const resp = await fetch("/api/clause-relationships", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        fromSegWordId: relFromSegWordId,
+        toSegWordId:   relToSegWordId,
+        relType,
+        book,
+        chapter,
+        source: textSource,
+      }),
+    });
+    const { relationship } = await resp.json();
+    setClauseRelationships((prev) => [...prev, relationship]);
+    setRelFromSegWordId(null);
+    setRelToSegWordId(null);
+    setShowRelPicker(false);
+  }
+
+  function handleCancelRelPicker() {
+    setShowRelPicker(false);
+    setRelFromSegWordId(null);
+    setRelToSegWordId(null);
+  }
+
+  async function handleDeleteClauseRelationship(id: number) {
+    await fetch("/api/clause-relationships", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id }),
+    });
+    setClauseRelationships((prev) => prev.filter((r) => r.id !== id));
+  }
+
+  // ── Word arrow handlers ────────────────────────────────────────────────────
+  async function handleSelectArrowWord(word: Word) {
+    if (!arrowFromWordId) {
+      setArrowFromWordId(word.wordId);
+      return;
+    }
+    if (arrowFromWordId === word.wordId) {
+      setArrowFromWordId(null);
+      return;
+    }
+    const resp = await fetch("/api/word-arrows", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        fromWordId: arrowFromWordId,
+        toWordId:   word.wordId,
+        book,
+        chapter,
+        source: textSource,
+      }),
+    });
+    const { arrow } = await resp.json();
+    setWordArrowsState((prev) => [...prev, arrow]);
+    setArrowFromWordId(null);
+  }
+
+  async function handleDeleteWordArrow(id: number) {
+    await fetch("/api/word-arrows", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id }),
+    });
+    setWordArrowsState((prev) => prev.filter((a) => a.id !== id));
+  }
+
+  // ── Word formatting (bold / italic) handler ────────────────────────────────
+
+  // Core toggle — shared by source words (source = textSource) and translation
+  // words (source = translation abbreviation, e.g. "ESV").
+  async function handleToggleFormattingById(wordId: string, source: string) {
+    const existing = wordFormattingMap.get(wordId) ?? { isBold: false, isItalic: false };
+    const nextBold   = editingBold   ? !existing.isBold   : existing.isBold;
+    const nextItalic = editingItalic ? !existing.isItalic : existing.isItalic;
+
+    // Optimistic update
+    setWordFormattingMap((prev) => {
+      const next = new Map(prev);
+      if (!nextBold && !nextItalic) next.delete(wordId);
+      else next.set(wordId, { isBold: nextBold, isItalic: nextItalic });
+      return next;
+    });
+    try {
+      await fetch("/api/word-formatting", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ wordId, isBold: nextBold, isItalic: nextItalic, textSource: source, book, chapter }),
+      });
+    } catch {
+      // Rollback on error
+      setWordFormattingMap((prev) => {
+        const next = new Map(prev);
+        if (!existing.isBold && !existing.isItalic) next.delete(wordId);
+        else next.set(wordId, existing);
+        return next;
+      });
+    }
+  }
+
+  async function handleToggleWordFormatting(word: Word) {
+    return handleToggleFormattingById(word.wordId, textSource);
+  }
+
+  // ── Translation verse text edit handler ────────────────────────────────────
+  async function handleUpdateTranslationVerse(abbr: string, verse: number, newText: string) {
+    const translation = availableTranslations.find((t) => t.abbreviation === abbr);
+    if (!translation) return;
+    const tvRecord = localTranslationVerseData[translation.id]?.find((tv) => tv.verse === verse);
+    if (!tvRecord) return;
+
+    // Optimistic update
+    setLocalTranslationVerseData((prev) => ({
+      ...prev,
+      [translation.id]: (prev[translation.id] ?? []).map((tv) =>
+        tv.verse === verse ? { ...tv, text: newText } : tv
+      ),
+    }));
+
+    try {
+      await fetch("/api/translation-verses", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: tvRecord.id, text: newText }),
+      });
+    } catch {
+      // Rollback on network error
+      setLocalTranslationVerseData((prev) => ({
+        ...prev,
+        [translation.id]: (prev[translation.id] ?? []).map((tv) =>
+          tv.verse === verse ? { ...tv, text: tvRecord.text } : tv
+        ),
+      }));
+    }
+  }
+
   return (
     <div className="flex h-full min-h-0">
       {/* Main text area */}
-      <div className="flex-1 overflow-y-auto flex flex-col min-h-0">
+      <div className="flex-1 relative min-h-0 flex flex-col" ref={outerRef}>
+        {/* WordArrowOverlay stays in outerRef (unchanged) */}
+        <WordArrowOverlay
+          arrows={wordArrowsState}
+          containerRef={textContainerRef}
+          outerRef={outerRef}
+          editing={editingArrows}
+          selectedFromWordId={arrowFromWordId}
+          onDeleteArrow={handleDeleteWordArrow}
+        />
+        {/* Scrollable text container — ClauseRelationshipOverlay lives INSIDE so it scrolls
+            with the content and uses stable content-relative coordinates. */}
+        <div
+          className="flex-1 overflow-y-auto relative flex flex-col min-h-0"
+          ref={textContainerRef}
+        >
+          <ClauseRelationshipOverlay
+            relationships={clauseRelationships}
+            containerRef={textContainerRef}
+            isHebrew={isHebrew}
+            hasTranslation={hasActiveTranslations}
+            hasSource={!hideSourceText}
+            editing={editingRelationships}
+            paragraphFirstWordIds={paragraphFirstWordIds}
+            selectedSegWordId={relFromSegWordId}
+            onSelectSegment={handleSelectSegment}
+            onDeleteRelationship={handleDeleteClauseRelationship}
+          />
         {/* Toolbar */}
         <div className="sticky top-0 z-10 bg-[var(--background)] border-b border-[var(--border)] px-6 py-3 flex items-center gap-4 flex-wrap">
           <DisplayModeToggle mode={displayMode} onChange={setDisplayMode} />
@@ -960,6 +1212,50 @@ export default function ChapterDisplay({
             ↳
           </button>
 
+          {/* Clause relationship mode */}
+          <button
+            onClick={() => {
+              setEditingRelationships((v) => !v);
+              setEditingArrows(false);
+              setArrowFromWordId(null);
+              setRelFromSegWordId(null);
+              setShowRelPicker(false);
+            }}
+            title={editingRelationships
+              ? "Exit clause relationship mode"
+              : "Mark logical relationships between paragraph segments"}
+            className={[
+              "px-2.5 py-1 rounded text-xs font-medium transition-colors",
+              editingRelationships
+                ? "bg-rose-600 text-white"
+                : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
+            ].join(" ")}
+          >
+            ⤢
+          </button>
+
+          {/* Word arrow mode */}
+          <button
+            onClick={() => {
+              setEditingArrows((v) => !v);
+              setEditingRelationships(false);
+              setRelFromSegWordId(null);
+              setShowRelPicker(false);
+              setArrowFromWordId(null);
+            }}
+            title={editingArrows
+              ? "Exit word arrow mode"
+              : "Draw free-form arrows between words"}
+            className={[
+              "px-2.5 py-1 rounded text-xs font-medium transition-colors",
+              editingArrows
+                ? "bg-rose-600 text-white"
+                : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
+            ].join(" ")}
+          >
+            ↗
+          </button>
+
           {/* Undo button */}
           {undoStack.length > 0 && (
             <button
@@ -977,6 +1273,58 @@ export default function ChapterDisplay({
               ↩ {undoStack[undoStack.length - 1].label}
             </button>
           )}
+
+          {/* Bold formatting mode */}
+          <button
+            onClick={() => {
+              setEditingBold((v) => !v);
+              setEditingParagraphs(false);
+              setEditingRefs(false);
+              setEditingSpeech(false);
+              setEditingWordTags(false);
+              setEditingIndents(false);
+              setEditingRelationships(false);
+              setEditingArrows(false);
+              setSpeechRangeStart(null);
+              setRelFromSegWordId(null);
+              setArrowFromWordId(null);
+            }}
+            title={editingBold ? "Exit bold mode" : "Click words to toggle bold"}
+            className={[
+              "px-2.5 py-1 rounded text-xs font-bold transition-colors",
+              editingBold
+                ? "bg-stone-800 text-white dark:bg-stone-200 dark:text-stone-900"
+                : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
+            ].join(" ")}
+          >
+            B
+          </button>
+
+          {/* Italic formatting mode */}
+          <button
+            onClick={() => {
+              setEditingItalic((v) => !v);
+              setEditingParagraphs(false);
+              setEditingRefs(false);
+              setEditingSpeech(false);
+              setEditingWordTags(false);
+              setEditingIndents(false);
+              setEditingRelationships(false);
+              setEditingArrows(false);
+              setSpeechRangeStart(null);
+              setRelFromSegWordId(null);
+              setArrowFromWordId(null);
+            }}
+            title={editingItalic ? "Exit italic mode" : "Click words to toggle italic"}
+            className={[
+              "px-2.5 py-1 rounded text-xs italic transition-colors",
+              editingItalic
+                ? "bg-stone-800 text-white dark:bg-stone-200 dark:text-stone-900"
+                : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
+            ].join(" ")}
+          >
+            I
+          </button>
 
           {/* Linguistic terms toggle — Hebrew only */}
           {isHebrew && (
@@ -996,12 +1344,42 @@ export default function ChapterDisplay({
             </button>
           )}
 
-          {/* Translation toggles */}
+          {/* Translation toggles + source visibility toggle + translation edit */}
           {availableTranslations.length > 0 && (
             <div className="flex items-center gap-1 border-l border-[var(--border)] pl-4">
               <span className="text-xs text-stone-400 dark:text-stone-500 mr-1 select-none">
                 Translations:
               </span>
+              {/* Source text visibility — shown only when a translation is active */}
+              {hasActiveTranslations && (
+                <button
+                  onClick={() => setHideSourceText((v) => !v)}
+                  title={hideSourceText ? `Show ${textSource} text` : `Hide ${textSource} text`}
+                  className={[
+                    "px-2.5 py-1 rounded text-xs font-medium font-mono transition-colors",
+                    !hideSourceText
+                      ? "bg-emerald-600 text-white"
+                      : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
+                  ].join(" ")}
+                >
+                  {textSource}
+                </button>
+              )}
+              {/* Translation text edit mode */}
+              {hasActiveTranslations && (
+                <button
+                  onClick={() => setEditingTranslation((v) => !v)}
+                  title={editingTranslation ? "Exit translation edit mode" : "Edit translation text"}
+                  className={[
+                    "px-2.5 py-1 rounded text-xs font-medium transition-colors",
+                    editingTranslation
+                      ? "bg-sky-600 text-white"
+                      : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
+                  ].join(" ")}
+                >
+                  ✏
+                </button>
+              )}
               {availableTranslations.map((t) => (
                 <button
                   key={t.id}
@@ -1090,10 +1468,73 @@ export default function ChapterDisplay({
           </div>
         )}
 
+        {/* Clause relationship hint */}
+        {editingRelationships && !showRelPicker && (
+          <div className="px-6 py-1 text-xs border-b border-[var(--border)] text-stone-500 dark:text-stone-400"
+               style={{ backgroundColor: "var(--nav-bg)" }}>
+            {relFromSegWordId
+              ? "Click a second segment dot to choose a relationship type"
+              : "Click a segment dot (◉) in the margin to start a relationship"}
+          </div>
+        )}
+
+        {/* Relationship type picker bar */}
+        {showRelPicker && (
+          <div
+            className="border-b border-[var(--border)] px-4 py-2 flex flex-wrap gap-1.5 items-center shrink-0"
+            style={{ backgroundColor: "var(--nav-bg)" }}
+          >
+            <span className="text-xs font-medium mr-1" style={{ color: "var(--nav-fg-muted)" }}>
+              Relationship:
+            </span>
+            <span className="text-xs opacity-50 mr-0.5 select-none">Coord.</span>
+            {RELATIONSHIP_TYPES.filter((r) => r.category === "coordinate").map((r) => (
+              <button
+                key={r.key}
+                onClick={() => handleCreateRelationship(r.key)}
+                className="px-2 py-0.5 rounded text-xs font-medium text-white transition-opacity hover:opacity-90"
+                style={{ backgroundColor: r.color }}
+              >
+                {r.label}
+              </button>
+            ))}
+            <span className="text-xs opacity-30 mx-1 select-none">|</span>
+            <span className="text-xs opacity-50 mr-0.5 select-none">Sub.</span>
+            {RELATIONSHIP_TYPES.filter((r) => r.category === "subordinate").map((r) => (
+              <button
+                key={r.key}
+                onClick={() => handleCreateRelationship(r.key)}
+                className="px-2 py-0.5 rounded text-xs font-medium text-white transition-opacity hover:opacity-90"
+                style={{ backgroundColor: r.color }}
+              >
+                {r.label}
+              </button>
+            ))}
+            <button
+              onClick={handleCancelRelPicker}
+              className="ml-auto text-xs px-2 py-0.5 rounded bg-stone-200 dark:bg-stone-700 text-stone-600 dark:text-stone-300"
+            >
+              Cancel
+            </button>
+          </div>
+        )}
+
+        {/* Word arrow hint */}
+        {editingArrows && (
+          <div className="px-6 py-1 text-xs border-b border-[var(--border)] text-stone-500 dark:text-stone-400"
+               style={{ backgroundColor: "var(--nav-bg)" }}>
+            {arrowFromWordId
+              ? "Click a target word to complete the arrow"
+              : "Click a source word to start an arrow"}
+          </div>
+        )}
+
         {/* Chapter text */}
         <div
-          className={`px-6 py-6 flex-1 ${hasActiveTranslations ? "" : "max-w-3xl mx-auto w-full"}`}
+          className={`py-6 flex-1 ${hasActiveTranslations ? "" : "max-w-3xl mx-auto w-full"}`}
           style={{
+            paddingLeft:  "1.5rem",
+            paddingRight: "1.5rem",
             "--hebrew-font-size": `${hebrewFontSize}rem`,
             "--greek-font-size": `${greekFontSize}rem`,
             "--translation-font-size": `${translationFontSize}rem`,
@@ -1143,11 +1584,17 @@ export default function ChapterDisplay({
                 wordToParaStart={wordToParaStart}
                 editingIndents={editingIndents}
                 onSetSegmentIndent={handleSetIndent}
+                wordFormattingMap={wordFormattingMap}
+                editingFormatting={editingBold || editingItalic}
+                hideSourceText={hideSourceText}
+                editingTranslation={editingTranslation}
+                onUpdateTranslationVerse={handleUpdateTranslationVerse}
               />
             );
           })}
         </div>
       </div>
+      </div> {/* end outerRef wrapper */}
 
       {/* Morphology panel */}
       {panelOpen && (

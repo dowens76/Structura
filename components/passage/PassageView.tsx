@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import type {
   Passage, Word,
   Character, CharacterRef, SpeechSection, WordTag, WordTagRef,
-  Translation, TranslationVerse,
+  Translation, TranslationVerse, ClauseRelationship, WordArrow,
 } from "@/lib/db/schema";
 import type { DisplayMode, GrammarFilterState, TranslationTextEntry } from "@/lib/morphology/types";
 import type { ColorRule } from "@/lib/morphology/colorRules";
@@ -16,6 +16,9 @@ import DisplayModeToggle from "@/components/controls/DisplayModeToggle";
 import ColorRulePanel from "@/components/controls/ColorRulePanel";
 import CharacterPanel from "@/components/controls/CharacterPanel";
 import WordTagPanel from "@/components/controls/WordTagPanel";
+import ClauseRelationshipOverlay from "@/components/text/ClauseRelationshipOverlay";
+import WordArrowOverlay from "@/components/text/WordArrowOverlay";
+import { RELATIONSHIP_TYPES } from "@/lib/morphology/clauseRelationships";
 import hebrewLemmas from "@/lib/data/hebrew-lemmas.json";
 
 // ── Persistent settings helpers ───────────────────────────────────────────
@@ -65,6 +68,9 @@ interface Props {
   // Translation data
   availableTranslations: Translation[];
   translationVerseData: Record<number, TranslationVerse[]>;
+  // Clause relationships + word arrows
+  initialClauseRelationships: ClauseRelationship[];
+  initialWordArrows: WordArrow[];
 }
 
 export default function PassageView({
@@ -88,6 +94,8 @@ export default function PassageView({
   initialLineIndents,
   availableTranslations,
   translationVerseData,
+  initialClauseRelationships,
+  initialWordArrows,
 }: Props) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -124,15 +132,11 @@ export default function PassageView({
   const [useLinguisticTerms, setUseLinguisticTerms] = useState(() =>
     readLocal<boolean>("structura:useLinguisticTerms", false)
   );
-  const [hebrewFontSize, setHebrewFontSize] = useState(() =>
-    readLocal<number>("structura:hebrewFontSize", 1.375)
-  );
-  const [greekFontSize, setGreekFontSize] = useState(() =>
-    readLocal<number>("structura:greekFontSize", 1.25)
-  );
-  const [translationFontSize, setTranslationFontSize] = useState(() =>
-    readLocal<number>("structura:translationFontSize", 0.875)
-  );
+  // Use hardcoded defaults for initial render so server and client HTML match,
+  // then hydrate from localStorage in a useEffect to avoid hydration mismatch.
+  const [hebrewFontSize, setHebrewFontSize] = useState(1.375);
+  const [greekFontSize, setGreekFontSize] = useState(1.25);
+  const [translationFontSize, setTranslationFontSize] = useState(0.875);
 
   // Persist sticky settings
   useEffect(() => { writeLocal("structura:displayMode", displayMode); }, [displayMode]);
@@ -140,6 +144,13 @@ export default function PassageView({
   useEffect(() => { writeLocal("structura:hebrewFontSize", hebrewFontSize); }, [hebrewFontSize]);
   useEffect(() => { writeLocal("structura:greekFontSize", greekFontSize); }, [greekFontSize]);
   useEffect(() => { writeLocal("structura:translationFontSize", translationFontSize); }, [translationFontSize]);
+
+  // Read persisted font sizes after mount (safe: no SSR mismatch)
+  useEffect(() => {
+    setHebrewFontSize(readLocal<number>("structura:hebrewFontSize", 1.375));
+    setGreekFontSize(readLocal<number>("structura:greekFontSize", 1.25));
+    setTranslationFontSize(readLocal<number>("structura:translationFontSize", 0.875));
+  }, []);
 
   // ── Editing mode toggles ──────────────────────────────────────────────────
   const [editingParagraphs, setEditingParagraphs] = useState(false);
@@ -184,6 +195,21 @@ export default function PassageView({
     () => new Map(initialLineIndents.map((li) => [li.wordId, li.indentLevel]))
   );
   const [editingIndents, setEditingIndents] = useState(false);
+
+  // ── Clause relationships state ────────────────────────────────────────────
+  const [clauseRelationships, setClauseRelationships] = useState<ClauseRelationship[]>(initialClauseRelationships);
+  const [editingRelationships, setEditingRelationships] = useState(false);
+  const [relFromSegWordId, setRelFromSegWordId] = useState<string | null>(null);
+  const [relToSegWordId, setRelToSegWordId]     = useState<string | null>(null);
+  const [showRelPicker, setShowRelPicker]       = useState(false);
+
+  // ── Word arrows state ──────────────────────────────────────────────────────
+  const [wordArrowsState, setWordArrowsState] = useState<WordArrow[]>(initialWordArrows);
+  const [editingArrows, setEditingArrows]     = useState(false);
+  const [arrowFromWordId, setArrowFromWordId] = useState<string | null>(null);
+
+  // ── Overlay ref ────────────────────────────────────────────────────────────
+  const overlayContainerRef = useRef<HTMLDivElement>(null);
 
   // ── Undo stack ────────────────────────────────────────────────────────────
   type UndoEntry = { label: string; undo: () => void | Promise<void> };
@@ -274,6 +300,21 @@ export default function PassageView({
       map.set(word.wordId, currentStart);
     }
     return map;
+  }, [words, paragraphBreakIds]);
+
+  // First word ID of every paragraph segment (for clause relationship selectors).
+  // Includes: passage start (i=0), explicit ¶ breaks, and the first word of every verse
+  // so that the implicit "first paragraph" within each verse always has a selector dot.
+  const paragraphFirstWordIds = useMemo(() => {
+    if (!words.length) return [];
+    const breakSet = new Set(paragraphBreakIds);
+    return words
+      .filter((w, i) =>
+        i === 0 ||
+        breakSet.has(w.wordId) ||
+        words[i - 1].verse !== w.verse
+      )
+      .map((w) => w.wordId);
   }, [words, paragraphBreakIds]);
 
   // ── Translation verse data ────────────────────────────────────────────────
@@ -411,6 +452,7 @@ export default function PassageView({
 
   // ── Word selection dispatcher ─────────────────────────────────────────────
   function handleSelectWord(word: Word, shiftHeld = false) {
+    if (editingArrows) { handleSelectArrowWord(word); return; }
     if (editingParagraphs) { handleToggleParagraphBreak(word.wordId); return; }
     if (editingRefs) { if (activeCharId === null) return; handleToggleCharacterRef(word); return; }
     if (editingSpeech) { if (activeCharId === null) return; handleToggleSpeechSection(word, shiftHeld); return; }
@@ -941,6 +983,91 @@ export default function PassageView({
     }
   }
 
+  // ── Clause relationship handlers ──────────────────────────────────────────
+  function handleSelectSegment(wordId: string) {
+    if (!relFromSegWordId) {
+      setRelFromSegWordId(wordId);
+    } else if (wordId === relFromSegWordId) {
+      setRelFromSegWordId(null);
+    } else {
+      setRelToSegWordId(wordId);
+      setShowRelPicker(true);
+    }
+  }
+
+  async function handleCreateRelationship(relType: string) {
+    if (!relFromSegWordId || !relToSegWordId) return;
+    const ch = wordToChapter.get(relFromSegWordId) ?? passage.startChapter;
+    const resp = await fetch("/api/clause-relationships", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        fromSegWordId: relFromSegWordId,
+        toSegWordId:   relToSegWordId,
+        relType,
+        book: osisBook,
+        chapter: ch,
+        source: textSource,
+      }),
+    });
+    const { relationship } = await resp.json();
+    setClauseRelationships((prev) => [...prev, relationship]);
+    setRelFromSegWordId(null);
+    setRelToSegWordId(null);
+    setShowRelPicker(false);
+  }
+
+  function handleCancelRelPicker() {
+    setShowRelPicker(false);
+    setRelFromSegWordId(null);
+    setRelToSegWordId(null);
+  }
+
+  async function handleDeleteClauseRelationship(id: number) {
+    await fetch("/api/clause-relationships", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id }),
+    });
+    setClauseRelationships((prev) => prev.filter((r) => r.id !== id));
+  }
+
+  // ── Word arrow handlers ────────────────────────────────────────────────────
+  async function handleSelectArrowWord(word: Word) {
+    if (!arrowFromWordId) {
+      setArrowFromWordId(word.wordId);
+      return;
+    }
+    if (arrowFromWordId === word.wordId) {
+      setArrowFromWordId(null);
+      return;
+    }
+    const ch = wordToChapter.get(arrowFromWordId) ?? passage.startChapter;
+    const resp = await fetch("/api/word-arrows", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        fromWordId: arrowFromWordId,
+        toWordId:   word.wordId,
+        book: osisBook,
+        chapter: ch,
+        source: textSource,
+      }),
+    });
+    const { arrow } = await resp.json();
+    setWordArrowsState((prev) => [...prev, arrow]);
+    setArrowFromWordId(null);
+  }
+
+  async function handleDeleteWordArrow(id: number) {
+    await fetch("/api/word-arrows", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id }),
+    });
+    setWordArrowsState((prev) => prev.filter((a) => a.id !== id));
+  }
+
   // ── Shared range button helper ────────────────────────────────────────────
   function rangeBtn(disabled: boolean, label: string, title: string, onClick: () => void) {
     return (
@@ -968,7 +1095,27 @@ export default function PassageView({
   return (
     <div className="flex h-full min-h-0">
       {/* Main content + toolbar */}
-      <div className="flex-1 overflow-y-auto flex flex-col min-h-0">
+      <div className="flex-1 overflow-y-auto flex flex-col min-h-0" ref={overlayContainerRef} style={{ position: "relative" }}>
+        {/* Overlay: clause relationship arcs */}
+        <ClauseRelationshipOverlay
+          relationships={clauseRelationships}
+          containerRef={overlayContainerRef}
+          isHebrew={isHebrew}
+          hasTranslation={hasActiveTranslations}
+          editing={editingRelationships}
+          paragraphFirstWordIds={paragraphFirstWordIds}
+          selectedSegWordId={relFromSegWordId}
+          onSelectSegment={handleSelectSegment}
+          onDeleteRelationship={handleDeleteClauseRelationship}
+        />
+        {/* Overlay: word-to-word arrows */}
+        <WordArrowOverlay
+          arrows={wordArrowsState}
+          containerRef={overlayContainerRef}
+          editing={editingArrows}
+          selectedFromWordId={arrowFromWordId}
+          onDeleteArrow={handleDeleteWordArrow}
+        />
 
         {/* ── Passage header ──────────────────────────────────────────────── */}
         <div className="shrink-0 px-6 pt-6 pb-4 border-b" style={{ borderColor: "var(--border)" }}>
@@ -1147,6 +1294,38 @@ export default function PassageView({
             ].join(" ")}
           >↳</button>
 
+          {/* Clause relationship mode */}
+          <button
+            onClick={() => {
+              setEditingRelationships((v) => !v);
+              setEditingArrows(false);
+              setArrowFromWordId(null);
+              setRelFromSegWordId(null);
+              setShowRelPicker(false);
+            }}
+            title={editingRelationships ? "Exit clause relationship mode" : "Mark logical relationships between paragraph segments"}
+            className={["px-2.5 py-1 rounded text-xs font-medium transition-colors",
+              editingRelationships ? "bg-rose-600 text-white"
+                : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
+            ].join(" ")}
+          >⤢</button>
+
+          {/* Word arrow mode */}
+          <button
+            onClick={() => {
+              setEditingArrows((v) => !v);
+              setEditingRelationships(false);
+              setRelFromSegWordId(null);
+              setShowRelPicker(false);
+              setArrowFromWordId(null);
+            }}
+            title={editingArrows ? "Exit word arrow mode" : "Draw free-form arrows between words"}
+            className={["px-2.5 py-1 rounded text-xs font-medium transition-colors",
+              editingArrows ? "bg-rose-600 text-white"
+                : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
+            ].join(" ")}
+          >↗</button>
+
           {/* Undo */}
           {undoStack.length > 0 && (
             <button
@@ -1257,6 +1436,67 @@ export default function PassageView({
           </div>
         )}
 
+        {/* Clause relationship hint */}
+        {editingRelationships && !showRelPicker && (
+          <div className="px-6 py-1 text-xs border-b border-[var(--border)] text-stone-500 dark:text-stone-400"
+               style={{ backgroundColor: "var(--nav-bg)" }}>
+            {relFromSegWordId
+              ? "Click a second segment dot to choose a relationship type"
+              : "Click a segment dot (◉) in the margin to start a relationship"}
+          </div>
+        )}
+
+        {/* Relationship type picker bar */}
+        {showRelPicker && (
+          <div
+            className="border-b border-[var(--border)] px-4 py-2 flex flex-wrap gap-1.5 items-center shrink-0"
+            style={{ backgroundColor: "var(--nav-bg)" }}
+          >
+            <span className="text-xs font-medium mr-1" style={{ color: "var(--nav-fg-muted)" }}>
+              Relationship:
+            </span>
+            <span className="text-xs opacity-50 mr-0.5 select-none">Coord.</span>
+            {RELATIONSHIP_TYPES.filter((r) => r.category === "coordinate").map((r) => (
+              <button
+                key={r.key}
+                onClick={() => handleCreateRelationship(r.key)}
+                className="px-2 py-0.5 rounded text-xs font-medium text-white transition-opacity hover:opacity-90"
+                style={{ backgroundColor: r.color }}
+              >
+                {r.label}
+              </button>
+            ))}
+            <span className="text-xs opacity-30 mx-1 select-none">|</span>
+            <span className="text-xs opacity-50 mr-0.5 select-none">Sub.</span>
+            {RELATIONSHIP_TYPES.filter((r) => r.category === "subordinate").map((r) => (
+              <button
+                key={r.key}
+                onClick={() => handleCreateRelationship(r.key)}
+                className="px-2 py-0.5 rounded text-xs font-medium text-white transition-opacity hover:opacity-90"
+                style={{ backgroundColor: r.color }}
+              >
+                {r.label}
+              </button>
+            ))}
+            <button
+              onClick={handleCancelRelPicker}
+              className="ml-auto text-xs px-2 py-0.5 rounded bg-stone-200 dark:bg-stone-700 text-stone-600 dark:text-stone-300"
+            >
+              Cancel
+            </button>
+          </div>
+        )}
+
+        {/* Word arrow hint */}
+        {editingArrows && (
+          <div className="px-6 py-1 text-xs border-b border-[var(--border)] text-stone-500 dark:text-stone-400"
+               style={{ backgroundColor: "var(--nav-bg)" }}>
+            {arrowFromWordId
+              ? "Click a target word to complete the arrow"
+              : "Click a source word to start an arrow"}
+          </div>
+        )}
+
         {/* ── Passage text ─────────────────────────────────────────────────── */}
         {words.length === 0 ? (
           <p className="px-6 py-6 text-sm italic" style={{ color: "var(--text-muted)" }}>
@@ -1264,8 +1504,10 @@ export default function PassageView({
           </p>
         ) : (
           <div
-            className={`px-6 py-6 flex-1 ${hasActiveTranslations ? "" : "max-w-3xl mx-auto w-full"}`}
+            className={`py-6 flex-1 ${hasActiveTranslations ? "" : "max-w-3xl mx-auto w-full"}`}
             style={{
+              paddingLeft:  "1.5rem",
+              paddingRight: "1.5rem",
               "--hebrew-font-size": `${hebrewFontSize}rem`,
               "--greek-font-size": `${greekFontSize}rem`,
               "--translation-font-size": `${translationFontSize}rem`,

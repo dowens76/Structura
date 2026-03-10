@@ -30,6 +30,9 @@ interface WordTokenProps {
   wordTagMap?: Map<number, WordTag>;
   editingWordTags?: boolean;
   highlightWordTagIds?: Set<number>;
+  // Bold / italic formatting
+  wordFormatting?: { isBold: boolean; isItalic: boolean } | null;
+  editingFormatting?: boolean;
 }
 
 function getInterlinearLabel(word: Word): string {
@@ -64,6 +67,8 @@ export default function WordToken({
   wordTagMap,
   editingWordTags,
   highlightWordTagIds,
+  wordFormatting,
+  editingFormatting,
 }: WordTokenProps) {
   const [hovering, setHovering] = useState(false);
   const [tooltipBelow, setTooltipBelow] = useState(false);
@@ -138,7 +143,13 @@ export default function WordToken({
     ? { boxShadow: shadows.join(", "), borderRadius: "2px" }
     : {};
 
-  const style: React.CSSProperties = { ...colorStyle, ...underlineStyle, ...shadowStyle };
+  // ── Bold / italic formatting ────────────────────────────────────────────────
+  const formattingStyle: React.CSSProperties = {
+    fontWeight: wordFormatting?.isBold ? "bold" : undefined,
+    fontStyle:  wordFormatting?.isItalic ? "italic" : undefined,
+  };
+
+  const style: React.CSSProperties = { ...colorStyle, ...underlineStyle, ...shadowStyle, ...formattingStyle };
 
   const isInterlinear = displayMode === "interlinear";
 
@@ -150,13 +161,15 @@ export default function WordToken({
     setHovering(true);
   }
 
-  const isEditing = editingParagraphs || editingRefs || editingSpeech || !!editingWordTags;
+  const isEditing = editingParagraphs || editingRefs || editingSpeech || !!editingWordTags || !!editingFormatting;
 
   const baseClasses = [
     "relative transition-all duration-100",
     "rounded px-0.5 -mx-0.5",
     editingParagraphs
       ? "cursor-crosshair hover:bg-amber-100 dark:hover:bg-amber-900/40"
+      : editingFormatting
+        ? "cursor-crosshair hover:bg-amber-50 dark:hover:bg-amber-950/40"
       : editingWordTags
         ? "cursor-crosshair hover:bg-yellow-100 dark:hover:bg-yellow-900/40"
       : (editingRefs || editingSpeech)
