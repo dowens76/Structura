@@ -151,6 +151,16 @@ export default async function PassagePage({ params }: PageProps) {
           + Import
         </Link>
 
+        {/* Export link */}
+        <Link
+          href={`/export/passage/${id}`}
+          target="_blank"
+          className="text-xs px-2 py-1 rounded transition-colors"
+          style={{ color: "var(--nav-fg-muted)" }}
+        >
+          Export →
+        </Link>
+
         <span className="text-xs px-1.5 py-0.5 rounded" style={{ color: "var(--accent)", opacity: 0.7 }}>
           📖 Passage
         </span>

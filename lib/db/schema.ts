@@ -195,6 +195,22 @@ export const lineIndents = sqliteTable(
   (t) => [index("li_book_ch_idx").on(t.book, t.chapter)]
 );
 
+// Scene/episode breaks — a higher-level structural marker (solid HR + optional heading).
+// Always implies a paragraph break: toggling a scene break also adds/removes a paragraph break.
+export const sceneBreaks = sqliteTable(
+  "scene_breaks",
+  {
+    id:         integer("id").primaryKey({ autoIncrement: true }),
+    wordId:     text("word_id").notNull().unique(), // first word of the new scene
+    heading:    text("heading"),                    // optional scene/episode title (null = none)
+    textSource: text("text_source").notNull(),
+    book:       text("book").notNull(),
+    chapter:    integer("chapter").notNull(),
+    createdAt:  text("created_at").$defaultFn(() => new Date().toISOString()),
+  },
+  (t) => [index("sb_book_ch_src_idx").on(t.book, t.chapter, t.textSource)]
+);
+
 // User-defined passage ranges (can span multiple chapters or be a sub-chapter slice)
 export const passages = sqliteTable(
   "passages",
@@ -273,6 +289,7 @@ export type SpeechSection = typeof speechSections.$inferSelect;
 export type WordTag = typeof wordTags.$inferSelect;
 export type WordTagRef = typeof wordTagRefs.$inferSelect;
 export type LineIndent = typeof lineIndents.$inferSelect;
+export type SceneBreak = typeof sceneBreaks.$inferSelect;
 export type Passage = typeof passages.$inferSelect;
 export type ClauseRelationship = typeof clauseRelationships.$inferSelect;
 export type WordArrow = typeof wordArrows.$inferSelect;

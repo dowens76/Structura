@@ -35,8 +35,12 @@ function getWordRect(
   const elRect = el.getBoundingClientRect();
   const oRect  = outerContainer.getBoundingClientRect();
   return {
-    x:      elRect.left - oRect.left,
-    y:      elRect.top  - oRect.top, // viewport-relative — no scrollTop needed
+    // Add scrollLeft/scrollTop so the result is in the outerContainer's scroll-canvas
+    // coordinate space (not viewport space). When outerRef is non-scrollable (ChapterDisplay)
+    // these are 0 and the formula is unchanged. When outerRef IS the scrollable container
+    // (PassageView) we need the offset to keep arrows anchored to words after scrolling.
+    x:      elRect.left - oRect.left + outerContainer.scrollLeft,
+    y:      elRect.top  - oRect.top  + outerContainer.scrollTop,
     width:  elRect.width,
     height: elRect.height,
   };
@@ -80,7 +84,9 @@ export default function WordArrowOverlay({
     const outer     = effectiveOuterRef.current; // coordinate origin wrapper
     if (!container || !outer) return;
 
-    setSvgHeight(outer.clientHeight); // viewport height — SVG covers the visible area
+    // Use scrollHeight when the SVG lives inside the scrollable container (PassageView),
+    // otherwise clientHeight is sufficient (ChapterDisplay, where outerRef doesn't scroll).
+    setSvgHeight(outer.scrollHeight > outer.clientHeight ? outer.scrollHeight : outer.clientHeight);
 
     const newDrawn: DrawnArrow[] = [];
     for (const arrow of arrows) {
@@ -114,8 +120,14 @@ export default function WordArrowOverlay({
     // Re-measure on scroll so arrow positions follow scrolled content
     container.addEventListener("scroll", scheduleMeasure, { passive: true });
 
+    // Re-measure when DOM content changes — e.g. translation toggled on/off shifts
+    // source words from a single-column layout to a 5-column grid layout.
+    const mo = new MutationObserver(scheduleMeasure);
+    mo.observe(container, { childList: true, subtree: true });
+
     return () => {
       ro.disconnect();
+      mo.disconnect();
       container.removeEventListener("scroll", scheduleMeasure);
       if (frameRef.current) cancelAnimationFrame(frameRef.current);
     };

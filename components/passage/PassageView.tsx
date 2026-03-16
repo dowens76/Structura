@@ -18,6 +18,7 @@ import CharacterPanel from "@/components/controls/CharacterPanel";
 import WordTagPanel from "@/components/controls/WordTagPanel";
 import ClauseRelationshipOverlay from "@/components/text/ClauseRelationshipOverlay";
 import WordArrowOverlay from "@/components/text/WordArrowOverlay";
+import ClearAnnotationsDialog, { type ClearCategory } from "@/components/controls/ClearAnnotationsDialog";
 import { RELATIONSHIP_TYPES } from "@/lib/morphology/clauseRelationships";
 import hebrewLemmas from "@/lib/data/hebrew-lemmas.json";
 
@@ -207,6 +208,7 @@ export default function PassageView({
   const [wordArrowsState, setWordArrowsState] = useState<WordArrow[]>(initialWordArrows);
   const [editingArrows, setEditingArrows]     = useState(false);
   const [arrowFromWordId, setArrowFromWordId] = useState<string | null>(null);
+  const [showClearDialog, setShowClearDialog] = useState(false);
 
   // ── Overlay ref ────────────────────────────────────────────────────────────
   const overlayContainerRef = useRef<HTMLDivElement>(null);
@@ -292,10 +294,14 @@ export default function PassageView({
   }, [words, speechSections]);
 
   // ── wordToParaStart ───────────────────────────────────────────────────────
+  // Verse boundaries reset the paragraph start so indent levels from the last
+  // segment of verse N never leak into the first segment of verse N+1.
   const wordToParaStart = useMemo(() => {
     const map = new Map<string, string>();
     let currentStart = words[0]?.wordId ?? "";
-    for (const word of words) {
+    for (let i = 0; i < words.length; i++) {
+      const word = words[i];
+      if (i > 0 && words[i - 1].verse !== word.verse) currentStart = word.wordId;
       if (paragraphBreakIds.has(word.wordId)) currentStart = word.wordId;
       map.set(word.wordId, currentStart);
     }
@@ -1033,22 +1039,34 @@ export default function PassageView({
   }
 
   // ── Word arrow handlers ────────────────────────────────────────────────────
-  async function handleSelectArrowWord(word: Word) {
+  // Works with any wordId — source words or translation tokens ("tv:ESV:Gen.1.1.0").
+  // For translation tokens, chapter is parsed from the ID; for source words, look up
+  // wordToChapter. Falls back to passage.startChapter if neither resolves.
+  async function handleSelectArrowWordById(wordId: string) {
     if (!arrowFromWordId) {
-      setArrowFromWordId(word.wordId);
+      setArrowFromWordId(wordId);
       return;
     }
-    if (arrowFromWordId === word.wordId) {
+    if (arrowFromWordId === wordId) {
       setArrowFromWordId(null);
       return;
     }
-    const ch = wordToChapter.get(arrowFromWordId) ?? passage.startChapter;
+    // Resolve chapter for the "from" word. Translation token IDs have the form
+    // "tv:<abbr>:<book>.<chapter>.<verse>.<wi>", so parse chapter from there.
+    let ch = wordToChapter.get(arrowFromWordId);
+    if (ch === undefined && arrowFromWordId.startsWith("tv:")) {
+      const dotParts = arrowFromWordId.split(":")[2]?.split(".");
+      const parsed = dotParts ? parseInt(dotParts[1]) : NaN;
+      ch = isNaN(parsed) ? passage.startChapter : parsed;
+    }
+    ch = ch ?? passage.startChapter;
+
     const resp = await fetch("/api/word-arrows", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         fromWordId: arrowFromWordId,
-        toWordId:   word.wordId,
+        toWordId:   wordId,
         book: osisBook,
         chapter: ch,
         source: textSource,
@@ -1059,6 +1077,10 @@ export default function PassageView({
     setArrowFromWordId(null);
   }
 
+  function handleSelectArrowWord(word: Word) {
+    handleSelectArrowWordById(word.wordId);
+  }
+
   async function handleDeleteWordArrow(id: number) {
     await fetch("/api/word-arrows", {
       method: "DELETE",
@@ -1066,6 +1088,22 @@ export default function PassageView({
       body: JSON.stringify({ id }),
     });
     setWordArrowsState((prev) => prev.filter((a) => a.id !== id));
+  }
+
+  // ── Clear annotations handler ─────────────────────────────────────────────
+
+  function handleAnnotationsCleared(cleared: ClearCategory[]) {
+    for (const cat of cleared) {
+      switch (cat) {
+        case "paragraphBreaks":    setParagraphBreakIds(new Set()); break;
+        case "characterRefs":      setCharacterRefMap(new Map()); break;
+        case "speechSections":     setSpeechSections([]); break;
+        case "wordTagRefs":        setWordTagRefMap(new Map()); break;
+        case "lineIndents":        setLineIndentMap(new Map()); break;
+        case "wordArrows":         setWordArrowsState([]); break;
+        case "clauseRelationships":setClauseRelationships([]); break;
+      }
+    }
   }
 
   // ── Shared range button helper ────────────────────────────────────────────
@@ -1342,6 +1380,17 @@ export default function PassageView({
             >↩ {undoStack[undoStack.length - 1].label}</button>
           )}
 
+          {/* Clear annotations */}
+          <div className="border-l border-[var(--border)] pl-3 ml-1">
+            <button
+              onClick={() => setShowClearDialog(true)}
+              title="Clear annotations by category"
+              className="px-2.5 py-1 rounded text-xs font-medium transition-colors bg-stone-100 dark:bg-stone-800 text-stone-500 dark:text-stone-400 hover:bg-red-100 hover:text-red-600 dark:hover:bg-red-950 dark:hover:text-red-400"
+            >
+              🗑
+            </button>
+          </div>
+
           {/* Linguistic terms toggle — Hebrew only */}
           {isHebrew && (
             <button
@@ -1570,6 +1619,8 @@ export default function PassageView({
                     wordToParaStart={wordToParaStart}
                     editingIndents={editingIndents}
                     onSetSegmentIndent={handleSetIndent}
+                    editingArrows={editingArrows}
+                    onSelectArrowWordById={handleSelectArrowWordById}
                   />
                 </div>
               );
@@ -1598,6 +1649,20 @@ export default function PassageView({
             <MorphologyPanel word={selectedWord} useLinguisticTerms={useLinguisticTerms} />
           </div>
         </div>
+      )}
+
+      {/* Clear annotations dialog */}
+      {showClearDialog && (
+        <ClearAnnotationsDialog
+          scopeLabel={passage.label || `${bookName} ${passage.startChapter}:${passage.startVerse}–${passage.endChapter}:${passage.endVerse}`}
+          book={osisBook}
+          textSource={textSource}
+          startChapter={passage.startChapter}
+          endChapter={passage.endChapter}
+          availableCategories={["paragraphBreaks", "characterRefs", "speechSections", "wordTagRefs", "lineIndents", "clauseRelationships", "wordArrows"]}
+          onClose={() => setShowClearDialog(false)}
+          onCleared={handleAnnotationsCleared}
+        />
       )}
     </div>
   );

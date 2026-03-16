@@ -1,6 +1,6 @@
 import { eq, and, asc, inArray, or, gte, lte, gt, lt, sql } from "drizzle-orm";
 import { db } from "./index";
-import { books, words, verses, translations, translationVerses, paragraphBreaks, characters, characterRefs, speechSections, wordTags, wordTagRefs, lineIndents, passages, clauseRelationships, wordArrows, wordFormatting } from "./schema";
+import { books, words, verses, translations, translationVerses, paragraphBreaks, characters, characterRefs, speechSections, wordTags, wordTagRefs, lineIndents, sceneBreaks, passages, clauseRelationships, wordArrows, wordFormatting } from "./schema";
 import type { Book, Word, Translation, TranslationVerse, Character, CharacterRef, SpeechSection, WordTag, WordTagRef, Passage, ClauseRelationship, WordArrow } from "./schema";
 import type { TextSource, Testament } from "@/lib/morphology/types";
 
@@ -172,6 +172,69 @@ export async function toggleParagraphBreak(
     await db.insert(paragraphBreaks).values({ wordId, book, chapter, textSource });
     return { added: true };
   }
+}
+
+// ── Scene breaks ──────────────────────────────────────────────────────────────
+
+/** Returns all scene breaks (wordId + heading) for a chapter, across all sources. */
+export async function getChapterSceneBreaks(
+  book: string,
+  chapter: number
+): Promise<{ wordId: string; heading: string | null }[]> {
+  const rows = await db
+    .select({ wordId: sceneBreaks.wordId, heading: sceneBreaks.heading })
+    .from(sceneBreaks)
+    .where(and(eq(sceneBreaks.book, book), eq(sceneBreaks.chapter, chapter)));
+  return rows;
+}
+
+/**
+ * Toggles a scene break for a word.
+ * Adding a scene break also inserts a matching paragraph break (if not present).
+ * Removing a scene break also removes the paragraph break.
+ * Returns whether the scene break was added (true) or removed (false).
+ */
+export async function toggleSceneBreak(
+  wordId: string,
+  book: string,
+  chapter: number,
+  textSource: string
+): Promise<{ added: boolean }> {
+  const existing = await db
+    .select({ id: sceneBreaks.id })
+    .from(sceneBreaks)
+    .where(eq(sceneBreaks.wordId, wordId))
+    .limit(1);
+
+  if (existing.length > 0) {
+    // Remove scene break and its implied paragraph break
+    await db.delete(sceneBreaks).where(eq(sceneBreaks.wordId, wordId));
+    await db.delete(paragraphBreaks).where(eq(paragraphBreaks.wordId, wordId));
+    return { added: false };
+  } else {
+    // Add scene break and ensure a paragraph break exists
+    await db.insert(sceneBreaks).values({ wordId, book, chapter, textSource });
+    const pbExists = await db
+      .select({ id: paragraphBreaks.id })
+      .from(paragraphBreaks)
+      .where(eq(paragraphBreaks.wordId, wordId))
+      .limit(1);
+    if (pbExists.length === 0) {
+      await db.insert(paragraphBreaks).values({ wordId, book, chapter, textSource });
+    }
+    return { added: true };
+  }
+}
+
+/** Updates the heading text for an existing scene break (null clears it). */
+export async function updateSceneBreakHeading(
+  wordId: string,
+  heading: string | null
+): Promise<void> {
+  await db
+    .update(sceneBreaks)
+    .set({ heading: heading && heading.trim() ? heading.trim() : null })
+    .where(eq(sceneBreaks.wordId, wordId));
 }
 
 /** Group words by verse for display */

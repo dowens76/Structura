@@ -13,6 +13,7 @@ import CharacterPanel from "@/components/controls/CharacterPanel";
 import WordTagPanel from "@/components/controls/WordTagPanel";
 import ClauseRelationshipOverlay from "./ClauseRelationshipOverlay";
 import WordArrowOverlay from "./WordArrowOverlay";
+import ClearAnnotationsDialog, { type ClearCategory } from "@/components/controls/ClearAnnotationsDialog";
 import type { ColorRule } from "@/lib/morphology/colorRules";
 import { RELATIONSHIP_TYPES } from "@/lib/morphology/clauseRelationships";
 import hebrewLemmas from "@/lib/data/hebrew-lemmas.json";
@@ -34,6 +35,7 @@ interface ChapterDisplayProps {
   initialClauseRelationships: ClauseRelationship[];
   initialWordArrows: WordArrow[];
   initialWordFormatting: { wordId: string; isBold: boolean; isItalic: boolean }[];
+  initialSceneBreaks: { wordId: string; heading: string | null }[];
 }
 
 const DEFAULT_FILTER: GrammarFilterState = {
@@ -73,6 +75,7 @@ export default function ChapterDisplay({
   initialClauseRelationships,
   initialWordArrows,
   initialWordFormatting,
+  initialSceneBreaks,
 }: ChapterDisplayProps) {
   // Use fallback defaults for SSR — localStorage values are loaded in useEffect after hydration
   const [displayMode, setDisplayMode] = useState<DisplayMode>("clean");
@@ -91,6 +94,14 @@ export default function ChapterDisplay({
   const [paragraphBreakIds, setParagraphBreakIds] = useState<Set<string>>(
     () => new Set(initialParagraphBreakIds)
   );
+
+  // ── Scene / episode break state ─────────────────────────────────────────────
+  // Map of wordId → heading (null = no heading). Each scene break also implies a
+  // paragraph break; toggling a scene break mirrors into paragraphBreakIds.
+  const [sceneBreakMap, setSceneBreakMap] = useState<Map<string, string | null>>(
+    () => new Map(initialSceneBreaks.map((sb) => [sb.wordId, sb.heading]))
+  );
+  const [editingScenes, setEditingScenes] = useState(false);
 
   // ── Character tagging state ────────────────────────────────────────────────
   const [highlightCharIds, setHighlightCharIds] = useState<Set<number>>(new Set());
@@ -150,6 +161,7 @@ export default function ChapterDisplay({
   );
   const [editingBold, setEditingBold]     = useState(false);
   const [editingItalic, setEditingItalic] = useState(false);
+  const [showClearDialog, setShowClearDialog] = useState(false);
 
   // ── Source text visibility ─────────────────────────────────────────────────
   // When true, source text columns are hidden so the user works with translation only.
@@ -168,10 +180,14 @@ export default function ChapterDisplay({
 
   // Maps every word in the chapter to the first word of its paragraph.
   // Used by VerseDisplay to look up indent levels for paragraph continuations.
+  // Verse boundaries always reset the paragraph start so that indent levels from
+  // the last segment of verse N never leak into the first segment of verse N+1.
   const wordToParaStart = useMemo(() => {
     const map = new Map<string, string>();
     let currentStart = words[0]?.wordId ?? "";
-    for (const word of words) {
+    for (let i = 0; i < words.length; i++) {
+      const word = words[i];
+      if (i > 0 && words[i - 1].verse !== word.verse) currentStart = word.wordId;
       if (paragraphBreakIds.has(word.wordId)) currentStart = word.wordId;
       map.set(word.wordId, currentStart);
     }
@@ -330,6 +346,10 @@ export default function ChapterDisplay({
       handleToggleParagraphBreak(word.wordId);
       return;
     }
+    if (editingScenes) {
+      handleToggleSceneBreak(word.wordId);
+      return;
+    }
     if (editingRefs) {
       if (activeCharId === null) return;
       handleToggleCharacterRef(word);
@@ -388,6 +408,71 @@ export default function ChapterDisplay({
   // Called when a translation word is clicked in paragraph-editing mode.
   function handleToggleTranslationParagraphBreak(wordId: string, abbr: string) {
     return handleToggleParagraphBreakById(wordId, abbr);
+  }
+
+  // ── Scene break handlers ────────────────────────────────────────────────────
+
+  async function handleToggleSceneBreak(wordId: string, record = true) {
+    const wasSet = sceneBreakMap.has(wordId);
+    if (record) {
+      pushUndo({
+        label: wasSet ? "Remove scene break" : "Add scene break",
+        undo: () => handleToggleSceneBreak(wordId, false),
+      });
+    }
+    // Optimistic update: mirror into sceneBreakMap and paragraphBreakIds together
+    setSceneBreakMap((prev) => {
+      const next = new Map(prev);
+      if (next.has(wordId)) next.delete(wordId);
+      else next.set(wordId, null);
+      return next;
+    });
+    setParagraphBreakIds((prev) => {
+      const next = new Set(prev);
+      if (wasSet) next.delete(wordId);
+      else next.add(wordId);
+      return next;
+    });
+    try {
+      await fetch("/api/scene-breaks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ wordId, book, chapter, source: textSource }),
+      });
+    } catch {
+      // Rollback on error
+      setSceneBreakMap((prev) => {
+        const next = new Map(prev);
+        if (wasSet) next.set(wordId, null);
+        else next.delete(wordId);
+        return next;
+      });
+      setParagraphBreakIds((prev) => {
+        const next = new Set(prev);
+        if (wasSet) next.add(wordId);
+        else next.delete(wordId);
+        return next;
+      });
+    }
+  }
+
+  async function handleUpdateSceneHeading(wordId: string, heading: string) {
+    const trimmed = heading.trim() || null;
+    // Optimistic update
+    setSceneBreakMap((prev) => {
+      const next = new Map(prev);
+      next.set(wordId, trimmed);
+      return next;
+    });
+    try {
+      await fetch("/api/scene-breaks", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ wordId, heading: trimmed }),
+      });
+    } catch {
+      // Heading update failure is non-critical; leave optimistic state
+    }
   }
 
   // Core ref toggle logic — works for both source words and translation words.
@@ -952,12 +1037,15 @@ export default function ChapterDisplay({
   }
 
   // ── Word arrow handlers ────────────────────────────────────────────────────
-  async function handleSelectArrowWord(word: Word) {
+  // Works with any wordId — source words (e.g. "OSHB.1") or translation tokens
+  // (e.g. "tv:ESV:Gen.1.1.0"). Called directly for translation words and via
+  // handleSelectArrowWord for source Word objects.
+  async function handleSelectArrowWordById(wordId: string) {
     if (!arrowFromWordId) {
-      setArrowFromWordId(word.wordId);
+      setArrowFromWordId(wordId);
       return;
     }
-    if (arrowFromWordId === word.wordId) {
+    if (arrowFromWordId === wordId) {
       setArrowFromWordId(null);
       return;
     }
@@ -966,7 +1054,7 @@ export default function ChapterDisplay({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         fromWordId: arrowFromWordId,
-        toWordId:   word.wordId,
+        toWordId:   wordId,
         book,
         chapter,
         source: textSource,
@@ -977,6 +1065,10 @@ export default function ChapterDisplay({
     setArrowFromWordId(null);
   }
 
+  function handleSelectArrowWord(word: Word) {
+    handleSelectArrowWordById(word.wordId);
+  }
+
   async function handleDeleteWordArrow(id: number) {
     await fetch("/api/word-arrows", {
       method: "DELETE",
@@ -984,6 +1076,23 @@ export default function ChapterDisplay({
       body: JSON.stringify({ id }),
     });
     setWordArrowsState((prev) => prev.filter((a) => a.id !== id));
+  }
+
+  // ── Clear annotations handler ─────────────────────────────────────────────
+
+  function handleAnnotationsCleared(cleared: ClearCategory[]) {
+    for (const cat of cleared) {
+      switch (cat) {
+        case "paragraphBreaks":    setParagraphBreakIds(new Set()); break;
+        case "characterRefs":      setCharacterRefMap(new Map()); break;
+        case "speechSections":     setSpeechSections([]); break;
+        case "wordTagRefs":        setWordTagRefMap(new Map()); break;
+        case "lineIndents":        setLineIndentMap(new Map()); break;
+        case "wordArrows":         setWordArrowsState([]); break;
+        case "clauseRelationships":setClauseRelationships([]); break;
+        case "wordFormatting":     setWordFormattingMap(new Map()); break;
+      }
+    }
   }
 
   // ── Word formatting (bold / italic) handler ────────────────────────────────
@@ -1122,6 +1231,22 @@ export default function ChapterDisplay({
             ].join(" ")}
           >
             ¶
+          </button>
+
+          {/* Scene / episode break mode */}
+          <button
+            onClick={() => setEditingScenes((v) => !v)}
+            title={editingScenes
+              ? "Exit scene break mode"
+              : "Enter scene break mode — click any word to start/remove a scene break there"}
+            className={[
+              "px-2.5 py-1 rounded text-xs font-medium transition-colors",
+              editingScenes
+                ? "bg-amber-500 text-white"
+                : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
+            ].join(" ")}
+          >
+            §
           </button>
 
           {/* Character reference tag mode */}
@@ -1326,6 +1451,17 @@ export default function ChapterDisplay({
             I
           </button>
 
+          {/* Clear annotations */}
+          <div className="border-l border-[var(--border)] pl-3 ml-1">
+            <button
+              onClick={() => setShowClearDialog(true)}
+              title="Clear annotations by category"
+              className="px-2.5 py-1 rounded text-xs font-medium transition-colors bg-stone-100 dark:bg-stone-800 text-stone-500 dark:text-stone-400 hover:bg-red-100 hover:text-red-600 dark:hover:bg-red-950 dark:hover:text-red-400"
+            >
+              🗑
+            </button>
+          </div>
+
           {/* Linguistic terms toggle — Hebrew only */}
           {isHebrew && (
             <button
@@ -1529,6 +1665,14 @@ export default function ChapterDisplay({
           </div>
         )}
 
+        {/* Scene break hint */}
+        {editingScenes && (
+          <div className="px-6 py-1 text-xs border-b border-[var(--border)] text-stone-500 dark:text-stone-400"
+               style={{ backgroundColor: "var(--nav-bg)" }}>
+            Click any word to mark/unmark a scene or episode break there
+          </div>
+        )}
+
         {/* Chapter text */}
         <div
           className={`py-6 flex-1 ${hasActiveTranslations ? "" : "max-w-3xl mx-auto w-full"}`}
@@ -1589,6 +1733,12 @@ export default function ChapterDisplay({
                 hideSourceText={hideSourceText}
                 editingTranslation={editingTranslation}
                 onUpdateTranslationVerse={handleUpdateTranslationVerse}
+                editingArrows={editingArrows}
+                onSelectArrowWordById={handleSelectArrowWordById}
+                sceneBreakMap={sceneBreakMap}
+                editingScenes={editingScenes}
+                onToggleSceneBreak={handleToggleSceneBreak}
+                onUpdateSceneHeading={handleUpdateSceneHeading}
               />
             );
           })}
@@ -1615,6 +1765,19 @@ export default function ChapterDisplay({
             <MorphologyPanel word={selectedWord} useLinguisticTerms={useLinguisticTerms} />
           </div>
         </div>
+      )}
+
+      {/* Clear annotations dialog */}
+      {showClearDialog && (
+        <ClearAnnotationsDialog
+          scopeLabel={`${book} ${chapter}`}
+          book={book}
+          textSource={textSource}
+          startChapter={chapter}
+          endChapter={chapter}
+          onClose={() => setShowClearDialog(false)}
+          onCleared={handleAnnotationsCleared}
+        />
       )}
     </div>
   );

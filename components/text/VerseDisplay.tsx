@@ -57,6 +57,14 @@ interface VerseDisplayProps {
   // Translation text editing
   editingTranslation?: boolean;
   onUpdateTranslationVerse?: (abbr: string, verse: number, newText: string) => void;
+  // Free-form arrows (applies to both source and translation words)
+  editingArrows?: boolean;
+  onSelectArrowWordById?: (wordId: string) => void;
+  // Scene / episode breaks
+  sceneBreakMap?: Map<string, string | null>;
+  editingScenes?: boolean;
+  onToggleSceneBreak?: (wordId: string) => void;
+  onUpdateSceneHeading?: (wordId: string, heading: string) => void;
 }
 
 // Split a word array into paragraph segments at break boundaries.
@@ -113,6 +121,12 @@ export default function VerseDisplay({
   hideSourceText = false,
   editingTranslation = false,
   onUpdateTranslationVerse,
+  editingArrows = false,
+  onSelectArrowWordById,
+  sceneBreakMap = new Map() as Map<string, string | null>,
+  editingScenes = false,
+  onToggleSceneBreak: _onToggleSceneBreak,
+  onUpdateSceneHeading,
 }: VerseDisplayProps) {
   const firstWordId = words[0]?.wordId;
   const verseStartsNewParagraph = firstWordId ? paragraphBreakIds.has(firstWordId) : false;
@@ -147,17 +161,6 @@ export default function VerseDisplay({
   const speechContinuesIntoNext =
     !!(crossNextSec && crossLastSec2 && crossNextSec.id === crossLastSec2.id);
 
-  // Dashed separator shown above verses that start a new paragraph
-  const verseSeparator = verseStartsNewParagraph ? (
-    <div
-      className={`w-full border-t border-dashed mb-2 ${
-        editingParagraphs
-          ? "border-amber-400"
-          : "border-stone-300 dark:border-stone-600"
-      }`}
-      aria-hidden="true"
-    />
-  ) : null;
 
   // ── Speech box helpers ──────────────────────────────────────────────────
   type SegSpeechData = {
@@ -236,6 +239,55 @@ export default function VerseDisplay({
     );
   }
 
+  // ── Scene / episode break separator ─────────────────────────────────────
+  // Renders a solid HR (+ optional editable heading) for scene breaks.
+  // Used instead of the dashed paragraph separator when a scene break is set.
+  function renderSceneSeparator(wordId: string): React.ReactNode {
+    const heading = sceneBreakMap.get(wordId) ?? null;
+    return (
+      <div className="mt-5 mb-2">
+        {editingScenes ? (
+          <input
+            key={wordId}
+            className="block w-full text-xs font-semibold uppercase tracking-widest text-stone-400 dark:text-stone-500 bg-transparent border-none outline-none focus:ring-0 px-0 pb-1 placeholder:text-stone-300 dark:placeholder:text-stone-700"
+            defaultValue={heading ?? ""}
+            placeholder="Scene heading (optional)"
+            onBlur={(e) => onUpdateSceneHeading?.(wordId, e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); e.stopPropagation(); }}
+            onClick={(e) => e.stopPropagation()}
+          />
+        ) : heading ? (
+          <span className="block w-full text-xs font-semibold uppercase tracking-widest text-stone-400 dark:text-stone-500 pb-1 select-none">
+            {heading}
+          </span>
+        ) : null}
+        <div
+          className={`w-full border-t-2 ${
+            editingScenes
+              ? "border-amber-400"
+              : "border-stone-400 dark:border-stone-500"
+          }`}
+        />
+      </div>
+    );
+  }
+
+  // Returns the appropriate separator for a paragraph-starting word:
+  // scene break → solid HR + heading; regular paragraph break → dashed line.
+  function renderSegSeparator(wordId: string): React.ReactNode {
+    if (sceneBreakMap.has(wordId)) return renderSceneSeparator(wordId);
+    return (
+      <div
+        className={`w-full border-t border-dashed mb-2 ${
+          editingParagraphs
+            ? "border-amber-400"
+            : "border-stone-300 dark:border-stone-600"
+        }`}
+        aria-hidden="true"
+      />
+    );
+  }
+
   // ── Word runs ───────────────────────────────────────────────────────────
   type SegRun = { inlineSec: SpeechSection | null; words: Word[] };
 
@@ -309,7 +361,7 @@ export default function VerseDisplay({
   if (translationTexts.length === 0) {
     return (
       <div className={`${verseStartsNewParagraph ? "mt-5" : ""} ${speechContinuesIntoNext ? "" : "mb-4"}`}>
-        {verseSeparator}
+        {verseStartsNewParagraph && firstWordId && renderSegSeparator(firstWordId)}
         {sourceSegments.map((seg, si) => {
           const { segSpeech, segSpeaker, isSegStart, isSegEnd } = getSegSpeech(seg, si);
           const runs = computeRuns(seg, segSpeech);
@@ -323,6 +375,8 @@ export default function VerseDisplay({
                 paddingRight: isHebrew && indentLevel > 0 ? `${indentLevel * 2}rem` : undefined,
               }}
             >
+              {/* Scene break on a within-verse paragraph segment */}
+              {si > 0 && sceneBreakMap.has(seg[0].wordId) && renderSceneSeparator(seg[0].wordId)}
               {/* 3-column grid: label | arc-col | source-text.
                   dir="rtl" reverses column order for Hebrew (→ source-text | arc-col | label),
                   so the same template works for both LTR and RTL. */}
@@ -412,7 +466,7 @@ export default function VerseDisplay({
         speechContinuesIntoNext ? "pb-0" : "pb-4"
       } last:border-0${verseStartsNewParagraph && !speechContinuesFromPrev ? " mt-4" : ""}`}
     >
-      {verseSeparator}
+      {verseStartsNewParagraph && firstWordId && renderSegSeparator(firstWordId)}
 
       {/* Each source paragraph is its own 5-cell grid row so the speech-box
           background/border wraps the source, arc columns, label AND translation together. */}
@@ -545,7 +599,9 @@ export default function VerseDisplay({
                         fontStyle:  tvFormatting?.isItalic ? "italic" : undefined,
                       };
 
-                      const tokenClassName = editingFormatting
+                      const tokenClassName = editingArrows
+                        ? "cursor-crosshair rounded px-0.5 -mx-0.5 hover:bg-slate-100 dark:hover:bg-slate-900/40 transition-colors"
+                        : editingFormatting
                         ? "cursor-crosshair rounded px-0.5 -mx-0.5 hover:bg-amber-50 dark:hover:bg-amber-950/40 transition-colors"
                         : editingRefs
                         ? "cursor-crosshair rounded px-0.5 -mx-0.5 hover:bg-violet-100 dark:hover:bg-violet-900/40 transition-colors"
@@ -557,7 +613,9 @@ export default function VerseDisplay({
                         ? "cursor-crosshair rounded px-0.5 -mx-0.5 hover:bg-yellow-100 dark:hover:bg-yellow-900/40 transition-colors"
                         : undefined;
 
-                      const handleClick = editingFormatting
+                      const handleClick = editingArrows
+                        ? () => onSelectArrowWordById?.(wordId)
+                        : editingFormatting
                         ? () => onSelectTranslationWord(wordId, abbr)
                         : editingRefs
                         ? () => onSelectTranslationWord(wordId, abbr)
@@ -599,6 +657,7 @@ export default function VerseDisplay({
                             </>
                           )}
                           <span
+                            data-word-id={wordId}
                             style={{ ...underlineStyle, ...tvShadowStyle, ...tvFormattingStyle }}
                             className={tokenClassName}
                             onClick={handleClick}
@@ -621,6 +680,8 @@ export default function VerseDisplay({
 
         return (
           <div key={si}>
+            {/* Scene break on a within-verse paragraph segment */}
+            {si > 0 && sceneBreakMap.has(seg[0].wordId) && renderSceneSeparator(seg[0].wordId)}
             {/* Grid layout:
                 5-col (with source): source | source-arc-col | verse-label | translation-arc-col | translation
                 3-col (hideSourceText): verse-label | translation-arc-col | translation
