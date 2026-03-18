@@ -35,7 +35,7 @@ export default function ChapterDropdown({ chapter, chapterCount, osisBook, textS
         type="button"
         onClick={() => setOpen((v) => !v)}
         className="flex items-center gap-1 text-xs px-2 py-1 rounded transition-colors"
-        style={{ color: "var(--nav-fg-muted)" }}
+        style={{ color: "var(--nav-fg)" }}
         title="Jump to chapter"
       >
         <span>Ch. {chapter}</span>

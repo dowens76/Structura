@@ -17,6 +17,9 @@ import {
   getTranslationVerses,
   getChapterClauseRelationships,
   getChapterWordArrows,
+  getChapterWordFormatting,
+  getChapterSceneBreaks,
+  getChapterLineAnnotations,
 } from "@/lib/db/queries";
 import { OSIS_BOOK_NAMES } from "@/lib/utils/osis";
 import type { TextSource } from "@/lib/morphology/types";
@@ -84,6 +87,9 @@ export default async function PassagePage({ params }: PageProps) {
           getChapterLineIndents(osisBook, ch),
           getChapterClauseRelationships(osisBook, ch, textSource),
           getChapterWordArrows(osisBook, ch, textSource),
+          getChapterWordFormatting(osisBook, ch),
+          getChapterSceneBreaks(osisBook, ch),
+          getChapterLineAnnotations(osisBook, ch, textSource),
         ])
       )
     ),
@@ -97,6 +103,9 @@ export default async function PassagePage({ params }: PageProps) {
   const initialLineIndents           = perChapterResults.flatMap(([,,,, l]) => l);
   const initialClauseRelationships   = perChapterResults.flatMap(([,,,,, cr]) => cr);
   const initialWordArrows            = perChapterResults.flatMap(([,,,,,, wa]) => wa);
+  const initialWordFormatting        = perChapterResults.flatMap(([,,,,,,, wf]) => wf);
+  const initialSceneBreaks           = perChapterResults.flatMap(([,,,,,,,, sb]) => sb);
+  const initialLineAnnotations       = perChapterResults.flatMap(([,,,,,,,,, la]) => la);
 
   // Translations — available from the first chapter (book-wide); fetch verses for all chapters
   const availableTranslations = await getAvailableTranslationsForChapter(osisBook, passage.startChapter);
@@ -133,7 +142,7 @@ export default async function PassagePage({ params }: PageProps) {
 
         <span style={{ color: "var(--nav-border)" }} className="text-lg select-none">|</span>
 
-        <span className="text-sm font-semibold" style={{ color: "var(--nav-fg)" }}>
+        <span className="text-sm font-semibold" style={{ color: "var(--nav-fg-muted)" }}>
           {bookName}
         </span>
         <span
@@ -146,7 +155,7 @@ export default async function PassagePage({ params }: PageProps) {
         <Link
           href="/import"
           className="text-xs px-2 py-1 rounded transition-colors"
-          style={{ color: "var(--nav-fg-muted)" }}
+          style={{ color: "var(--nav-fg)" }}
         >
           + Import
         </Link>
@@ -156,7 +165,7 @@ export default async function PassagePage({ params }: PageProps) {
           href={`/export/passage/${id}`}
           target="_blank"
           className="text-xs px-2 py-1 rounded transition-colors"
-          style={{ color: "var(--nav-fg-muted)" }}
+          style={{ color: "var(--nav-fg)" }}
         >
           Export →
         </Link>
@@ -170,7 +179,7 @@ export default async function PassagePage({ params }: PageProps) {
           <Link
             href={`/${encodeURIComponent(osisBook)}/${textSource}/${passage.startChapter}`}
             className="text-xs px-2 py-1 rounded transition-colors"
-            style={{ color: "var(--nav-fg-muted)" }}
+            style={{ color: "var(--nav-fg)" }}
           >
             ← Ch. {passage.startChapter}
           </Link>
@@ -202,6 +211,9 @@ export default async function PassagePage({ params }: PageProps) {
           translationVerseData={translationVerseData}
           initialClauseRelationships={initialClauseRelationships}
           initialWordArrows={initialWordArrows}
+          initialWordFormatting={initialWordFormatting}
+          initialSceneBreaks={initialSceneBreaks}
+          initialLineAnnotations={initialLineAnnotations}
         />
       </div>
     </div>

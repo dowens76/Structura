@@ -1,7 +1,7 @@
 import { eq, and, asc, inArray, or, gte, lte, gt, lt, sql } from "drizzle-orm";
 import { db } from "./index";
-import { books, words, verses, translations, translationVerses, paragraphBreaks, characters, characterRefs, speechSections, wordTags, wordTagRefs, lineIndents, sceneBreaks, passages, clauseRelationships, wordArrows, wordFormatting } from "./schema";
-import type { Book, Word, Translation, TranslationVerse, Character, CharacterRef, SpeechSection, WordTag, WordTagRef, Passage, ClauseRelationship, WordArrow } from "./schema";
+import { books, words, verses, translations, translationVerses, paragraphBreaks, characters, characterRefs, speechSections, wordTags, wordTagRefs, lineIndents, sceneBreaks, passages, clauseRelationships, wordArrows, wordFormatting, lineAnnotations } from "./schema";
+import type { Book, Word, Translation, TranslationVerse, Character, CharacterRef, SpeechSection, WordTag, WordTagRef, Passage, ClauseRelationship, WordArrow, LineAnnotation } from "./schema";
 import type { TextSource, Testament } from "@/lib/morphology/types";
 
 export async function getBooks(testament?: Testament): Promise<Book[]> {
@@ -176,13 +176,13 @@ export async function toggleParagraphBreak(
 
 // ── Scene breaks ──────────────────────────────────────────────────────────────
 
-/** Returns all scene breaks (wordId + heading) for a chapter, across all sources. */
+/** Returns all scene breaks (wordId + heading + outOfSequence) for a chapter, across all sources. */
 export async function getChapterSceneBreaks(
   book: string,
   chapter: number
-): Promise<{ wordId: string; heading: string | null }[]> {
+): Promise<{ wordId: string; heading: string | null; outOfSequence: boolean }[]> {
   const rows = await db
-    .select({ wordId: sceneBreaks.wordId, heading: sceneBreaks.heading })
+    .select({ wordId: sceneBreaks.wordId, heading: sceneBreaks.heading, outOfSequence: sceneBreaks.outOfSequence })
     .from(sceneBreaks)
     .where(and(eq(sceneBreaks.book, book), eq(sceneBreaks.chapter, chapter)));
   return rows;
@@ -234,6 +234,17 @@ export async function updateSceneBreakHeading(
   await db
     .update(sceneBreaks)
     .set({ heading: heading && heading.trim() ? heading.trim() : null })
+    .where(eq(sceneBreaks.wordId, wordId));
+}
+
+/** Marks or unmarks a scene break as out of chronological sequence. */
+export async function updateSceneBreakOutOfSequence(
+  wordId: string,
+  outOfSequence: boolean
+): Promise<void> {
+  await db
+    .update(sceneBreaks)
+    .set({ outOfSequence })
     .where(eq(sceneBreaks.wordId, wordId));
 }
 
@@ -789,4 +800,63 @@ export async function getChapterMaxVerse(
       )
     );
   return result[0]?.maxVerse ?? 0;
+}
+
+// ── Line Annotations (chapter-scoped) ─────────────────────────────────────────
+
+/** Returns all line annotations for a chapter, ordered by creation time. */
+export async function getChapterLineAnnotations(
+  book: string,
+  chapter: number,
+  textSource: string
+): Promise<LineAnnotation[]> {
+  return db
+    .select()
+    .from(lineAnnotations)
+    .where(
+      and(
+        eq(lineAnnotations.book, book),
+        eq(lineAnnotations.chapter, chapter),
+        eq(lineAnnotations.textSource, textSource)
+      )
+    )
+    .orderBy(asc(lineAnnotations.createdAt));
+}
+
+/** Insert a new line annotation and return the created record. */
+export async function createLineAnnotation(
+  annotType: string,
+  label: string,
+  color: string,
+  description: string | null,
+  outOfSequence: boolean,
+  startWordId: string,
+  endWordId: string,
+  textSource: string,
+  book: string,
+  chapter: number
+): Promise<LineAnnotation> {
+  const [row] = await db
+    .insert(lineAnnotations)
+    .values({ annotType, label, color, description, outOfSequence, startWordId, endWordId, textSource, book, chapter })
+    .returning();
+  return row;
+}
+
+/** Update fields of an existing annotation (label, color, description, outOfSequence, start/end word IDs). */
+export async function updateLineAnnotation(
+  id: number,
+  updates: Partial<Pick<LineAnnotation, "label" | "color" | "description" | "outOfSequence" | "startWordId" | "endWordId">>
+): Promise<LineAnnotation> {
+  const [row] = await db
+    .update(lineAnnotations)
+    .set(updates)
+    .where(eq(lineAnnotations.id, id))
+    .returning();
+  return row;
+}
+
+/** Delete an annotation by id. */
+export async function deleteLineAnnotation(id: number): Promise<void> {
+  await db.delete(lineAnnotations).where(eq(lineAnnotations.id, id));
 }

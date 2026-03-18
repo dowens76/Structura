@@ -36,7 +36,7 @@ export default function BookDropdown({ books, currentOsisBook, textSource, bookN
         type="button"
         onClick={() => setOpen((v) => !v)}
         className="flex items-center gap-1 text-xs px-2 py-1 rounded transition-colors"
-        style={{ color: "var(--nav-fg-muted)" }}
+        style={{ color: "var(--nav-fg)" }}
         title="Jump to book"
       >
         <span className="max-w-[7rem] truncate">{bookName}</span>

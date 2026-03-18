@@ -200,13 +200,14 @@ export const lineIndents = sqliteTable(
 export const sceneBreaks = sqliteTable(
   "scene_breaks",
   {
-    id:         integer("id").primaryKey({ autoIncrement: true }),
-    wordId:     text("word_id").notNull().unique(), // first word of the new scene
-    heading:    text("heading"),                    // optional scene/episode title (null = none)
-    textSource: text("text_source").notNull(),
-    book:       text("book").notNull(),
-    chapter:    integer("chapter").notNull(),
-    createdAt:  text("created_at").$defaultFn(() => new Date().toISOString()),
+    id:              integer("id").primaryKey({ autoIncrement: true }),
+    wordId:          text("word_id").notNull().unique(), // first word of the new scene
+    heading:         text("heading"),                    // optional scene/episode title (null = none)
+    outOfSequence:   integer("out_of_sequence", { mode: "boolean" }).notNull().default(false),
+    textSource:      text("text_source").notNull(),
+    book:            text("book").notNull(),
+    chapter:         integer("chapter").notNull(),
+    createdAt:       text("created_at").$defaultFn(() => new Date().toISOString()),
   },
   (t) => [index("sb_book_ch_src_idx").on(t.book, t.chapter, t.textSource)]
 );
@@ -259,6 +260,30 @@ export const wordArrows = sqliteTable(
   (t) => [index("wa_book_ch_src_idx").on(t.book, t.chapter, t.textSource)]
 );
 
+// Line annotations — structural notes attached to a range of paragraph segments.
+// annotType: "plot" | "theme"
+// For plot annotations, label is one of: Info, IS, Con, TA, Res, FS.
+// For theme annotations, label is a user-defined letter (A, B, C …) and color is user-chosen.
+// startWordId and endWordId are the FIRST WORD IDs of the start and end paragraph segments.
+export const lineAnnotations = sqliteTable(
+  "line_annotations",
+  {
+    id:             integer("id").primaryKey({ autoIncrement: true }),
+    annotType:      text("annot_type").notNull(),   // "plot" | "theme" | "desc"
+    label:          text("label").notNull(),         // "Info" | "IS" | … | "A" | "B" … | ""
+    color:          text("color").notNull(),         // hex color (predefined for plot, user-chosen for theme/desc)
+    description:    text("description"),             // optional freeform note
+    outOfSequence:  integer("out_of_sequence", { mode: "boolean" }).notNull().default(false),
+    startWordId:    text("start_word_id").notNull(), // first word of the start paragraph segment
+    endWordId:      text("end_word_id").notNull(),   // first word of the end paragraph segment
+    textSource:     text("text_source").notNull(),
+    book:           text("book").notNull(),
+    chapter:        integer("chapter").notNull(),
+    createdAt:      text("created_at").$defaultFn(() => new Date().toISOString()),
+  },
+  (t) => [index("la_book_ch_src_idx").on(t.book, t.chapter, t.textSource)]
+);
+
 // Per-word bold/italic formatting
 export const wordFormatting = sqliteTable(
   "word_formatting",
@@ -294,3 +319,4 @@ export type Passage = typeof passages.$inferSelect;
 export type ClauseRelationship = typeof clauseRelationships.$inferSelect;
 export type WordArrow = typeof wordArrows.$inferSelect;
 export type WordFormatting = typeof wordFormatting.$inferSelect;
+export type LineAnnotation = typeof lineAnnotations.$inferSelect;

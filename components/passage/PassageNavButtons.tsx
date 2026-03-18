@@ -67,7 +67,7 @@ export default function PassageNavButtons({
           type="button"
           onClick={() => setDropdownOpen((v) => !v)}
           className="flex items-center gap-1 text-xs px-2 py-1 rounded transition-colors"
-          style={{ color: "var(--nav-fg-muted)" }}
+          style={{ color: "var(--nav-fg)" }}
           title="Passages defined for this book"
         >
           <span>📖</span>

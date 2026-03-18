@@ -1,8 +1,10 @@
 "use client";
 
-import type { Word, CharacterRef, Character, SpeechSection, WordTag, WordTagRef } from "@/lib/db/schema";
+import { useState, useEffect } from "react";
+import type { Word, CharacterRef, Character, SpeechSection, WordTag, WordTagRef, LineAnnotation } from "@/lib/db/schema";
 import type { DisplayMode, GrammarFilterState, TranslationTextEntry } from "@/lib/morphology/types";
 import type { ColorRule } from "@/lib/morphology/colorRules";
+import { PLOT_ELEMENTS, ANNOTATION_PALETTE, getPlotElement, getAnnotationColor } from "@/lib/utils/annotations";
 import WordToken from "./WordToken";
 
 interface VerseDisplayProps {
@@ -62,9 +64,470 @@ interface VerseDisplayProps {
   onSelectArrowWordById?: (wordId: string) => void;
   // Scene / episode breaks
   sceneBreakMap?: Map<string, string | null>;
+  sceneOosSet?: Set<string>;
   editingScenes?: boolean;
   onToggleSceneBreak?: (wordId: string) => void;
   onUpdateSceneHeading?: (wordId: string, heading: string) => void;
+  onUpdateSceneOutOfSequence?: (wordId: string, outOfSequence: boolean) => void;
+  // Line annotations
+  annotationsBySegment?: Map<string, { annotation: LineAnnotation; isStart: boolean; isEnd: boolean }[]>;
+  themeColorsByLabel?: Map<string, string>;
+  editingAnnotations?: boolean;
+  annotRangeStartWordId?: string | null;
+  annotRangeEndWordId?: string | null;
+  onSelectAnnotationSegment?: (wordId: string, shiftHeld?: boolean) => void;
+  onSaveAnnotation?: (data: { annotType: string; label: string; color: string; description: string | null; outOfSequence: boolean }) => void;
+  onCancelAnnotation?: () => void;
+  onDeleteAnnotation?: (id: number) => void;
+  onUpdateAnnotation?: (id: number, updates: { label?: string; color?: string; description?: string | null; outOfSequence?: boolean }) => void;
+  onExpandAnnotationRange?: (id: number, direction: "expand-start" | "shrink-start" | "expand-end" | "shrink-end") => void;
+  showAnnotationCol?: boolean;
+}
+
+// ── Annotation sub-components ────────────────────────────────────────────────
+// Defined at module level so React can track identity between renders.
+
+/**
+ * 20-swatch colour picker for Theme and Desc annotations.
+ * Uses onMouseDown + preventDefault so clicking a swatch never blurs an active
+ * text input (preventing premature commitEdit calls in AnnotBadge editing mode).
+ * When `locked` is true, shows only the current colour with a "Matches label" hint.
+ */
+function ColorPalette({
+  value,
+  onChange,
+  locked,
+}: {
+  value: string;
+  onChange: (color: string) => void;
+  locked?: boolean;
+}) {
+  if (locked) {
+    return (
+      <div className="flex items-center gap-1.5">
+        <div
+          className="w-4 h-4 rounded shrink-0"
+          style={{ backgroundColor: value }}
+          title={`Color locked to label: ${value}`}
+        />
+        <span className="text-[9px] text-stone-400 dark:text-stone-500">Matches label</span>
+      </div>
+    );
+  }
+  return (
+    <div className="flex flex-wrap gap-[3px]">
+      {ANNOTATION_PALETTE.map((c) => (
+        <button
+          key={c}
+          type="button"
+          onMouseDown={(e) => { e.preventDefault(); onChange(c); }}
+          style={{
+            backgroundColor: c,
+            width: 16,
+            height: 16,
+            borderRadius: 3,
+            outline: value === c ? "2px solid white" : "none",
+            outlineOffset: 1,
+            boxShadow: value === c ? `0 0 0 2px ${c}` : "none",
+            flexShrink: 0,
+          }}
+          title={c}
+        />
+      ))}
+    </div>
+  );
+}
+
+/** Displays one annotation at a segment — full badge at start, continuation bar at middle/end. */
+function AnnotBadge({
+  annotation,
+  isStart,
+  isEnd,
+  editingAnnotations,
+  onDelete,
+  onUpdate,
+  onAdjustRange,
+}: {
+  annotation: LineAnnotation;
+  isStart: boolean;
+  isEnd: boolean;
+  editingAnnotations: boolean;
+  onDelete?: (id: number) => void;
+  onUpdate?: (id: number, updates: { description?: string | null; color?: string; outOfSequence?: boolean }) => void;
+  onAdjustRange?: (id: number, direction: "expand-start" | "shrink-start" | "expand-end" | "shrink-end") => void;
+}) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [draftDesc, setDraftDesc] = useState(annotation.description ?? "");
+  const [draftColor, setDraftColor] = useState(annotation.color);
+  const [draftOos, setDraftOos] = useState(annotation.outOfSequence ?? false);
+
+  // Keep drafts in sync if annotation is updated externally
+  useEffect(() => { setDraftDesc(annotation.description ?? ""); }, [annotation.description]);
+  useEffect(() => { setDraftColor(annotation.color); }, [annotation.color]);
+  useEffect(() => { setDraftOos(annotation.outOfSequence ?? false); }, [annotation.outOfSequence]);
+
+  const color = getAnnotationColor(annotation.annotType, annotation.label, annotation.color);
+
+  // Continuation block — fills the full column cell height so multi-segment
+  // annotations appear as one unbroken vertical strip of color.
+  if (!isStart) {
+    return (
+      <div
+        className={[
+          "flex-1 min-h-6 flex flex-col overflow-hidden",
+          isEnd ? "rounded-b" : "",
+        ].filter(Boolean).join(" ")}
+        style={{ borderLeft: `3px solid ${color}`, backgroundColor: `${color}18` }}
+      >
+        {editingAnnotations && isEnd && (
+          <div className="flex items-center justify-end gap-0.5 mt-auto pb-0.5 pr-0.5" onClick={(e) => e.stopPropagation()}>
+            <button
+              type="button"
+              title="Shrink: remove this last segment"
+              onClick={() => onAdjustRange?.(annotation.id, "shrink-end")}
+              className="text-[9px] px-1 py-0 rounded bg-white/70 dark:bg-stone-900/70 text-stone-500 dark:text-stone-400 hover:bg-white dark:hover:bg-stone-900 leading-4"
+            >−</button>
+            <button
+              type="button"
+              title="Expand: include the next segment"
+              onClick={() => onAdjustRange?.(annotation.id, "expand-end")}
+              className="text-[9px] px-1 py-0 rounded bg-white/70 dark:bg-stone-900/70 text-stone-500 dark:text-stone-400 hover:bg-white dark:hover:bg-stone-900 leading-4"
+            >+</button>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  function commitEdit() {
+    const newDesc = draftDesc.trim() || null;
+    const updates: { description?: string | null; color?: string; outOfSequence?: boolean } = {};
+    if (newDesc !== annotation.description) updates.description = newDesc;
+    if (draftColor !== annotation.color) updates.color = draftColor;
+    if (draftOos !== (annotation.outOfSequence ?? false)) updates.outOfSequence = draftOos;
+    if (Object.keys(updates).length > 0) onUpdate?.(annotation.id, updates);
+    setIsEditing(false);
+  }
+
+  const hasLabel = annotation.label !== "";
+
+  // ── Editing state: description + range controls ──────────────────────────
+  if (isEditing) {
+    return (
+      <div
+        className={[isEnd ? "rounded" : "rounded-t", "flex-1 overflow-hidden"].join(" ")}
+        style={{ borderLeft: `3px solid ${color}`, backgroundColor: `${color}18` }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header row */}
+        <div className="flex items-center gap-1 px-1.5 pt-1 pb-0.5">
+          {hasLabel && (
+            <span
+              className="shrink-0 text-[10px] font-bold px-1 py-0.5 rounded text-white leading-none"
+              style={{ backgroundColor: color }}
+            >
+              {annotation.label}
+            </span>
+          )}
+          <button
+            type="button"
+            onClick={() => { setDraftDesc(annotation.description ?? ""); setDraftOos(annotation.outOfSequence ?? false); setIsEditing(false); }}
+            className="shrink-0 ml-auto text-stone-400 hover:text-stone-600 text-xs leading-none"
+            title="Close"
+          >
+            ✕
+          </button>
+        </div>
+
+        {/* Description input */}
+        <div className="px-1.5 pb-1">
+          <input
+            autoFocus
+            type="text"
+            value={draftDesc}
+            onChange={(e) => setDraftDesc(e.target.value)}
+            onBlur={commitEdit}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") { e.preventDefault(); commitEdit(); }
+              if (e.key === "Escape") { setDraftDesc(annotation.description ?? ""); setIsEditing(false); }
+              e.stopPropagation();
+            }}
+            placeholder="Description (optional)"
+            className="w-full px-1 py-0.5 border border-stone-300 dark:border-stone-600 rounded bg-white dark:bg-stone-900 text-[10px] placeholder:text-stone-400 dark:placeholder:text-stone-600"
+          />
+        </div>
+
+        {/* Colour palette — theme and desc annotations only */}
+        {annotation.annotType !== "plot" && (
+          <div className="px-1.5 pb-1">
+            <ColorPalette value={draftColor} onChange={setDraftColor} />
+          </div>
+        )}
+
+        {/* Out-of-sequence toggle */}
+        <label
+          className="flex items-center gap-1.5 px-1.5 pb-1 cursor-pointer select-none"
+          onMouseDown={(e) => e.preventDefault()} // prevent blurring description input
+        >
+          <input
+            type="checkbox"
+            checked={draftOos}
+            onChange={(e) => setDraftOos(e.target.checked)}
+            className="w-3 h-3 accent-amber-500 cursor-pointer shrink-0"
+          />
+          <span className="text-[9px] text-stone-400 dark:text-stone-500">↩ Out of chronological sequence</span>
+        </label>
+
+        {/* Range controls */}
+        {onAdjustRange && (
+          <div className="px-1.5 pb-1.5 flex items-center gap-1">
+            <span className="text-[9px] text-stone-400 dark:text-stone-500 shrink-0">Range:</span>
+            <div className="flex gap-0.5">
+              <button type="button" title="Expand: include segment above start"
+                onClick={() => onAdjustRange(annotation.id, "expand-start")}
+                className="text-[9px] w-5 h-4 rounded bg-stone-200 dark:bg-stone-700 text-stone-500 dark:text-stone-400 hover:bg-stone-300 dark:hover:bg-stone-600 flex items-center justify-center">▲</button>
+              <button type="button" title="Shrink: remove first segment"
+                onClick={() => onAdjustRange(annotation.id, "shrink-start")}
+                className="text-[9px] w-5 h-4 rounded bg-stone-200 dark:bg-stone-700 text-stone-500 dark:text-stone-400 hover:bg-stone-300 dark:hover:bg-stone-600 flex items-center justify-center">▼</button>
+            </div>
+            <span className="text-[9px] text-stone-300 dark:text-stone-600 select-none">·</span>
+            <div className="flex gap-0.5">
+              <button type="button" title="Shrink: remove last segment"
+                onClick={() => onAdjustRange(annotation.id, "shrink-end")}
+                className="text-[9px] w-5 h-4 rounded bg-stone-200 dark:bg-stone-700 text-stone-500 dark:text-stone-400 hover:bg-stone-300 dark:hover:bg-stone-600 flex items-center justify-center">▲</button>
+              <button type="button" title="Expand: include segment below end"
+                onClick={() => onAdjustRange(annotation.id, "expand-end")}
+                className="text-[9px] w-5 h-4 rounded bg-stone-200 dark:bg-stone-700 text-stone-500 dark:text-stone-400 hover:bg-stone-300 dark:hover:bg-stone-600 flex items-center justify-center">▼</button>
+            </div>
+            {onDelete && (
+              <>
+                <span className="text-[9px] text-stone-300 dark:text-stone-600 select-none ml-auto">·</span>
+                <button type="button" title="Delete this annotation"
+                  onClick={() => onDelete(annotation.id)}
+                  className="text-[9px] px-1 h-4 rounded bg-red-100 dark:bg-red-900/30 text-red-500 hover:bg-red-200 dark:hover:bg-red-900/60 transition-colors">del</button>
+              </>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ── Normal (read / edit-hover) state ─────────────────────────────────────
+  return (
+    <div
+      className={[
+        isEnd ? "rounded" : "rounded-t",
+        "flex-1 flex flex-col overflow-hidden",
+        editingAnnotations ? "cursor-pointer hover:brightness-95 dark:hover:brightness-110" : "",
+      ].join(" ")}
+      style={{ borderLeft: `3px solid ${color}`, backgroundColor: `${color}18` }}
+      onClick={editingAnnotations ? (e) => { e.stopPropagation(); setIsEditing(true); } : undefined}
+      title={editingAnnotations ? "Click to edit" : undefined}
+    >
+      <div className="flex items-start gap-1 px-1.5 py-1">
+        {annotation.outOfSequence && (
+          <span className="shrink-0 text-[10px] font-bold text-amber-500 dark:text-amber-400 leading-none mt-0.5" title="Out of chronological sequence">↩</span>
+        )}
+        {hasLabel && (
+          <span
+            className="shrink-0 text-[10px] font-bold px-1 py-0.5 rounded text-white leading-none mt-0.5"
+            style={{ backgroundColor: color }}
+          >
+            {annotation.label}
+          </span>
+        )}
+        {annotation.description && (
+          <span className="text-[10px] text-stone-600 dark:text-stone-400 leading-tight min-w-0 break-words">
+            {annotation.description}
+          </span>
+        )}
+        {editingAnnotations && onDelete && (
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); onDelete(annotation.id); }}
+            className="shrink-0 ml-auto text-stone-300 dark:text-stone-600 hover:text-red-500 dark:hover:text-red-400 text-sm leading-none transition-colors"
+            title="Delete annotation"
+          >
+            ×
+          </button>
+        )}
+      </div>
+      {/* In edit mode show the single-segment +/- at the bottom */}
+      {editingAnnotations && isEnd && onAdjustRange && (
+        <div className="flex items-center gap-0.5 px-1.5 pb-1" onClick={(e) => e.stopPropagation()}>
+          <span className="text-[9px] text-stone-400 dark:text-stone-500 mr-0.5">end:</span>
+          <button type="button" title="Expand: include the next segment"
+            onClick={() => onAdjustRange(annotation.id, "expand-end")}
+            className="text-[9px] px-1 py-0 rounded bg-stone-200 dark:bg-stone-700 text-stone-500 dark:text-stone-400 hover:bg-stone-300 dark:hover:bg-stone-600 leading-4">+</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Inline creation form that appears after range selection. Three tabs: Plot, Theme, Desc. */
+function AnnotCreationForm({
+  themeColorsByLabel,
+  onSave,
+  onCancel,
+}: {
+  themeColorsByLabel?: Map<string, string>;
+  onSave: (data: { annotType: string; label: string; color: string; description: string | null; outOfSequence: boolean }) => void;
+  onCancel: () => void;
+}) {
+  const [annotType, setAnnotType] = useState<"plot" | "theme" | "desc">("plot");
+  const [plotLabel, setPlotLabel] = useState<string>(PLOT_ELEMENTS[0].label);
+  const [themeLabel, setThemeLabel] = useState("A");
+  const [color, setColor] = useState<string>(PLOT_ELEMENTS[0].color);
+  const [description, setDescription] = useState("");
+  const [outOfSequence, setOutOfSequence] = useState(false);
+
+  // Keep color in sync when type or plot-label changes
+  useEffect(() => {
+    if (annotType === "plot") {
+      setColor(getPlotElement(plotLabel)?.color ?? "#6B7280");
+    } else if (annotType === "theme") {
+      // Use existing label colour if known; otherwise default to first palette entry
+      setColor(themeColorsByLabel?.get(themeLabel) ?? ANNOTATION_PALETTE[0]);
+    }
+    // "desc" keeps whatever palette colour the user last picked
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [annotType, plotLabel, themeLabel, themeColorsByLabel]);
+
+  function handleSave() {
+    let label: string;
+    let finalColor: string;
+    if (annotType === "plot") {
+      label = plotLabel;
+      finalColor = getPlotElement(plotLabel)?.color ?? "#6B7280";
+    } else if (annotType === "theme") {
+      label = themeLabel.trim() || "A";
+      finalColor = color;
+    } else {
+      label = "";          // Desc annotations carry no label badge
+      finalColor = color;
+    }
+    onSave({ annotType, label, color: finalColor, description: description.trim() || null, outOfSequence });
+  }
+
+  const tabs: { key: "plot" | "theme" | "desc"; display: string }[] = [
+    { key: "plot",  display: "Plot"  },
+    { key: "theme", display: "Theme" },
+    { key: "desc",  display: "Desc"  },
+  ];
+
+  return (
+    <div
+      className="bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-700 rounded p-2 shadow-sm"
+      onClick={(e) => e.stopPropagation()}
+    >
+      {/* Type tabs */}
+      <div className="flex gap-1 mb-2">
+        {tabs.map(({ key, display }) => (
+          <button
+            key={key}
+            type="button"
+            onClick={() => setAnnotType(key)}
+            className={[
+              "flex-1 px-1.5 py-0.5 rounded text-[10px] font-semibold transition-colors",
+              annotType === key
+                ? "bg-indigo-600 text-white"
+                : "bg-stone-100 dark:bg-stone-800 text-stone-500 dark:text-stone-400 hover:bg-stone-200 dark:hover:bg-stone-700",
+            ].join(" ")}
+          >
+            {display}
+          </button>
+        ))}
+      </div>
+
+      {/* Per-type controls */}
+      {annotType === "plot" && (
+        <div className="flex flex-wrap gap-1 mb-2">
+          {PLOT_ELEMENTS.map((el) => (
+            <button
+              key={el.label}
+              type="button"
+              onClick={() => setPlotLabel(el.label)}
+              className="px-1.5 py-0.5 rounded text-[10px] text-white font-bold transition-opacity leading-none"
+              style={{ backgroundColor: el.color, opacity: plotLabel === el.label ? 1 : 0.35 }}
+              title={el.fullName}
+            >
+              {el.label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {annotType === "theme" && (
+        <div className="flex items-start gap-1.5 mb-2">
+          <input
+            type="text"
+            value={themeLabel}
+            onChange={(e) => setThemeLabel(e.target.value.toUpperCase().slice(0, 3))}
+            placeholder="A"
+            maxLength={3}
+            className="w-10 px-1 py-0.5 border border-stone-300 dark:border-stone-600 rounded bg-transparent text-[10px] uppercase font-bold text-center shrink-0"
+          />
+          {/* Lock colour to the existing label; let user pick freely for new labels */}
+          <ColorPalette
+            value={color}
+            onChange={setColor}
+            locked={themeColorsByLabel?.has(themeLabel)}
+          />
+        </div>
+      )}
+
+      {annotType === "desc" && (
+        <div className="mb-2">
+          <ColorPalette value={color} onChange={setColor} />
+        </div>
+      )}
+
+      {/* Description — required for Desc type, optional for Plot/Theme */}
+      <input
+        type="text"
+        value={description}
+        onChange={(e) => setDescription(e.target.value)}
+        placeholder={annotType === "desc" ? "Description" : "Description (optional)"}
+        className="w-full px-1.5 py-0.5 border border-stone-300 dark:border-stone-600 rounded bg-transparent text-[10px] mb-2 placeholder:text-stone-400 dark:placeholder:text-stone-600"
+        onKeyDown={(e) => {
+          if (e.key === "Enter") handleSave();
+          if (e.key === "Escape") onCancel();
+          e.stopPropagation();
+        }}
+      />
+
+      {/* Out-of-sequence checkbox */}
+      <label className="flex items-center gap-1.5 mb-2 cursor-pointer select-none">
+        <input
+          type="checkbox"
+          checked={outOfSequence}
+          onChange={(e) => setOutOfSequence(e.target.checked)}
+          className="w-3 h-3 rounded accent-amber-500 cursor-pointer"
+        />
+        <span className="text-[10px] text-stone-500 dark:text-stone-400">↩ Out of chronological sequence</span>
+      </label>
+
+      {/* Buttons */}
+      <div className="flex gap-1">
+        <button
+          type="button"
+          onClick={handleSave}
+          className="flex-1 px-1.5 py-0.5 rounded bg-indigo-600 text-white text-[10px] font-medium hover:bg-indigo-700 transition-colors"
+        >
+          Save
+        </button>
+        <button
+          type="button"
+          onClick={onCancel}
+          className="px-1.5 py-0.5 rounded bg-stone-200 dark:bg-stone-700 text-stone-600 dark:text-stone-300 text-[10px] hover:bg-stone-300 dark:hover:bg-stone-600 transition-colors"
+        >
+          ✕
+        </button>
+      </div>
+    </div>
+  );
 }
 
 // Split a word array into paragraph segments at break boundaries.
@@ -124,9 +587,23 @@ export default function VerseDisplay({
   editingArrows = false,
   onSelectArrowWordById,
   sceneBreakMap = new Map() as Map<string, string | null>,
+  sceneOosSet = new Set() as Set<string>,
   editingScenes = false,
-  onToggleSceneBreak: _onToggleSceneBreak,
+  onToggleSceneBreak,
   onUpdateSceneHeading,
+  onUpdateSceneOutOfSequence,
+  annotationsBySegment,
+  themeColorsByLabel,
+  editingAnnotations = false,
+  annotRangeStartWordId = null,
+  annotRangeEndWordId = null,
+  onSelectAnnotationSegment,
+  onSaveAnnotation,
+  onCancelAnnotation,
+  onDeleteAnnotation,
+  onUpdateAnnotation,
+  onExpandAnnotationRange,
+  showAnnotationCol = false,
 }: VerseDisplayProps) {
   const firstWordId = words[0]?.wordId;
   const verseStartsNewParagraph = firstWordId ? paragraphBreakIds.has(firstWordId) : false;
@@ -244,22 +721,48 @@ export default function VerseDisplay({
   // Used instead of the dashed paragraph separator when a scene break is set.
   function renderSceneSeparator(wordId: string): React.ReactNode {
     const heading = sceneBreakMap.get(wordId) ?? null;
+    const isOos   = sceneOosSet.has(wordId);
     return (
       <div className="mt-5 mb-2">
         {editingScenes ? (
-          <input
-            key={wordId}
-            className="block w-full text-xs font-semibold uppercase tracking-widest text-stone-400 dark:text-stone-500 bg-transparent border-none outline-none focus:ring-0 px-0 pb-1 placeholder:text-stone-300 dark:placeholder:text-stone-700"
-            defaultValue={heading ?? ""}
-            placeholder="Scene heading (optional)"
-            onBlur={(e) => onUpdateSceneHeading?.(wordId, e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); e.stopPropagation(); }}
-            onClick={(e) => e.stopPropagation()}
-          />
-        ) : heading ? (
-          <span className="block w-full text-xs font-semibold uppercase tracking-widest text-stone-400 dark:text-stone-500 pb-1 select-none">
-            {heading}
-          </span>
+          <div className="flex flex-col gap-1 pb-1" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-1.5">
+              <input
+                key={wordId}
+                className="flex-1 min-w-0 text-xs font-semibold uppercase tracking-widest text-stone-400 dark:text-stone-500 bg-transparent border-none outline-none focus:ring-0 px-0 placeholder:text-stone-300 dark:placeholder:text-stone-700"
+                defaultValue={heading ?? ""}
+                placeholder="Scene heading (optional)"
+                onBlur={(e) => onUpdateSceneHeading?.(wordId, e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); e.stopPropagation(); }}
+              />
+              <button
+                type="button"
+                title="Remove this scene break"
+                onClick={() => onToggleSceneBreak?.(wordId)}
+                className="shrink-0 text-stone-400 hover:text-red-500 dark:hover:text-red-400 text-base leading-none transition-colors select-none"
+              >×</button>
+            </div>
+            <label className="flex items-center gap-1.5 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={isOos}
+                onChange={(e) => onUpdateSceneOutOfSequence?.(wordId, e.target.checked)}
+                className="w-3 h-3 rounded accent-amber-500 cursor-pointer"
+              />
+              <span className="text-[10px] text-stone-400 dark:text-stone-500">Out of chronological sequence</span>
+            </label>
+          </div>
+        ) : (heading || isOos) ? (
+          <div className="flex items-center gap-1.5 pb-1 select-none">
+            {isOos && (
+              <span className="text-[10px] font-bold text-amber-500 dark:text-amber-400" title="Out of chronological sequence">↩</span>
+            )}
+            {heading && (
+              <span className="text-xs font-semibold uppercase tracking-widest text-stone-400 dark:text-stone-500">
+                {heading}
+              </span>
+            )}
+          </div>
         ) : null}
         <div
           className={`w-full border-t-2 ${
@@ -268,6 +771,68 @@ export default function VerseDisplay({
               : "border-stone-400 dark:border-stone-500"
           }`}
         />
+      </div>
+    );
+  }
+
+  // ── Annotation column renderer ───────────────────────────────────────────
+  // Renders the right-hand annotation column for one paragraph segment.
+  // Returns null when showAnnotationCol is false.
+  function renderAnnotationColForSeg(segFirstWordId: string): React.ReactNode {
+    if (!showAnnotationCol) return null;
+
+    const entries = annotationsBySegment?.get(segFirstWordId) ?? [];
+    const isRangeStart  = annotRangeStartWordId === segFirstWordId;
+    const isRangeEnd    = annotRangeEndWordId   === segFirstWordId;
+    const showHint      = editingAnnotations && isRangeStart && !annotRangeEndWordId;
+    const showForm      = editingAnnotations && isRangeStart && !!annotRangeEndWordId;
+    const isHighlighted = isRangeStart || isRangeEnd;
+
+    return (
+      <div
+        className={[
+          "w-48 flex-none pl-3 self-stretch flex flex-col",
+          editingAnnotations
+            ? "cursor-pointer hover:bg-indigo-50 dark:hover:bg-indigo-950/20 rounded transition-colors"
+            : "",
+          isHighlighted ? "ring-1 ring-inset ring-indigo-400/60 rounded" : "",
+        ].filter(Boolean).join(" ")}
+        onClick={
+          editingAnnotations
+            ? (e) => { e.stopPropagation(); onSelectAnnotationSegment?.(segFirstWordId, e.shiftKey); }
+            : undefined
+        }
+      >
+        {/* Existing annotations for this segment */}
+        {entries.map(({ annotation, isStart, isEnd }) => (
+          <AnnotBadge
+            key={annotation.id}
+            annotation={annotation}
+            isStart={isStart}
+            isEnd={isEnd}
+            editingAnnotations={editingAnnotations}
+            onDelete={onDeleteAnnotation}
+            onUpdate={onUpdateAnnotation}
+            onAdjustRange={onExpandAnnotationRange}
+          />
+        ))}
+
+        {/* Hint while waiting for the range end */}
+        {showHint && (
+          <div className="text-[10px] text-indigo-500 dark:text-indigo-400 italic leading-tight py-0.5">
+            Click end segment →
+          </div>
+        )}
+
+        {/* Inline creation form */}
+        {showForm && (
+          <AnnotCreationForm
+            key={segFirstWordId}
+            themeColorsByLabel={themeColorsByLabel}
+            onSave={(data) => onSaveAnnotation?.(data)}
+            onCancel={() => onCancelAnnotation?.()}
+          />
+        )}
       </div>
     );
   }
@@ -377,55 +942,67 @@ export default function VerseDisplay({
             >
               {/* Scene break on a within-verse paragraph segment */}
               {si > 0 && sceneBreakMap.has(seg[0].wordId) && renderSceneSeparator(seg[0].wordId)}
-              {/* 3-column grid: label | arc-col | source-text.
-                  dir="rtl" reverses column order for Hebrew (→ source-text | arc-col | label),
-                  so the same template works for both LTR and RTL. */}
-              <div
-                style={{ gridTemplateColumns: "auto 80px 1fr", ...segBoxStyle(segSpeaker, isSegStart, isSegEnd) }}
-                className={`grid items-center${editingSpeech ? " cursor-crosshair" : ""}${si > 0 ? " mt-1" : ""}`}
-                dir={isHebrew ? "rtl" : "ltr"}
-              >
-                {renderDeleteBtn(segSpeaker, segSpeech, isSegStart)}
-                {/* Col 1 — Paragraph label / indent controls */}
-                {editingIndents ? (
-                  <div className="flex items-center gap-0.5" data-seg-label={seg[0].wordId} style={{ minWidth: "3.5rem" }}>
-                    <button
-                      type="button"
-                      onClick={(e) => { e.stopPropagation(); onSetSegmentIndent(paraStartId, Math.max(0, indentLevel - 1)); }}
-                      disabled={indentLevel === 0}
-                      className="w-5 h-5 flex items-center justify-center text-xs rounded text-stone-500 dark:text-stone-400 hover:bg-stone-200 dark:hover:bg-stone-600 disabled:opacity-25 transition-colors"
-                      title="Decrease indent"
-                    >−</button>
-                    <span className="text-teal-600 dark:text-teal-400 text-[10px] font-mono w-4 text-center select-none">
-                      {indentLevel > 0 ? indentLevel : "·"}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={(e) => { e.stopPropagation(); onSetSegmentIndent(paraStartId, Math.min(6, indentLevel + 1)); }}
-                      disabled={indentLevel >= 6}
-                      className="w-5 h-5 flex items-center justify-center text-xs rounded text-stone-500 dark:text-stone-400 hover:bg-stone-200 dark:hover:bg-stone-600 disabled:opacity-25 transition-colors"
-                      title="Increase indent"
-                    >+</button>
-                  </div>
-                ) : (
-                  <span
-                    className="text-stone-400 dark:text-stone-600 text-sm font-mono"
-                    data-seg-label={seg[0].wordId}
-                    data-osis-ref={`${book}.${chapter}.${verseNum}`}
-                    style={{ minWidth: "1.75rem", textAlign: isHebrew ? "right" : "left" }}
+              {/* Flex wrapper so the annotation column can sit to the right of the text grid */}
+              <div className="flex items-stretch">
+                <div className="flex-1 min-w-0">
+                  {/* 3-column grid layout depends on text direction:
+                      Hebrew (RTL): "auto 80px 1fr" with dir="rtl" → visual order: source-text | arc-col | label
+                                    Arc col sits between Hebrew text (left) and verse label (right).
+                      Greek (LTR):  "80px auto 1fr" with dir="ltr"  → visual order: arc-col | label | source-text
+                                    Arc col is the far-left column, before the verse label. */}
+                  <div
+                    style={{ gridTemplateColumns: isHebrew ? "auto 80px 1fr" : "80px auto 1fr", ...segBoxStyle(segSpeaker, isSegStart, isSegEnd) }}
+                    className={`grid items-center${editingSpeech ? " cursor-crosshair" : ""}${editingAnnotations ? " cursor-pointer" : ""}${si > 0 ? " mt-1" : ""}`}
+                    dir={isHebrew ? "rtl" : "ltr"}
                   >
-                    {paraLabels[si]}
-                  </span>
-                )}
-                {/* Col 2 — Arc column (80px, empty — space for ClauseRelationshipOverlay SVG) */}
-                <div />
-                {/* Col 3 — Source text */}
-                <span
-                  className={`${isHebrew ? "text-hebrew" : "text-greek"} leading-loose`}
-                  lang={isHebrew ? "he" : "grc"}
-                >
-                  {renderRuns(runs)}
-                </span>
+                    {renderDeleteBtn(segSpeaker, segSpeech, isSegStart)}
+                    {/* For Greek (LTR): arc col is Col 1 (far left), placed before the verse label */}
+                    {!isHebrew && <div />}
+                    {/* Paragraph label / indent controls
+                        Hebrew: Col 1 (visually rightmost due to dir="rtl")
+                        Greek:  Col 2 (after the far-left arc col) */}
+                    {editingIndents ? (
+                      <div className="flex items-center gap-0.5" data-seg-label={seg[0].wordId} style={{ minWidth: "3.5rem" }}>
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); onSetSegmentIndent(paraStartId, Math.max(0, indentLevel - 1)); }}
+                          disabled={indentLevel === 0}
+                          className="w-5 h-5 flex items-center justify-center text-xs rounded text-stone-500 dark:text-stone-400 hover:bg-stone-200 dark:hover:bg-stone-600 disabled:opacity-25 transition-colors"
+                          title="Decrease indent"
+                        >−</button>
+                        <span className="text-teal-600 dark:text-teal-400 text-[10px] font-mono w-4 text-center select-none">
+                          {indentLevel > 0 ? indentLevel : "·"}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); onSetSegmentIndent(paraStartId, Math.min(6, indentLevel + 1)); }}
+                          disabled={indentLevel >= 6}
+                          className="w-5 h-5 flex items-center justify-center text-xs rounded text-stone-500 dark:text-stone-400 hover:bg-stone-200 dark:hover:bg-stone-600 disabled:opacity-25 transition-colors"
+                          title="Increase indent"
+                        >+</button>
+                      </div>
+                    ) : (
+                      <span
+                        className="text-stone-400 dark:text-stone-600 text-sm font-mono"
+                        data-seg-label={seg[0].wordId}
+                        data-osis-ref={`${book}.${chapter}.${verseNum}`}
+                        style={{ minWidth: "1.75rem", textAlign: isHebrew ? "right" : "left" }}
+                      >
+                        {paraLabels[si]}
+                      </span>
+                    )}
+                    {/* For Hebrew (RTL): arc col is Col 2 (visually between text and label) */}
+                    {isHebrew && <div />}
+                    {/* Source text — Col 3 for both Hebrew and Greek */}
+                    <span
+                      className={`${isHebrew ? "text-hebrew" : "text-greek"} leading-loose`}
+                      lang={isHebrew ? "he" : "grc"}
+                    >
+                      {renderRuns(runs)}
+                    </span>
+                  </div>
+                </div>
+                {renderAnnotationColForSeg(seg[0].wordId)}
               </div>
             </div>
           );
@@ -682,88 +1259,108 @@ export default function VerseDisplay({
           <div key={si}>
             {/* Scene break on a within-verse paragraph segment */}
             {si > 0 && sceneBreakMap.has(seg[0].wordId) && renderSceneSeparator(seg[0].wordId)}
-            {/* Grid layout:
-                5-col (with source): source | source-arc-col | verse-label | translation-arc-col | translation
-                3-col (hideSourceText): verse-label | translation-arc-col | translation
-                The 80px arc columns provide dedicated space for the SVG arc overlay. */}
-            <div
-              className={`grid items-center${editingSpeech ? " cursor-crosshair" : ""}`}
-              style={{
-                gridTemplateColumns: hideSourceText ? "auto 80px 1fr" : "1fr 80px auto 80px 1fr",
-                ...segBoxStyle(segSpeaker, isSegStart, isSegEnd),
-              }}
-            >
-              {renderDeleteBtn(segSpeaker, segSpeech, isSegStart)}
+            {/* Flex wrapper so the annotation column can sit to the right of the text grid */}
+            <div className="flex items-stretch">
+              <div className="flex-1 min-w-0">
+                {/* Grid layout:
+                    Hebrew 5-col: source | source-arc-col | verse-label | translation-arc-col | translation
+                    Greek  5-col: source-arc-col | source | verse-label | translation-arc-col | translation
+                    3-col (hideSourceText): verse-label | translation-arc-col | translation
+                    For Greek (LTR), the 80px source arc column is placed FAR LEFT (before the Greek text)
+                    so relationship brackets appear outside the text, matching the single-col Greek layout.
+                    For Hebrew (RTL), the source arc column stays between text and label (same as before). */}
+                <div
+                  className={`grid items-center${editingSpeech ? " cursor-crosshair" : ""}${editingAnnotations ? " cursor-pointer" : ""}`}
+                  style={{
+                    gridTemplateColumns: hideSourceText
+                      ? "auto 80px 1fr"
+                      : isHebrew
+                        ? "1fr 80px auto 80px 1fr"   // Hebrew: text | arc | label | trans-arc | trans
+                        : "80px 1fr auto 80px 1fr",  // Greek:  arc  | text | label | trans-arc | trans
+                    ...segBoxStyle(segSpeaker, isSegStart, isSegEnd),
+                  }}
+                >
+                  {renderDeleteBtn(segSpeaker, segSpeech, isSegStart)}
 
-              {/* Cols 1–2 — Source words + source arc column (hidden in translation-only mode) */}
-              {!hideSourceText && (
-                <>
-                  {/* Col 1 — Source words. Indent towards the source text's reading direction:
-                      Hebrew (RTL) shifts left via paddingRight; Greek (LTR) shifts right via paddingLeft. */}
-                  <div
-                    dir={isHebrew ? "rtl" : "ltr"}
-                    style={{
-                      paddingRight: isHebrew && indentLevel > 0 ? `${indentLevel * 2}rem` : undefined,
-                      paddingLeft:  !isHebrew && indentLevel > 0 ? `${indentLevel * 2}rem` : undefined,
-                    }}
-                  >
-                    <span
-                      className={`${isHebrew ? "text-hebrew" : "text-greek"} leading-loose`}
-                      lang={isHebrew ? "he" : "grc"}
-                    >
-                      {renderRuns(runs)}
-                    </span>
+                  {/* Source words + source arc column (hidden in translation-only mode).
+                      Greek: arc col (Col 1) is rendered FIRST so it appears far-left of the Greek text.
+                      Hebrew: source words (Col 1) then arc col (Col 2) — layout matches single-col Hebrew. */}
+                  {!hideSourceText && (
+                    <>
+                      {/* Greek only: Col 1 — source arc column (80px, far-left, filled by SVG overlay) */}
+                      {!isHebrew && <div />}
+
+                      {/* Source words — Col 2 for Greek, Col 1 for Hebrew.
+                          Indent towards the source text's reading direction:
+                          Hebrew (RTL) shifts left via paddingRight; Greek (LTR) shifts right via paddingLeft. */}
+                      <div
+                        dir={isHebrew ? "rtl" : "ltr"}
+                        style={{
+                          paddingRight: isHebrew && indentLevel > 0 ? `${indentLevel * 2}rem` : undefined,
+                          paddingLeft:  !isHebrew && indentLevel > 0 ? `${indentLevel * 2}rem` : undefined,
+                        }}
+                      >
+                        <span
+                          className={`${isHebrew ? "text-hebrew" : "text-greek"} leading-loose`}
+                          lang={isHebrew ? "he" : "grc"}
+                        >
+                          {renderRuns(runs)}
+                        </span>
+                      </div>
+
+                      {/* Hebrew only: Col 2 — source arc column (80px, filled by SVG overlay) */}
+                      {isHebrew && <div />}
+                    </>
+                  )}
+
+                  {/* Col 3 — Paragraph label / indent controls */}
+                  <div className="flex items-center justify-center">
+                    {editingIndents ? (
+                      <div className="flex items-center gap-0.5" data-seg-label={seg[0].wordId}>
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); onSetSegmentIndent(paraStartId, Math.max(0, indentLevel - 1)); }}
+                          disabled={indentLevel === 0}
+                          className="w-5 h-5 flex items-center justify-center text-xs rounded text-stone-500 dark:text-stone-400 hover:bg-stone-200 dark:hover:bg-stone-600 disabled:opacity-25 transition-colors"
+                          title="Decrease indent"
+                        >−</button>
+                        <span className="text-teal-600 dark:text-teal-400 text-[10px] font-mono w-4 text-center select-none">
+                          {indentLevel > 0 ? indentLevel : "·"}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); onSetSegmentIndent(paraStartId, Math.min(6, indentLevel + 1)); }}
+                          disabled={indentLevel >= 6}
+                          className="w-5 h-5 flex items-center justify-center text-xs rounded text-stone-500 dark:text-stone-400 hover:bg-stone-200 dark:hover:bg-stone-600 disabled:opacity-25 transition-colors"
+                          title="Increase indent"
+                        >+</button>
+                      </div>
+                    ) : (
+                      <span
+                        className="text-stone-400 dark:text-stone-600 text-sm font-mono select-none"
+                        data-seg-label={seg[0].wordId}
+                        data-osis-ref={`${book}.${chapter}.${verseNum}`}
+                        style={{ minWidth: "2.5rem", textAlign: "center" }}
+                      >
+                        {paraLabels[si]}
+                      </span>
+                    )}
                   </div>
 
-                  {/* Col 2 — Source arc column (80px, empty — filled by ClauseRelationshipOverlay SVG) */}
+                  {/* Col 4 — Translation arc column (80px, empty — filled by ClauseRelationshipOverlay SVG) */}
                   <div />
-                </>
-              )}
 
-              {/* Col 3 — Paragraph label / indent controls */}
-              <div className="flex items-center justify-center">
-                {editingIndents ? (
-                  <div className="flex items-center gap-0.5" data-seg-label={seg[0].wordId}>
-                    <button
-                      type="button"
-                      onClick={(e) => { e.stopPropagation(); onSetSegmentIndent(paraStartId, Math.max(0, indentLevel - 1)); }}
-                      disabled={indentLevel === 0}
-                      className="w-5 h-5 flex items-center justify-center text-xs rounded text-stone-500 dark:text-stone-400 hover:bg-stone-200 dark:hover:bg-stone-600 disabled:opacity-25 transition-colors"
-                      title="Decrease indent"
-                    >−</button>
-                    <span className="text-teal-600 dark:text-teal-400 text-[10px] font-mono w-4 text-center select-none">
-                      {indentLevel > 0 ? indentLevel : "·"}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={(e) => { e.stopPropagation(); onSetSegmentIndent(paraStartId, Math.min(6, indentLevel + 1)); }}
-                      disabled={indentLevel >= 6}
-                      className="w-5 h-5 flex items-center justify-center text-xs rounded text-stone-500 dark:text-stone-400 hover:bg-stone-200 dark:hover:bg-stone-600 disabled:opacity-25 transition-colors"
-                      title="Increase indent"
-                    >+</button>
-                  </div>
-                ) : (
-                  <span
-                    className="text-stone-400 dark:text-stone-600 text-sm font-mono select-none"
-                    data-seg-label={seg[0].wordId}
-                    data-osis-ref={`${book}.${chapter}.${verseNum}`}
-                    style={{ minWidth: "2.5rem", textAlign: "center" }}
+                  {/* Col 5 — Translation content. English always indents rightward. */}
+                  <div
+                    className="flex flex-col gap-1"
+                    data-seg-translation={seg[0].wordId}
+                    style={{ paddingLeft: indentLevel > 0 ? `${indentLevel * 2}rem` : undefined }}
                   >
-                    {paraLabels[si]}
-                  </span>
-                )}
+                    {tvRowContent}
+                  </div>
+                </div>
               </div>
-
-              {/* Col 4 — Translation arc column (80px, empty — filled by ClauseRelationshipOverlay SVG) */}
-              <div />
-
-              {/* Col 5 — Translation content. English always indents rightward. */}
-              <div
-                className="flex flex-col gap-1"
-                style={{ paddingLeft: indentLevel > 0 ? `${indentLevel * 2}rem` : undefined }}
-              >
-                {tvRowContent}
-              </div>
+              {renderAnnotationColForSeg(seg[0].wordId)}
             </div>
           </div>
         );

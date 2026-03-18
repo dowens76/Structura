@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import type {
   Passage, Word,
   Character, CharacterRef, SpeechSection, WordTag, WordTagRef,
-  Translation, TranslationVerse, ClauseRelationship, WordArrow,
+  Translation, TranslationVerse, ClauseRelationship, WordArrow, LineAnnotation,
 } from "@/lib/db/schema";
 import type { DisplayMode, GrammarFilterState, TranslationTextEntry } from "@/lib/morphology/types";
 import type { ColorRule } from "@/lib/morphology/colorRules";
@@ -72,6 +72,12 @@ interface Props {
   // Clause relationships + word arrows
   initialClauseRelationships: ClauseRelationship[];
   initialWordArrows: WordArrow[];
+  // Word formatting (bold / italic)
+  initialWordFormatting: { wordId: string; isBold: boolean; isItalic: boolean }[];
+  // Scene / episode breaks
+  initialSceneBreaks: { wordId: string; heading: string | null; outOfSequence: boolean }[];
+  // Line annotations (plot / theme / desc)
+  initialLineAnnotations: LineAnnotation[];
 }
 
 export default function PassageView({
@@ -97,6 +103,9 @@ export default function PassageView({
   translationVerseData,
   initialClauseRelationships,
   initialWordArrows,
+  initialWordFormatting,
+  initialSceneBreaks,
+  initialLineAnnotations,
 }: Props) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -119,25 +128,20 @@ export default function PassageView({
   }, [initialPassage.id]);
 
   // ── Display / reading settings ────────────────────────────────────────────
-  const [displayMode, setDisplayMode] = useState<DisplayMode>(() =>
-    readLocal<DisplayMode>("structura:displayMode", "clean")
-  );
+  // Use hardcoded defaults for initial render so server and client HTML match,
+  // then hydrate from localStorage in the mount useEffect to avoid hydration mismatch.
+  const [displayMode, setDisplayMode] = useState<DisplayMode>("clean");
   const [grammarFilter, setGrammarFilter] = useState<GrammarFilterState>(DEFAULT_FILTER);
   const [selectedWord, setSelectedWord] = useState<Word | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
   const [showTooltips, setShowTooltips] = useState(false);
-  const [activeTranslationAbbrs, setActiveTranslationAbbrs] = useState<Set<string>>(() =>
-    new Set(readLocal<string[]>("structura:activeTranslations", []))
-  );
+  const [activeTranslationAbbrs, setActiveTranslationAbbrs] = useState<Set<string>>(new Set());
   const [colorRules, setColorRules] = useState<ColorRule[]>([]);
-  const [useLinguisticTerms, setUseLinguisticTerms] = useState(() =>
-    readLocal<boolean>("structura:useLinguisticTerms", false)
-  );
-  // Use hardcoded defaults for initial render so server and client HTML match,
-  // then hydrate from localStorage in a useEffect to avoid hydration mismatch.
+  const [useLinguisticTerms, setUseLinguisticTerms] = useState(false);
   const [hebrewFontSize, setHebrewFontSize] = useState(1.375);
   const [greekFontSize, setGreekFontSize] = useState(1.25);
   const [translationFontSize, setTranslationFontSize] = useState(0.875);
+  const [hideSourceText, setHideSourceText] = useState(false);
 
   // Persist sticky settings
   useEffect(() => { writeLocal("structura:displayMode", displayMode); }, [displayMode]);
@@ -145,12 +149,17 @@ export default function PassageView({
   useEffect(() => { writeLocal("structura:hebrewFontSize", hebrewFontSize); }, [hebrewFontSize]);
   useEffect(() => { writeLocal("structura:greekFontSize", greekFontSize); }, [greekFontSize]);
   useEffect(() => { writeLocal("structura:translationFontSize", translationFontSize); }, [translationFontSize]);
+  useEffect(() => { writeLocal("structura:hideSourceText", hideSourceText); }, [hideSourceText]);
 
-  // Read persisted font sizes after mount (safe: no SSR mismatch)
+  // Read all persisted settings after mount (safe: no SSR mismatch)
   useEffect(() => {
+    setDisplayMode(readLocal<DisplayMode>("structura:displayMode", "clean"));
+    setActiveTranslationAbbrs(new Set(readLocal<string[]>("structura:activeTranslations", [])));
+    setUseLinguisticTerms(readLocal<boolean>("structura:useLinguisticTerms", false));
     setHebrewFontSize(readLocal<number>("structura:hebrewFontSize", 1.375));
     setGreekFontSize(readLocal<number>("structura:greekFontSize", 1.25));
     setTranslationFontSize(readLocal<number>("structura:translationFontSize", 0.875));
+    setHideSourceText(readLocal<boolean>("structura:hideSourceText", false));
   }, []);
 
   // ── Editing mode toggles ──────────────────────────────────────────────────
@@ -209,6 +218,28 @@ export default function PassageView({
   const [editingArrows, setEditingArrows]     = useState(false);
   const [arrowFromWordId, setArrowFromWordId] = useState<string | null>(null);
   const [showClearDialog, setShowClearDialog] = useState(false);
+
+  // ── Scene / episode break state ────────────────────────────────────────────
+  const [sceneBreakMap, setSceneBreakMap] = useState<Map<string, string | null>>(
+    () => new Map(initialSceneBreaks.map((sb) => [sb.wordId, sb.heading]))
+  );
+  const [sceneOosSet, setSceneOosSet] = useState<Set<string>>(
+    () => new Set(initialSceneBreaks.filter((sb) => sb.outOfSequence).map((sb) => sb.wordId))
+  );
+  const [editingScenes, setEditingScenes] = useState(false);
+
+  // ── Line annotation state ──────────────────────────────────────────────────
+  const [lineAnnotationsState, setLineAnnotationsState] = useState<LineAnnotation[]>(initialLineAnnotations);
+  const [editingAnnotations, setEditingAnnotations] = useState(false);
+  const [annotRangeStart, setAnnotRangeStart] = useState<string | null>(null);
+  const [annotRangeEnd, setAnnotRangeEnd]     = useState<string | null>(null);
+
+  // ── Word formatting (bold / italic) state ──────────────────────────────────
+  const [wordFormattingMap, setWordFormattingMap] = useState<Map<string, { isBold: boolean; isItalic: boolean }>>(
+    () => new Map(initialWordFormatting.map((f) => [f.wordId, { isBold: f.isBold, isItalic: f.isItalic }]))
+  );
+  const [editingBold, setEditingBold]     = useState(false);
+  const [editingItalic, setEditingItalic] = useState(false);
 
   // ── Overlay ref ────────────────────────────────────────────────────────────
   const overlayContainerRef = useRef<HTMLDivElement>(null);
@@ -322,6 +353,37 @@ export default function PassageView({
       )
       .map((w) => w.wordId);
   }, [words, paragraphBreakIds]);
+
+  // ── Annotation segment map ────────────────────────────────────────────────
+  type SegAnnotationEntry = { annotation: LineAnnotation; isStart: boolean; isEnd: boolean };
+  const annotationsBySegment = useMemo<Map<string, SegAnnotationEntry[]>>(() => {
+    const segIds = paragraphFirstWordIds;
+    const posMap = new Map(segIds.map((id, i) => [id, i]));
+    const map = new Map<string, SegAnnotationEntry[]>();
+    for (const ann of lineAnnotationsState) {
+      const startPos = posMap.get(ann.startWordId) ?? -1;
+      const endPos   = posMap.get(ann.endWordId)   ?? -1;
+      if (startPos < 0) continue;
+      const lo = startPos;
+      const hi = endPos >= 0 ? Math.max(startPos, endPos) : startPos;
+      for (let i = lo; i <= hi; i++) {
+        const segId = segIds[i];
+        if (!map.has(segId)) map.set(segId, []);
+        map.get(segId)!.push({ annotation: ann, isStart: i === lo, isEnd: i === hi });
+      }
+    }
+    return map;
+  }, [lineAnnotationsState, paragraphFirstWordIds]);
+
+  const themeColorsByLabel = useMemo<Map<string, string>>(() => {
+    const map = new Map<string, string>();
+    for (const ann of lineAnnotationsState) {
+      if (ann.annotType === "theme" && !map.has(ann.label)) {
+        map.set(ann.label, ann.color);
+      }
+    }
+    return map;
+  }, [lineAnnotationsState]);
 
   // ── Translation verse data ────────────────────────────────────────────────
   const activeTranslationIds = useMemo(
@@ -460,6 +522,7 @@ export default function PassageView({
   function handleSelectWord(word: Word, shiftHeld = false) {
     if (editingArrows) { handleSelectArrowWord(word); return; }
     if (editingParagraphs) { handleToggleParagraphBreak(word.wordId); return; }
+    if (editingBold || editingItalic) { handleToggleWordFormatting(word); return; }
     if (editingRefs) { if (activeCharId === null) return; handleToggleCharacterRef(word); return; }
     if (editingSpeech) { if (activeCharId === null) return; handleToggleSpeechSection(word, shiftHeld); return; }
     if (editingWordTags) { handleToggleWordTagRef(word); return; }
@@ -602,6 +665,10 @@ export default function PassageView({
   }
 
   function handleSelectTranslationWord(wordId: string, abbr: string) {
+    if (editingBold || editingItalic) {
+      handleToggleFormattingById(wordId, abbr);
+      return;
+    }
     if (editingRefs && activeCharId !== null) {
       handleToggleCharacterRefById(wordId, abbr);
     } else if (editingWordTags && activeWordTagId !== null && !pendingWordTag) {
@@ -1102,8 +1169,251 @@ export default function PassageView({
         case "lineIndents":        setLineIndentMap(new Map()); break;
         case "wordArrows":         setWordArrowsState([]); break;
         case "clauseRelationships":setClauseRelationships([]); break;
+        case "wordFormatting":     setWordFormattingMap(new Map()); break;
       }
     }
+  }
+
+  // ── Scene / episode break handlers ────────────────────────────────────────
+
+  async function handleToggleSceneBreak(wordId: string, record = true) {
+    const wasSet = sceneBreakMap.has(wordId);
+    const wordChapter = wordToChapter.get(wordId) ?? passage.startChapter;
+    if (record) {
+      pushUndo({
+        label: wasSet ? "Remove scene break" : "Add scene break",
+        undo: () => handleToggleSceneBreak(wordId, false),
+      });
+    }
+    setSceneBreakMap((prev) => {
+      const next = new Map(prev);
+      if (next.has(wordId)) next.delete(wordId);
+      else next.set(wordId, null);
+      return next;
+    });
+    setParagraphBreakIds((prev) => {
+      const next = new Set(prev);
+      if (wasSet) next.delete(wordId);
+      else next.add(wordId);
+      return next;
+    });
+    try {
+      await fetch("/api/scene-breaks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ wordId, book: osisBook, chapter: wordChapter, source: textSource }),
+      });
+    } catch {
+      setSceneBreakMap((prev) => {
+        const next = new Map(prev);
+        if (wasSet) next.set(wordId, null);
+        else next.delete(wordId);
+        return next;
+      });
+      setParagraphBreakIds((prev) => {
+        const next = new Set(prev);
+        if (wasSet) next.add(wordId);
+        else next.delete(wordId);
+        return next;
+      });
+    }
+  }
+
+  async function handleUpdateSceneHeading(wordId: string, heading: string) {
+    const trimmed = heading.trim() || null;
+    setSceneBreakMap((prev) => {
+      const next = new Map(prev);
+      next.set(wordId, trimmed);
+      return next;
+    });
+    try {
+      await fetch("/api/scene-breaks", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ wordId, heading: trimmed }),
+      });
+    } catch { /* non-critical */ }
+  }
+
+  async function handleUpdateSceneOutOfSequence(wordId: string, outOfSequence: boolean) {
+    setSceneOosSet((prev) => {
+      const next = new Set(prev);
+      if (outOfSequence) next.add(wordId);
+      else next.delete(wordId);
+      return next;
+    });
+    try {
+      await fetch("/api/scene-breaks", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ wordId, outOfSequence }),
+      });
+    } catch { /* non-critical */ }
+  }
+
+  // ── Line annotation handlers ───────────────────────────────────────────────
+
+  function handleSelectAnnotationSegment(segWordId: string, shiftHeld = false) {
+    if (annotRangeEnd !== null) {
+      if (shiftHeld) {
+        setAnnotRangeEnd(segWordId);
+      } else {
+        setAnnotRangeStart(segWordId);
+        setAnnotRangeEnd(null);
+      }
+      return;
+    }
+    if (!annotRangeStart) {
+      setAnnotRangeStart(segWordId);
+      return;
+    }
+    setAnnotRangeEnd(segWordId);
+  }
+
+  function handleCancelAnnotation() {
+    setAnnotRangeStart(null);
+    setAnnotRangeEnd(null);
+  }
+
+  async function handleSaveAnnotation(data: {
+    annotType: string;
+    label: string;
+    color: string;
+    description: string | null;
+    outOfSequence: boolean;
+  }) {
+    if (!annotRangeStart) return;
+    const endWordId = annotRangeEnd ?? annotRangeStart;
+    const segIds = paragraphFirstWordIds;
+    const posMap = new Map(segIds.map((id, i) => [id, i]));
+    const startPos = posMap.get(annotRangeStart) ?? 0;
+    const endPos   = posMap.get(endWordId) ?? 0;
+    const lo = segIds[Math.min(startPos, endPos)] ?? annotRangeStart;
+    const hi = segIds[Math.max(startPos, endPos)] ?? endWordId;
+    const wordChapter = wordToChapter.get(lo) ?? passage.startChapter;
+
+    setAnnotRangeStart(null);
+    setAnnotRangeEnd(null);
+
+    try {
+      const resp = await fetch("/api/line-annotations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...data,
+          startWordId: lo,
+          endWordId:   hi,
+          book:        osisBook,
+          chapter:     wordChapter,
+          source:      textSource,
+        }),
+      });
+      const { annotation } = await resp.json();
+      setLineAnnotationsState((prev) => [...prev, annotation]);
+    } catch { /* non-critical */ }
+  }
+
+  async function handleDeleteAnnotation(id: number) {
+    setLineAnnotationsState((prev) => prev.filter((a) => a.id !== id));
+    try {
+      await fetch("/api/line-annotations", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+    } catch { /* non-critical */ }
+  }
+
+  async function handleUpdateAnnotation(
+    id: number,
+    updates: { label?: string; color?: string; description?: string | null; outOfSequence?: boolean }
+  ) {
+    setLineAnnotationsState((prev) => prev.map((a) => (a.id === id ? { ...a, ...updates } : a)));
+    try {
+      await fetch("/api/line-annotations", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, ...updates }),
+      });
+    } catch { /* non-critical */ }
+  }
+
+  async function handleExpandAnnotationRange(
+    id: number,
+    direction: "expand-start" | "shrink-start" | "expand-end" | "shrink-end"
+  ) {
+    const ann = lineAnnotationsState.find((a) => a.id === id);
+    if (!ann) return;
+    const segIds = paragraphFirstWordIds;
+    const posMap = new Map(segIds.map((seg, i) => [seg, i]));
+    const startPos = posMap.get(ann.startWordId) ?? 0;
+    const endPos   = posMap.get(ann.endWordId)   ?? startPos;
+
+    let newStartPos = startPos;
+    let newEndPos   = endPos;
+    switch (direction) {
+      case "expand-start": newStartPos = Math.max(0, startPos - 1); break;
+      case "shrink-start": newStartPos = Math.min(startPos + 1, endPos); break;
+      case "expand-end":   newEndPos   = Math.min(endPos + 1, segIds.length - 1); break;
+      case "shrink-end":   newEndPos   = Math.max(endPos - 1, startPos); break;
+    }
+    if (newStartPos === startPos && newEndPos === endPos) return;
+
+    const newStart = segIds[newStartPos];
+    const newEnd   = segIds[newEndPos];
+    if (!newStart || !newEnd) return;
+
+    setLineAnnotationsState((prev) =>
+      prev.map((a) => a.id === id ? { ...a, startWordId: newStart, endWordId: newEnd } : a)
+    );
+    try {
+      await fetch("/api/line-annotations", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, startWordId: newStart, endWordId: newEnd }),
+      });
+    } catch {
+      setLineAnnotationsState((prev) =>
+        prev.map((a) => a.id === id ? { ...a, startWordId: ann.startWordId, endWordId: ann.endWordId } : a)
+      );
+    }
+  }
+
+  // ── Word formatting (bold / italic) handlers ───────────────────────────────
+
+  async function handleToggleFormattingById(wordId: string, source: string) {
+    const wordChapter = wordToChapter.get(wordId) ?? passage.startChapter;
+    const existing = wordFormattingMap.get(wordId) ?? { isBold: false, isItalic: false };
+    const nextBold   = editingBold   ? !existing.isBold   : existing.isBold;
+    const nextItalic = editingItalic ? !existing.isItalic : existing.isItalic;
+
+    setWordFormattingMap((prev) => {
+      const next = new Map(prev);
+      if (!nextBold && !nextItalic) next.delete(wordId);
+      else next.set(wordId, { isBold: nextBold, isItalic: nextItalic });
+      return next;
+    });
+    try {
+      await fetch("/api/word-formatting", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          wordId, isBold: nextBold, isItalic: nextItalic,
+          textSource: source, book: osisBook, chapter: wordChapter,
+        }),
+      });
+    } catch {
+      setWordFormattingMap((prev) => {
+        const next = new Map(prev);
+        if (!existing.isBold && !existing.isItalic) next.delete(wordId);
+        else next.set(wordId, existing);
+        return next;
+      });
+    }
+  }
+
+  async function handleToggleWordFormatting(word: Word) {
+    return handleToggleFormattingById(word.wordId, textSource);
   }
 
   // ── Shared range button helper ────────────────────────────────────────────
@@ -1274,6 +1584,34 @@ export default function PassageView({
             ].join(" ")}
           >¶</button>
 
+          {/* Scene / episode break mode */}
+          <button
+            onClick={() => setEditingScenes((v) => !v)}
+            title={editingScenes
+              ? "Exit scene break mode"
+              : "Enter scene break mode — click any word to start/remove a scene break there"}
+            className={["px-2.5 py-1 rounded text-xs font-medium transition-colors",
+              editingScenes ? "bg-amber-500 text-white"
+                : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
+            ].join(" ")}
+          >§</button>
+
+          {/* Line annotation mode */}
+          <button
+            onClick={() => {
+              setEditingAnnotations((v) => !v);
+              setAnnotRangeStart(null);
+              setAnnotRangeEnd(null);
+            }}
+            title={editingAnnotations
+              ? "Exit annotation mode"
+              : "Add plot/theme annotations to paragraph segments"}
+            className={["px-2.5 py-1 rounded text-xs font-medium transition-colors",
+              editingAnnotations ? "bg-indigo-600 text-white"
+                : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
+            ].join(" ")}
+          >≡</button>
+
           {/* Character reference mode */}
           <button
             onClick={() => {
@@ -1418,6 +1756,21 @@ export default function PassageView({
                 >{t.abbreviation}</button>
               ))}
             </div>
+          )}
+
+          {/* Hide source text toggle — only shown when a translation is active */}
+          {hasActiveTranslations && (
+            <button
+              onClick={() => setHideSourceText((v) => !v)}
+              title={hideSourceText ? `Show ${textSource} text` : `Hide ${textSource} text`}
+              className={["px-2.5 py-1 rounded text-xs font-medium transition-colors",
+                hideSourceText
+                  ? "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300"
+                  : "bg-emerald-600 text-white",
+              ].join(" ")}
+            >
+              {textSource}
+            </button>
           )}
 
           {/* Font size controls */}
@@ -1621,6 +1974,7 @@ export default function PassageView({
                     onSetSegmentIndent={handleSetIndent}
                     editingArrows={editingArrows}
                     onSelectArrowWordById={handleSelectArrowWordById}
+                    hideSourceText={hideSourceText}
                   />
                 </div>
               );

@@ -3,6 +3,7 @@ import {
   getChapterSceneBreaks,
   toggleSceneBreak,
   updateSceneBreakHeading,
+  updateSceneBreakOutOfSequence,
 } from "@/lib/db/queries";
 
 // GET /api/scene-breaks?book=Gen&chapter=1
@@ -40,21 +41,26 @@ export async function POST(request: NextRequest) {
 }
 
 // PATCH /api/scene-breaks
-// Body: { wordId, heading }
-// Updates the heading text for an existing scene break.
+// Body: { wordId, heading? } | { wordId, outOfSequence? }
+// Updates the heading and/or outOfSequence flag for an existing scene break.
 export async function PATCH(request: NextRequest) {
-  let body: { wordId?: string; heading?: string | null };
+  let body: { wordId?: string; heading?: string | null; outOfSequence?: boolean };
   try {
     body = await request.json();
   } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const { wordId, heading } = body;
+  const { wordId, heading, outOfSequence } = body;
   if (!wordId) {
     return NextResponse.json({ error: "Missing wordId" }, { status: 400 });
   }
 
-  await updateSceneBreakHeading(wordId, heading ?? null);
+  if (heading !== undefined) {
+    await updateSceneBreakHeading(wordId, heading ?? null);
+  }
+  if (outOfSequence !== undefined) {
+    await updateSceneBreakOutOfSequence(wordId, outOfSequence);
+  }
   return new NextResponse(null, { status: 204 });
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState, useEffect, useRef } from "react";
-import type { Word, Character, CharacterRef, SpeechSection, WordTag, WordTagRef, ClauseRelationship, WordArrow } from "@/lib/db/schema";
+import type { Word, Character, CharacterRef, SpeechSection, WordTag, WordTagRef, ClauseRelationship, WordArrow, LineAnnotation } from "@/lib/db/schema";
 import type { Translation, TranslationVerse } from "@/lib/db/schema";
 import type { DisplayMode, GrammarFilterState, TranslationTextEntry } from "@/lib/morphology/types";
 import VerseDisplay from "./VerseDisplay";
@@ -35,7 +35,8 @@ interface ChapterDisplayProps {
   initialClauseRelationships: ClauseRelationship[];
   initialWordArrows: WordArrow[];
   initialWordFormatting: { wordId: string; isBold: boolean; isItalic: boolean }[];
-  initialSceneBreaks: { wordId: string; heading: string | null }[];
+  initialSceneBreaks: { wordId: string; heading: string | null; outOfSequence: boolean }[];
+  initialLineAnnotations: LineAnnotation[];
 }
 
 const DEFAULT_FILTER: GrammarFilterState = {
@@ -76,6 +77,7 @@ export default function ChapterDisplay({
   initialWordArrows,
   initialWordFormatting,
   initialSceneBreaks,
+  initialLineAnnotations,
 }: ChapterDisplayProps) {
   // Use fallback defaults for SSR — localStorage values are loaded in useEffect after hydration
   const [displayMode, setDisplayMode] = useState<DisplayMode>("clean");
@@ -101,7 +103,19 @@ export default function ChapterDisplay({
   const [sceneBreakMap, setSceneBreakMap] = useState<Map<string, string | null>>(
     () => new Map(initialSceneBreaks.map((sb) => [sb.wordId, sb.heading]))
   );
+  // Set of wordIds for scenes marked as out of chronological sequence.
+  const [sceneOosSet, setSceneOosSet] = useState<Set<string>>(
+    () => new Set(initialSceneBreaks.filter((sb) => sb.outOfSequence).map((sb) => sb.wordId))
+  );
   const [editingScenes, setEditingScenes] = useState(false);
+
+  // ── Line annotation state ────────────────────────────────────────────────────
+  // lineAnnotations: full chapter list; annotRangeStart/End: two-click segment selection.
+  const [lineAnnotations, setLineAnnotations] = useState<LineAnnotation[]>(initialLineAnnotations);
+  const [editingAnnotations, setEditingAnnotations] = useState(false);
+  // First word of the start/end segment selected for a new annotation.
+  const [annotRangeStart, setAnnotRangeStart] = useState<string | null>(null);
+  const [annotRangeEnd, setAnnotRangeEnd] = useState<string | null>(null);
 
   // ── Character tagging state ────────────────────────────────────────────────
   const [highlightCharIds, setHighlightCharIds] = useState<Set<number>>(new Set());
@@ -149,6 +163,14 @@ export default function ChapterDisplay({
   const [relFromSegWordId, setRelFromSegWordId] = useState<string | null>(null);
   const [relToSegWordId, setRelToSegWordId]     = useState<string | null>(null);
   const [showRelPicker, setShowRelPicker]       = useState(false);
+
+  // Scroll the text container back to top whenever the relationship picker opens
+  // so the picker bar (which lives in the scrollable content) is visible.
+  useEffect(() => {
+    if (showRelPicker && textContainerRef.current) {
+      textContainerRef.current.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  }, [showRelPicker]);
 
   // ── Word arrows state ──────────────────────────────────────────────────────
   const [wordArrowsState, setWordArrowsState] = useState<WordArrow[]>(initialWordArrows);
@@ -208,6 +230,41 @@ export default function ChapterDisplay({
       )
       .map((w) => w.wordId);
   }, [words, paragraphBreakIds]);
+
+  // ── Annotation coverage map ───────────────────────────────────────────────
+  // Maps each paragraph-segment first-word-id to the annotations that cover it,
+  // along with whether this segment is the start/end of each annotation's range.
+  type SegAnnotationEntry = { annotation: LineAnnotation; isStart: boolean; isEnd: boolean };
+  const annotationsBySegment = useMemo<Map<string, SegAnnotationEntry[]>>(() => {
+    const segIds = paragraphFirstWordIds;
+    const posMap = new Map(segIds.map((id, i) => [id, i]));
+    const map = new Map<string, SegAnnotationEntry[]>();
+    for (const ann of lineAnnotations) {
+      const startPos = posMap.get(ann.startWordId) ?? -1;
+      const endPos   = posMap.get(ann.endWordId)   ?? -1;
+      if (startPos < 0) continue;
+      const lo = startPos;
+      const hi = endPos >= 0 ? Math.max(startPos, endPos) : startPos;
+      for (let i = lo; i <= hi; i++) {
+        const segId = segIds[i];
+        if (!map.has(segId)) map.set(segId, []);
+        map.get(segId)!.push({ annotation: ann, isStart: i === lo, isEnd: i === hi });
+      }
+    }
+    return map;
+  }, [lineAnnotations, paragraphFirstWordIds]);
+
+  // Maps theme label → color (first occurrence wins) so the creation form can
+  // pre-fill the color when reusing an existing theme label.
+  const themeColorsByLabel = useMemo<Map<string, string>>(() => {
+    const map = new Map<string, string>();
+    for (const ann of lineAnnotations) {
+      if (ann.annotType === "theme" && !map.has(ann.label)) {
+        map.set(ann.label, ann.color);
+      }
+    }
+    return map;
+  }, [lineAnnotations]);
 
   // ── Undo stack ─────────────────────────────────────────────────────────────
   type UndoEntry = { label: string; undo: () => void | Promise<void> };
@@ -334,6 +391,12 @@ export default function ChapterDisplay({
   }
 
   function handleSelectWord(word: Word, shiftHeld = false) {
+    if (editingAnnotations) {
+      // Map the clicked word to its paragraph-segment first-word-id
+      const segId = wordToParaStart.get(word.wordId) ?? word.wordId;
+      handleSelectAnnotationSegment(segId, shiftHeld);
+      return;
+    }
     if (editingBold || editingItalic) {
       handleToggleWordFormatting(word);
       return;
@@ -472,6 +535,168 @@ export default function ChapterDisplay({
       });
     } catch {
       // Heading update failure is non-critical; leave optimistic state
+    }
+  }
+
+  async function handleUpdateSceneOutOfSequence(wordId: string, outOfSequence: boolean) {
+    // Optimistic update
+    setSceneOosSet((prev) => {
+      const next = new Set(prev);
+      if (outOfSequence) next.add(wordId);
+      else next.delete(wordId);
+      return next;
+    });
+    try {
+      await fetch("/api/scene-breaks", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ wordId, outOfSequence }),
+      });
+    } catch {
+      // Non-critical; leave optimistic state
+    }
+  }
+
+  // ── Line annotation handlers ─────────────────────────────────────────────────
+
+  function handleSelectAnnotationSegment(segWordId: string, shiftHeld = false) {
+    if (annotRangeEnd !== null) {
+      // Form is already showing
+      if (shiftHeld) {
+        // Shift+click while form shows → redefine end without losing start
+        setAnnotRangeEnd(segWordId);
+      } else {
+        // Plain click → discard and start fresh
+        setAnnotRangeStart(segWordId);
+        setAnnotRangeEnd(null);
+      }
+      return;
+    }
+    if (!annotRangeStart) {
+      // No start yet → set start regardless of shift
+      setAnnotRangeStart(segWordId);
+      return;
+    }
+    // Start is set, end not yet: any click (same or different) completes the range
+    setAnnotRangeEnd(segWordId);
+  }
+
+  function handleCancelAnnotation() {
+    setAnnotRangeStart(null);
+    setAnnotRangeEnd(null);
+  }
+
+  async function handleSaveAnnotation(data: {
+    annotType: string;
+    label: string;
+    color: string;
+    description: string | null;
+    outOfSequence: boolean;
+  }) {
+    if (!annotRangeStart) return;
+    const endWordId = annotRangeEnd ?? annotRangeStart;
+    // Normalise so that start ≤ end in segment order
+    const segIds = paragraphFirstWordIds;
+    const posMap = new Map(segIds.map((id, i) => [id, i]));
+    const startPos = posMap.get(annotRangeStart) ?? 0;
+    const endPos   = posMap.get(endWordId) ?? 0;
+    const lo = segIds[Math.min(startPos, endPos)] ?? annotRangeStart;
+    const hi = segIds[Math.max(startPos, endPos)] ?? endWordId;
+
+    // Optimistic clear
+    setAnnotRangeStart(null);
+    setAnnotRangeEnd(null);
+
+    try {
+      const resp = await fetch("/api/line-annotations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...data,
+          startWordId: lo,
+          endWordId:   hi,
+          book,
+          chapter,
+          source: textSource,
+        }),
+      });
+      const { annotation } = await resp.json();
+      setLineAnnotations((prev) => [...prev, annotation]);
+    } catch {
+      // non-critical, silently ignore — annotation just won't appear
+    }
+  }
+
+  async function handleDeleteAnnotation(id: number) {
+    // Optimistic
+    setLineAnnotations((prev) => prev.filter((a) => a.id !== id));
+    try {
+      await fetch("/api/line-annotations", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+    } catch {
+      // non-critical
+    }
+  }
+
+  async function handleUpdateAnnotation(
+    id: number,
+    updates: { label?: string; color?: string; description?: string | null; outOfSequence?: boolean }
+  ) {
+    setLineAnnotations((prev) => prev.map((a) => (a.id === id ? { ...a, ...updates } : a)));
+    try {
+      await fetch("/api/line-annotations", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, ...updates }),
+      });
+    } catch {
+      // non-critical
+    }
+  }
+
+  /** Expand or shrink the start/end boundary of an annotation by one paragraph segment. */
+  async function handleExpandAnnotationRange(
+    id: number,
+    direction: "expand-start" | "shrink-start" | "expand-end" | "shrink-end"
+  ) {
+    const ann = lineAnnotations.find((a) => a.id === id);
+    if (!ann) return;
+    const segIds = paragraphFirstWordIds;
+    const posMap = new Map(segIds.map((seg, i) => [seg, i]));
+    const startPos = posMap.get(ann.startWordId) ?? 0;
+    const endPos   = posMap.get(ann.endWordId)   ?? startPos;
+
+    let newStartPos = startPos;
+    let newEndPos   = endPos;
+    switch (direction) {
+      case "expand-start": newStartPos = Math.max(0, startPos - 1); break;
+      case "shrink-start": newStartPos = Math.min(startPos + 1, endPos); break;
+      case "expand-end":   newEndPos   = Math.min(endPos + 1, segIds.length - 1); break;
+      case "shrink-end":   newEndPos   = Math.max(endPos - 1, startPos); break;
+    }
+    if (newStartPos === startPos && newEndPos === endPos) return; // already at limit
+
+    const newStart = segIds[newStartPos];
+    const newEnd   = segIds[newEndPos];
+    if (!newStart || !newEnd) return;
+
+    setLineAnnotations((prev) => prev.map((a) =>
+      a.id === id ? { ...a, startWordId: newStart, endWordId: newEnd } : a
+    ));
+    try {
+      await fetch("/api/line-annotations", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, startWordId: newStart, endWordId: newEnd }),
+      });
+    } catch {
+      // rollback
+      setLineAnnotations((prev) => prev.map((a) =>
+        a.id === id ? { ...a, startWordId: ann.startWordId, endWordId: ann.endWordId } : a
+      ));
     }
   }
 
@@ -1016,14 +1241,17 @@ export default function ChapterDisplay({
     });
     const { relationship } = await resp.json();
     setClauseRelationships((prev) => [...prev, relationship]);
-    setRelFromSegWordId(null);
+    // Keep the nucleus (relFromSegWordId) selected so the user can immediately
+    // click another segment to add more satellites to the same bracket.
+    // Clicking the nucleus dot again, or pressing Cancel, will deselect it.
     setRelToSegWordId(null);
     setShowRelPicker(false);
   }
 
   function handleCancelRelPicker() {
+    // Cancel dismisses the satellite selection but keeps the nucleus so the
+    // user can try a different satellite without losing their starting point.
     setShowRelPicker(false);
-    setRelFromSegWordId(null);
     setRelToSegWordId(null);
   }
 
@@ -1168,17 +1396,8 @@ export default function ChapterDisplay({
     <div className="flex h-full min-h-0">
       {/* Main text area */}
       <div className="flex-1 relative min-h-0 flex flex-col" ref={outerRef}>
-        {/* WordArrowOverlay stays in outerRef (unchanged) */}
-        <WordArrowOverlay
-          arrows={wordArrowsState}
-          containerRef={textContainerRef}
-          outerRef={outerRef}
-          editing={editingArrows}
-          selectedFromWordId={arrowFromWordId}
-          onDeleteArrow={handleDeleteWordArrow}
-        />
-        {/* Scrollable text container — ClauseRelationshipOverlay lives INSIDE so it scrolls
-            with the content and uses stable content-relative coordinates. */}
+        {/* Scrollable text container — both overlays live INSIDE so they scroll
+            with the content and use stable scroll-canvas coordinates. */}
         <div
           className="flex-1 overflow-y-auto relative flex flex-col min-h-0"
           ref={textContainerRef}
@@ -1192,8 +1411,16 @@ export default function ChapterDisplay({
             editing={editingRelationships}
             paragraphFirstWordIds={paragraphFirstWordIds}
             selectedSegWordId={relFromSegWordId}
+            selectedToSegWordId={relToSegWordId}
             onSelectSegment={handleSelectSegment}
             onDeleteRelationship={handleDeleteClauseRelationship}
+          />
+          <WordArrowOverlay
+            arrows={wordArrowsState}
+            containerRef={textContainerRef}
+            editing={editingArrows}
+            selectedFromWordId={arrowFromWordId}
+            onDeleteArrow={handleDeleteWordArrow}
           />
         {/* Toolbar */}
         <div className="sticky top-0 z-10 bg-[var(--background)] border-b border-[var(--border)] px-6 py-3 flex items-center gap-4 flex-wrap">
@@ -1247,6 +1474,26 @@ export default function ChapterDisplay({
             ].join(" ")}
           >
             §
+          </button>
+
+          {/* Line annotation mode */}
+          <button
+            onClick={() => {
+              setEditingAnnotations((v) => !v);
+              setAnnotRangeStart(null);
+              setAnnotRangeEnd(null);
+            }}
+            title={editingAnnotations
+              ? "Exit annotation mode"
+              : "Add plot/theme annotations to paragraph segments"}
+            className={[
+              "px-2.5 py-1 rounded text-xs font-medium transition-colors",
+              editingAnnotations
+                ? "bg-indigo-600 text-white"
+                : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
+            ].join(" ")}
+          >
+            ≡
           </button>
 
           {/* Character reference tag mode */}
@@ -1609,8 +1856,8 @@ export default function ChapterDisplay({
           <div className="px-6 py-1 text-xs border-b border-[var(--border)] text-stone-500 dark:text-stone-400"
                style={{ backgroundColor: "var(--nav-bg)" }}>
             {relFromSegWordId
-              ? "Click a second segment dot to choose a relationship type"
-              : "Click a segment dot (◉) in the margin to start a relationship"}
+              ? "Nucleus selected — click another segment dot to add a satellite, or click the nucleus dot again to finish"
+              : "Click a segment dot (◉) in the margin to select the nucleus"}
           </div>
         )}
 
@@ -1670,6 +1917,18 @@ export default function ChapterDisplay({
           <div className="px-6 py-1 text-xs border-b border-[var(--border)] text-stone-500 dark:text-stone-400"
                style={{ backgroundColor: "var(--nav-bg)" }}>
             Click any word to mark/unmark a scene or episode break there
+          </div>
+        )}
+
+        {/* Annotation range-selection hint */}
+        {editingAnnotations && (
+          <div className="px-6 py-1 text-xs border-b border-[var(--border)] text-stone-500 dark:text-stone-400"
+               style={{ backgroundColor: "var(--nav-bg)" }}>
+            {annotRangeStart && !annotRangeEnd
+              ? "Click the end segment to complete the range (or the same segment for a single-line annotation)"
+              : annotRangeStart && annotRangeEnd
+              ? "Fill in the annotation form in the right column, then save"
+              : "Click any word to start annotating that paragraph segment"}
           </div>
         )}
 
@@ -1736,9 +1995,23 @@ export default function ChapterDisplay({
                 editingArrows={editingArrows}
                 onSelectArrowWordById={handleSelectArrowWordById}
                 sceneBreakMap={sceneBreakMap}
+                sceneOosSet={sceneOosSet}
                 editingScenes={editingScenes}
                 onToggleSceneBreak={handleToggleSceneBreak}
                 onUpdateSceneHeading={handleUpdateSceneHeading}
+                onUpdateSceneOutOfSequence={handleUpdateSceneOutOfSequence}
+                annotationsBySegment={annotationsBySegment}
+                themeColorsByLabel={themeColorsByLabel}
+                editingAnnotations={editingAnnotations}
+                annotRangeStartWordId={annotRangeStart}
+                annotRangeEndWordId={annotRangeEnd}
+                onSelectAnnotationSegment={handleSelectAnnotationSegment}
+                onSaveAnnotation={handleSaveAnnotation}
+                onCancelAnnotation={handleCancelAnnotation}
+                onDeleteAnnotation={handleDeleteAnnotation}
+                onUpdateAnnotation={handleUpdateAnnotation}
+                onExpandAnnotationRange={handleExpandAnnotationRange}
+                showAnnotationCol={editingAnnotations || lineAnnotations.length > 0}
               />
             );
           })}

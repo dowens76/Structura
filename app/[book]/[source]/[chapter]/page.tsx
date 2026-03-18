@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
-import { getChapterWords, getBook, getBooksBySource, getChapterCount, getAvailableTranslationsForChapter, getTranslationVerses, getChapterParagraphBreaks, getCharacters, getChapterCharacterRefs, getChapterSpeechSections, getWordTags, getChapterWordTagRefs, getChapterLineIndents, getChapterClauseRelationships, getChapterWordArrows, getChapterWordFormatting, getChapterSceneBreaks } from "@/lib/db/queries";
+import { getChapterWords, getBook, getBooksBySource, getChapterCount, getAvailableTranslationsForChapter, getTranslationVerses, getChapterParagraphBreaks, getCharacters, getChapterCharacterRefs, getChapterSpeechSections, getWordTags, getChapterWordTagRefs, getChapterLineIndents, getChapterClauseRelationships, getChapterWordArrows, getChapterWordFormatting, getChapterSceneBreaks, getChapterLineAnnotations } from "@/lib/db/queries";
 import type { TranslationVerse } from "@/lib/db/schema";
 import type { TextSource } from "@/lib/morphology/types";
 import ChapterDisplay from "@/components/text/ChapterDisplay";
@@ -42,7 +42,7 @@ export default async function ChapterPage({ params }: PageProps) {
          initialCharacterRefs, initialSpeechSections,
          initialWordTags, initialWordTagRefs, initialLineIndents,
          initialClauseRelationships, initialWordArrows, initialWordFormatting,
-         initialSceneBreaks] = await Promise.all([
+         initialSceneBreaks, initialLineAnnotations] = await Promise.all([
     getAvailableTranslationsForChapter(osisBook, chapter),
     getChapterParagraphBreaks(osisBook, chapter),
     getCharacters(osisBook),
@@ -55,6 +55,7 @@ export default async function ChapterPage({ params }: PageProps) {
     getChapterWordArrows(osisBook, chapter, textSource),
     getChapterWordFormatting(osisBook, chapter),
     getChapterSceneBreaks(osisBook, chapter),
+    getChapterLineAnnotations(osisBook, chapter, textSource),
   ]);
   const translationVerseData: Record<number, TranslationVerse[]> = {};
   await Promise.all(
@@ -88,7 +89,7 @@ export default async function ChapterPage({ params }: PageProps) {
         <span style={{ color: "var(--nav-border)" }} className="text-lg select-none">|</span>
 
         {/* Book name + source badge */}
-        <span className="text-sm font-semibold" style={{ color: "var(--nav-fg)" }}>
+        <span className="text-sm font-semibold" style={{ color: "var(--nav-fg-muted)" }}>
           {bookName}
         </span>
         <span
@@ -102,7 +103,7 @@ export default async function ChapterPage({ params }: PageProps) {
         <Link
           href="/import"
           className="text-xs px-2 py-1 rounded transition-colors"
-          style={{ color: "var(--nav-fg-muted)" }}
+          style={{ color: "var(--nav-fg)" }}
         >
           + Import
         </Link>
@@ -111,7 +112,7 @@ export default async function ChapterPage({ params }: PageProps) {
         <Link
           href="/backup"
           className="text-xs px-2 py-1 rounded transition-colors"
-          style={{ color: "var(--nav-fg-muted)" }}
+          style={{ color: "var(--nav-fg)" }}
         >
           Backup
         </Link>
@@ -121,7 +122,7 @@ export default async function ChapterPage({ params }: PageProps) {
           href={`/export/${encodeURIComponent(osisBook)}/${textSource}/${chapter}`}
           target="_blank"
           className="text-xs px-2 py-1 rounded transition-colors"
-          style={{ color: "var(--nav-fg-muted)" }}
+          style={{ color: "var(--nav-fg)" }}
         >
           Export →
         </Link>
@@ -157,7 +158,7 @@ export default async function ChapterPage({ params }: PageProps) {
             <Link
               href={`/${encodeURIComponent(osisBook)}/${textSource}/${chapter - 1}`}
               className="px-2 py-1 rounded text-sm transition-colors"
-              style={{ color: "var(--nav-fg-muted)" }}
+              style={{ color: "var(--nav-fg)" }}
             >
               ← {chapter - 1}
             </Link>
@@ -172,7 +173,7 @@ export default async function ChapterPage({ params }: PageProps) {
             <Link
               href={`/${encodeURIComponent(osisBook)}/${textSource}/${chapter + 1}`}
               className="px-2 py-1 rounded text-sm transition-colors"
-              style={{ color: "var(--nav-fg-muted)" }}
+              style={{ color: "var(--nav-fg)" }}
             >
               {chapter + 1} →
             </Link>
@@ -211,6 +212,7 @@ export default async function ChapterPage({ params }: PageProps) {
           initialWordArrows={initialWordArrows}
           initialWordFormatting={initialWordFormatting}
           initialSceneBreaks={initialSceneBreaks}
+          initialLineAnnotations={initialLineAnnotations}
         />
       </div>
     </div>

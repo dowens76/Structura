@@ -6,16 +6,33 @@ import { RELATIONSHIP_MAP, RELATIONSHIP_TYPES } from "@/lib/morphology/clauseRel
 
 // Width of the dedicated arc column in the verse grid (matches VerseDisplay grid).
 const ARC_COL = 80;
-// Maximum arc depth — keeps arcs within the 80px dedicated arc column for level 0.
-const BASE_DEPTH = 50;
-// Additional control-point offset per nesting level
-const LEVEL_STEP = 24;
+// Subordinate right-angle arrow: how far into the arc column the corner sits.
+// Sized to just fit a 3-char label (≈16 px) plus padding on each side.
+const BASE_DEPTH = 30;
+// Extra depth per nesting level (both subordinate and coordinate).
+const LEVEL_STEP = 20;
+// Coordinate bracket: base tick length (shallow — bracket stays compact).
+const BRACKET_BASE = 16;
 
 interface SegmentPoint {
   wordId: string;
   y: number;
   labelLeftX: number;   // container-relative left edge of [data-seg-label] element
   labelRightX: number;  // container-relative right edge of [data-seg-label] element
+  wordRightX: number;   // container-relative right edge of [data-word-id] element (or label right if absent)
+  wordLeftX: number;    // container-relative left edge of [data-word-id] element (or label left if absent)
+  transLeftX: number;   // container-relative left edge of translation text, after indent padding (5-col only)
+}
+
+/**
+ * A group of relationships that share the same nucleus (fromSegWordId) and
+ * relationship type.  They are rendered as a single multi-arm bracket.
+ */
+interface RelGroup {
+  groupKey: string;        // `${fromSegWordId}::${relType}`
+  fromSegWordId: string;   // nucleus
+  relType: string;
+  toSegs: Array<{ wordId: string; id: number }>;  // satellites
 }
 
 interface Props {
@@ -26,7 +43,8 @@ interface Props {
   hasSource: boolean;       // false when source text is hidden (translation-only mode)
   editing: boolean;
   paragraphFirstWordIds: string[];
-  selectedSegWordId: string | null;
+  selectedSegWordId: string | null;       // nucleus selection — shown in violet
+  selectedToSegWordId?: string | null;    // satellite selection — shown in amber
   onSelectSegment: (wordId: string) => void;
   onDeleteRelationship: (id: number) => void;
 }
@@ -47,7 +65,7 @@ interface Props {
 function getSegmentPos(
   wordId: string,
   container: HTMLElement,
-): { y: number; labelLeftX: number; labelRightX: number } | null {
+): { y: number; labelLeftX: number; labelRightX: number; wordRightX: number; wordLeftX: number; transLeftX: number } | null {
   const wordEl  = container.querySelector(`[data-word-id="${CSS.escape(wordId)}"]`);
   const labelEl = container.querySelector(`[data-seg-label="${CSS.escape(wordId)}"]`);
   if (!labelEl) return null; // label must always be present
@@ -57,6 +75,18 @@ function getSegmentPos(
   const posEl   = wordEl ?? labelEl;
   const posRect = posEl.getBoundingClientRect();
   const lRect   = labelEl.getBoundingClientRect();
+  // Word rect for actual text position (tracks indentation); fall back to label rect.
+  const wRect   = wordEl ? wordEl.getBoundingClientRect() : lRect;
+
+  // Translation text position: the first <p> inside [data-seg-translation] is shifted by
+  // paddingLeft on its parent, so its left edge correctly reflects the indent level.
+  const transEl  = container.querySelector(`[data-seg-translation="${CSS.escape(wordId)}"]`);
+  const transPEl = transEl?.querySelector("p") ?? transEl;
+  const transPRect = transPEl ? transPEl.getBoundingClientRect() : null;
+  // Fallback: labelRight + ARC_COL = the fixed Col-5 boundary (no indent tracking).
+  const transLeftX = transPRect != null
+    ? transPRect.left - cRect.left
+    : lRect.right + ARC_COL;
 
   const y = posRect.top - cRect.top + container.scrollTop + posRect.height / 2;
 
@@ -64,43 +94,114 @@ function getSegmentPos(
     y,
     labelLeftX:  lRect.left  - cRect.left,
     labelRightX: lRect.right - cRect.left,
+    wordRightX:  wRect.right - cRect.left,
+    wordLeftX:   wRect.left  - cRect.left,
+    transLeftX,
   };
 }
 
 /**
- * Assign nesting levels to relationships so overlapping arcs don't collide.
- * Shorter spans get lower (inner) levels.
+ * Group relationships by fromSegWordId + relType.
+ * All relationships in a group share a nucleus and are rendered as one bracket.
  */
-function assignArcLevels(
-  relationships: ClauseRelationship[],
-  yMap: Map<string, number>,
-): Map<number, number> {
-  const sorted = [...relationships]
-    .filter((r) => yMap.has(r.fromSegWordId) && yMap.has(r.toSegWordId))
-    .sort((a, b) => {
-      const spanA = Math.abs(yMap.get(a.toSegWordId)! - yMap.get(a.fromSegWordId)!);
-      const spanB = Math.abs(yMap.get(b.toSegWordId)! - yMap.get(b.fromSegWordId)!);
-      return spanA - spanB;
-    });
+function buildRelGroups(relationships: ClauseRelationship[]): RelGroup[] {
+  const map = new Map<string, RelGroup>();
+  for (const rel of relationships) {
+    const key = `${rel.fromSegWordId}::${rel.relType}`;
+    if (!map.has(key)) {
+      map.set(key, {
+        groupKey: key,
+        fromSegWordId: rel.fromSegWordId,
+        relType: rel.relType,
+        toSegs: [],
+      });
+    }
+    map.get(key)!.toSegs.push({ wordId: rel.toSegWordId, id: rel.id });
+  }
+  return [...map.values()];
+}
 
-  const levelMap = new Map<number, number>();
+/**
+ * Assign nesting levels to relationship groups so overlapping paths don't collide.
+ * Shorter-span groups get lower (inner) levels.
+ */
+function assignGroupArcLevels(
+  groups: RelGroup[],
+  yMap: Map<string, number>,
+): Map<string, number> {
+  type Entry = { key: string; minY: number; maxY: number };
+  const entries: Entry[] = [];
+
+  for (const group of groups) {
+    const fromY = yMap.get(group.fromSegWordId);
+    if (fromY == null) continue;
+    const toYs = group.toSegs
+      .map((s) => yMap.get(s.wordId))
+      .filter((y): y is number => y != null);
+    if (toYs.length === 0) continue;
+    const allYs = [fromY, ...toYs];
+    entries.push({
+      key:  group.groupKey,
+      minY: Math.min(...allYs),
+      maxY: Math.max(...allYs),
+    });
+  }
+
+  // Sort by span (shorter first = lower/inner level)
+  entries.sort((a, b) => (a.maxY - a.minY) - (b.maxY - b.minY));
+
+  const levelMap = new Map<string, number>();
   const occupied: Array<{ minY: number; maxY: number; level: number }> = [];
 
-  for (const rel of sorted) {
-    const y1 = yMap.get(rel.fromSegWordId)!;
-    const y2 = yMap.get(rel.toSegWordId)!;
-    const minY = Math.min(y1, y2);
-    const maxY = Math.max(y1, y2);
-
+  for (const entry of entries) {
     let level = 0;
-    while (occupied.some((o) => o.level === level && o.minY < maxY && o.maxY > minY)) {
+    while (occupied.some((o) => o.level === level && o.minY < entry.maxY && o.maxY > entry.minY)) {
       level++;
     }
-    levelMap.set(rel.id, level);
-    occupied.push({ minY, maxY, level });
+    levelMap.set(entry.key, level);
+    occupied.push({ minY: entry.minY, maxY: entry.maxY, level });
   }
 
   return levelMap;
+}
+
+/**
+ * Build a map from each segment word-id to its connected coordinate group
+ * (all segments reachable via coordinate relationships).
+ * Used to adjust subordinate fromY to the group midpoint and to render midpoint dots.
+ */
+function buildCoordGroups(
+  relationships: ClauseRelationship[],
+): Map<string, string[]> {
+  const adj = new Map<string, string[]>();
+  for (const rel of relationships) {
+    const rt = RELATIONSHIP_MAP[rel.relType];
+    if (!rt || rt.category !== "coordinate") continue;
+    const { fromSegWordId: a, toSegWordId: b } = rel;
+    if (!adj.has(a)) adj.set(a, []);
+    if (!adj.has(b)) adj.set(b, []);
+    adj.get(a)!.push(b);
+    adj.get(b)!.push(a);
+  }
+
+  const groupOf = new Map<string, string[]>();
+  const visited = new Set<string>();
+
+  for (const startId of adj.keys()) {
+    if (visited.has(startId)) continue;
+    const group: string[] = [];
+    const queue = [startId];
+    while (queue.length > 0) {
+      const curr = queue.shift()!;
+      if (visited.has(curr)) continue;
+      visited.add(curr);
+      group.push(curr);
+      for (const nb of (adj.get(curr) ?? [])) queue.push(nb);
+    }
+    for (const id of group) groupOf.set(id, group);
+  }
+
+  return groupOf;
 }
 
 export default function ClauseRelationshipOverlay({
@@ -112,12 +213,13 @@ export default function ClauseRelationshipOverlay({
   editing,
   paragraphFirstWordIds,
   selectedSegWordId,
+  selectedToSegWordId,
   onSelectSegment,
   onDeleteRelationship,
 }: Props) {
   const [points, setPoints]       = useState<SegmentPoint[]>([]);
   const [svgHeight, setSvgHeight] = useState(0);
-  const [hoveredId, setHoveredId] = useState<number | null>(null);
+  const [hoveredKey, setHoveredKey] = useState<string | null>(null); // groupKey of hovered bracket
   const frameRef = useRef<number | null>(null);
 
   function measure() {
@@ -135,7 +237,6 @@ export default function ClauseRelationshipOverlay({
       if (pos !== null) newPoints.push({ wordId, ...pos });
     }
 
-    // SVG height = full scrollable content height so arcs anywhere on the page render
     setSvgHeight(c.scrollHeight);
     setPoints(newPoints);
   }
@@ -151,7 +252,6 @@ export default function ClauseRelationshipOverlay({
     const c = containerRef.current;
     if (!c) return () => { if (frameRef.current) cancelAnimationFrame(frameRef.current); };
 
-    // Only need to re-measure when the content size changes (scroll is free since SVG scrolls with content)
     const ro = new ResizeObserver(scheduleMeasure);
     ro.observe(c);
 
@@ -165,35 +265,88 @@ export default function ClauseRelationshipOverlay({
   const yMap          = new Map(points.map((p) => [p.wordId, p.y]));
   const labelLeftMap  = new Map(points.map((p) => [p.wordId, p.labelLeftX]));
   const labelRightMap = new Map(points.map((p) => [p.wordId, p.labelRightX]));
+  const wordLeftMap   = new Map(points.map((p) => [p.wordId, p.wordLeftX]));
 
   if (svgHeight === 0) return null;
 
   // Arc placement:
-  //   5-col (hasSource + hasTranslation): source arc LEFT of verse label, mirror arc RIGHT
-  //   Single-col LTR (Greek, hasSource): arc on RIGHT of verse label
-  //   Single-col RTL (Hebrew, hasSource): arc on LEFT of verse label
-  //   Translation-only (!hasSource): single arc on RIGHT of verse label (into translation arc col)
-  // arcGoesLeft = true  → arc is in LEFT arc column (source side)
-  // arcGoesLeft = false → arc is in RIGHT arc column (translation/source-single-col side)
-  const arcGoesLeft = hasSource && (hasTranslation || isHebrew);
+  //   Hebrew 5-col (hasSource + isHebrew + hasTranslation):
+  //     source arc between Hebrew text and label (Col 2); mirror arc between label and translation (Col 4)
+  //   Greek 5-col (hasSource + !isHebrew + hasTranslation):
+  //     source arc on FAR LEFT (Col 1, before Greek text); mirror arc between label and translation (Col 4)
+  //   Single-col Greek (hasSource + !isHebrew + !hasTranslation):
+  //     arc on FAR LEFT (Col 1, before label and Greek text)
+  //   Single-col Hebrew (hasSource + isHebrew + !hasTranslation):
+  //     arc between Hebrew text and label (Col 2)
+  //   Translation-only (!hasSource):
+  //     single arc on RIGHT of verse label (into translation arc col)
+  //
+  // arcGoesLeft: spine is to the LEFT of its anchor landmark.
+  //   true  — source text present; spine left of label
+  //   false — translation-only; spine right of label
+  const arcGoesLeft = hasSource;
 
-  const levelMap = assignArcLevels(relationships, yMap);
+  // arcFarLeft: single-col Greek — arc col is the leftmost column (before label+text).
+  // Arm tips anchor at the label's left edge (= right edge of the arc col).
+  const arcFarLeft = hasSource && !isHebrew && !hasTranslation;
 
-  // Arc anchor is at the TEXT-SIDE edge of the arc column (not the verse-label side).
-  // The arc then bows inward toward the verse label, so it "points to" the text.
-  //   arcGoesLeft  → anchor at left edge of arc col  = labelLeftX  − ARC_COL
-  //   !arcGoesLeft → anchor at right edge of arc col = labelRightX + ARC_COL
-  function arcAnchorX(fromId: string, toId: string): number | undefined {
+  // arcFarLeftWithTrans: Greek 5-col — arc col is also far-left (before Greek text).
+  // Arm tips anchor at the left edge of the Greek text (= right edge of the far-left arc col).
+  // Uses wordLeftX (left edge of first Greek word) as the anchor instead of labelLeftX.
+  const arcFarLeftWithTrans = hasSource && !isHebrew && hasTranslation;
+
+  // Precompute the minimum wordLeftX across all measured points for the Greek 5-col far-left case.
+  // This is the right boundary of the far-left arc col (≈ where Greek text begins).
+  // Used to cap arm tips so they never extend into the Greek text column even for indented segments.
+  const minWordLeftX = arcFarLeftWithTrans
+    ? Math.min(...points.map((p) => p.wordLeftX))
+    : Infinity;
+
+  // wordNearMap: the edge of each segment closest to the arc column.
+  //   arcFarLeft         → label's left edge     (single-col Greek: arc col right = label left)
+  //   arcFarLeftWithTrans → word's left edge      (Greek 5-col: arc col right ≈ Greek text left)
+  //   arcGoesLeft (Hebrew)→ word's right edge     (Hebrew: arc col is between text and label)
+  //   !arcGoesLeft       → word's left edge       (translation-only: arc col right of label)
+  const wordNearMap = new Map(
+    points.map((p) => [
+      p.wordId,
+      arcFarLeft          ? p.labelLeftX   // Single-col Greek: anchor at label's left edge
+      : arcFarLeftWithTrans ? p.wordLeftX  // Greek 5-col: anchor at Greek text's left edge
+      : arcGoesLeft       ? p.wordRightX   // Hebrew: anchor at source word's right edge
+      : p.wordLeftX                        // Translation-only: anchor at word/label left edge
+    ])
+  );
+
+  // transNearMap: left edge of each segment's translation text (after indent padding).
+  // Used by the mirror bracket arm tips in 5-col layout to track translation indentation.
+  const transNearMap = new Map(points.map((p) => [p.wordId, p.transLeftX]));
+
+  const relGroups   = buildRelGroups(relationships);
+  const groupLevels = assignGroupArcLevels(relGroups, yMap);
+  const coordGroups = buildCoordGroups(relationships);
+
+  /**
+   * anchorX = text-near edge of the arc column.
+   * Computed from ALL member word IDs so the bracket accommodates every arm.
+   *   arcFarLeftWithTrans → leftmost wordLeftX − ARC_COL   (Greek 5-col: left edge of far-left arc col)
+   *   arcGoesLeft (others)→ leftmost labelLeftX − ARC_COL  (Hebrew / single-col Greek)
+   *   !arcGoesLeft        → rightmost labelRightX + ARC_COL (translation-only)
+   */
+  function anchorXFor(...wordIds: string[]): number | undefined {
+    if (arcFarLeftWithTrans) {
+      // Greek 5-col: the far-left arc col's left edge = min(wordLeftX) − ARC_COL
+      const wls = wordIds.map((id) => wordLeftMap.get(id)).filter((x): x is number => x != null);
+      if (wls.length === 0) return undefined;
+      return Math.min(...wls) - ARC_COL;
+    }
     if (arcGoesLeft) {
-      const ll1 = labelLeftMap.get(fromId);
-      const ll2 = labelLeftMap.get(toId);
-      if (ll1 == null || ll2 == null) return undefined;
-      return Math.min(ll1, ll2) - ARC_COL;
+      const lls = wordIds.map((id) => labelLeftMap.get(id)).filter((x): x is number => x != null);
+      if (lls.length === 0) return undefined;
+      return Math.min(...lls) - ARC_COL;
     } else {
-      const lr1 = labelRightMap.get(fromId);
-      const lr2 = labelRightMap.get(toId);
-      if (lr1 == null || lr2 == null) return undefined;
-      return Math.max(lr1, lr2) + ARC_COL;
+      const lrs = wordIds.map((id) => labelRightMap.get(id)).filter((x): x is number => x != null);
+      if (lrs.length === 0) return undefined;
+      return Math.max(...lrs) + ARC_COL;
     }
   }
 
@@ -201,6 +354,8 @@ export default function ClauseRelationshipOverlay({
     const ll = labelLeftMap.get(wordId);
     const lr = labelRightMap.get(wordId);
     if (ll == null || lr == null) return undefined;
+    if (arcFarLeft)          return ll - ARC_COL / 2;             // Centre of far-left arc col (single-col Greek)
+    if (arcFarLeftWithTrans) return minWordLeftX - ARC_COL / 2;   // Centre of far-left arc col (Greek 5-col)
     return arcGoesLeft ? ll - ARC_COL : lr + ARC_COL;
   }
 
@@ -217,137 +372,293 @@ export default function ClauseRelationshipOverlay({
         zIndex:        5,
       }}
     >
-      {/* ── Arrowhead markers (one per subordinate type) ─────────────────── */}
+      {/* ── Arrowhead markers (subordinate types only) ────────────────────── */}
       <defs>
         {RELATIONSHIP_TYPES
           .filter((rt) => rt.category === "subordinate")
-          .map((rt) => (
+          .flatMap((rt) => [
+            // Standard marker (kept for any future markerEnd usage)
             <marker
               key={rt.key}
               id={`clrel-arrow-${rt.key}`}
-              markerWidth="5"
-              markerHeight="4"
-              refX="4"
-              refY="2"
+              markerWidth="5" markerHeight="4"
+              refX="4" refY="2"
               orient="auto"
             >
               <polygon points="0 0, 5 2, 0 4" fill={rt.color} />
-            </marker>
-          ))}
+            </marker>,
+            // Reversed marker: used with markerStart on paths that go spine→text.
+            // orient="auto-start-reverse" flips the orientation 180° at the start
+            // vertex, so the arrowhead points away from the text (into the arc column).
+            <marker
+              key={`rev-${rt.key}`}
+              id={`clrel-arrow-rev-${rt.key}`}
+              markerWidth="5" markerHeight="4"
+              refX="4" refY="2"
+              orient="auto-start-reverse"
+            >
+              <polygon points="0 0, 5 2, 0 4" fill={rt.color} />
+            </marker>,
+          ])}
       </defs>
 
-      {relationships.map((rel) => {
-        const y1 = yMap.get(rel.fromSegWordId);
-        const y2 = yMap.get(rel.toSegWordId);
-        if (y1 == null || y2 == null) return null;
-
-        const minY = Math.min(y1, y2);
-        const maxY = Math.max(y1, y2);
-        const midY = (minY + maxY) / 2;
-
-        const rt = RELATIONSHIP_MAP[rel.relType];
+      {/* ── Relationship groups ───────────────────────────────────────────── */}
+      {relGroups.map((group) => {
+        const { fromSegWordId, relType, toSegs, groupKey } = group;
+        const rt = RELATIONSHIP_MAP[relType];
         if (!rt) return null;
         const { color, abbr } = rt;
         const isSubordinate = rt.category === "subordinate";
-        const isHov = hoveredId === rel.id;
+        const isHov = hoveredKey === groupKey;
 
-        const level = levelMap.get(rel.id) ?? 0;
-        const span  = maxY - minY;
-        // Depth capped so arcs stay within the 80px dedicated arc column
-        const depth = Math.min(BASE_DEPTH + level * LEVEL_STEP + span * 0.04, 70 + level * LEVEL_STEP);
-        const anchorX = arcAnchorX(rel.fromSegWordId, rel.toSegWordId);
-        if (anchorX == null) return null;
+        const nucleusY_raw = yMap.get(fromSegWordId);
+        if (nucleusY_raw == null) return null;
 
-        // Anchor is at the TEXT side of the arc column; control point bows TOWARD the verse
-        // label so the arc concave opening faces the text ("points to" the text).
-        //   arcGoesLeft (left arc col): anchor is left of verse label → bow RIGHT (+ depth)
-        //   !arcGoesLeft (right arc col): anchor is right of verse label → bow LEFT (− depth)
-        const curveLeft = arcGoesLeft;
-        const controlX  = curveLeft ? anchorX + depth : anchorX - depth;
-        const apexX     = (anchorX + controlX) / 2;
+        const validToSegs = toSegs.filter((s) => yMap.get(s.wordId) != null);
+        if (validToSegs.length === 0) return null;
 
-        const arcPath = `M ${anchorX} ${y1} Q ${controlX} ${midY} ${anchorX} ${y2}`;
+        // ── Subordinate fromY adjustment ──────────────────────────────────
+        // If the nucleus belongs to a coordinate group, start from that group's
+        // vertical midpoint so the subordinate arrow originates at the bracket centre.
+        let nucleusY = nucleusY_raw;
+        if (isSubordinate) {
+          const cg = coordGroups.get(fromSegWordId);
+          if (cg && cg.length > 1) {
+            const cgYs = cg.map((id) => yMap.get(id)).filter((y): y is number => y != null);
+            if (cgYs.length > 1) {
+              nucleusY = (Math.min(...cgYs) + Math.max(...cgYs)) / 2;
+            }
+          }
+        }
 
-        // Label sits on the concave (text-facing) side of the arc.
-        // Since the arc bows toward the label (right for left arc, left for right arc),
-        // the concave side is on the TEXT side → opposite sign vs. control direction.
-        const labelAnchor   = curveLeft ? "end"   : "start";
-        const labelOffsetX  = curveLeft ? apexX - 3  : apexX + 3;
-        const deleteOffsetX = curveLeft ? apexX - 14 : apexX + 14;
+        const satelliteYs = validToSegs.map((s) => yMap.get(s.wordId)!);
+        const allArmYs    = [nucleusY, ...satelliteYs];
+        const spanMinY    = Math.min(...allArmYs);
+        const spanMaxY    = Math.max(...allArmYs);
+        const span        = spanMaxY - spanMinY;
+
+        if (span === 0) return null; // degenerate — all same Y
+
+        const allWordIds = [fromSegWordId, ...validToSegs.map((s) => s.wordId)];
+
+        // ── Spine position ─────────────────────────────────────────────────
+        // cornerX is the vertical spine, placed at BASE_DEPTH inside the arc column.
+        // We anchor it relative to the most-extreme label in the group so the spine
+        // never overlaps any text label.
+        const spineAnchor = anchorXFor(...allWordIds);
+        if (spineAnchor == null) return null;
+
+        const level = groupLevels.get(groupKey) ?? 0;
+        const depth = isSubordinate
+          ? BASE_DEPTH + level * LEVEL_STEP
+          : BRACKET_BASE + level * LEVEL_STEP;
+        const cornerX = arcGoesLeft ? spineAnchor + depth : spineAnchor - depth;
+
+        const strokeWidth = isHov ? 2 : 1.5;
+
+        // ── Label position ─────────────────────────────────────────────────
+        // Sits inside the bracket at the inner corner nearest the extremal satellite
+        // (the satellite farthest from the nucleus). This keeps it inside the bracket
+        // angle where there are no arm lines or arrowheads.
+        const extremalSatY = satelliteYs.reduce((ex, y) =>
+          Math.abs(y - nucleusY) > Math.abs(ex - nucleusY) ? y : ex,
+          satelliteYs[0],
+        );
+        const labelY = extremalSatY > nucleusY
+          ? extremalSatY - 3   // satellite below → just above its arm
+          : extremalSatY + 10; // satellite above → just below its arm
+        // Bracket label sits inside the bracket angle, near the spine:
+        //   Hebrew / Hebrew 5-col (bracket opens leftward): label left of spine → "end"
+        //   Greek far-left single-col or 5-col (bracket opens rightward): label right of spine → "start"
+        //   Translation-only (bracket opens rightward): label right of spine → "start"
+        const bracketOpensLeft = arcGoesLeft && !arcFarLeft && !arcFarLeftWithTrans;
+        const labelX   = bracketOpensLeft ? cornerX - 2 : cornerX + 2;
+        const labelAnc = bracketOpensLeft ? "end"        : "start";
+
+        // ── Per-arm tip positions ──────────────────────────────────────────
+        // Each arm extends from the spine (cornerX) to the near edge of the arc column.
+        const LABEL_GAP = 4; // px gap between arm tip and the arc-column boundary
+
+        function armTipX(wordId: string): number | undefined {
+          const wn = wordNearMap.get(wordId);
+          if (arcGoesLeft) {
+            if (arcFarLeft) {
+              // Single-col Greek far-left: arm tip at right edge of arc col (= label's left − gap).
+              if (wn != null) return wn - LABEL_GAP;
+              const ll = labelLeftMap.get(wordId);
+              return ll != null ? ll - LABEL_GAP : undefined;
+            } else if (arcFarLeftWithTrans) {
+              // Greek 5-col far-left: arm tip at right edge of far-left arc col (= min wordLeftX − gap).
+              // All arms stop at the same x — the col boundary — regardless of word position or indent.
+              return minWordLeftX - LABEL_GAP;
+            } else {
+              // Hebrew: arm points toward Hebrew text on the LEFT.
+              // wn = wordRightX; tip just inside the arc col from the text side.
+              if (wn != null) return wn + LABEL_GAP;
+              const ll = labelLeftMap.get(wordId);
+              return ll != null ? ll - ARC_COL + LABEL_GAP : undefined;
+            }
+          } else {
+            // Translation-only: arm points RIGHT toward translation text.
+            if (wn != null) return wn - LABEL_GAP;
+            const lr = labelRightMap.get(wordId);
+            return lr != null ? lr + ARC_COL - LABEL_GAP : undefined;
+          }
+        }
+
+        // Nucleus arm: label-edge → spine, no arrowhead
+        const nucleusTipX = armTipX(fromSegWordId);
+        if (nucleusTipX == null) return null;
+        const nucleusArmPath = `M ${nucleusTipX} ${nucleusY} H ${cornerX}`;
+
+        // Pre-compute per-satellite data so each loop below can reuse it
+        const satData = validToSegs.flatMap((s) => {
+          const sy      = yMap.get(s.wordId);
+          const tipX    = armTipX(s.wordId);
+          if (sy == null || tipX == null) return [];
+          // Subordinate: spine → label-edge (arrowhead at text-proximate end)
+          // Coordinate:  label-edge → spine (no arrowhead; bracket look)
+          const armPath = isSubordinate
+            ? `M ${cornerX} ${sy} H ${tipX}`
+            : `M ${tipX} ${sy} H ${cornerX}`;
+          const delX = (tipX + cornerX) / 2;
+          return [{ s, sy, tipX, armPath, delX }];
+        });
+
+        // ── Path segments ──────────────────────────────────────────────────
+        const verticalPath = `M ${cornerX} ${spanMinY} V ${spanMaxY}`;
 
         return (
-          <g key={rel.id}>
-            {/* ── Source / single-col arc ───────────────────────────────── */}
-            <path
-              d={arcPath}
-              fill="none"
-              stroke={color}
-              strokeWidth={isHov ? 2 : 1.5}
-              markerEnd={isSubordinate ? `url(#clrel-arrow-${rel.relType})` : undefined}
-            />
+          <g key={groupKey}>
+            {/* ── Vertical spine ───────────────────────────────────────── */}
+            <path d={verticalPath} fill="none" stroke={color} strokeWidth={strokeWidth} strokeLinejoin="miter" />
 
+            {/* ── Nucleus arm (no arrowhead) ───────────────────────────── */}
+            <path d={nucleusArmPath} fill="none" stroke={color} strokeWidth={strokeWidth} />
+
+            {/* ── Satellite arms ───────────────────────────────────────── */}
+            {/* Subordinate: path goes spine→text edge; markerEnd places the
+                arrowhead at the text end, pointing toward the clause text. */}
+            {satData.map(({ s, armPath }) => (
+              <path
+                key={`arm-${s.id}`}
+                d={armPath}
+                fill="none"
+                stroke={color}
+                strokeWidth={strokeWidth}
+                markerEnd={isSubordinate ? `url(#clrel-arrow-${relType})` : undefined}
+              />
+            ))}
+
+            {/* ── Label ────────────────────────────────────────────────── */}
             <text
-              x={labelOffsetX} y={midY + 4}
-              textAnchor={labelAnchor} fontSize={9} fontFamily="monospace"
+              x={labelX} y={labelY}
+              textAnchor={labelAnc} fontSize={9} fontFamily="monospace"
               fill={color} style={{ userSelect: "none" }}
             >
               {abbr}
             </text>
 
-            <g
-              style={{ pointerEvents: "auto", cursor: "pointer", opacity: isHov ? 1 : 0, transition: "opacity 0.15s" }}
-              onMouseEnter={() => setHoveredId(rel.id)}
-              onMouseLeave={() => setHoveredId(null)}
-              onClick={() => onDeleteRelationship(rel.id)}
-            >
-              <circle cx={deleteOffsetX} cy={midY} r={8} fill="white" stroke={color} strokeWidth={1.5} />
-              <text x={deleteOffsetX} y={midY + 3.5} textAnchor="middle" fontSize={10} fill={color} style={{ userSelect: "none" }}>×</text>
-            </g>
-
+            {/* ── Invisible hit-target for vertical spine + nucleus arm ─── */}
             <path
-              d={arcPath}
-              fill="none"
-              stroke="transparent"
-              strokeWidth={12}
+              d={verticalPath}
+              fill="none" stroke="transparent" strokeWidth={12}
               style={{ pointerEvents: "auto" }}
-              onMouseEnter={() => setHoveredId(rel.id)}
-              onMouseLeave={() => setHoveredId(null)}
+              onMouseEnter={() => setHoveredKey(groupKey)}
+              onMouseLeave={() => setHoveredKey(null)}
+            />
+            <path
+              d={nucleusArmPath}
+              fill="none" stroke="transparent" strokeWidth={12}
+              style={{ pointerEvents: "auto" }}
+              onMouseEnter={() => setHoveredKey(groupKey)}
+              onMouseLeave={() => setHoveredKey(null)}
             />
 
-            {/* ── Mirror arc (translation side, 5-col layout only) ─────── */}
+            {/* ── Per-satellite: hit target + delete button ─────────────── */}
+            {satData.map(({ s, sy, armPath, delX }) => (
+              <g key={`sat-${s.id}`}>
+                {/* Hit target first so delete button is on top */}
+                <path
+                  d={armPath}
+                  fill="none" stroke="transparent" strokeWidth={12}
+                  style={{ pointerEvents: "auto" }}
+                  onMouseEnter={() => setHoveredKey(groupKey)}
+                  onMouseLeave={() => setHoveredKey(null)}
+                />
+                {/* Delete handle — shown when bracket is hovered */}
+                <g
+                  style={{ pointerEvents: "auto", cursor: "pointer", opacity: isHov ? 1 : 0, transition: "opacity 0.15s" }}
+                  onMouseEnter={() => setHoveredKey(groupKey)}
+                  onMouseLeave={() => setHoveredKey(null)}
+                  onClick={() => onDeleteRelationship(s.id)}
+                >
+                  <circle cx={delX} cy={sy} r={8} fill="white" stroke={color} strokeWidth={1.5} />
+                  <text x={delX} y={sy + 3.5} textAnchor="middle" fontSize={10} fill={color} style={{ userSelect: "none" }}>×</text>
+                </g>
+              </g>
+            ))}
+
+            {/* ── Mirror bracket on translation side (5-col layout only) ── */}
             {hasTranslation && hasSource && (() => {
-              const mlr1 = labelRightMap.get(rel.fromSegWordId);
-              const mlr2 = labelRightMap.get(rel.toSegWordId);
-              if (mlr1 == null || mlr2 == null) return null;
-              // Anchor at right (text) edge of translation arc column; bow left toward verse label.
-              const mAnchorX  = Math.max(mlr1, mlr2) + ARC_COL;
-              const mControlX = mAnchorX - depth;
-              const mApexX    = (mAnchorX + mControlX) / 2;
-              const mArcPath  = `M ${mAnchorX} ${y1} Q ${mControlX} ${midY} ${mAnchorX} ${y2}`;
+              const allLRs = allWordIds
+                .map((id) => labelRightMap.get(id))
+                .filter((x): x is number => x != null);
+              if (allLRs.length === 0) return null;
+              const mSpineAnchor = Math.max(...allLRs) + ARC_COL;
+              const mCornerX     = mSpineAnchor - depth;
+              // Mirror label: inside the bracket angle near the extremal satellite's corner.
+              // mCornerX + 2 puts it just right of the spine, inside the bracket opening.
+              const mLabelX   = mCornerX + 2;
+              const mLabelAnc = "start";
+
+              // Mirror nucleus arm: translation-text-edge → mCornerX (no arrowhead).
+              // Prefer actual translation text left edge (tracks indent); fall back to
+              // label-based arc-col boundary (= Col-5 fixed boundary, no indent tracking).
+              const mNucleusLR = labelRightMap.get(fromSegWordId);
+              if (mNucleusLR == null) return null;
+              const mNucleusTipX = (transNearMap.get(fromSegWordId) ?? mNucleusLR + ARC_COL) - LABEL_GAP;
+              const mNucleusArmPath = `M ${mNucleusTipX} ${nucleusY} H ${mCornerX}`;
+
+              // Mirror satellite arms: each extends from mCornerX to the translation text,
+              // arrowhead at the text end.  Prefer actual text left edge (tracks indent).
+              const mSatPaths = validToSegs.flatMap((s) => {
+                const sy = yMap.get(s.wordId);
+                const lr = labelRightMap.get(s.wordId);
+                if (sy == null || lr == null) return [];
+                const mTipX = (transNearMap.get(s.wordId) ?? lr + ARC_COL) - LABEL_GAP;
+                const mArmPath = isSubordinate
+                  ? `M ${mCornerX} ${sy} H ${mTipX}`
+                  : `M ${mTipX} ${sy} H ${mCornerX}`;
+                return [{ id: s.id, sy, mArmPath }];
+              });
+
               return (
-                <g key={`mirror-${rel.id}`}>
-                  <path
-                    d={mArcPath}
-                    fill="none"
-                    stroke={color}
-                    strokeWidth={isHov ? 2 : 1.5}
-                    markerEnd={isSubordinate ? `url(#clrel-arrow-${rel.relType})` : undefined}
-                  />
+                <g key={`mirror-${groupKey}`}>
+                  <path d={`M ${mCornerX} ${spanMinY} V ${spanMaxY}`} fill="none" stroke={color} strokeWidth={strokeWidth} />
+                  <path d={mNucleusArmPath} fill="none" stroke={color} strokeWidth={strokeWidth} />
+                  {mSatPaths.map(({ id, mArmPath }) => (
+                    <path
+                      key={id}
+                      d={mArmPath}
+                      fill="none" stroke={color} strokeWidth={strokeWidth}
+                      markerEnd={isSubordinate ? `url(#clrel-arrow-${relType})` : undefined}
+                    />
+                  ))}
                   <text
-                    x={mApexX + 3} y={midY + 4}
-                    textAnchor="start" fontSize={9} fontFamily="monospace"
+                    x={mLabelX} y={labelY}
+                    textAnchor={mLabelAnc} fontSize={9} fontFamily="monospace"
                     fill={color} style={{ userSelect: "none" }}
                   >
                     {abbr}
                   </text>
+                  {/* Hit target for mirror spine */}
                   <path
-                    d={mArcPath}
-                    fill="none"
-                    stroke="transparent"
-                    strokeWidth={12}
+                    d={`M ${mCornerX} ${spanMinY} V ${spanMaxY}`}
+                    fill="none" stroke="transparent" strokeWidth={12}
                     style={{ pointerEvents: "auto" }}
-                    onMouseEnter={() => setHoveredId(rel.id)}
-                    onMouseLeave={() => setHoveredId(null)}
+                    onMouseEnter={() => setHoveredKey(groupKey)}
+                    onMouseLeave={() => setHoveredKey(null)}
                   />
                 </g>
               );
@@ -356,20 +667,72 @@ export default function ClauseRelationshipOverlay({
         );
       })}
 
+      {/* ── Coordinate-group midpoint dots (editing mode) ───────────────── */}
+      {/* One target-style dot per coordinate group, at the vertical midpoint of
+          the bracket. Clicking selects the closest-to-midpoint member as the
+          fromSeg, causing any subsequent subordinate arrow to originate from
+          the middle of this bracket automatically. */}
+      {editing && (() => {
+        const renderedKeys = new Set<string>();
+        return [...coordGroups.entries()].flatMap(([wordId, group]) => {
+          if (group.length < 2) return [];
+          const key = [...group].sort().join("|");
+          if (renderedKeys.has(key)) return [];
+          renderedKeys.add(key);
+
+          const groupYs = group
+            .map((id) => yMap.get(id))
+            .filter((y): y is number => y != null);
+          if (groupYs.length < 2) return [];
+
+          const groupMidY = (Math.min(...groupYs) + Math.max(...groupYs)) / 2;
+          const cx = dotX(wordId);
+          if (cx == null) return [];
+
+          // Representative member: the one whose y is closest to groupMidY
+          const repId = group.reduce((best, id) => {
+            const y     = yMap.get(id) ?? Infinity;
+            const bestY = yMap.get(best) ?? Infinity;
+            return Math.abs(y - groupMidY) < Math.abs(bestY - groupMidY) ? id : best;
+          });
+
+          const isSelected = repId === selectedSegWordId || group.includes(selectedSegWordId ?? "");
+          const ringColor  = isSelected ? "#7C3AED" : "#0891B2";
+
+          return [
+            <g
+              key={`coord-mid-${key}`}
+              style={{ pointerEvents: "auto", cursor: "pointer" }}
+              onClick={() => onSelectSegment(repId)}
+            >
+              <circle cx={cx} cy={groupMidY} r={7} fill="white" stroke={ringColor} strokeWidth={1.5} />
+              <circle cx={cx} cy={groupMidY} r={2.5} fill={ringColor} />
+            </g>,
+          ];
+        });
+      })()}
+
       {/* ── Segment selector dots (editing mode) ─────────────────────────── */}
       {editing &&
         paragraphFirstWordIds.map((wordId) => {
           const y  = yMap.get(wordId);
           const cx = dotX(wordId);
           if (y == null || cx == null) return null;
-          const isSelected = wordId === selectedSegWordId;
-          const dotColor   = isSelected ? "#7C3AED" : "#94A3B8";
+
+          const isFrom = wordId === selectedSegWordId;
+          const isTo   = wordId === selectedToSegWordId;
+
+          // nucleus: violet (larger filled), satellite: amber (smaller filled), others: slate outline
+          const dotColor = isFrom ? "#7C3AED" : isTo ? "#D97706" : "#94A3B8";
+          const radius   = isFrom ? 7 : isTo ? 6 : 5;
+          const filled   = isFrom || isTo;
+
           return (
             <circle
               key={wordId}
               cx={cx} cy={y}
-              r={isSelected ? 7 : 5}
-              fill={isSelected ? dotColor : "white"}
+              r={radius}
+              fill={filled ? dotColor : "white"}
               stroke={dotColor} strokeWidth={1.5}
               style={{ pointerEvents: "auto", cursor: "pointer" }}
               onClick={() => onSelectSegment(wordId)}

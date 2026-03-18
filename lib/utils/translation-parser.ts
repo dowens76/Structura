@@ -9,15 +9,18 @@
  *    Footnotes (\f...\f*) are stripped; \q1/\q2 poetry markers become line breaks;
  *    all other backslash markers are stripped.
  *
- * 2. Line-start format (ESV app, desktop apps, etc.):
- *      "1Blessed is the man\nwho walks not...\n2but his delight..."
- *    Verse numbers appear at the very start of a line with NO space before the text.
+ * 2. Line-start format (ESV app, desktop apps, Bible.com, etc.):
+ *      "1Blessed is the man\nwho walks not...\n2but his delight..."  (no space)
+ *      "1 Blessed is the man\n2 but his delight..."                  (with space)
+ *      Mixed no-space / with-space lines in the same paste are also handled.
+ *    Detected when any line starts with digits immediately followed by non-whitespace.
  *    Continuation lines (no leading digit) belong to the current verse.
  *    Line breaks within a verse are preserved using "\n".
  *
  * 3. Inline format (Bible.com):
  *      "1 In the beginning God created... 2 Now the earth was..."
- *    Verse numbers appear mid-paragraph, separated by spaces, before a capital letter.
+ *    Verse numbers (1-3 digits) appear mid-paragraph, separated by spaces, before any letter or quote.
+ *    Lowercase verse starts are supported (e.g. "6 for the LORD…").
  *
  * Formats 2 & 3 accept an optional header on the first line:
  *   "Genesis 1" | "Genesis 1:1-31" | "Genesis 1:1-31 (NIV)"
@@ -43,9 +46,11 @@ const HEADER_RE = /^(.+?)\s+(\d+)(?::[\d\-]+)?\s*(?:\(([A-Z0-9\-]+)\))?\s*$/;
 // e.g. "1Blessed", "12He said", but NOT "1 In" (that's the inline format).
 const LINE_START_VERSE_RE = /^\d+\S/;
 
-// Inline verse marker: digit sequence preceded by start-of-string or whitespace,
-// followed by a space, followed by a capital letter or opening quote/bracket.
-const VERSE_MARKER_RE = /(?:^|\s)(\d+) (?=[A-Z"'\u201C\u2018\[«])/g;
+// Inline verse marker: 1-3 digit number preceded by start-of-string or whitespace,
+// followed by a space and any letter or opening quote/bracket.
+// Allows lowercase (e.g. "6 for the LORD") — many translations start verses lowercase.
+// Limited to 3 digits to reduce false matches on large inline numbers like "1000 shekels".
+const VERSE_MARKER_RE = /(?:^|\s)(\d{1,3}) (?=[A-Za-z"'\u201C\u2018\[«])/g;
 
 // USFM is detected by the presence of \v N verse markers.
 const IS_USFM_RE = /\\v\s+\d+/;
@@ -76,9 +81,14 @@ export function parseBibleComText(raw: string): ParseResult {
   // Detect format: if any line starts with a digit immediately before a non-digit → line-start
   const isLineFormat = bodyLines.some((l) => LINE_START_VERSE_RE.test(l));
 
-  const verses = isLineFormat
+  let verses = isLineFormat
     ? extractVersesLineStart(bodyLines)
     : extractVersesInline(bodyLines);
+
+  // If line-start format was (mis-)detected but produced nothing, retry with inline
+  if (verses.length === 0 && isLineFormat) {
+    verses = extractVersesInline(bodyLines);
+  }
 
   return { verses, detectedChapter, detectedBookName, detectedAbbreviation };
 }
@@ -153,7 +163,7 @@ function parseUSFM(raw: string): ParseResult {
   return { verses, detectedChapter, detectedBookName, detectedAbbreviation: null };
 }
 
-/** Line-start format: "1Blessed is the man\nwho walks..." */
+/** Line-start format: "1Blessed is the man\nwho walks..." or "1 Blessed is the man\n..." */
 function extractVersesLineStart(lines: string[]): ParsedVerse[] {
   const verses: ParsedVerse[] = [];
   let currentVerseNum: number | null = null;
@@ -168,18 +178,24 @@ function extractVersesLineStart(lines: string[]): ParsedVerse[] {
   for (const line of lines) {
     if (!line) continue; // skip blank lines between verses
 
-    // Check if this line starts a new verse: leading digits immediately followed by text
-    const m = line.match(/^(\d+)(.*)$/);
-    if (m && LINE_START_VERSE_RE.test(line)) {
-      flush();
-      currentVerseNum = parseInt(m[1], 10);
-      const rest = m[2].trim();
-      currentLines = rest ? [rest] : [];
-    } else {
-      // Continuation line for the current verse
-      if (currentVerseNum !== null) {
-        currentLines.push(line);
+    // Accept both "1Blessed" (no space) and "1 Blessed" (with space) as verse starters.
+    // A monotonically-increasing verse number check prevents continuation lines that
+    // happen to start with a number (e.g. "2nd Chronicles…" or "15 cubits deep")
+    // from being misidentified as new verses.
+    const m = line.match(/^(\d{1,3})\s*(.+)/);
+    if (m) {
+      const potentialNum = parseInt(m[1], 10);
+      if (potentialNum >= 1 && potentialNum <= 200 && potentialNum > (currentVerseNum ?? 0)) {
+        flush();
+        currentVerseNum = potentialNum;
+        currentLines = [m[2].trim()];
+        continue;
       }
+    }
+
+    // Continuation line for the current verse
+    if (currentVerseNum !== null) {
+      currentLines.push(line);
     }
   }
   flush();
@@ -189,18 +205,53 @@ function extractVersesLineStart(lines: string[]): ParsedVerse[] {
 
 /** Inline format: "1 In the beginning... 2 Now the earth was..." */
 function extractVersesInline(lines: string[]): ParsedVerse[] {
-  const body = lines.filter((l) => l.length > 0).join(" ");
+  // Pre-process lines before joining:
+  // 1. Merge standalone verse-number lines with the following line.
+  //    Some apps place the verse number alone on its own line:
+  //      ["1", "In the beginning..."]  →  ["1 In the beginning..."]
+  // 2. Insert a space after a leading verse number that is immediately followed by text
+  //    (no space), so the VERSE_MARKER_RE can find it after joining:
+  //      "1In the beginning..." → "1 In the beginning..."
+  const processedLines: string[] = [];
+  let i = 0;
+  while (i < lines.length) {
+    let line = lines[i].trim();
 
-  const matches: { markerStart: number; verseNum: number; textStart: number }[] = [];
+    // Merge: standalone verse-number line + next line
+    if (/^\d{1,3}$/.test(line) && i + 1 < lines.length && lines[i + 1].trim().length > 0) {
+      line = line + " " + lines[i + 1].trim();
+      i += 2;
+    } else {
+      i++;
+    }
+
+    // Normalize: "1In the beginning" → "1 In the beginning"
+    line = line.replace(/^(\d{1,3})([A-Za-z"'\u201C\u2018\[«])/, "$1 $2");
+
+    processedLines.push(line);
+  }
+
+  // Join with newlines so that any line breaks that existed within a verse (e.g. poetic
+  // half-lines, indented continuations) survive as "\n" in the stored verse text.
+  // VERSE_MARKER_RE treats "\n" as whitespace, so verse boundary detection is unaffected.
+  const body = processedLines.filter((l) => l.trim().length > 0).join("\n");
+
+  const allMatches: { markerStart: number; verseNum: number; textStart: number }[] = [];
 
   VERSE_MARKER_RE.lastIndex = 0;
   let m: RegExpExecArray | null;
   while ((m = VERSE_MARKER_RE.exec(body)) !== null) {
     const verseNum = parseInt(m[1], 10);
-    const markerStart = m[0].startsWith(" ") ? m.index + 1 : m.index;
+    if (verseNum < 1 || verseNum > 200) continue; // skip implausible verse numbers
+    // m[0] may start with the preceding whitespace char (space OR newline); skip it for markerStart
+    const markerStart = /^\s/.test(m[0]) ? m.index + 1 : m.index;
     const textStart = m.index + m[0].length;
-    matches.push({ markerStart, verseNum, textStart });
+    allMatches.push({ markerStart, verseNum, textStart });
   }
+
+  // Pick the best monotonically-increasing sequence.
+  // This rejects false positives from section headings, genealogy numbers, copyright years, etc.
+  const matches = pickBestVerseSequence(allMatches);
 
   if (matches.length === 0) {
     const text = body.trim();
@@ -208,9 +259,9 @@ function extractVersesInline(lines: string[]): ParsedVerse[] {
   }
 
   const verses: ParsedVerse[] = [];
-  for (let i = 0; i < matches.length; i++) {
-    const { verseNum, textStart } = matches[i];
-    const end = matches[i + 1]?.markerStart ?? body.length;
+  for (let j = 0; j < matches.length; j++) {
+    const { verseNum, textStart } = matches[j];
+    const end = matches[j + 1]?.markerStart ?? body.length;
     const text = body.slice(textStart, end).trim();
     if (text) {
       verses.push({ verse: verseNum, text });
@@ -218,4 +269,36 @@ function extractVersesInline(lines: string[]): ParsedVerse[] {
   }
 
   return verses;
+}
+
+/**
+ * From a list of potential verse-number matches (in text order), select the best
+ * monotonically-increasing sequence.
+ *
+ * - Anchors at the first occurrence of verse 1 when present, skipping any false
+ *   positives (section heading numbers, etc.) that appear before it.
+ * - Only accepts a match if the verse number is strictly greater than the previous
+ *   AND does not jump by more than MAX_VERSE_GAP — this rejects large inline numbers
+ *   like "130" appearing in the middle of a verse's text (e.g. "lived 130 years").
+ */
+function pickBestVerseSequence<T extends { verseNum: number }>(matches: T[]): T[] {
+  // Allow jumps up to 25 (handles partial-chapter imports while blocking large inline numbers).
+  const MAX_VERSE_GAP = 25;
+  if (matches.length === 0) return [];
+
+  // Prefer starting at verse 1 if present; otherwise start at the first match.
+  const verse1Idx = matches.findIndex((m) => m.verseNum === 1);
+  const startIdx = verse1Idx >= 0 ? verse1Idx : 0;
+
+  const result: T[] = [];
+  let last = 0;
+  for (let i = startIdx; i < matches.length; i++) {
+    const { verseNum } = matches[i];
+    const isFirst = last === 0;
+    if (verseNum > last && (isFirst || verseNum - last <= MAX_VERSE_GAP)) {
+      result.push(matches[i]);
+      last = verseNum;
+    }
+  }
+  return result;
 }

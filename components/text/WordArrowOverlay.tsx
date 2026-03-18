@@ -113,12 +113,9 @@ export default function WordArrowOverlay({
       };
     }
 
-    // Observe outer wrapper for resize
+    // Observe container for resize — e.g. window resize changes word positions.
     const ro = new ResizeObserver(scheduleMeasure);
     ro.observe(outer);
-
-    // Re-measure on scroll so arrow positions follow scrolled content
-    container.addEventListener("scroll", scheduleMeasure, { passive: true });
 
     // Re-measure when DOM content changes — e.g. translation toggled on/off shifts
     // source words from a single-column layout to a 5-column grid layout.
@@ -128,7 +125,6 @@ export default function WordArrowOverlay({
     return () => {
       ro.disconnect();
       mo.disconnect();
-      container.removeEventListener("scroll", scheduleMeasure);
       if (frameRef.current) cancelAnimationFrame(frameRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -165,22 +161,32 @@ export default function WordArrowOverlay({
       </defs>
 
       {drawn.map(({ arrow, fromR, toR }) => {
-        const fromX = fromR.x + fromR.width  / 2;
-        const fromY = fromR.y + fromR.height + 3; // 3px below word baseline
-        const toX   = toR.x  + toR.width    / 2;
-        const toY   = toR.y  + toR.height   + 3;
+        const fromX = fromR.x + fromR.width / 2;
+        const toX   = toR.x  + toR.width   / 2;
 
-        // Curve depth scales with horizontal distance, minimum 20px
+        // Facing-anchor scheme:
+        //   Going up  → top of lower (from) word  ↔  bottom of upper (to) word
+        //               anchors face each other through the gap; arc threads between them.
+        //   Going down → bottom of both words; arc swings below.
+        const goingUp = (toR.y + toR.height / 2) < (fromR.y + fromR.height / 2);
+        const fromY = goingUp ? fromR.y - 3                : fromR.y + fromR.height + 3;
+        const toY   =           toR.y   + toR.height + 3;  // always bottom of to-word
+
+        // Curve depth scales with horizontal distance, minimum 24px
         const horizDist  = Math.abs(toX - fromX);
         const curveDepth = Math.max(horizDist * 0.35 + 20, 24);
 
         const cx0 = fromX;
-        const cy0 = fromY + curveDepth;
+        const cy0 = goingUp ? fromY - curveDepth : fromY + curveDepth;
         const cx1 = toX;
-        const cy1 = toY + curveDepth;
+        const cy1 = toY + curveDepth;  // always pull below the to-anchor
 
         const d = `M ${fromX} ${fromY} C ${cx0} ${cy0}, ${cx1} ${cy1}, ${toX} ${toY}`;
         const [midX, midY] = bezierMid(fromX, fromY, cx0, cy0, cx1, cy1, toX, toY);
+
+        // For upward arrows midY is in the gap between words; keep label/handle in that space.
+        const labelDy  = goingUp ? -12 : curveDepth / 2 + 12;
+        const handleDy = goingUp ?  -8 : 10;
 
         const isHovered = hoveredId === arrow.id;
 
@@ -199,7 +205,7 @@ export default function WordArrowOverlay({
             {arrow.label && (
               <text
                 x={midX}
-                y={midY + curveDepth / 2 + 12}
+                y={midY + labelDy}
                 textAnchor="middle"
                 fontSize={9}
                 fill={ARROW_COLOR}
@@ -218,8 +224,8 @@ export default function WordArrowOverlay({
                 onMouseLeave={() => setHoveredId(null)}
                 onClick={() => onDeleteArrow(arrow.id)}
               >
-                <circle cx={midX} cy={midY + 10} r={7} fill="white" stroke={ARROW_COLOR} strokeOpacity={0.7} strokeWidth={1.5} />
-                <text x={midX} y={midY + 14} textAnchor="middle" fontSize={10} fill={ARROW_COLOR} opacity={0.8} style={{ userSelect: "none" }}>×</text>
+                <circle cx={midX} cy={midY + handleDy} r={7} fill="white" stroke={ARROW_COLOR} strokeOpacity={0.7} strokeWidth={1.5} />
+                <text x={midX} y={midY + handleDy + 4} textAnchor="middle" fontSize={10} fill={ARROW_COLOR} opacity={0.8} style={{ userSelect: "none" }}>×</text>
               </g>
             )}
 
