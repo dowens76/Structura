@@ -35,6 +35,21 @@ interface WordTokenProps {
   editingFormatting?: boolean;
 }
 
+/** Split surface text into leading punctuation, core word, and trailing punctuation.
+ *  Punctuation placed outside the styled/clickable span so it is never visually
+ *  included in character or word-tag selection indicators. */
+const PUNCT_RE = /["""''\u2018\u2019\u201C\u201D.,:;?·\u00B7]/;
+const LEADING_PUNCT = /^["""''\u2018\u2019\u201C\u201D.,:;?·\u00B7]+/;
+const TRAILING_PUNCT = /["""''\u2018\u2019\u201C\u201D.,:;?·\u00B7]+$/;
+
+function splitPunctuation(text: string): { leading: string; core: string; trailing: string } {
+  const leading = text.match(LEADING_PUNCT)?.[0] ?? "";
+  const rest = text.slice(leading.length);
+  const trailing = rest.match(TRAILING_PUNCT)?.[0] ?? "";
+  const core = rest.slice(0, rest.length - trailing.length);
+  return { leading, core, trailing };
+}
+
 function getInterlinearLabel(word: Word): string {
   if (word.language === "hebrew") {
     // Look up the actual Hebrew word form from the Strong's number
@@ -115,33 +130,8 @@ export default function WordToken({
     textUnderlineOffset: isHebrew ? "6px" : "2px",
   } : {};
 
-  // ── Yellow halo for highlighted characters ──────────────────────────────────
-  const isHighlighted = highlightCharIds.size > 0 && characterRef != null && (
-    highlightCharIds.has(characterRef.character1Id) ||
-    (characterRef.character2Id != null && highlightCharIds.has(characterRef.character2Id))
-  );
-
-  // ── Word / concept tag ring ────────────────────────────────────────────────
-  // box-shadow is used instead of backgroundColor so the indicator is independent
-  // of any parent background tint (e.g. speech-section boxes).
-  const wordTag = wordTagRef && wordTagMap ? wordTagMap.get(wordTagRef.tagId) : null;
-  const isWordTagHighlighted = !!wordTag && !!(highlightWordTagIds?.has(wordTag.id));
-
-  // Combine character halo + word-tag ring into one box-shadow value
-  const shadows: string[] = [];
-  if (isHighlighted) shadows.push("0 0 0 3px rgba(253, 224, 71, 0.85)");
-  if (wordTag) {
-    shadows.push(
-      isWordTagHighlighted
-        // Highlighted: solid ring + outer glow for emphasis
-        ? `0 0 0 2px ${wordTag.color}, 0 0 6px 1px ${wordTag.color}88`
-        // Always-on: full-opacity ring so tags are visible while reading
-        : `0 0 0 1.5px ${wordTag.color}`,
-    );
-  }
-  const shadowStyle: React.CSSProperties = shadows.length > 0
-    ? { boxShadow: shadows.join(", "), borderRadius: "2px" }
-    : {};
+  // (Character highlight and word-tag ring are rendered by VerseDisplay's
+  // group-wrapper approach so adjacent same-tagged words form a continuous box.)
 
   // ── Bold / italic formatting ────────────────────────────────────────────────
   const formattingStyle: React.CSSProperties = {
@@ -149,7 +139,7 @@ export default function WordToken({
     fontStyle:  wordFormatting?.isItalic ? "italic" : undefined,
   };
 
-  const style: React.CSSProperties = { ...colorStyle, ...underlineStyle, ...shadowStyle, ...formattingStyle };
+  const style: React.CSSProperties = { ...colorStyle, ...underlineStyle, ...formattingStyle };
 
   const isInterlinear = displayMode === "interlinear";
 
@@ -182,20 +172,27 @@ export default function WordToken({
           : "cursor-pointer hover:bg-stone-100 dark:hover:bg-stone-800",
   ].join(" ");
 
+  const displayText = (word.surfaceText ?? "").replace(/\//g, "");
+  const { leading, core, trailing } = splitPunctuation(displayText);
+
   const content = (
-    <span
-      ref={wordRef}
-      className={baseClasses}
-      style={style}
-      data-word-id={word.wordId}
-      onClick={(e) => onSelect(word, e.shiftKey)}
-      onMouseEnter={handleMouseEnter}
-      onMouseLeave={() => setHovering(false)}
-      title={isEditing ? undefined : `${word.lemma ?? word.surfaceText} — ${word.partOfSpeech ?? "unknown"}`}
-    >
-      {(word.surfaceText ?? "").replace(/\//g, "")}
-      {showTooltip && !isEditing && <ParseTooltip word={word} flipped={tooltipBelow} useLinguisticTerms={useLinguisticTerms} />}
-    </span>
+    <>
+      {leading}
+      <span
+        ref={wordRef}
+        className={baseClasses}
+        style={style}
+        data-word-id={word.wordId}
+        onClick={(e) => onSelect(word, e.shiftKey)}
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={() => setHovering(false)}
+        title={isEditing ? undefined : `${word.lemma ?? word.surfaceText} — ${word.partOfSpeech ?? "unknown"}`}
+      >
+        {core}
+        {showTooltip && !isEditing && <ParseTooltip word={word} flipped={tooltipBelow} useLinguisticTerms={useLinguisticTerms} />}
+      </span>
+      {trailing}
+    </>
   );
 
   if (isInterlinear) {
@@ -204,16 +201,27 @@ export default function WordToken({
         <span
           ref={wordRef}
           className={baseClasses}
-          style={{ ...underlineStyle, ...shadowStyle }}
+          style={underlineStyle}
           data-word-id={word.wordId}
           onClick={(e) => onSelect(word, e.shiftKey)}
           onMouseEnter={handleMouseEnter}
           onMouseLeave={() => setHovering(false)}
         >
-          <span className="word-surface">{(word.surfaceText ?? "").replace(/\//g, "")}</span>
+          <span className="word-surface">{core}</span>
           {showTooltip && !isEditing && <ParseTooltip word={word} flipped={tooltipBelow} useLinguisticTerms={useLinguisticTerms} />}
         </span>
-        <span className="word-parse">{getInterlinearLabel(word)}</span>
+        <span
+          className="word-parse"
+          style={{
+            fontFamily: isHebrew
+              ? '"Ezra SIL", "SBL Hebrew", serif'
+              : '"Gentium Plus", "GFS Didot", serif',
+            fontSize: "0.72em",
+            color: "var(--interlinear-color)",
+          }}
+        >
+          {getInterlinearLabel(word)}
+        </span>
       </span>
     );
   }

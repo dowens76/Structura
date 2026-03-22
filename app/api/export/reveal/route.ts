@@ -791,7 +791,7 @@ export async function GET(req: NextRequest) {
   let speechSections:       SpeechSection[];
   let formattingRows:       { wordId: string; isBold: boolean; isItalic: boolean }[];
   let paragraphBreakIds:    string[];
-  let sceneBreakRows:       { wordId: string; heading: string | null }[];
+  let sceneBreakRows:       { wordId: string; heading: string | null; level: number; verse: number; outOfSequence: boolean }[];
   let wordTags:             WordTag[];
   let wordTagRefs:          WordTagRef[];
   let lineIndentRows:       { wordId: string; indentLevel: number }[];
@@ -939,7 +939,15 @@ export async function GET(req: NextRequest) {
   const lineIndentMap    = new Map(lineIndentRows.map((l) => [l.wordId, l.indentLevel]));
   const breakIdSet       = new Set(paragraphBreakIds);
   const wordToParaStart  = buildWordToParaStart(words, breakIdSet);
-  const sceneBreakMap    = new Map(sceneBreakRows.map((sb) => [sb.wordId, sb.heading]));
+  // Build sceneBreakMap: wordId → heading of the highest-priority (lowest level number) break
+  const sceneBreakMap = new Map<string, string | null>();
+  for (const sb of sceneBreakRows) {
+    const existing = sceneBreakMap.get(sb.wordId);
+    if (existing === undefined) {
+      sceneBreakMap.set(sb.wordId, sb.heading);
+    }
+    // Keep the first encountered (getChapterSceneBreaks returns sorted by verse/level asc)
+  }
 
   // ── Render ───────────────────────────────────────────────────────────────────
 

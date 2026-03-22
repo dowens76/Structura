@@ -13,6 +13,7 @@
   --text-muted: #7a6e5e;
   --accent: #c89b3c;
   --accent-hover: #a87d28;
+  --interlinear-color: #b04a32;
   --nav-bg: #1f2f3f;
   --nav-fg: #f8f6f2;
   --nav-fg-muted: #a8b8c8;
@@ -30,6 +31,7 @@
     --text-muted: #8a9aaa;
     --accent: #d4aa50;
     --accent-hover: #e0be70;
+    --interlinear-color: #c96448;
     --nav-bg: #0f1820;
     --nav-fg: #ede8df;
     --nav-fg-muted: #7a9ab8;
@@ -112,9 +114,6 @@ body {
 }
 
 .word-interlinear .word-parse {
-  font-size: 0.55rem;
-  color: var(--text-muted);
-  font-family: system-ui, sans-serif;
   letter-spacing: 0;
   text-transform: uppercase;
   line-height: 1.2;

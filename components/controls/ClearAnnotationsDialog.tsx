@@ -10,7 +10,7 @@ export type ClearCategory =
   | "lineIndents"
   | "wordArrows"
   | "wordFormatting"
-  | "clauseRelationships";
+  | "rstRelations";
 
 const CATEGORY_META: { key: ClearCategory; label: string; icon: string }[] = [
   { key: "paragraphBreaks",    label: "Paragraph breaks",       icon: "¶"  },
@@ -18,7 +18,7 @@ const CATEGORY_META: { key: ClearCategory; label: string; icon: string }[] = [
   { key: "speechSections",     label: "Speech sections",         icon: "💬" },
   { key: "wordTagRefs",        label: "Word / concept tags",     icon: "🏷" },
   { key: "lineIndents",        label: "Indentations",            icon: "↳" },
-  { key: "clauseRelationships",label: "Clause arcs",             icon: "⤢" },
+  { key: "rstRelations",        label: "RST relations",           icon: "⤢" },
   { key: "wordArrows",         label: "Arrows",                  icon: "↗" },
   { key: "wordFormatting",     label: "Bold / italic formatting",icon: "B" },
 ];

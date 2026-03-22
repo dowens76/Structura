@@ -11,6 +11,8 @@ interface Props {
   bookName: string;
   currentChapter: number;
   chapterCount: number;
+  /** If provided, the matching passage in the dropdown is highlighted as active. */
+  currentPassageId?: number;
 }
 
 export default function PassageNavButtons({
@@ -19,6 +21,7 @@ export default function PassageNavButtons({
   bookName,
   currentChapter,
   chapterCount,
+  currentPassageId,
 }: Props) {
   const [dropdownOpen, setDropdownOpen]   = useState(false);
   const [dialogOpen,   setDialogOpen]     = useState(false);
@@ -94,22 +97,31 @@ export default function PassageNavButtons({
                   No passages defined yet.
                 </p>
               ) : (
-                passages.map((p) => (
-                  <Link
-                    key={p.id}
-                    href={`/${encodeURIComponent(book)}/${textSource}/passage/${p.id}`}
-                    onClick={() => setDropdownOpen(false)}
-                    className="flex items-baseline gap-2 px-4 py-2.5 hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors border-b last:border-0"
-                    style={{ borderColor: "var(--border)" }}
-                  >
-                    <span className="flex-1 text-sm truncate" style={{ color: "var(--foreground)" }}>
-                      {p.label || <em style={{ color: "var(--text-muted)" }}>Untitled</em>}
-                    </span>
-                    <span className="text-[11px] font-mono shrink-0" style={{ color: "var(--text-muted)" }}>
-                      {formatRef(p)}
-                    </span>
-                  </Link>
-                ))
+                passages.map((p) => {
+                  const isActive = p.id === currentPassageId;
+                  return (
+                    <Link
+                      key={p.id}
+                      href={`/${encodeURIComponent(book)}/${textSource}/passage/${p.id}`}
+                      onClick={() => setDropdownOpen(false)}
+                      className="flex items-baseline gap-2 px-4 py-2.5 hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors border-b last:border-0"
+                      style={{
+                        borderColor: "var(--border)",
+                        backgroundColor: isActive ? "rgba(200,155,60,0.10)" : undefined,
+                      }}
+                    >
+                      {isActive && (
+                        <span className="text-[9px] shrink-0" style={{ color: "var(--accent)" }}>▶</span>
+                      )}
+                      <span className="flex-1 text-sm truncate" style={{ color: isActive ? "var(--accent)" : "var(--foreground)" }}>
+                        {p.label || <em style={{ color: "var(--text-muted)" }}>Untitled</em>}
+                      </span>
+                      <span className="text-[11px] font-mono shrink-0" style={{ color: "var(--text-muted)" }}>
+                        {formatRef(p)}
+                      </span>
+                    </Link>
+                  );
+                })
               )}
             </div>
 

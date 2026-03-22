@@ -1,4 +1,4 @@
-import { integer, sqliteTable, text, index } from "drizzle-orm/sqlite-core";
+import { integer, sqliteTable, text, index, uniqueIndex } from "drizzle-orm/sqlite-core";
 
 export const books = sqliteTable("books", {
   id: integer("id").primaryKey({ autoIncrement: true }),
@@ -195,21 +195,29 @@ export const lineIndents = sqliteTable(
   (t) => [index("li_book_ch_idx").on(t.book, t.chapter)]
 );
 
-// Scene/episode breaks — a higher-level structural marker (solid HR + optional heading).
-// Always implies a paragraph break: toggling a scene break also adds/removes a paragraph break.
+// Section breaks — hierarchical structural markers (solid HR + optional heading).
+// Level 1 = highest (book section), level 6 = lowest (minor note).
+// Multiple levels may exist at the same wordId position (stacked display).
+// Always implies a paragraph break: toggling a section break also adds/removes a paragraph break.
 export const sceneBreaks = sqliteTable(
   "scene_breaks",
   {
     id:              integer("id").primaryKey({ autoIncrement: true }),
-    wordId:          text("word_id").notNull().unique(), // first word of the new scene
-    heading:         text("heading"),                    // optional scene/episode title (null = none)
+    wordId:          text("word_id").notNull(),           // first word of the new section
+    heading:         text("heading"),                     // optional section title (null = none)
+    level:           integer("level").notNull().default(1), // 1–6 (1=highest)
+    verse:           integer("verse").notNull().default(0), // verse number of wordId's verse
     outOfSequence:   integer("out_of_sequence", { mode: "boolean" }).notNull().default(false),
+    extendedThrough: integer("extended_through"),                 // nullable; Psalms grouping only
     textSource:      text("text_source").notNull(),
     book:            text("book").notNull(),
     chapter:         integer("chapter").notNull(),
     createdAt:       text("created_at").$defaultFn(() => new Date().toISOString()),
   },
-  (t) => [index("sb_book_ch_src_idx").on(t.book, t.chapter, t.textSource)]
+  (t) => [
+    index("sb_book_ch_src_idx").on(t.book, t.chapter, t.textSource),
+    uniqueIndex("sb_word_level_idx").on(t.wordId, t.level),
+  ]
 );
 
 // User-defined passage ranges (can span multiple chapters or be a sub-chapter slice)
@@ -242,6 +250,31 @@ export const clauseRelationships = sqliteTable(
     createdAt:     text("created_at").$defaultFn(() => new Date().toISOString()),
   },
   (t) => [index("clrel_book_ch_src_idx").on(t.book, t.chapter, t.textSource)]
+);
+
+// RST (Rhetorical Structure Theory) relations between paragraph segments.
+// Each RST relation is a group of members sharing a groupId (UUID).
+// For subordinate relations: one "nucleus" + one "satellite" member.
+// For coordinate (multinuclear) relations: two or more "nucleus" members.
+// sortOrder preserves document order within the group.
+export const rstRelations = sqliteTable(
+  "rst_relations",
+  {
+    id:         integer("id").primaryKey({ autoIncrement: true }),
+    groupId:    text("group_id").notNull(),      // UUID — ties all members of one RST relation
+    segWordId:  text("seg_word_id").notNull(),   // first word ID of this segment
+    role:       text("role").notNull(),           // "nucleus" | "satellite"
+    relType:    text("rel_type").notNull(),       // e.g. "cause", "coordination"
+    sortOrder:  integer("sort_order").notNull().default(0),
+    textSource: text("text_source").notNull(),
+    book:       text("book").notNull(),
+    chapter:    integer("chapter").notNull(),
+    createdAt:  text("created_at").$defaultFn(() => new Date().toISOString()),
+  },
+  (t) => [
+    index("rst_book_ch_src_idx").on(t.book, t.chapter, t.textSource),
+    index("rst_group_idx").on(t.groupId),
+  ]
 );
 
 // Free-form word-to-word arrows (displayed as bezier curves below the text)
@@ -317,6 +350,7 @@ export type LineIndent = typeof lineIndents.$inferSelect;
 export type SceneBreak = typeof sceneBreaks.$inferSelect;
 export type Passage = typeof passages.$inferSelect;
 export type ClauseRelationship = typeof clauseRelationships.$inferSelect;
+export type RstRelation = typeof rstRelations.$inferSelect;
 export type WordArrow = typeof wordArrows.$inferSelect;
 export type WordFormatting = typeof wordFormatting.$inferSelect;
 export type LineAnnotation = typeof lineAnnotations.$inferSelect;

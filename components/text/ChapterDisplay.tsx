@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState, useEffect, useRef } from "react";
-import type { Word, Character, CharacterRef, SpeechSection, WordTag, WordTagRef, ClauseRelationship, WordArrow, LineAnnotation } from "@/lib/db/schema";
+import type { Word, Character, CharacterRef, SpeechSection, WordTag, WordTagRef, RstRelation, WordArrow, LineAnnotation } from "@/lib/db/schema";
 import type { Translation, TranslationVerse } from "@/lib/db/schema";
 import type { DisplayMode, GrammarFilterState, TranslationTextEntry } from "@/lib/morphology/types";
 import VerseDisplay from "./VerseDisplay";
@@ -11,12 +11,21 @@ import DisplayModeToggle from "@/components/controls/DisplayModeToggle";
 import ColorRulePanel from "@/components/controls/ColorRulePanel";
 import CharacterPanel from "@/components/controls/CharacterPanel";
 import WordTagPanel from "@/components/controls/WordTagPanel";
-import ClauseRelationshipOverlay from "./ClauseRelationshipOverlay";
+import RstRelationOverlay from "./RstRelationOverlay";
 import WordArrowOverlay from "./WordArrowOverlay";
 import ClearAnnotationsDialog, { type ClearCategory } from "@/components/controls/ClearAnnotationsDialog";
 import type { ColorRule } from "@/lib/morphology/colorRules";
-import { RELATIONSHIP_TYPES } from "@/lib/morphology/clauseRelationships";
+import { RELATIONSHIP_TYPES, RELATIONSHIP_MAP } from "@/lib/morphology/clauseRelationships";
 import hebrewLemmas from "@/lib/data/hebrew-lemmas.json";
+import { computeSectionRanges } from "@/lib/utils/sectionRanges";
+
+/** Returns true if the word's surface text is entirely punctuation and should
+ *  be skipped during character / word-tag selection. */
+function isPunctuationWord(word: Word): boolean {
+  const text = (word.surfaceText ?? "").replace(/\//g, "").trim();
+  // Match common ASCII and Unicode punctuation: quotes, period, comma, colon, semicolon, middle dot
+  return text.length > 0 && /^["""''\u2018\u2019\u201C\u201D.,:;?·\u00B7]+$/.test(text);
+}
 
 interface ChapterDisplayProps {
   words: Word[];
@@ -32,11 +41,13 @@ interface ChapterDisplayProps {
   initialWordTags: WordTag[];
   initialWordTagRefs: WordTagRef[];
   initialLineIndents: { wordId: string; indentLevel: number }[];
-  initialClauseRelationships: ClauseRelationship[];
+  initialRstRelations: RstRelation[];
   initialWordArrows: WordArrow[];
   initialWordFormatting: { wordId: string; isBold: boolean; isItalic: boolean }[];
-  initialSceneBreaks: { wordId: string; heading: string | null; outOfSequence: boolean }[];
+  initialSceneBreaks: { wordId: string; heading: string | null; level: number; verse: number; outOfSequence: boolean; extendedThrough: number | null }[];
   initialLineAnnotations: LineAnnotation[];
+  bookSceneBreaks: { wordId: string; level: number; chapter: number; verse: number; extendedThrough: number | null }[];
+  bookMaxVerses: Map<number, number>;
 }
 
 const DEFAULT_FILTER: GrammarFilterState = {
@@ -73,11 +84,13 @@ export default function ChapterDisplay({
   initialWordTags,
   initialWordTagRefs,
   initialLineIndents,
-  initialClauseRelationships,
+  initialRstRelations,
   initialWordArrows,
   initialWordFormatting,
   initialSceneBreaks,
   initialLineAnnotations,
+  bookSceneBreaks,
+  bookMaxVerses,
 }: ChapterDisplayProps) {
   // Use fallback defaults for SSR — localStorage values are loaded in useEffect after hydration
   const [displayMode, setDisplayMode] = useState<DisplayMode>("clean");
@@ -97,15 +110,19 @@ export default function ChapterDisplay({
     () => new Set(initialParagraphBreakIds)
   );
 
-  // ── Scene / episode break state ─────────────────────────────────────────────
-  // Map of wordId → heading (null = no heading). Each scene break also implies a
-  // paragraph break; toggling a scene break mirrors into paragraphBreakIds.
-  const [sceneBreakMap, setSceneBreakMap] = useState<Map<string, string | null>>(
-    () => new Map(initialSceneBreaks.map((sb) => [sb.wordId, sb.heading]))
-  );
-  // Set of wordIds for scenes marked as out of chronological sequence.
-  const [sceneOosSet, setSceneOosSet] = useState<Set<string>>(
-    () => new Set(initialSceneBreaks.filter((sb) => sb.outOfSequence).map((sb) => sb.wordId))
+  // ── Section break state ──────────────────────────────────────────────────────
+  // Map of wordId → Array<{ heading, level, verse, outOfSequence, extendedThrough }>.
+  // Multiple levels may exist at the same wordId; toggling also mirrors into paragraphBreakIds.
+  const [sceneBreakMap, setSceneBreakMap] = useState<Map<string, Array<{ heading: string | null; level: number; verse: number; outOfSequence: boolean; extendedThrough: number | null }>>>(
+    () => {
+      const m = new Map<string, Array<{ heading: string | null; level: number; verse: number; outOfSequence: boolean; extendedThrough: number | null }>>();
+      for (const sb of initialSceneBreaks) {
+        const arr = m.get(sb.wordId) ?? [];
+        arr.push({ heading: sb.heading, level: sb.level, verse: sb.verse, outOfSequence: sb.outOfSequence, extendedThrough: sb.extendedThrough });
+        m.set(sb.wordId, arr);
+      }
+      return m;
+    }
   );
   const [editingScenes, setEditingScenes] = useState(false);
 
@@ -152,25 +169,27 @@ export default function ChapterDisplay({
   );
 
   // ── Paragraph indentation state ─────────────────────────────────────────────
+  // Source and translation indents are stored separately: tv:-prefixed wordIds
+  // hold the translation column's indent level in the DB.
   const [lineIndentMap, setLineIndentMap] = useState<Map<string, number>>(
-    () => new Map(initialLineIndents.map((li) => [li.wordId, li.indentLevel]))
+    () => new Map(initialLineIndents.filter(li => !li.wordId.startsWith("tv:")).map((li) => [li.wordId, li.indentLevel]))
   );
+  const [tvLineIndentMap, setTvLineIndentMap] = useState<Map<string, number>>(
+    () => new Map(initialLineIndents.filter(li => li.wordId.startsWith("tv:")).map((li) => [li.wordId.slice(3), li.indentLevel]))
+  );
+  const [indentsLinked, setIndentsLinked] = useState(true);
   const [editingIndents, setEditingIndents] = useState(false);
 
-  // ── Clause relationships state ────────────────────────────────────────────
-  const [clauseRelationships, setClauseRelationships] = useState<ClauseRelationship[]>(initialClauseRelationships);
-  const [editingRelationships, setEditingRelationships] = useState(false);
-  const [relFromSegWordId, setRelFromSegWordId] = useState<string | null>(null);
-  const [relToSegWordId, setRelToSegWordId]     = useState<string | null>(null);
-  const [showRelPicker, setShowRelPicker]       = useState(false);
-
-  // Scroll the text container back to top whenever the relationship picker opens
-  // so the picker bar (which lives in the scrollable content) is visible.
-  useEffect(() => {
-    if (showRelPicker && textContainerRef.current) {
-      textContainerRef.current.scrollTo({ top: 0, behavior: "smooth" });
-    }
-  }, [showRelPicker]);
+  // ── RST relation state ───────────────────────────────────────────────────
+  const [rstRelations, setRstRelations]   = useState<RstRelation[]>(initialRstRelations);
+  const [editingRst, setEditingRst]        = useState(false);
+  // First-selected segment (nucleus for subordinate; first nucleus for coordinate)
+  const [rstSegA, setRstSegA]              = useState<string | null>(null);
+  // Second-selected segment (triggers picker)
+  const [rstSegB, setRstSegB]              = useState<string | null>(null);
+  // Whether the user wants to swap nucleus/satellite roles (for subordinate types)
+  const [rstRolesSwapped, setRstRolesSwapped] = useState(false);
+  const [showRstPicker, setShowRstPicker]  = useState(false);
 
   // ── Word arrows state ──────────────────────────────────────────────────────
   const [wordArrowsState, setWordArrowsState] = useState<WordArrow[]>(initialWordArrows);
@@ -290,8 +309,9 @@ export default function ChapterDisplay({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
-  // Restore persisted settings after hydration — avoids server/client HTML mismatch
-  // (reading localStorage in useState initializers causes hydration errors)
+  // Restore all persisted settings after hydration — avoids SSR/client HTML mismatch.
+  // Font sizes are included here (not in lazy initializers) for the same reason.
+  // Write effects for font sizes were removed; adjustFontSize writes directly instead.
   useEffect(() => {
     setDisplayMode(readLocal<DisplayMode>("structura:displayMode", "clean"));
     setActiveTranslationAbbrs(new Set(readLocal<string[]>("structura:activeTranslations", [])));
@@ -305,9 +325,6 @@ export default function ChapterDisplay({
   // Persist sticky settings whenever they change
   useEffect(() => { writeLocal("structura:displayMode", displayMode); }, [displayMode]);
   useEffect(() => { writeLocal("structura:useLinguisticTerms", useLinguisticTerms); }, [useLinguisticTerms]);
-  useEffect(() => { writeLocal("structura:hebrewFontSize", hebrewFontSize); }, [hebrewFontSize]);
-  useEffect(() => { writeLocal("structura:greekFontSize", greekFontSize); }, [greekFontSize]);
-  useEffect(() => { writeLocal("structura:translationFontSize", translationFontSize); }, [translationFontSize]);
   useEffect(() => { writeLocal("structura:hideSourceText", hideSourceText); }, [hideSourceText]);
 
   const isHebrew = words[0]?.language === "hebrew";
@@ -322,6 +339,26 @@ export default function ChapterDisplay({
     return map;
   }, [words]);
   const verseNums = useMemo(() => [...verseGroups.keys()].sort((a, b) => a - b), [verseGroups]);
+
+  // Flatten sceneBreakMap + book-wide breaks into sorted array for cross-chapter range computation.
+  // Current-chapter breaks come from live state (sceneBreakMap); other chapters come from the
+  // static bookSceneBreaks prop fetched at page load.
+  const sectionRanges = useMemo(() => {
+    // Start with book-wide breaks, excluding the current chapter (live state overrides those)
+    const allBreaks: { wordId: string; level: number; chapter: number; verse: number; extendedThrough: number | null }[] =
+      bookSceneBreaks
+        .filter((b) => b.chapter !== chapter)
+        .map((b) => ({ ...b }));
+
+    // Add current chapter breaks from live sceneBreakMap state
+    for (const [wordId, arr] of sceneBreakMap) {
+      for (const br of arr) {
+        allBreaks.push({ wordId, level: br.level, chapter, verse: br.verse, extendedThrough: null });
+      }
+    }
+
+    return computeSectionRanges(allBreaks, bookMaxVerses, book);
+  }, [sceneBreakMap, bookSceneBreaks, bookMaxVerses, chapter, book]);
 
   // Character id → Character
   const characterMap = useMemo(
@@ -383,10 +420,19 @@ export default function ChapterDisplay({
 
   function adjustFontSize(target: "source" | "translation", delta: number) {
     if (target === "source") {
+      const key = isHebrew ? "structura:hebrewFontSize" : "structura:greekFontSize";
       const setter = isHebrew ? setHebrewFontSize : setGreekFontSize;
-      setter((prev) => Math.min(2.5, Math.max(0.875, Math.round((prev + delta) * 1000) / 1000)));
+      setter((prev) => {
+        const next = Math.min(2.5, Math.max(0.875, Math.round((prev + delta) * 1000) / 1000));
+        writeLocal(key, next);
+        return next;
+      });
     } else {
-      setTranslationFontSize((prev) => Math.min(1.5, Math.max(0.625, Math.round((prev + delta) * 1000) / 1000)));
+      setTranslationFontSize((prev) => {
+        const next = Math.min(1.5, Math.max(0.625, Math.round((prev + delta) * 1000) / 1000));
+        writeLocal("structura:translationFontSize", next);
+        return next;
+      });
     }
   }
 
@@ -410,7 +456,21 @@ export default function ChapterDisplay({
       return;
     }
     if (editingScenes) {
-      handleToggleSceneBreak(word.wordId);
+      const existing = sceneBreakMap.get(word.wordId) ?? [];
+      if (existing.length === 0) {
+        // No break yet — add level 1
+        handleToggleSceneBreak(word.wordId, 1, word.verse);
+      } else {
+        // Word already has break(s): add the lowest missing level.
+        // Level 1 is not accessible via click once it exists; skip it.
+        const existingLevels = new Set(existing.map((b) => b.level));
+        let nextLevel = existingLevels.has(1) ? 2 : 1;
+        while (existingLevels.has(nextLevel) && nextLevel <= 6) nextLevel++;
+        if (nextLevel <= 6) {
+          handleToggleSceneBreak(word.wordId, nextLevel, word.verse);
+        }
+        // All 6 levels already present — clicking does nothing
+      }
       return;
     }
     if (editingRefs) {
@@ -473,84 +533,124 @@ export default function ChapterDisplay({
     return handleToggleParagraphBreakById(wordId, abbr);
   }
 
-  // ── Scene break handlers ────────────────────────────────────────────────────
+  // ── Section break handlers ───────────────────────────────────────────────────
 
-  async function handleToggleSceneBreak(wordId: string, record = true) {
-    const wasSet = sceneBreakMap.has(wordId);
+  async function handleToggleSceneBreak(wordId: string, level: number, verse: number, record = true) {
+    const existingArr = sceneBreakMap.get(wordId) ?? [];
+    const wasSet = existingArr.some((b) => b.level === level);
     if (record) {
       pushUndo({
-        label: wasSet ? "Remove scene break" : "Add scene break",
-        undo: () => handleToggleSceneBreak(wordId, false),
+        label: wasSet ? "Remove section break" : "Add section break",
+        undo: () => handleToggleSceneBreak(wordId, level, verse, false),
       });
     }
-    // Optimistic update: mirror into sceneBreakMap and paragraphBreakIds together
+    // Optimistic update
     setSceneBreakMap((prev) => {
       const next = new Map(prev);
-      if (next.has(wordId)) next.delete(wordId);
-      else next.set(wordId, null);
+      const arr = [...(prev.get(wordId) ?? [])];
+      if (wasSet) {
+        const filtered = arr.filter((b) => b.level !== level);
+        if (filtered.length === 0) next.delete(wordId);
+        else next.set(wordId, filtered);
+      } else {
+        arr.push({ heading: null, level, verse, outOfSequence: false, extendedThrough: null });
+        arr.sort((a, b) => a.level - b.level);
+        next.set(wordId, arr);
+      }
       return next;
     });
-    setParagraphBreakIds((prev) => {
-      const next = new Set(prev);
-      if (wasSet) next.delete(wordId);
-      else next.add(wordId);
-      return next;
-    });
+    // Mirror paragraph break: add if no breaks existed before; remove if none remain after
+    if (!wasSet) {
+      setParagraphBreakIds((prev) => { const next = new Set(prev); next.add(wordId); return next; });
+    } else if (existingArr.length === 1) {
+      // This was the last break
+      setParagraphBreakIds((prev) => { const next = new Set(prev); next.delete(wordId); return next; });
+    }
     try {
       await fetch("/api/scene-breaks", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ wordId, book, chapter, source: textSource }),
+        body: JSON.stringify({ wordId, book, chapter, verse, source: textSource, level }),
       });
     } catch {
       // Rollback on error
       setSceneBreakMap((prev) => {
         const next = new Map(prev);
-        if (wasSet) next.set(wordId, null);
-        else next.delete(wordId);
+        if (wasSet) {
+          const arr = [...(prev.get(wordId) ?? [])];
+          arr.push({ heading: null, level, verse, outOfSequence: false, extendedThrough: null });
+          arr.sort((a, b) => a.level - b.level);
+          next.set(wordId, arr);
+        } else {
+          const filtered = (prev.get(wordId) ?? []).filter((b) => b.level !== level);
+          if (filtered.length === 0) next.delete(wordId);
+          else next.set(wordId, filtered);
+        }
         return next;
       });
-      setParagraphBreakIds((prev) => {
-        const next = new Set(prev);
-        if (wasSet) next.add(wordId);
-        else next.delete(wordId);
-        return next;
-      });
+      if (!wasSet) {
+        setParagraphBreakIds((prev) => { const next = new Set(prev); next.delete(wordId); return next; });
+      } else if (existingArr.length === 1) {
+        setParagraphBreakIds((prev) => { const next = new Set(prev); next.add(wordId); return next; });
+      }
     }
   }
 
-  async function handleUpdateSceneHeading(wordId: string, heading: string) {
+  async function handleUpdateSceneHeading(wordId: string, level: number, heading: string) {
     const trimmed = heading.trim() || null;
-    // Optimistic update
     setSceneBreakMap((prev) => {
       const next = new Map(prev);
-      next.set(wordId, trimmed);
+      const arr = (prev.get(wordId) ?? []).map((b) =>
+        b.level === level ? { ...b, heading: trimmed } : b
+      );
+      next.set(wordId, arr);
       return next;
     });
     try {
       await fetch("/api/scene-breaks", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ wordId, heading: trimmed }),
+        body: JSON.stringify({ wordId, level, heading: trimmed }),
       });
     } catch {
-      // Heading update failure is non-critical; leave optimistic state
+      // Non-critical; leave optimistic state
     }
   }
 
-  async function handleUpdateSceneOutOfSequence(wordId: string, outOfSequence: boolean) {
-    // Optimistic update
-    setSceneOosSet((prev) => {
-      const next = new Set(prev);
-      if (outOfSequence) next.add(wordId);
-      else next.delete(wordId);
+  async function handleUpdateSceneOutOfSequence(wordId: string, level: number, outOfSequence: boolean) {
+    setSceneBreakMap((prev) => {
+      const next = new Map(prev);
+      const arr = (prev.get(wordId) ?? []).map((b) =>
+        b.level === level ? { ...b, outOfSequence } : b
+      );
+      next.set(wordId, arr);
       return next;
     });
     try {
       await fetch("/api/scene-breaks", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ wordId, outOfSequence }),
+        body: JSON.stringify({ wordId, level, outOfSequence }),
+      });
+    } catch {
+      // Non-critical; leave optimistic state
+    }
+  }
+
+  async function handleUpdateSceneExtendedThrough(wordId: string, level: number, extendedThrough: number | null) {
+    setSceneBreakMap((prev) => {
+      const next = new Map(prev);
+      const arr = (prev.get(wordId) ?? []).map((b) =>
+        b.level === level ? { ...b, extendedThrough } : b
+      );
+      next.set(wordId, arr);
+      return next;
+    });
+    try {
+      await fetch("/api/scene-breaks", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ wordId, level, extendedThrough }),
       });
     } catch {
       // Non-critical; leave optimistic state
@@ -803,6 +903,7 @@ export default function ChapterDisplay({
   }
 
   function handleToggleCharacterRef(word: Word) {
+    if (isPunctuationWord(word)) return;
     return handleToggleCharacterRefById(word.wordId, textSource);
   }
 
@@ -854,6 +955,7 @@ export default function ChapterDisplay({
   }
 
   async function handleToggleWordTagRef(word: Word) {
+    if (isPunctuationWord(word)) return;
     if (pendingWordTag && pendingWordTagColor !== null) {
       // "Word" type: create a new tag named after the lemma and immediately tag this word.
       // For Hebrew words use the lexicon lookup (same as the interlinear label); for Greek
@@ -967,6 +1069,42 @@ export default function ChapterDisplay({
       else next.add(id);
       return next;
     });
+  }
+
+  async function handleReassignSpeechSection(sectionId: number, newCharId: number) {
+    const section = speechSections.find((s) => s.id === sectionId);
+    if (!section || section.characterId === newCharId) return;
+
+    const beforeSections = [...speechSections];
+    pushUndo({
+      label: "Reassign speech",
+      undo: async () => {
+        setSpeechSections(beforeSections);
+        try {
+          await fetch("/api/speech-sections", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ book, chapter, source: textSource, sections: beforeSections }),
+          });
+        } catch { /* best effort */ }
+      },
+    });
+
+    // Optimistic update
+    setSpeechSections((prev) =>
+      prev.map((s) => s.id === sectionId ? { ...s, characterId: newCharId } : s)
+    );
+    try {
+      const res = await fetch("/api/speech-sections", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sectionId, characterId: newCharId, book, chapter, source: textSource }),
+      });
+      const data = await res.json();
+      setSpeechSections(data.sections);
+    } catch {
+      setSpeechSections(beforeSections);
+    }
   }
 
   async function handleDeleteSpeechSection(sectionId: number) {
@@ -1154,12 +1292,62 @@ export default function ChapterDisplay({
     });
   }
 
-  // ── Indent handler ────────────────────────────────────────────────────────
+  // ── Indent handlers ────────────────────────────────────────────────────────
 
   async function handleSetIndent(paraStartWordId: string, level: number) {
     const prevLevel = lineIndentMap.get(paraStartWordId) ?? 0;
-    // Optimistic update
+    const prevTvLevel = tvLineIndentMap.get(paraStartWordId) ?? 0;
+    // Optimistic update — source
     setLineIndentMap((prev) => {
+      const next = new Map(prev);
+      if (level <= 0) next.delete(paraStartWordId);
+      else next.set(paraStartWordId, level);
+      return next;
+    });
+    // When linked, mirror into translation map
+    if (indentsLinked) {
+      setTvLineIndentMap((prev) => {
+        const next = new Map(prev);
+        if (level <= 0) next.delete(paraStartWordId);
+        else next.set(paraStartWordId, level);
+        return next;
+      });
+    }
+    try {
+      await fetch("/api/line-indents", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ wordId: paraStartWordId, indentLevel: level, textSource, book, chapter }),
+      });
+      if (indentsLinked) {
+        await fetch("/api/line-indents", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ wordId: `tv:${paraStartWordId}`, indentLevel: level, textSource, book, chapter }),
+        });
+      }
+    } catch {
+      // Rollback on error
+      setLineIndentMap((prev) => {
+        const next = new Map(prev);
+        if (prevLevel <= 0) next.delete(paraStartWordId);
+        else next.set(paraStartWordId, prevLevel);
+        return next;
+      });
+      if (indentsLinked) {
+        setTvLineIndentMap((prev) => {
+          const next = new Map(prev);
+          if (prevTvLevel <= 0) next.delete(paraStartWordId);
+          else next.set(paraStartWordId, prevTvLevel);
+          return next;
+        });
+      }
+    }
+  }
+
+  async function handleSetTvIndent(paraStartWordId: string, level: number) {
+    const prevLevel = tvLineIndentMap.get(paraStartWordId) ?? 0;
+    setTvLineIndentMap((prev) => {
       const next = new Map(prev);
       if (level <= 0) next.delete(paraStartWordId);
       else next.set(paraStartWordId, level);
@@ -1169,11 +1357,10 @@ export default function ChapterDisplay({
       await fetch("/api/line-indents", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ wordId: paraStartWordId, indentLevel: level, textSource, book, chapter }),
+        body: JSON.stringify({ wordId: `tv:${paraStartWordId}`, indentLevel: level, textSource, book, chapter }),
       });
     } catch {
-      // Rollback on error
-      setLineIndentMap((prev) => {
+      setTvLineIndentMap((prev) => {
         const next = new Map(prev);
         if (prevLevel <= 0) next.delete(paraStartWordId);
         else next.set(paraStartWordId, prevLevel);
@@ -1213,55 +1400,100 @@ export default function ChapterDisplay({
     }
   }
 
-  // ── Clause relationship handlers ──────────────────────────────────────────
-  function handleSelectSegment(wordId: string) {
-    if (!relFromSegWordId) {
-      setRelFromSegWordId(wordId);
-    } else if (wordId === relFromSegWordId) {
-      setRelFromSegWordId(null); // deselect
+  // ── RST relation handlers ────────────────────────────────────────────────
+  function handleSelectRstSegment(wordId: string) {
+    if (!rstSegA) {
+      setRstSegA(wordId);
+    } else if (wordId === rstSegA) {
+      // Click same segment again → deselect and reset
+      setRstSegA(null);
+      setRstSegB(null);
+      setShowRstPicker(false);
     } else {
-      setRelToSegWordId(wordId);
-      setShowRelPicker(true);
+      setRstSegB(wordId);
+      setRstRolesSwapped(false);
+      setShowRstPicker(true);
     }
   }
 
-  async function handleCreateRelationship(relType: string) {
-    if (!relFromSegWordId || !relToSegWordId) return;
-    const resp = await fetch("/api/clause-relationships", {
+  async function handleCreateRstRelation(relType: string) {
+    if (!rstSegA || !rstSegB) return;
+    const relMeta  = RELATIONSHIP_MAP[relType];
+    const category = relMeta?.category ?? "subordinate";
+    const isCoord  = category === "coordinate";
+
+    let members: { segWordId: string; role: "nucleus" | "satellite"; sortOrder: number }[];
+    if (isCoord) {
+      // Both are nuclei — check if rstSegA is already in a same-type coordination group
+      // to allow extending an existing group.
+      const existingGroup = rstRelations.find(
+        (r) => r.segWordId === rstSegA && r.relType === relType && r.role === "nucleus"
+      );
+      if (existingGroup) {
+        // Extend the existing group: add rstSegB as another nucleus
+        const groupId = existingGroup.groupId;
+        const maxOrder = rstRelations
+          .filter((r) => r.groupId === groupId)
+          .reduce((m, r) => Math.max(m, r.sortOrder), 0);
+        const resp = await fetch("/api/rst-relations", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            groupId,
+            members: [{ segWordId: rstSegB, role: "nucleus", sortOrder: maxOrder + 1 }],
+            relType,
+            book,
+            chapter,
+            source: textSource,
+          }),
+        });
+        const { relations: newRels } = await resp.json();
+        setRstRelations((prev) => [...prev, ...newRels]);
+        setRstSegB(null);
+        setShowRstPicker(false);
+        return;
+      }
+      members = [
+        { segWordId: rstSegA, role: "nucleus", sortOrder: 0 },
+        { segWordId: rstSegB, role: "nucleus", sortOrder: 1 },
+      ];
+    } else {
+      // Subordinate: A is nucleus, B is satellite (unless swapped)
+      const nucleusId   = rstRolesSwapped ? rstSegB : rstSegA;
+      const satelliteId = rstRolesSwapped ? rstSegA : rstSegB;
+      members = [
+        { segWordId: nucleusId,   role: "nucleus",   sortOrder: 0 },
+        { segWordId: satelliteId, role: "satellite",  sortOrder: 1 },
+      ];
+    }
+
+    const groupId = crypto.randomUUID();
+    const resp = await fetch("/api/rst-relations", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        fromSegWordId: relFromSegWordId,
-        toSegWordId:   relToSegWordId,
-        relType,
-        book,
-        chapter,
-        source: textSource,
-      }),
+      body: JSON.stringify({ groupId, members, relType, book, chapter, source: textSource }),
     });
-    const { relationship } = await resp.json();
-    setClauseRelationships((prev) => [...prev, relationship]);
-    // Keep the nucleus (relFromSegWordId) selected so the user can immediately
-    // click another segment to add more satellites to the same bracket.
-    // Clicking the nucleus dot again, or pressing Cancel, will deselect it.
-    setRelToSegWordId(null);
-    setShowRelPicker(false);
+    const { relations: newRels } = await resp.json();
+    setRstRelations((prev) => [...prev, ...newRels]);
+    // Keep segA selected so user can chain relations from the same segment
+    setRstSegB(null);
+    setRstRolesSwapped(false);
+    setShowRstPicker(false);
   }
 
-  function handleCancelRelPicker() {
-    // Cancel dismisses the satellite selection but keeps the nucleus so the
-    // user can try a different satellite without losing their starting point.
-    setShowRelPicker(false);
-    setRelToSegWordId(null);
+  function handleCancelRstPicker() {
+    setShowRstPicker(false);
+    setRstSegB(null);
+    setRstRolesSwapped(false);
   }
 
-  async function handleDeleteClauseRelationship(id: number) {
-    await fetch("/api/clause-relationships", {
+  async function handleDeleteRstGroup(groupId: string) {
+    await fetch("/api/rst-relations", {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id }),
+      body: JSON.stringify({ groupId }),
     });
-    setClauseRelationships((prev) => prev.filter((r) => r.id !== id));
+    setRstRelations((prev) => prev.filter((r) => r.groupId !== groupId));
   }
 
   // ── Word arrow handlers ────────────────────────────────────────────────────
@@ -1317,7 +1549,7 @@ export default function ChapterDisplay({
         case "wordTagRefs":        setWordTagRefMap(new Map()); break;
         case "lineIndents":        setLineIndentMap(new Map()); break;
         case "wordArrows":         setWordArrowsState([]); break;
-        case "clauseRelationships":setClauseRelationships([]); break;
+        case "rstRelations":        setRstRelations([]); break;
         case "wordFormatting":     setWordFormattingMap(new Map()); break;
       }
     }
@@ -1402,18 +1634,16 @@ export default function ChapterDisplay({
           className="flex-1 overflow-y-auto relative flex flex-col min-h-0"
           ref={textContainerRef}
         >
-          <ClauseRelationshipOverlay
-            relationships={clauseRelationships}
+          <RstRelationOverlay
+            relations={rstRelations}
             containerRef={textContainerRef}
             isHebrew={isHebrew}
-            hasTranslation={hasActiveTranslations}
-            hasSource={!hideSourceText}
-            editing={editingRelationships}
+            editing={editingRst}
             paragraphFirstWordIds={paragraphFirstWordIds}
-            selectedSegWordId={relFromSegWordId}
-            selectedToSegWordId={relToSegWordId}
-            onSelectSegment={handleSelectSegment}
-            onDeleteRelationship={handleDeleteClauseRelationship}
+            selectedNucleusWordId={rstSegA}
+            selectedSatelliteWordId={rstSegB}
+            onSelectSegment={handleSelectRstSegment}
+            onDeleteGroup={handleDeleteRstGroup}
           />
           <WordArrowOverlay
             arrows={wordArrowsState}
@@ -1422,8 +1652,11 @@ export default function ChapterDisplay({
             selectedFromWordId={arrowFromWordId}
             onDeleteArrow={handleDeleteWordArrow}
           />
+        {/* Sticky control area: toolbar + all editing panels/hints */}
+        <div className="sticky top-0 z-20 shrink-0 flex flex-col" style={{ backgroundColor: "var(--background)" }}>
+
         {/* Toolbar */}
-        <div className="sticky top-0 z-10 bg-[var(--background)] border-b border-[var(--border)] px-6 py-3 flex items-center gap-4 flex-wrap">
+        <div className="border-b border-[var(--border)] px-6 py-3 flex items-center gap-4 flex-wrap">
           <DisplayModeToggle mode={displayMode} onChange={setDisplayMode} />
           {displayMode === "color" && (
             <>
@@ -1464,8 +1697,8 @@ export default function ChapterDisplay({
           <button
             onClick={() => setEditingScenes((v) => !v)}
             title={editingScenes
-              ? "Exit scene break mode"
-              : "Enter scene break mode — click any word to start/remove a scene break there"}
+              ? "Exit section break mode"
+              : "Enter section break mode — click any word to start/remove a section break there"}
             className={[
               "px-2.5 py-1 rounded text-xs font-medium transition-colors",
               editingScenes
@@ -1581,38 +1814,72 @@ export default function ChapterDisplay({
                 : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
             ].join(" ")}
           >
-            ↳
+            ⇥
           </button>
 
-          {/* Clause relationship mode */}
+          {/* Source/translation indent link toggle — visible only in indent mode */}
+          {editingIndents && (
+            <label
+              className="flex items-center gap-1 text-[11px] text-stone-500 dark:text-stone-400 cursor-pointer select-none"
+              title={indentsLinked
+                ? "Source and translation indent are linked — uncheck to set them independently"
+                : "Source and translation indent are independent — check to link them"}
+            >
+              <input
+                type="checkbox"
+                checked={indentsLinked}
+                onChange={(e) => {
+                  const nowLinked = e.target.checked;
+                  setIndentsLinked(nowLinked);
+                  if (!nowLinked) {
+                    // Seed T with S values for any paragraph not yet explicitly set,
+                    // so T starts equal to S and can be changed independently from there.
+                    setTvLineIndentMap((prev) => {
+                      const next = new Map(prev);
+                      for (const [wId, lvl] of lineIndentMap) {
+                        if (!next.has(wId)) next.set(wId, lvl);
+                      }
+                      return next;
+                    });
+                  }
+                }}
+                className="w-3 h-3 accent-teal-600 cursor-pointer"
+              />
+              S↔T
+            </label>
+          )}
+
+          {/* RST relation mode */}
           <button
             onClick={() => {
-              setEditingRelationships((v) => !v);
+              setEditingRst((v) => !v);
               setEditingArrows(false);
               setArrowFromWordId(null);
-              setRelFromSegWordId(null);
-              setShowRelPicker(false);
+              setRstSegA(null);
+              setRstSegB(null);
+              setShowRstPicker(false);
             }}
-            title={editingRelationships
-              ? "Exit clause relationship mode"
-              : "Mark logical relationships between paragraph segments"}
+            title={editingRst
+              ? "Exit RST relation mode"
+              : "Mark RST (Rhetorical Structure Theory) relations between paragraph segments"}
             className={[
               "px-2.5 py-1 rounded text-xs font-medium transition-colors",
-              editingRelationships
+              editingRst
                 ? "bg-rose-600 text-white"
                 : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
             ].join(" ")}
           >
-            ⤢
+            ↳
           </button>
 
           {/* Word arrow mode */}
           <button
             onClick={() => {
               setEditingArrows((v) => !v);
-              setEditingRelationships(false);
-              setRelFromSegWordId(null);
-              setShowRelPicker(false);
+              setEditingRst(false);
+              setRstSegA(null);
+              setRstSegB(null);
+              setShowRstPicker(false);
               setArrowFromWordId(null);
             }}
             title={editingArrows
@@ -1625,7 +1892,7 @@ export default function ChapterDisplay({
                 : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
             ].join(" ")}
           >
-            ↗
+            ↷
           </button>
 
           {/* Undo button */}
@@ -1655,10 +1922,10 @@ export default function ChapterDisplay({
               setEditingSpeech(false);
               setEditingWordTags(false);
               setEditingIndents(false);
-              setEditingRelationships(false);
+              setEditingRst(false);
               setEditingArrows(false);
               setSpeechRangeStart(null);
-              setRelFromSegWordId(null);
+              setRstSegA(null);
               setArrowFromWordId(null);
             }}
             title={editingBold ? "Exit bold mode" : "Click words to toggle bold"}
@@ -1681,10 +1948,10 @@ export default function ChapterDisplay({
               setEditingSpeech(false);
               setEditingWordTags(false);
               setEditingIndents(false);
-              setEditingRelationships(false);
+              setEditingRst(false);
               setEditingArrows(false);
               setSpeechRangeStart(null);
-              setRelFromSegWordId(null);
+              setRstSegA(null);
               setArrowFromWordId(null);
             }}
             title={editingItalic ? "Exit italic mode" : "Click words to toggle italic"}
@@ -1851,54 +2118,74 @@ export default function ChapterDisplay({
           </div>
         )}
 
-        {/* Clause relationship hint */}
-        {editingRelationships && !showRelPicker && (
+        {/* RST relation hint */}
+        {editingRst && !showRstPicker && (
           <div className="px-6 py-1 text-xs border-b border-[var(--border)] text-stone-500 dark:text-stone-400"
                style={{ backgroundColor: "var(--nav-bg)" }}>
-            {relFromSegWordId
-              ? "Nucleus selected — click another segment dot to add a satellite, or click the nucleus dot again to finish"
-              : "Click a segment dot (◉) in the margin to select the nucleus"}
+            {rstSegA
+              ? "First segment selected — click another segment dot to choose a relation type"
+              : "Click a segment dot (◉) to start an RST relation"}
           </div>
         )}
 
-        {/* Relationship type picker bar */}
-        {showRelPicker && (
+        {/* RST relation type picker bar */}
+        {showRstPicker && (
           <div
-            className="border-b border-[var(--border)] px-4 py-2 flex flex-wrap gap-1.5 items-center shrink-0"
+            className="border-b border-[var(--border)] px-4 py-2 flex flex-col gap-2 shrink-0"
             style={{ backgroundColor: "var(--nav-bg)" }}
           >
-            <span className="text-xs font-medium mr-1" style={{ color: "var(--nav-fg-muted)" }}>
-              Relationship:
-            </span>
-            <span className="text-xs opacity-50 mr-0.5 select-none">Coord.</span>
-            {RELATIONSHIP_TYPES.filter((r) => r.category === "coordinate").map((r) => (
+            {/* Relation type buttons */}
+            <div className="flex flex-wrap gap-1.5 items-center">
+              <span className="text-xs font-medium mr-1" style={{ color: "var(--nav-fg-muted)" }}>
+                RST Relation:
+              </span>
+              <span className="text-xs opacity-50 mr-0.5 select-none">Coord.</span>
+              {RELATIONSHIP_TYPES.filter((r) => r.category === "coordinate").map((r) => (
+                <button
+                  key={r.key}
+                  onClick={() => handleCreateRstRelation(r.key)}
+                  className="px-2 py-0.5 rounded text-xs font-medium text-white transition-opacity hover:opacity-90"
+                  style={{ backgroundColor: r.color }}
+                >
+                  {r.label}
+                </button>
+              ))}
+              <span className="text-xs opacity-30 mx-1 select-none">|</span>
+              <span className="text-xs opacity-50 mr-0.5 select-none">Sub.</span>
+              {RELATIONSHIP_TYPES.filter((r) => r.category === "subordinate").map((r) => (
+                <button
+                  key={r.key}
+                  onClick={() => handleCreateRstRelation(r.key)}
+                  className="px-2 py-0.5 rounded text-xs font-medium text-white transition-opacity hover:opacity-90"
+                  style={{ backgroundColor: r.color }}
+                >
+                  {r.label}
+                </button>
+              ))}
               <button
-                key={r.key}
-                onClick={() => handleCreateRelationship(r.key)}
-                className="px-2 py-0.5 rounded text-xs font-medium text-white transition-opacity hover:opacity-90"
-                style={{ backgroundColor: r.color }}
+                onClick={handleCancelRstPicker}
+                className="ml-auto text-xs px-2 py-0.5 rounded bg-stone-200 dark:bg-stone-700 text-stone-600 dark:text-stone-300"
               >
-                {r.label}
+                Cancel
               </button>
-            ))}
-            <span className="text-xs opacity-30 mx-1 select-none">|</span>
-            <span className="text-xs opacity-50 mr-0.5 select-none">Sub.</span>
-            {RELATIONSHIP_TYPES.filter((r) => r.category === "subordinate").map((r) => (
+            </div>
+            {/* Nucleus/satellite swap row (only relevant for subordinate) */}
+            <div className="flex items-center gap-2 text-xs text-stone-500 dark:text-stone-400">
+              <span>Roles:</span>
+              <span className={`px-1.5 py-0.5 rounded font-medium ${!rstRolesSwapped ? "bg-violet-100 dark:bg-violet-900 text-violet-700 dark:text-violet-300" : "bg-stone-100 dark:bg-stone-800"}`}>
+                Seg A = {rstRolesSwapped ? "satellite" : "nucleus"}
+              </span>
+              <span>→</span>
+              <span className={`px-1.5 py-0.5 rounded font-medium ${rstRolesSwapped ? "bg-violet-100 dark:bg-violet-900 text-violet-700 dark:text-violet-300" : "bg-stone-100 dark:bg-stone-800"}`}>
+                Seg B = {rstRolesSwapped ? "nucleus" : "satellite"}
+              </span>
               <button
-                key={r.key}
-                onClick={() => handleCreateRelationship(r.key)}
-                className="px-2 py-0.5 rounded text-xs font-medium text-white transition-opacity hover:opacity-90"
-                style={{ backgroundColor: r.color }}
-              >
-                {r.label}
-              </button>
-            ))}
-            <button
-              onClick={handleCancelRelPicker}
-              className="ml-auto text-xs px-2 py-0.5 rounded bg-stone-200 dark:bg-stone-700 text-stone-600 dark:text-stone-300"
-            >
-              Cancel
-            </button>
+                onClick={() => setRstRolesSwapped((v) => !v)}
+                className="text-[10px] px-1.5 py-0.5 rounded bg-stone-200 dark:bg-stone-700 hover:bg-stone-300 dark:hover:bg-stone-600 transition-colors"
+                title="Swap nucleus and satellite roles"
+              >⇄ swap</button>
+              <span className="text-[10px] opacity-50">(applies to subordinate relations only)</span>
+            </div>
           </div>
         )}
 
@@ -1916,7 +2203,7 @@ export default function ChapterDisplay({
         {editingScenes && (
           <div className="px-6 py-1 text-xs border-b border-[var(--border)] text-stone-500 dark:text-stone-400"
                style={{ backgroundColor: "var(--nav-bg)" }}>
-            Click any word to mark/unmark a scene or episode break there
+            Click any word to mark/unmark a section break there
           </div>
         )}
 
@@ -1931,6 +2218,8 @@ export default function ChapterDisplay({
               : "Click any word to start annotating that paragraph segment"}
           </div>
         )}
+
+        </div>{/* end sticky control area */}
 
         {/* Chapter text */}
         <div
@@ -1979,14 +2268,18 @@ export default function ChapterDisplay({
                 onToggleTranslationParagraphBreak={handleToggleTranslationParagraphBreak}
                 highlightCharIds={highlightCharIds}
                 onDeleteSpeechSection={handleDeleteSpeechSection}
+                onReassignSpeechSection={handleReassignSpeechSection}
                 wordTagRefMap={wordTagRefMap}
                 wordTagMap={wordTagMap}
                 editingWordTags={editingWordTags}
                 highlightWordTagIds={highlightWordTagIds}
                 lineIndentMap={lineIndentMap}
+                translationIndentMap={tvLineIndentMap}
+                indentsLinked={indentsLinked}
                 wordToParaStart={wordToParaStart}
                 editingIndents={editingIndents}
                 onSetSegmentIndent={handleSetIndent}
+                onSetSegmentTvIndent={handleSetTvIndent}
                 wordFormattingMap={wordFormattingMap}
                 editingFormatting={editingBold || editingItalic}
                 hideSourceText={hideSourceText}
@@ -1995,11 +2288,12 @@ export default function ChapterDisplay({
                 editingArrows={editingArrows}
                 onSelectArrowWordById={handleSelectArrowWordById}
                 sceneBreakMap={sceneBreakMap}
-                sceneOosSet={sceneOosSet}
                 editingScenes={editingScenes}
                 onToggleSceneBreak={handleToggleSceneBreak}
                 onUpdateSceneHeading={handleUpdateSceneHeading}
                 onUpdateSceneOutOfSequence={handleUpdateSceneOutOfSequence}
+                onUpdateSceneExtendedThrough={handleUpdateSceneExtendedThrough}
+                sectionRanges={sectionRanges}
                 annotationsBySegment={annotationsBySegment}
                 themeColorsByLabel={themeColorsByLabel}
                 editingAnnotations={editingAnnotations}

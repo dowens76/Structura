@@ -4,6 +4,7 @@ import {
   upsertSpeechSection,
   removeSpeechSectionContaining,
   replaceChapterSpeechSections,
+  updateSpeechSectionCharacter,
   getChapterWords,
 } from "@/lib/db/queries";
 import type { SpeechSection } from "@/lib/db/schema";
@@ -77,6 +78,26 @@ export async function PUT(request: NextRequest) {
   await replaceChapterSpeechSections(book, chapter, source, sections);
   const updated = await getChapterSpeechSections(book, chapter, source);
   return NextResponse.json({ sections: updated });
+}
+
+// PATCH /api/speech-sections
+// Body: { sectionId, characterId, book, chapter, source }
+// Reassigns an existing speech section to a different character.
+export async function PATCH(request: NextRequest) {
+  let body: { sectionId?: number; characterId?: number; book?: string; chapter?: number; source?: string };
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+  }
+
+  const { sectionId, characterId, book, chapter, source } = body;
+  if (!sectionId || !characterId || !book || chapter == null || !source) {
+    return NextResponse.json({ error: "Missing fields" }, { status: 400 });
+  }
+
+  const sections = await updateSpeechSectionCharacter(sectionId, characterId, book, chapter, source);
+  return NextResponse.json({ sections });
 }
 
 // DELETE /api/speech-sections

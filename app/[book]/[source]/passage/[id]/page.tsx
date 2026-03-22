@@ -15,16 +15,19 @@ import {
   getChapterLineIndents,
   getAvailableTranslationsForChapter,
   getTranslationVerses,
-  getChapterClauseRelationships,
+  getChapterRstRelations,
   getChapterWordArrows,
   getChapterWordFormatting,
   getChapterSceneBreaks,
   getChapterLineAnnotations,
+  getBookSceneBreaks,
+  getBookChapterMaxVerses,
 } from "@/lib/db/queries";
 import { OSIS_BOOK_NAMES } from "@/lib/utils/osis";
 import type { TextSource } from "@/lib/morphology/types";
 import type { TranslationVerse } from "@/lib/db/schema";
 import PassageView from "@/components/passage/PassageView";
+import PassageNavButtons from "@/components/passage/PassageNavButtons";
 
 interface PageProps {
   params: Promise<{ book: string; source: string; id: string }>;
@@ -60,6 +63,8 @@ export default async function PassagePage({ params }: PageProps) {
     maxVerseOfPrevEndChapter,
     characters,
     wordTags,
+    bookSceneBreaks,
+    bookMaxVerses,
     perChapterResults,
   ] = await Promise.all([
     getPassageWords(
@@ -77,6 +82,8 @@ export default async function PassagePage({ params }: PageProps) {
       : Promise.resolve(0),
     getCharacters(osisBook),
     getWordTags(osisBook),
+    getBookSceneBreaks(osisBook, textSource),
+    getBookChapterMaxVerses(osisBook, textSource),
     Promise.all(
       chapterRange.map((ch) =>
         Promise.all([
@@ -85,7 +92,7 @@ export default async function PassagePage({ params }: PageProps) {
           getChapterSpeechSections(osisBook, ch, textSource),
           getChapterWordTagRefs(osisBook, ch),
           getChapterLineIndents(osisBook, ch),
-          getChapterClauseRelationships(osisBook, ch, textSource),
+          getChapterRstRelations(osisBook, ch, textSource),
           getChapterWordArrows(osisBook, ch, textSource),
           getChapterWordFormatting(osisBook, ch),
           getChapterSceneBreaks(osisBook, ch),
@@ -101,7 +108,7 @@ export default async function PassagePage({ params }: PageProps) {
   const initialSpeechSections        = perChapterResults.flatMap(([,, s]) => s);
   const initialWordTagRefs           = perChapterResults.flatMap(([,,, t]) => t);
   const initialLineIndents           = perChapterResults.flatMap(([,,,, l]) => l);
-  const initialClauseRelationships   = perChapterResults.flatMap(([,,,,, cr]) => cr);
+  const initialRstRelations          = perChapterResults.flatMap(([,,,,, cr]) => cr);
   const initialWordArrows            = perChapterResults.flatMap(([,,,,,, wa]) => wa);
   const initialWordFormatting        = perChapterResults.flatMap(([,,,,,,, wf]) => wf);
   const initialSceneBreaks           = perChapterResults.flatMap(([,,,,,,,, sb]) => sb);
@@ -170,9 +177,14 @@ export default async function PassagePage({ params }: PageProps) {
           Export →
         </Link>
 
-        <span className="text-xs px-1.5 py-0.5 rounded" style={{ color: "var(--accent)", opacity: 0.7 }}>
-          📖 Passage
-        </span>
+        <PassageNavButtons
+          book={osisBook}
+          textSource={textSource}
+          bookName={bookName}
+          currentChapter={passage.startChapter}
+          chapterCount={bookRecord.chapterCount}
+          currentPassageId={id}
+        />
 
         {/* Back to chapter */}
         <div className="ml-auto">
@@ -209,11 +221,13 @@ export default async function PassagePage({ params }: PageProps) {
           initialLineIndents={initialLineIndents}
           availableTranslations={availableTranslations}
           translationVerseData={translationVerseData}
-          initialClauseRelationships={initialClauseRelationships}
+          initialRstRelations={initialRstRelations}
           initialWordArrows={initialWordArrows}
           initialWordFormatting={initialWordFormatting}
           initialSceneBreaks={initialSceneBreaks}
           initialLineAnnotations={initialLineAnnotations}
+          bookSceneBreaks={bookSceneBreaks}
+          bookMaxVerses={bookMaxVerses}
         />
       </div>
     </div>

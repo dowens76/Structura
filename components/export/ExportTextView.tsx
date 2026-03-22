@@ -23,7 +23,7 @@ interface Props {
   wordTagRefs: WordTagRef[];
   lineIndents: { wordId: string; indentLevel: number }[];
   wordFormatting: { wordId: string; isBold: boolean; isItalic: boolean }[];
-  sceneBreaks: { wordId: string; heading: string | null }[];
+  sceneBreaks: { wordId: string; heading: string | null; level: number; verse: number; outOfSequence: boolean }[];
   availableTranslations: Translation[];
   translationVerseData: Record<number, TranslationVerse[]>;
   clauseRelationships: ClauseRelationship[];
@@ -134,10 +134,15 @@ export default function ExportTextView({
     [wordFormatting]
   );
 
-  const sceneBreakMap = useMemo(
-    () => new Map(sceneBreaks.map((sb) => [sb.wordId, sb.heading])),
-    [sceneBreaks]
-  );
+  const sceneBreakMap = useMemo(() => {
+    const m = new Map<string, Array<{ heading: string | null; level: number; verse: number; outOfSequence: boolean; extendedThrough: number | null }>>();
+    for (const sb of sceneBreaks) {
+      const arr = m.get(sb.wordId) ?? [];
+      arr.push({ heading: sb.heading, level: sb.level, verse: sb.verse, outOfSequence: sb.outOfSequence, extendedThrough: null });
+      m.set(sb.wordId, arr);
+    }
+    return m;
+  }, [sceneBreaks]);
 
   // First word of every paragraph segment — needed by ClauseRelationshipOverlay
   const paragraphFirstWordIds = useMemo(() => {

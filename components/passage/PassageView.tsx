@@ -1,11 +1,11 @@
 "use client";
 
-import { useState, useTransition, useMemo, useRef, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useTransition, useMemo, useRef, useEffect, useCallback } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import type {
   Passage, Word,
   Character, CharacterRef, SpeechSection, WordTag, WordTagRef,
-  Translation, TranslationVerse, ClauseRelationship, WordArrow, LineAnnotation,
+  Translation, TranslationVerse, RstRelation, WordArrow, LineAnnotation,
 } from "@/lib/db/schema";
 import type { DisplayMode, GrammarFilterState, TranslationTextEntry } from "@/lib/morphology/types";
 import type { ColorRule } from "@/lib/morphology/colorRules";
@@ -16,11 +16,20 @@ import DisplayModeToggle from "@/components/controls/DisplayModeToggle";
 import ColorRulePanel from "@/components/controls/ColorRulePanel";
 import CharacterPanel from "@/components/controls/CharacterPanel";
 import WordTagPanel from "@/components/controls/WordTagPanel";
-import ClauseRelationshipOverlay from "@/components/text/ClauseRelationshipOverlay";
+import RstRelationOverlay from "@/components/text/RstRelationOverlay";
 import WordArrowOverlay from "@/components/text/WordArrowOverlay";
 import ClearAnnotationsDialog, { type ClearCategory } from "@/components/controls/ClearAnnotationsDialog";
-import { RELATIONSHIP_TYPES } from "@/lib/morphology/clauseRelationships";
+import { RELATIONSHIP_TYPES, RELATIONSHIP_MAP } from "@/lib/morphology/clauseRelationships";
 import hebrewLemmas from "@/lib/data/hebrew-lemmas.json";
+import { computeSectionRanges } from "@/lib/utils/sectionRanges";
+import { generateOutline, downloadOutline } from "@/lib/utils/outlineExport";
+
+/** Returns true if the word's surface text is entirely punctuation and should
+ *  be skipped during character / word-tag selection. */
+function isPunctuationWord(word: Word): boolean {
+  const text = (word.surfaceText ?? "").replace(/\//g, "").trim();
+  return text.length > 0 && /^["""''\u2018\u2019\u201C\u201D.,:;?·\u00B7]+$/.test(text);
+}
 
 // ── Persistent settings helpers ───────────────────────────────────────────
 function readLocal<T>(key: string, fallback: T): T {
@@ -69,15 +78,18 @@ interface Props {
   // Translation data
   availableTranslations: Translation[];
   translationVerseData: Record<number, TranslationVerse[]>;
-  // Clause relationships + word arrows
-  initialClauseRelationships: ClauseRelationship[];
+  // RST relations + word arrows
+  initialRstRelations: RstRelation[];
   initialWordArrows: WordArrow[];
   // Word formatting (bold / italic)
   initialWordFormatting: { wordId: string; isBold: boolean; isItalic: boolean }[];
   // Scene / episode breaks
-  initialSceneBreaks: { wordId: string; heading: string | null; outOfSequence: boolean }[];
+  initialSceneBreaks: { wordId: string; heading: string | null; level: number; verse: number; outOfSequence: boolean; extendedThrough: number | null }[];
   // Line annotations (plot / theme / desc)
   initialLineAnnotations: LineAnnotation[];
+  // Book-wide breaks + max verses for cross-chapter range computation
+  bookSceneBreaks: { wordId: string; level: number; chapter: number; verse: number; extendedThrough: number | null }[];
+  bookMaxVerses: Map<number, number>;
 }
 
 export default function PassageView({
@@ -101,28 +113,22 @@ export default function PassageView({
   initialLineIndents,
   availableTranslations,
   translationVerseData,
-  initialClauseRelationships,
+  initialRstRelations,
   initialWordArrows,
   initialWordFormatting,
   initialSceneBreaks,
   initialLineAnnotations,
+  bookSceneBreaks,
+  bookMaxVerses,
 }: Props) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
 
   // ── Passage state ─────────────────────────────────────────────────────────
   const [passage, setPassage] = useState(initialPassage);
-  const [editingLabel, setEditingLabel] = useState(false);
-  const [labelDraft, setLabelDraft] = useState(initialPassage.label);
-  const labelInputRef = useRef<HTMLInputElement>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   useEffect(() => {
-    if (editingLabel) labelInputRef.current?.select();
-  }, [editingLabel]);
-
-  useEffect(() => {
-    if (!editingLabel) setLabelDraft(initialPassage.label);
     setPassage(initialPassage);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialPassage.id]);
@@ -146,12 +152,11 @@ export default function PassageView({
   // Persist sticky settings
   useEffect(() => { writeLocal("structura:displayMode", displayMode); }, [displayMode]);
   useEffect(() => { writeLocal("structura:useLinguisticTerms", useLinguisticTerms); }, [useLinguisticTerms]);
-  useEffect(() => { writeLocal("structura:hebrewFontSize", hebrewFontSize); }, [hebrewFontSize]);
-  useEffect(() => { writeLocal("structura:greekFontSize", greekFontSize); }, [greekFontSize]);
-  useEffect(() => { writeLocal("structura:translationFontSize", translationFontSize); }, [translationFontSize]);
   useEffect(() => { writeLocal("structura:hideSourceText", hideSourceText); }, [hideSourceText]);
 
-  // Read all persisted settings after mount (safe: no SSR mismatch)
+  // Restore all persisted settings after hydration — avoids SSR/client HTML mismatch.
+  // Font sizes are included here (not in lazy initializers) for the same reason.
+  // Write effects for font sizes were removed; adjustFontSize writes directly instead.
   useEffect(() => {
     setDisplayMode(readLocal<DisplayMode>("structura:displayMode", "clean"));
     setActiveTranslationAbbrs(new Set(readLocal<string[]>("structura:activeTranslations", [])));
@@ -202,16 +207,21 @@ export default function PassageView({
 
   // ── Paragraph indentation state ───────────────────────────────────────────
   const [lineIndentMap, setLineIndentMap] = useState<Map<string, number>>(
-    () => new Map(initialLineIndents.map((li) => [li.wordId, li.indentLevel]))
+    () => new Map(initialLineIndents.filter(li => !li.wordId.startsWith("tv:")).map((li) => [li.wordId, li.indentLevel]))
   );
+  const [tvLineIndentMap, setTvLineIndentMap] = useState<Map<string, number>>(
+    () => new Map(initialLineIndents.filter(li => li.wordId.startsWith("tv:")).map((li) => [li.wordId.slice(3), li.indentLevel]))
+  );
+  const [indentsLinked, setIndentsLinked] = useState(true);
   const [editingIndents, setEditingIndents] = useState(false);
 
-  // ── Clause relationships state ────────────────────────────────────────────
-  const [clauseRelationships, setClauseRelationships] = useState<ClauseRelationship[]>(initialClauseRelationships);
-  const [editingRelationships, setEditingRelationships] = useState(false);
-  const [relFromSegWordId, setRelFromSegWordId] = useState<string | null>(null);
-  const [relToSegWordId, setRelToSegWordId]     = useState<string | null>(null);
-  const [showRelPicker, setShowRelPicker]       = useState(false);
+  // ── RST relation state ────────────────────────────────────────────────────
+  const [rstRelations, setRstRelations]       = useState<RstRelation[]>(initialRstRelations);
+  const [editingRst, setEditingRst]           = useState(false);
+  const [rstSegA, setRstSegA]                 = useState<string | null>(null);
+  const [rstSegB, setRstSegB]                 = useState<string | null>(null);
+  const [rstRolesSwapped, setRstRolesSwapped] = useState(false);
+  const [showRstPicker, setShowRstPicker]     = useState(false);
 
   // ── Word arrows state ──────────────────────────────────────────────────────
   const [wordArrowsState, setWordArrowsState] = useState<WordArrow[]>(initialWordArrows);
@@ -219,14 +229,24 @@ export default function PassageView({
   const [arrowFromWordId, setArrowFromWordId] = useState<string | null>(null);
   const [showClearDialog, setShowClearDialog] = useState(false);
 
-  // ── Scene / episode break state ────────────────────────────────────────────
-  const [sceneBreakMap, setSceneBreakMap] = useState<Map<string, string | null>>(
-    () => new Map(initialSceneBreaks.map((sb) => [sb.wordId, sb.heading]))
-  );
-  const [sceneOosSet, setSceneOosSet] = useState<Set<string>>(
-    () => new Set(initialSceneBreaks.filter((sb) => sb.outOfSequence).map((sb) => sb.wordId))
+  // ── Section break state ──────────────────────────────────────────────────────
+  const [sceneBreakMap, setSceneBreakMap] = useState<Map<string, Array<{ heading: string | null; level: number; verse: number; outOfSequence: boolean; extendedThrough: number | null }>>>(
+    () => {
+      const m = new Map<string, Array<{ heading: string | null; level: number; verse: number; outOfSequence: boolean; extendedThrough: number | null }>>();
+      for (const sb of initialSceneBreaks) {
+        const arr = m.get(sb.wordId) ?? [];
+        arr.push({ heading: sb.heading, level: sb.level, verse: sb.verse, outOfSequence: sb.outOfSequence, extendedThrough: sb.extendedThrough });
+        m.set(sb.wordId, arr);
+      }
+      return m;
+    }
   );
   const [editingScenes, setEditingScenes] = useState(false);
+  // newPassage prompt state
+  const searchParams = useSearchParams();
+  const [showNewPassagePrompt, setShowNewPassagePrompt] = useState(() => searchParams.get("newPassage") === "true");
+  const [newPassageLevel, setNewPassageLevel] = useState(1);
+  const [newPassageHeading, setNewPassageHeading] = useState("");
 
   // ── Line annotation state ──────────────────────────────────────────────────
   const [lineAnnotationsState, setLineAnnotationsState] = useState<LineAnnotation[]>(initialLineAnnotations);
@@ -240,6 +260,12 @@ export default function PassageView({
   );
   const [editingBold, setEditingBold]     = useState(false);
   const [editingItalic, setEditingItalic] = useState(false);
+
+  // ── Translation editing state ──────────────────────────────────────────────
+  const [editingTranslation, setEditingTranslation] = useState(false);
+  const [localTranslationVerseData, setLocalTranslationVerseData] = useState<Record<number, TranslationVerse[]>>(
+    () => translationVerseData
+  );
 
   // ── Overlay ref ────────────────────────────────────────────────────────────
   const overlayContainerRef = useRef<HTMLDivElement>(null);
@@ -273,6 +299,33 @@ export default function PassageView({
     () => new Map(words.map((w) => [w.wordId, w.chapter])),
     [words]
   );
+
+  // Precomputed section ranges: key = `${wordId}:${level}` → { endChapter, endVerse }
+  // Uses book-wide breaks (from bookSceneBreaks prop) plus live passage breaks from sceneBreakMap.
+  // Chapters covered by the passage come from live state; other chapters from the static prop.
+  const passageChapterSet = useMemo(() => {
+    const s = new Set<number>();
+    for (let ch = passage.startChapter; ch <= passage.endChapter; ch++) s.add(ch);
+    return s;
+  }, [passage.startChapter, passage.endChapter]);
+
+  const sectionRanges = useMemo(() => {
+    // Start with book-wide breaks, excluding chapters covered by the passage (live state overrides)
+    const allBreaks: { wordId: string; level: number; chapter: number; verse: number; extendedThrough: number | null }[] =
+      bookSceneBreaks
+        .filter((b) => !passageChapterSet.has(b.chapter))
+        .map((b) => ({ ...b }));
+
+    // Add passage breaks from live sceneBreakMap state
+    for (const [wordId, arr] of sceneBreakMap) {
+      const ch = wordToChapter.get(wordId) ?? passage.startChapter;
+      for (const br of arr) {
+        allBreaks.push({ wordId, level: br.level, chapter: ch, verse: br.verse, extendedThrough: null });
+      }
+    }
+
+    return computeSectionRanges(allBreaks, bookMaxVerses, osisBook);
+  }, [sceneBreakMap, bookSceneBreaks, bookMaxVerses, wordToChapter, passage.startChapter, passage.endChapter, osisBook, passageChapterSet]);
 
   // ── Verse groups keyed by "chapter:verse" (for speech section handler) ────
   const chapterVerseGroups = useMemo(() => {
@@ -400,7 +453,7 @@ export default function PassageView({
     const map = new Map<string, TranslationTextEntry[]>();
     for (const t of availableTranslations) {
       if (!activeTranslationIds.has(t.id)) continue;
-      for (const tv of translationVerseData[t.id] ?? []) {
+      for (const tv of localTranslationVerseData[t.id] ?? []) {
         const key = `${tv.chapter}:${tv.verse}`;
         const existing = map.get(key) ?? [];
         existing.push({ abbr: t.abbreviation, text: tv.text });
@@ -408,7 +461,7 @@ export default function PassageView({
       }
     }
     return map;
-  }, [activeTranslationIds, availableTranslations, translationVerseData]);
+  }, [activeTranslationIds, availableTranslations, localTranslationVerseData]);
 
   const hasActiveTranslations = activeTranslationIds.size > 0;
 
@@ -426,10 +479,19 @@ export default function PassageView({
 
   function adjustFontSize(target: "source" | "translation", delta: number) {
     if (target === "source") {
+      const key = isHebrew ? "structura:hebrewFontSize" : "structura:greekFontSize";
       const setter = isHebrew ? setHebrewFontSize : setGreekFontSize;
-      setter((prev) => Math.min(2.5, Math.max(0.875, Math.round((prev + delta) * 1000) / 1000)));
+      setter((prev) => {
+        const next = Math.min(2.5, Math.max(0.875, Math.round((prev + delta) * 1000) / 1000));
+        writeLocal(key, next);
+        return next;
+      });
     } else {
-      setTranslationFontSize((prev) => Math.min(1.5, Math.max(0.625, Math.round((prev + delta) * 1000) / 1000)));
+      setTranslationFontSize((prev) => {
+        const next = Math.min(1.5, Math.max(0.625, Math.round((prev + delta) * 1000) / 1000));
+        writeLocal("structura:translationFontSize", next);
+        return next;
+      });
     }
   }
 
@@ -494,18 +556,6 @@ export default function PassageView({
     }
   }
 
-  // ── Label save ────────────────────────────────────────────────────────────
-  async function saveLabel() {
-    const trimmed = labelDraft.trim();
-    setPassage((p) => ({ ...p, label: trimmed }));
-    setEditingLabel(false);
-    await fetch(`/api/passages/${passage.id}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ label: trimmed }),
-    });
-  }
-
   // ── Delete ────────────────────────────────────────────────────────────────
   async function handleDelete() {
     await fetch(`/api/passages/${passage.id}`, { method: "DELETE" });
@@ -526,6 +576,18 @@ export default function PassageView({
     if (editingRefs) { if (activeCharId === null) return; handleToggleCharacterRef(word); return; }
     if (editingSpeech) { if (activeCharId === null) return; handleToggleSpeechSection(word, shiftHeld); return; }
     if (editingWordTags) { handleToggleWordTagRef(word); return; }
+    if (editingScenes) {
+      const existing = sceneBreakMap.get(word.wordId) ?? [];
+      if (existing.length === 0) {
+        handleToggleSceneBreak(word.wordId, 1, word.verse);
+      } else {
+        const existingLevels = new Set(existing.map((b) => b.level));
+        let nextLevel = existingLevels.has(1) ? 2 : 1;
+        while (existingLevels.has(nextLevel) && nextLevel <= 6) nextLevel++;
+        if (nextLevel <= 6) handleToggleSceneBreak(word.wordId, nextLevel, word.verse);
+      }
+      return;
+    }
     setSelectedWord(word);
     setPanelOpen(true);
   }
@@ -661,6 +723,7 @@ export default function PassageView({
   }
 
   function handleToggleCharacterRef(word: Word) {
+    if (isPunctuationWord(word)) return;
     return handleToggleCharacterRefById(word.wordId, textSource);
   }
 
@@ -707,6 +770,7 @@ export default function PassageView({
   }
 
   async function handleToggleWordTagRef(word: Word) {
+    if (isPunctuationWord(word)) return;
     const wordChapter = wordToChapter.get(word.wordId) ?? passage.startChapter;
     if (pendingWordTag && pendingWordTagColor !== null) {
       const lemma = word.language === "hebrew"
@@ -821,6 +885,41 @@ export default function PassageView({
   }
 
   // ── Speech section handlers ───────────────────────────────────────────────
+  async function handleReassignSpeechSection(sectionId: number, newCharId: number) {
+    const section = speechSections.find((s) => s.id === sectionId);
+    if (!section || section.characterId === newCharId) return;
+
+    const beforeSections = [...speechSections];
+    pushUndo({
+      label: "Reassign speech",
+      undo: async () => {
+        setSpeechSections(beforeSections);
+        try {
+          await fetch("/api/speech-sections", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ book: osisBook, chapter: section.chapter, source: textSource, sections: beforeSections }),
+          });
+        } catch { /* best effort */ }
+      },
+    });
+
+    setSpeechSections((prev) =>
+      prev.map((s) => s.id === sectionId ? { ...s, characterId: newCharId } : s)
+    );
+    try {
+      const res = await fetch("/api/speech-sections", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sectionId, characterId: newCharId, book: osisBook, chapter: section.chapter, source: textSource }),
+      });
+      const data = await res.json();
+      setSpeechSections(data.sections);
+    } catch {
+      setSpeechSections(beforeSections);
+    }
+  }
+
   async function handleDeleteSpeechSection(sectionId: number) {
     const section = speechSections.find((s) => s.id === sectionId);
     if (!section) return;
@@ -1030,11 +1129,60 @@ export default function PassageView({
     }
   }
 
-  // ── Indent handler ────────────────────────────────────────────────────────
+  // ── Indent handlers ────────────────────────────────────────────────────────
   async function handleSetIndent(paraStartWordId: string, level: number) {
     const wordChapter = wordToChapter.get(paraStartWordId) ?? passage.startChapter;
     const prevLevel = lineIndentMap.get(paraStartWordId) ?? 0;
+    const prevTvLevel = tvLineIndentMap.get(paraStartWordId) ?? 0;
     setLineIndentMap((prev) => {
+      const next = new Map(prev);
+      if (level <= 0) next.delete(paraStartWordId);
+      else next.set(paraStartWordId, level);
+      return next;
+    });
+    if (indentsLinked) {
+      setTvLineIndentMap((prev) => {
+        const next = new Map(prev);
+        if (level <= 0) next.delete(paraStartWordId);
+        else next.set(paraStartWordId, level);
+        return next;
+      });
+    }
+    try {
+      await fetch("/api/line-indents", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ wordId: paraStartWordId, indentLevel: level, textSource, book: osisBook, chapter: wordChapter }),
+      });
+      if (indentsLinked) {
+        await fetch("/api/line-indents", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ wordId: `tv:${paraStartWordId}`, indentLevel: level, textSource, book: osisBook, chapter: wordChapter }),
+        });
+      }
+    } catch {
+      setLineIndentMap((prev) => {
+        const next = new Map(prev);
+        if (prevLevel <= 0) next.delete(paraStartWordId);
+        else next.set(paraStartWordId, prevLevel);
+        return next;
+      });
+      if (indentsLinked) {
+        setTvLineIndentMap((prev) => {
+          const next = new Map(prev);
+          if (prevTvLevel <= 0) next.delete(paraStartWordId);
+          else next.set(paraStartWordId, prevTvLevel);
+          return next;
+        });
+      }
+    }
+  }
+
+  async function handleSetTvIndent(paraStartWordId: string, level: number) {
+    const wordChapter = wordToChapter.get(paraStartWordId) ?? passage.startChapter;
+    const prevLevel = tvLineIndentMap.get(paraStartWordId) ?? 0;
+    setTvLineIndentMap((prev) => {
       const next = new Map(prev);
       if (level <= 0) next.delete(paraStartWordId);
       else next.set(paraStartWordId, level);
@@ -1044,10 +1192,10 @@ export default function PassageView({
       await fetch("/api/line-indents", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ wordId: paraStartWordId, indentLevel: level, textSource, book: osisBook, chapter: wordChapter }),
+        body: JSON.stringify({ wordId: `tv:${paraStartWordId}`, indentLevel: level, textSource, book: osisBook, chapter: wordChapter }),
       });
     } catch {
-      setLineIndentMap((prev) => {
+      setTvLineIndentMap((prev) => {
         const next = new Map(prev);
         if (prevLevel <= 0) next.delete(paraStartWordId);
         else next.set(paraStartWordId, prevLevel);
@@ -1056,53 +1204,91 @@ export default function PassageView({
     }
   }
 
-  // ── Clause relationship handlers ──────────────────────────────────────────
-  function handleSelectSegment(wordId: string) {
-    if (!relFromSegWordId) {
-      setRelFromSegWordId(wordId);
-    } else if (wordId === relFromSegWordId) {
-      setRelFromSegWordId(null);
+  // ── RST relation handlers ─────────────────────────────────────────────────
+  function handleSelectRstSegment(wordId: string) {
+    if (!rstSegA) {
+      setRstSegA(wordId);
+    } else if (wordId === rstSegA) {
+      setRstSegA(null);
     } else {
-      setRelToSegWordId(wordId);
-      setShowRelPicker(true);
+      setRstSegB(wordId);
+      setShowRstPicker(true);
     }
   }
 
-  async function handleCreateRelationship(relType: string) {
-    if (!relFromSegWordId || !relToSegWordId) return;
-    const ch = wordToChapter.get(relFromSegWordId) ?? passage.startChapter;
-    const resp = await fetch("/api/clause-relationships", {
+  async function handleCreateRstRelation(relType: string) {
+    if (!rstSegA || !rstSegB) return;
+    const relMeta  = RELATIONSHIP_MAP[relType];
+    const category = relMeta?.category ?? "subordinate";
+    const isCoord  = category === "coordinate";
+
+    let members: { segWordId: string; role: "nucleus" | "satellite"; sortOrder: number }[];
+    if (isCoord) {
+      const existingGroup = rstRelations.find(
+        (r) => r.segWordId === rstSegA && r.relType === relType && r.role === "nucleus"
+      );
+      if (existingGroup) {
+        const groupId = existingGroup.groupId;
+        const maxOrder = rstRelations
+          .filter((r) => r.groupId === groupId)
+          .reduce((m, r) => Math.max(m, r.sortOrder), 0);
+        const ch = wordToChapter.get(rstSegA) ?? passage.startChapter;
+        const resp = await fetch("/api/rst-relations", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            groupId,
+            members: [{ segWordId: rstSegB, role: "nucleus", sortOrder: maxOrder + 1 }],
+            relType,
+            book: osisBook,
+            chapter: ch,
+            source: textSource,
+          }),
+        });
+        const { relations: newRels } = await resp.json();
+        setRstRelations((prev) => [...prev, ...newRels]);
+        setRstSegB(null);
+        setShowRstPicker(false);
+        return;
+      }
+      members = [
+        { segWordId: rstSegA, role: "nucleus", sortOrder: 0 },
+        { segWordId: rstSegB, role: "nucleus", sortOrder: 1 },
+      ];
+    } else {
+      const nucleusId   = rstRolesSwapped ? rstSegB : rstSegA;
+      const satelliteId = rstRolesSwapped ? rstSegA : rstSegB;
+      members = [
+        { segWordId: nucleusId,   role: "nucleus",   sortOrder: 0 },
+        { segWordId: satelliteId, role: "satellite",  sortOrder: 1 },
+      ];
+    }
+
+    const ch = wordToChapter.get(rstSegA) ?? passage.startChapter;
+    const groupId = crypto.randomUUID();
+    const resp = await fetch("/api/rst-relations", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        fromSegWordId: relFromSegWordId,
-        toSegWordId:   relToSegWordId,
-        relType,
-        book: osisBook,
-        chapter: ch,
-        source: textSource,
-      }),
+      body: JSON.stringify({ groupId, members, relType, book: osisBook, chapter: ch, source: textSource }),
     });
-    const { relationship } = await resp.json();
-    setClauseRelationships((prev) => [...prev, relationship]);
-    setRelFromSegWordId(null);
-    setRelToSegWordId(null);
-    setShowRelPicker(false);
+    const { relations: newRels } = await resp.json();
+    setRstRelations((prev) => [...prev, ...newRels]);
+    setRstSegB(null);
+    setShowRstPicker(false);
   }
 
-  function handleCancelRelPicker() {
-    setShowRelPicker(false);
-    setRelFromSegWordId(null);
-    setRelToSegWordId(null);
+  function handleCancelRstPicker() {
+    setShowRstPicker(false);
+    setRstSegB(null);
   }
 
-  async function handleDeleteClauseRelationship(id: number) {
-    await fetch("/api/clause-relationships", {
+  async function handleDeleteRstGroup(groupId: string) {
+    await fetch("/api/rst-relations", {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id }),
+      body: JSON.stringify({ groupId }),
     });
-    setClauseRelationships((prev) => prev.filter((r) => r.id !== id));
+    setRstRelations((prev) => prev.filter((r) => r.groupId !== groupId));
   }
 
   // ── Word arrow handlers ────────────────────────────────────────────────────
@@ -1168,85 +1354,123 @@ export default function PassageView({
         case "wordTagRefs":        setWordTagRefMap(new Map()); break;
         case "lineIndents":        setLineIndentMap(new Map()); break;
         case "wordArrows":         setWordArrowsState([]); break;
-        case "clauseRelationships":setClauseRelationships([]); break;
+        case "rstRelations":        setRstRelations([]); break;
         case "wordFormatting":     setWordFormattingMap(new Map()); break;
       }
     }
   }
 
-  // ── Scene / episode break handlers ────────────────────────────────────────
+  // ── Section break handlers ───────────────────────────────────────────────────
 
-  async function handleToggleSceneBreak(wordId: string, record = true) {
-    const wasSet = sceneBreakMap.has(wordId);
+  async function handleToggleSceneBreak(wordId: string, level: number, verse: number, record = true) {
+    const existingArr = sceneBreakMap.get(wordId) ?? [];
+    const wasSet = existingArr.some((b) => b.level === level);
     const wordChapter = wordToChapter.get(wordId) ?? passage.startChapter;
     if (record) {
       pushUndo({
-        label: wasSet ? "Remove scene break" : "Add scene break",
-        undo: () => handleToggleSceneBreak(wordId, false),
+        label: wasSet ? "Remove section break" : "Add section break",
+        undo: () => handleToggleSceneBreak(wordId, level, verse, false),
       });
     }
     setSceneBreakMap((prev) => {
       const next = new Map(prev);
-      if (next.has(wordId)) next.delete(wordId);
-      else next.set(wordId, null);
+      const arr = [...(prev.get(wordId) ?? [])];
+      if (wasSet) {
+        const filtered = arr.filter((b) => b.level !== level);
+        if (filtered.length === 0) next.delete(wordId);
+        else next.set(wordId, filtered);
+      } else {
+        arr.push({ heading: null, level, verse, outOfSequence: false, extendedThrough: null });
+        arr.sort((a, b) => a.level - b.level);
+        next.set(wordId, arr);
+      }
       return next;
     });
-    setParagraphBreakIds((prev) => {
-      const next = new Set(prev);
-      if (wasSet) next.delete(wordId);
-      else next.add(wordId);
-      return next;
-    });
+    if (!wasSet) {
+      setParagraphBreakIds((prev) => { const next = new Set(prev); next.add(wordId); return next; });
+    } else if (existingArr.length === 1) {
+      setParagraphBreakIds((prev) => { const next = new Set(prev); next.delete(wordId); return next; });
+    }
     try {
       await fetch("/api/scene-breaks", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ wordId, book: osisBook, chapter: wordChapter, source: textSource }),
+        body: JSON.stringify({ wordId, book: osisBook, chapter: wordChapter, verse, source: textSource, level }),
       });
     } catch {
       setSceneBreakMap((prev) => {
         const next = new Map(prev);
-        if (wasSet) next.set(wordId, null);
-        else next.delete(wordId);
+        if (wasSet) {
+          const arr = [...(prev.get(wordId) ?? [])];
+          arr.push({ heading: null, level, verse, outOfSequence: false, extendedThrough: null });
+          arr.sort((a, b) => a.level - b.level);
+          next.set(wordId, arr);
+        } else {
+          const filtered = (prev.get(wordId) ?? []).filter((b) => b.level !== level);
+          if (filtered.length === 0) next.delete(wordId);
+          else next.set(wordId, filtered);
+        }
         return next;
       });
-      setParagraphBreakIds((prev) => {
-        const next = new Set(prev);
-        if (wasSet) next.add(wordId);
-        else next.delete(wordId);
-        return next;
-      });
+      if (!wasSet) {
+        setParagraphBreakIds((prev) => { const next = new Set(prev); next.delete(wordId); return next; });
+      } else if (existingArr.length === 1) {
+        setParagraphBreakIds((prev) => { const next = new Set(prev); next.add(wordId); return next; });
+      }
     }
   }
 
-  async function handleUpdateSceneHeading(wordId: string, heading: string) {
+  async function handleUpdateSceneHeading(wordId: string, level: number, heading: string) {
     const trimmed = heading.trim() || null;
     setSceneBreakMap((prev) => {
       const next = new Map(prev);
-      next.set(wordId, trimmed);
+      const arr = (prev.get(wordId) ?? []).map((b) =>
+        b.level === level ? { ...b, heading: trimmed } : b
+      );
+      next.set(wordId, arr);
       return next;
     });
     try {
       await fetch("/api/scene-breaks", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ wordId, heading: trimmed }),
+        body: JSON.stringify({ wordId, level, heading: trimmed }),
       });
     } catch { /* non-critical */ }
   }
 
-  async function handleUpdateSceneOutOfSequence(wordId: string, outOfSequence: boolean) {
-    setSceneOosSet((prev) => {
-      const next = new Set(prev);
-      if (outOfSequence) next.add(wordId);
-      else next.delete(wordId);
+  async function handleUpdateSceneOutOfSequence(wordId: string, level: number, outOfSequence: boolean) {
+    setSceneBreakMap((prev) => {
+      const next = new Map(prev);
+      const arr = (prev.get(wordId) ?? []).map((b) =>
+        b.level === level ? { ...b, outOfSequence } : b
+      );
+      next.set(wordId, arr);
       return next;
     });
     try {
       await fetch("/api/scene-breaks", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ wordId, outOfSequence }),
+        body: JSON.stringify({ wordId, level, outOfSequence }),
+      });
+    } catch { /* non-critical */ }
+  }
+
+  async function handleUpdateSceneExtendedThrough(wordId: string, level: number, extendedThrough: number | null) {
+    setSceneBreakMap((prev) => {
+      const next = new Map(prev);
+      const arr = (prev.get(wordId) ?? []).map((b) =>
+        b.level === level ? { ...b, extendedThrough } : b
+      );
+      next.set(wordId, arr);
+      return next;
+    });
+    try {
+      await fetch("/api/scene-breaks", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ wordId, level, extendedThrough }),
       });
     } catch { /* non-critical */ }
   }
@@ -1416,6 +1640,48 @@ export default function PassageView({
     return handleToggleFormattingById(word.wordId, textSource);
   }
 
+  // ── Translation verse editing ──────────────────────────────────────────────
+  async function handleUpdateTranslationVerse(abbr: string, verse: number, newText: string) {
+    const translation = availableTranslations.find((t) => t.abbreviation === abbr);
+    if (!translation) return;
+    const tvRecord = localTranslationVerseData[translation.id]?.find((tv) => tv.verse === verse);
+    if (!tvRecord) return;
+    setLocalTranslationVerseData((prev) => ({
+      ...prev,
+      [translation.id]: (prev[translation.id] ?? []).map((tv) =>
+        tv.verse === verse ? { ...tv, text: newText } : tv
+      ),
+    }));
+    try {
+      await fetch("/api/translation-verses", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: tvRecord.id, text: newText }),
+      });
+    } catch {
+      setLocalTranslationVerseData((prev) => ({
+        ...prev,
+        [translation.id]: (prev[translation.id] ?? []).map((tv) =>
+          tv.verse === verse ? { ...tv, text: tvRecord.text } : tv
+        ),
+      }));
+    }
+  }
+
+  // ── Export outline ────────────────────────────────────────────────────────
+  function handleExportOutline() {
+    const allBreaks: { wordId: string; heading: string | null; level: number; chapter: number; verse: number }[] = [];
+    for (const [wordId, arr] of sceneBreakMap) {
+      for (const br of arr) {
+        const ch = wordToChapter.get(wordId) ?? passage.startChapter;
+        allBreaks.push({ wordId, heading: br.heading, level: br.level, chapter: ch, verse: br.verse });
+      }
+    }
+    allBreaks.sort((a, b) => a.chapter !== b.chapter ? a.chapter - b.chapter : a.verse !== b.verse ? a.verse - b.verse : a.level - b.level);
+    const text = generateOutline(allBreaks, sectionRanges);
+    downloadOutline(text, `${bookName}-outline.txt`);
+  }
+
   // ── Shared range button helper ────────────────────────────────────────────
   function rangeBtn(disabled: boolean, label: string, title: string, onClick: () => void) {
     return (
@@ -1444,17 +1710,17 @@ export default function PassageView({
     <div className="flex h-full min-h-0">
       {/* Main content + toolbar */}
       <div className="flex-1 overflow-y-auto flex flex-col min-h-0" ref={overlayContainerRef} style={{ position: "relative" }}>
-        {/* Overlay: clause relationship arcs */}
-        <ClauseRelationshipOverlay
-          relationships={clauseRelationships}
+        {/* Overlay: RST relation lines */}
+        <RstRelationOverlay
+          relations={rstRelations}
           containerRef={overlayContainerRef}
           isHebrew={isHebrew}
-          hasTranslation={hasActiveTranslations}
-          editing={editingRelationships}
+          editing={editingRst}
           paragraphFirstWordIds={paragraphFirstWordIds}
-          selectedSegWordId={relFromSegWordId}
-          onSelectSegment={handleSelectSegment}
-          onDeleteRelationship={handleDeleteClauseRelationship}
+          selectedNucleusWordId={rstSegA}
+          selectedSatelliteWordId={rstSegB}
+          onSelectSegment={handleSelectRstSegment}
+          onDeleteGroup={handleDeleteRstGroup}
         />
         {/* Overlay: word-to-word arrows */}
         <WordArrowOverlay
@@ -1468,40 +1734,22 @@ export default function PassageView({
         {/* ── Passage header ──────────────────────────────────────────────── */}
         <div className="shrink-0 px-6 pt-6 pb-4 border-b" style={{ borderColor: "var(--border)" }}>
 
-          {/* Label row */}
-          <div className="flex items-start gap-3 mb-3">
-            <span className="text-lg select-none mt-0.5" style={{ color: "var(--accent)" }}>📖</span>
+          {/* Header row: range label + outline export + delete */}
+          <div className="flex items-center gap-3 mb-3">
+            <span className="text-lg font-bold flex-1" style={{ color: "var(--foreground)", fontFamily: "Georgia, 'Times New Roman', serif" }}>
+              {rangeLabel}
+            </span>
 
-            {editingLabel ? (
-              <input
-                ref={labelInputRef}
-                value={labelDraft}
-                onChange={(e) => setLabelDraft(e.target.value)}
-                onBlur={saveLabel}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") saveLabel();
-                  if (e.key === "Escape") { setLabelDraft(passage.label); setEditingLabel(false); }
-                }}
-                placeholder="Passage label…"
-                className="flex-1 text-xl font-bold bg-transparent border-b-2 outline-none"
-                style={{
-                  color: "var(--foreground)",
-                  borderColor: "var(--accent)",
-                  fontFamily: "Georgia, 'Times New Roman', serif",
-                }}
-              />
-            ) : (
+            {/* Export outline */}
+            {sceneBreakMap.size > 0 && (
               <button
                 type="button"
-                onClick={() => { setLabelDraft(passage.label); setEditingLabel(true); }}
-                className="flex-1 text-left text-xl font-bold hover:opacity-70 transition-opacity"
-                style={{
-                  color: passage.label ? "var(--foreground)" : "var(--text-muted)",
-                  fontFamily: "Georgia, 'Times New Roman', serif",
-                }}
-                title="Click to edit label"
+                onClick={handleExportOutline}
+                className="shrink-0 text-xs px-2 py-0.5 rounded hover:bg-stone-200 dark:hover:bg-stone-700 transition-colors"
+                style={{ color: "var(--text-muted)" }}
+                title="Export section break outline as .txt"
               >
-                {passage.label || "Untitled passage — click to add label"}
+                📋 Outline
               </button>
             )}
 
@@ -1528,11 +1776,58 @@ export default function PassageView({
             )}
           </div>
 
-          {/* Range reference */}
-          <p className="text-sm mb-3" style={{ color: "var(--text-muted)", fontVariantNumeric: "tabular-nums" }}>
-            {rangeLabel}
-            {isPending && <span className="ml-2 text-xs opacity-50">updating…</span>}
-          </p>
+          {isPending && <p className="text-xs mb-1 opacity-50" style={{ color: "var(--text-muted)" }}>updating…</p>}
+
+          {/* New passage section break prompt */}
+          {showNewPassagePrompt && (
+            <div className="flex items-center gap-2 mb-3 p-2 rounded bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700">
+              <span className="text-xs text-stone-600 dark:text-stone-300 shrink-0">Add section heading?</span>
+              <span className="text-[10px] text-stone-400 mr-1 shrink-0">Level:</span>
+              {([1,2,3,4,5,6] as const).map((l) => (
+                <button key={l} type="button"
+                  onClick={() => setNewPassageLevel(l)}
+                  className={`text-[10px] px-1.5 h-5 rounded font-semibold transition-colors ${newPassageLevel === l ? "bg-amber-400 text-white" : "bg-stone-200 dark:bg-stone-700 text-stone-500 hover:bg-stone-300"}`}>
+                  {l}
+                </button>
+              ))}
+              <input
+                value={newPassageHeading}
+                onChange={(e) => setNewPassageHeading(e.target.value)}
+                placeholder="Section label…"
+                className="flex-1 min-w-0 text-xs bg-transparent border-b border-stone-300 dark:border-stone-600 outline-none px-0 py-0.5"
+                style={{ color: "var(--foreground)" }}
+                onKeyDown={(e) => e.stopPropagation()}
+              />
+              <button type="button"
+                className="shrink-0 text-xs px-2 py-0.5 rounded bg-amber-500 text-white hover:bg-amber-600 transition-colors"
+                onClick={async () => {
+                  const firstWord = words[0];
+                  if (!firstWord) return;
+                  await handleToggleSceneBreak(firstWord.wordId, newPassageLevel, firstWord.verse);
+                  if (newPassageHeading.trim()) {
+                    await handleUpdateSceneHeading(firstWord.wordId, newPassageLevel, newPassageHeading);
+                  }
+                  setShowNewPassagePrompt(false);
+                  // Remove ?newPassage=true from URL without navigation
+                  const url = new URL(window.location.href);
+                  url.searchParams.delete("newPassage");
+                  window.history.replaceState({}, "", url.toString());
+                }}>
+                Add
+              </button>
+              <button type="button"
+                className="shrink-0 text-xs px-2 py-0.5 rounded hover:bg-stone-200 dark:hover:bg-stone-700 transition-colors"
+                style={{ color: "var(--text-muted)" }}
+                onClick={() => {
+                  setShowNewPassagePrompt(false);
+                  const url = new URL(window.location.href);
+                  url.searchParams.delete("newPassage");
+                  window.history.replaceState({}, "", url.toString());
+                }}>
+                Skip
+              </button>
+            </div>
+          )}
 
           {/* Range controls */}
           <div className="flex items-center gap-4 flex-wrap">
@@ -1556,8 +1851,11 @@ export default function PassageView({
           </div>
         </div>
 
-        {/* ── Sticky toolbar ───────────────────────────────────────────────── */}
-        <div className="shrink-0 sticky top-0 z-10 bg-[var(--background)] border-b border-[var(--border)] px-6 py-3 flex items-center gap-4 flex-wrap">
+        {/* ── Sticky control area: toolbar + all editing panels/hints ─────── */}
+        <div className="sticky top-0 z-20 shrink-0 flex flex-col" style={{ backgroundColor: "var(--background)" }}>
+
+        {/* Toolbar */}
+        <div className="border-b border-[var(--border)] px-6 py-3 flex items-center gap-4 flex-wrap">
           <DisplayModeToggle mode={displayMode} onChange={setDisplayMode} />
           {displayMode === "color" && (
             <>
@@ -1588,8 +1886,8 @@ export default function PassageView({
           <button
             onClick={() => setEditingScenes((v) => !v)}
             title={editingScenes
-              ? "Exit scene break mode"
-              : "Enter scene break mode — click any word to start/remove a scene break there"}
+              ? "Exit section break mode"
+              : "Enter section break mode — click any word to start/remove a section break there"}
             className={["px-2.5 py-1 rounded text-xs font-medium transition-colors",
               editingScenes ? "bg-amber-500 text-white"
                 : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
@@ -1668,31 +1966,65 @@ export default function PassageView({
               editingIndents ? "bg-teal-600 text-white"
                 : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
             ].join(" ")}
-          >↳</button>
+          >⇥</button>
 
-          {/* Clause relationship mode */}
+          {/* Source/translation indent link toggle */}
+          {editingIndents && (
+            <label
+              className="flex items-center gap-1 text-[11px] text-stone-500 dark:text-stone-400 cursor-pointer select-none"
+              title={indentsLinked
+                ? "Source and translation indent are linked — uncheck to set them independently"
+                : "Source and translation indent are independent — check to link them"}
+            >
+              <input
+                type="checkbox"
+                checked={indentsLinked}
+                onChange={(e) => {
+                  const nowLinked = e.target.checked;
+                  setIndentsLinked(nowLinked);
+                  if (!nowLinked) {
+                    // Seed T with S values for any paragraph not yet explicitly set,
+                    // so T starts equal to S and can be changed independently from there.
+                    setTvLineIndentMap((prev) => {
+                      const next = new Map(prev);
+                      for (const [wId, lvl] of lineIndentMap) {
+                        if (!next.has(wId)) next.set(wId, lvl);
+                      }
+                      return next;
+                    });
+                  }
+                }}
+                className="w-3 h-3 accent-teal-600 cursor-pointer"
+              />
+              S↔T
+            </label>
+          )}
+
+          {/* RST relation mode */}
           <button
             onClick={() => {
-              setEditingRelationships((v) => !v);
+              setEditingRst((v) => !v);
               setEditingArrows(false);
               setArrowFromWordId(null);
-              setRelFromSegWordId(null);
-              setShowRelPicker(false);
+              setRstSegA(null);
+              setRstSegB(null);
+              setShowRstPicker(false);
             }}
-            title={editingRelationships ? "Exit clause relationship mode" : "Mark logical relationships between paragraph segments"}
+            title={editingRst ? "Exit RST relation mode" : "Mark RST (Rhetorical Structure Theory) relations between paragraph segments"}
             className={["px-2.5 py-1 rounded text-xs font-medium transition-colors",
-              editingRelationships ? "bg-rose-600 text-white"
+              editingRst ? "bg-rose-600 text-white"
                 : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
             ].join(" ")}
-          >⤢</button>
+          >↳</button>
 
           {/* Word arrow mode */}
           <button
             onClick={() => {
               setEditingArrows((v) => !v);
-              setEditingRelationships(false);
-              setRelFromSegWordId(null);
-              setShowRelPicker(false);
+              setEditingRst(false);
+              setRstSegA(null);
+              setRstSegB(null);
+              setShowRstPicker(false);
               setArrowFromWordId(null);
             }}
             title={editingArrows ? "Exit word arrow mode" : "Draw free-form arrows between words"}
@@ -1700,7 +2032,7 @@ export default function PassageView({
               editingArrows ? "bg-rose-600 text-white"
                 : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
             ].join(" ")}
-          >↗</button>
+          >↷</button>
 
           {/* Undo */}
           {undoStack.length > 0 && (
@@ -1717,6 +2049,52 @@ export default function PassageView({
               className="px-2.5 py-1 rounded text-xs font-medium bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700 transition-colors"
             >↩ {undoStack[undoStack.length - 1].label}</button>
           )}
+
+          {/* Bold formatting mode */}
+          <button
+            onClick={() => {
+              setEditingBold((v) => !v);
+              setEditingItalic(false);
+              setEditingParagraphs(false);
+              setEditingRefs(false);
+              setEditingSpeech(false);
+              setEditingWordTags(false);
+              setEditingIndents(false);
+              setEditingRst(false);
+              setEditingArrows(false);
+              setSpeechRangeStart(null);
+              setRstSegA(null);
+              setArrowFromWordId(null);
+            }}
+            title={editingBold ? "Exit bold mode" : "Click words to toggle bold"}
+            className={["px-2.5 py-1 rounded text-xs font-bold transition-colors",
+              editingBold ? "bg-stone-800 text-white dark:bg-stone-200 dark:text-stone-900"
+                : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
+            ].join(" ")}
+          >B</button>
+
+          {/* Italic formatting mode */}
+          <button
+            onClick={() => {
+              setEditingItalic((v) => !v);
+              setEditingBold(false);
+              setEditingParagraphs(false);
+              setEditingRefs(false);
+              setEditingSpeech(false);
+              setEditingWordTags(false);
+              setEditingIndents(false);
+              setEditingRst(false);
+              setEditingArrows(false);
+              setSpeechRangeStart(null);
+              setRstSegA(null);
+              setArrowFromWordId(null);
+            }}
+            title={editingItalic ? "Exit italic mode" : "Click words to toggle italic"}
+            className={["px-2.5 py-1 rounded text-xs italic transition-colors",
+              editingItalic ? "bg-stone-800 text-white dark:bg-stone-200 dark:text-stone-900"
+                : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
+            ].join(" ")}
+          >I</button>
 
           {/* Clear annotations */}
           <div className="border-l border-[var(--border)] pl-3 ml-1">
@@ -1747,6 +2125,28 @@ export default function PassageView({
           {availableTranslations.length > 0 && (
             <div className="flex items-center gap-1 border-l border-[var(--border)] pl-4">
               <span className="text-xs text-stone-400 dark:text-stone-500 mr-1 select-none">Translations:</span>
+              {/* Source text visibility — shown only when a translation is active */}
+              {hasActiveTranslations && (
+                <button
+                  onClick={() => setHideSourceText((v) => !v)}
+                  title={hideSourceText ? `Show ${textSource} text` : `Hide ${textSource} text`}
+                  className={["px-2.5 py-1 rounded text-xs font-medium font-mono transition-colors",
+                    !hideSourceText ? "bg-emerald-600 text-white"
+                      : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
+                  ].join(" ")}
+                >{textSource}</button>
+              )}
+              {/* Translation text edit mode */}
+              {hasActiveTranslations && (
+                <button
+                  onClick={() => setEditingTranslation((v) => !v)}
+                  title={editingTranslation ? "Exit translation edit mode" : "Edit translation text"}
+                  className={["px-2.5 py-1 rounded text-xs font-medium transition-colors",
+                    editingTranslation ? "bg-sky-600 text-white"
+                      : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
+                  ].join(" ")}
+                >✏</button>
+              )}
               {availableTranslations.map((t) => (
                 <button key={t.id} onClick={() => toggleTranslation(t.id)} title={t.name}
                   className={["px-2.5 py-1 rounded text-xs font-medium font-mono transition-colors",
@@ -1756,21 +2156,6 @@ export default function PassageView({
                 >{t.abbreviation}</button>
               ))}
             </div>
-          )}
-
-          {/* Hide source text toggle — only shown when a translation is active */}
-          {hasActiveTranslations && (
-            <button
-              onClick={() => setHideSourceText((v) => !v)}
-              title={hideSourceText ? `Show ${textSource} text` : `Hide ${textSource} text`}
-              className={["px-2.5 py-1 rounded text-xs font-medium transition-colors",
-                hideSourceText
-                  ? "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300"
-                  : "bg-emerald-600 text-white",
-              ].join(" ")}
-            >
-              {textSource}
-            </button>
           )}
 
           {/* Font size controls */}
@@ -1838,54 +2223,74 @@ export default function PassageView({
           </div>
         )}
 
-        {/* Clause relationship hint */}
-        {editingRelationships && !showRelPicker && (
+        {/* RST relation hint */}
+        {editingRst && !showRstPicker && (
           <div className="px-6 py-1 text-xs border-b border-[var(--border)] text-stone-500 dark:text-stone-400"
                style={{ backgroundColor: "var(--nav-bg)" }}>
-            {relFromSegWordId
-              ? "Click a second segment dot to choose a relationship type"
-              : "Click a segment dot (◉) in the margin to start a relationship"}
+            {rstSegA
+              ? "First segment selected — click another segment dot to choose a relation type"
+              : "Click a segment dot (◉) to start an RST relation"}
           </div>
         )}
 
-        {/* Relationship type picker bar */}
-        {showRelPicker && (
+        {/* RST relation type picker bar */}
+        {showRstPicker && (
           <div
-            className="border-b border-[var(--border)] px-4 py-2 flex flex-wrap gap-1.5 items-center shrink-0"
+            className="border-b border-[var(--border)] px-4 py-2 flex flex-col gap-2 shrink-0"
             style={{ backgroundColor: "var(--nav-bg)" }}
           >
-            <span className="text-xs font-medium mr-1" style={{ color: "var(--nav-fg-muted)" }}>
-              Relationship:
-            </span>
-            <span className="text-xs opacity-50 mr-0.5 select-none">Coord.</span>
-            {RELATIONSHIP_TYPES.filter((r) => r.category === "coordinate").map((r) => (
+            {/* Relation type buttons */}
+            <div className="flex flex-wrap gap-1.5 items-center">
+              <span className="text-xs font-medium mr-1" style={{ color: "var(--nav-fg-muted)" }}>
+                RST Relation:
+              </span>
+              <span className="text-xs opacity-50 mr-0.5 select-none">Coord.</span>
+              {RELATIONSHIP_TYPES.filter((r) => r.category === "coordinate").map((r) => (
+                <button
+                  key={r.key}
+                  onClick={() => handleCreateRstRelation(r.key)}
+                  className="px-2 py-0.5 rounded text-xs font-medium text-white transition-opacity hover:opacity-90"
+                  style={{ backgroundColor: r.color }}
+                >
+                  {r.label}
+                </button>
+              ))}
+              <span className="text-xs opacity-30 mx-1 select-none">|</span>
+              <span className="text-xs opacity-50 mr-0.5 select-none">Sub.</span>
+              {RELATIONSHIP_TYPES.filter((r) => r.category === "subordinate").map((r) => (
+                <button
+                  key={r.key}
+                  onClick={() => handleCreateRstRelation(r.key)}
+                  className="px-2 py-0.5 rounded text-xs font-medium text-white transition-opacity hover:opacity-90"
+                  style={{ backgroundColor: r.color }}
+                >
+                  {r.label}
+                </button>
+              ))}
               <button
-                key={r.key}
-                onClick={() => handleCreateRelationship(r.key)}
-                className="px-2 py-0.5 rounded text-xs font-medium text-white transition-opacity hover:opacity-90"
-                style={{ backgroundColor: r.color }}
+                onClick={handleCancelRstPicker}
+                className="ml-auto text-xs px-2 py-0.5 rounded bg-stone-200 dark:bg-stone-700 text-stone-600 dark:text-stone-300"
               >
-                {r.label}
+                Cancel
               </button>
-            ))}
-            <span className="text-xs opacity-30 mx-1 select-none">|</span>
-            <span className="text-xs opacity-50 mr-0.5 select-none">Sub.</span>
-            {RELATIONSHIP_TYPES.filter((r) => r.category === "subordinate").map((r) => (
+            </div>
+            {/* Nucleus/satellite swap row (only relevant for subordinate) */}
+            <div className="flex items-center gap-2 text-xs text-stone-500 dark:text-stone-400">
+              <span>Roles:</span>
+              <span className={`px-1.5 py-0.5 rounded font-medium ${!rstRolesSwapped ? "bg-violet-100 dark:bg-violet-900 text-violet-700 dark:text-violet-300" : "bg-stone-100 dark:bg-stone-800"}`}>
+                Seg A = {rstRolesSwapped ? "satellite" : "nucleus"}
+              </span>
+              <span>→</span>
+              <span className={`px-1.5 py-0.5 rounded font-medium ${rstRolesSwapped ? "bg-violet-100 dark:bg-violet-900 text-violet-700 dark:text-violet-300" : "bg-stone-100 dark:bg-stone-800"}`}>
+                Seg B = {rstRolesSwapped ? "nucleus" : "satellite"}
+              </span>
               <button
-                key={r.key}
-                onClick={() => handleCreateRelationship(r.key)}
-                className="px-2 py-0.5 rounded text-xs font-medium text-white transition-opacity hover:opacity-90"
-                style={{ backgroundColor: r.color }}
-              >
-                {r.label}
-              </button>
-            ))}
-            <button
-              onClick={handleCancelRelPicker}
-              className="ml-auto text-xs px-2 py-0.5 rounded bg-stone-200 dark:bg-stone-700 text-stone-600 dark:text-stone-300"
-            >
-              Cancel
-            </button>
+                onClick={() => setRstRolesSwapped((v) => !v)}
+                className="text-[10px] px-1.5 py-0.5 rounded bg-stone-200 dark:bg-stone-700 hover:bg-stone-300 dark:hover:bg-stone-600 transition-colors"
+                title="Swap nucleus and satellite roles"
+              >⇄ swap</button>
+              <span className="text-[10px] opacity-50">(applies to subordinate relations only)</span>
+            </div>
           </div>
         )}
 
@@ -1898,6 +2303,28 @@ export default function PassageView({
               : "Click a source word to start an arrow"}
           </div>
         )}
+
+        {/* Scene break hint */}
+        {editingScenes && (
+          <div className="px-6 py-1 text-xs border-b border-[var(--border)] text-stone-500 dark:text-stone-400"
+               style={{ backgroundColor: "var(--nav-bg)" }}>
+            Click any word to mark/unmark a section break there
+          </div>
+        )}
+
+        {/* Annotation range-selection hint */}
+        {editingAnnotations && (
+          <div className="px-6 py-1 text-xs border-b border-[var(--border)] text-stone-500 dark:text-stone-400"
+               style={{ backgroundColor: "var(--nav-bg)" }}>
+            {annotRangeStart && !annotRangeEnd
+              ? "Click the end segment to complete the range (or the same segment for a single-line annotation)"
+              : annotRangeStart && annotRangeEnd
+              ? "Fill in the annotation form in the right column, then save"
+              : "Click any word to start annotating that paragraph segment"}
+          </div>
+        )}
+
+        </div>{/* end sticky control area */}
 
         {/* ── Passage text ─────────────────────────────────────────────────── */}
         {words.length === 0 ? (
@@ -1964,14 +2391,41 @@ export default function PassageView({
                     onToggleTranslationParagraphBreak={handleToggleTranslationParagraphBreak}
                     highlightCharIds={highlightCharIds}
                     onDeleteSpeechSection={handleDeleteSpeechSection}
+                    onReassignSpeechSection={handleReassignSpeechSection}
                     wordTagRefMap={wordTagRefMap}
                     wordTagMap={wordTagMap}
                     editingWordTags={editingWordTags}
                     highlightWordTagIds={highlightWordTagIds}
                     lineIndentMap={lineIndentMap}
+                    translationIndentMap={tvLineIndentMap}
+                    indentsLinked={indentsLinked}
                     wordToParaStart={wordToParaStart}
                     editingIndents={editingIndents}
                     onSetSegmentIndent={handleSetIndent}
+                    onSetSegmentTvIndent={handleSetTvIndent}
+                    wordFormattingMap={wordFormattingMap}
+                    editingFormatting={editingBold || editingItalic}
+                    editingTranslation={editingTranslation}
+                    onUpdateTranslationVerse={handleUpdateTranslationVerse}
+                    sceneBreakMap={sceneBreakMap}
+                    editingScenes={editingScenes}
+                    onToggleSceneBreak={handleToggleSceneBreak}
+                    onUpdateSceneHeading={handleUpdateSceneHeading}
+                    onUpdateSceneOutOfSequence={handleUpdateSceneOutOfSequence}
+                    onUpdateSceneExtendedThrough={handleUpdateSceneExtendedThrough}
+                    sectionRanges={sectionRanges}
+                    annotationsBySegment={annotationsBySegment}
+                    themeColorsByLabel={themeColorsByLabel}
+                    editingAnnotations={editingAnnotations}
+                    annotRangeStartWordId={annotRangeStart}
+                    annotRangeEndWordId={annotRangeEnd}
+                    onSelectAnnotationSegment={handleSelectAnnotationSegment}
+                    onSaveAnnotation={handleSaveAnnotation}
+                    onCancelAnnotation={handleCancelAnnotation}
+                    onDeleteAnnotation={handleDeleteAnnotation}
+                    onUpdateAnnotation={handleUpdateAnnotation}
+                    onExpandAnnotationRange={handleExpandAnnotationRange}
+                    showAnnotationCol={editingAnnotations || lineAnnotationsState.length > 0}
                     editingArrows={editingArrows}
                     onSelectArrowWordById={handleSelectArrowWordById}
                     hideSourceText={hideSourceText}
@@ -2013,7 +2467,7 @@ export default function PassageView({
           textSource={textSource}
           startChapter={passage.startChapter}
           endChapter={passage.endChapter}
-          availableCategories={["paragraphBreaks", "characterRefs", "speechSections", "wordTagRefs", "lineIndents", "clauseRelationships", "wordArrows"]}
+          availableCategories={["paragraphBreaks", "characterRefs", "speechSections", "wordTagRefs", "lineIndents", "rstRelations", "wordArrows"]}
           onClose={() => setShowClearDialog(false)}
           onCleared={handleAnnotationsCleared}
         />

@@ -1,7 +1,7 @@
 import { eq, and, asc, inArray, or, gte, lte, gt, lt, sql } from "drizzle-orm";
 import { db } from "./index";
-import { books, words, verses, translations, translationVerses, paragraphBreaks, characters, characterRefs, speechSections, wordTags, wordTagRefs, lineIndents, sceneBreaks, passages, clauseRelationships, wordArrows, wordFormatting, lineAnnotations } from "./schema";
-import type { Book, Word, Translation, TranslationVerse, Character, CharacterRef, SpeechSection, WordTag, WordTagRef, Passage, ClauseRelationship, WordArrow, LineAnnotation } from "./schema";
+import { books, words, verses, translations, translationVerses, paragraphBreaks, characters, characterRefs, speechSections, wordTags, wordTagRefs, lineIndents, sceneBreaks, passages, clauseRelationships, rstRelations, wordArrows, wordFormatting, lineAnnotations } from "./schema";
+import type { Book, Word, Translation, TranslationVerse, Character, CharacterRef, SpeechSection, WordTag, WordTagRef, Passage, ClauseRelationship, RstRelation, WordArrow, LineAnnotation } from "./schema";
 import type { TextSource, Testament } from "@/lib/morphology/types";
 
 export async function getBooks(testament?: Testament): Promise<Book[]> {
@@ -174,46 +174,117 @@ export async function toggleParagraphBreak(
   }
 }
 
-// ── Scene breaks ──────────────────────────────────────────────────────────────
+// ── Section breaks ────────────────────────────────────────────────────────────
 
-/** Returns all scene breaks (wordId + heading + outOfSequence) for a chapter, across all sources. */
+/**
+ * Returns all section breaks for a chapter sorted by (chapter, verse, level).
+ * Multiple rows can exist per wordId (one per level).
+ */
 export async function getChapterSceneBreaks(
   book: string,
   chapter: number
-): Promise<{ wordId: string; heading: string | null; outOfSequence: boolean }[]> {
+): Promise<{ wordId: string; heading: string | null; level: number; verse: number; outOfSequence: boolean; extendedThrough: number | null }[]> {
   const rows = await db
-    .select({ wordId: sceneBreaks.wordId, heading: sceneBreaks.heading, outOfSequence: sceneBreaks.outOfSequence })
+    .select({
+      wordId:          sceneBreaks.wordId,
+      heading:         sceneBreaks.heading,
+      level:           sceneBreaks.level,
+      verse:           sceneBreaks.verse,
+      outOfSequence:   sceneBreaks.outOfSequence,
+      extendedThrough: sceneBreaks.extendedThrough,
+    })
     .from(sceneBreaks)
-    .where(and(eq(sceneBreaks.book, book), eq(sceneBreaks.chapter, chapter)));
+    .where(and(eq(sceneBreaks.book, book), eq(sceneBreaks.chapter, chapter)))
+    .orderBy(asc(sceneBreaks.verse), asc(sceneBreaks.level));
   return rows;
 }
 
 /**
- * Toggles a scene break for a word.
- * Adding a scene break also inserts a matching paragraph break (if not present).
- * Removing a scene break also removes the paragraph break.
- * Returns whether the scene break was added (true) or removed (false).
+ * Returns all section breaks for a whole book sorted by (chapter, verse, level).
+ * Used for outline export and cross-chapter verse range computation.
+ */
+export async function getBookSceneBreaks(
+  book: string,
+  textSource: string
+): Promise<{ wordId: string; heading: string | null; level: number; chapter: number; verse: number; outOfSequence: boolean; extendedThrough: number | null }[]> {
+  const rows = await db
+    .select({
+      wordId:          sceneBreaks.wordId,
+      heading:         sceneBreaks.heading,
+      level:           sceneBreaks.level,
+      chapter:         sceneBreaks.chapter,
+      verse:           sceneBreaks.verse,
+      outOfSequence:   sceneBreaks.outOfSequence,
+      extendedThrough: sceneBreaks.extendedThrough,
+    })
+    .from(sceneBreaks)
+    .where(and(eq(sceneBreaks.book, book), eq(sceneBreaks.textSource, textSource)))
+    .orderBy(asc(sceneBreaks.chapter), asc(sceneBreaks.verse), asc(sceneBreaks.level));
+  return rows;
+}
+
+/**
+ * Returns the maximum verse number per chapter for a book/source combination.
+ * Used to compute cross-chapter verse ranges for section breaks.
+ */
+export async function getBookChapterMaxVerses(
+  osisBook: string,
+  textSource: string
+): Promise<Map<number, number>> {
+  const bookRow = await getBook(osisBook);
+  if (!bookRow) return new Map();
+  const rows = await db
+    .select({
+      chapter:  words.chapter,
+      maxVerse: sql<number>`max(${words.verse})`,
+    })
+    .from(words)
+    .where(and(eq(words.bookId, bookRow.id), eq(words.textSource, textSource)))
+    .groupBy(words.chapter)
+    .orderBy(asc(words.chapter));
+  return new Map(rows.map((r) => [r.chapter, r.maxVerse]));
+}
+
+/**
+ * Toggles a section break for a specific (wordId, level) pair.
+ * Adding also inserts a paragraph break (if not present for any level at this wordId).
+ * Removing only deletes the paragraph break if no other section breaks remain at this wordId.
+ * Returns whether the break was added (true) or removed (false).
  */
 export async function toggleSceneBreak(
   wordId: string,
   book: string,
   chapter: number,
-  textSource: string
+  verse: number,
+  textSource: string,
+  level = 1
 ): Promise<{ added: boolean }> {
+  // Check if this specific (wordId, level) already exists
   const existing = await db
     .select({ id: sceneBreaks.id })
     .from(sceneBreaks)
-    .where(eq(sceneBreaks.wordId, wordId))
+    .where(and(eq(sceneBreaks.wordId, wordId), eq(sceneBreaks.level, level)))
     .limit(1);
 
   if (existing.length > 0) {
-    // Remove scene break and its implied paragraph break
-    await db.delete(sceneBreaks).where(eq(sceneBreaks.wordId, wordId));
-    await db.delete(paragraphBreaks).where(eq(paragraphBreaks.wordId, wordId));
+    // Remove this specific (wordId, level) section break
+    await db.delete(sceneBreaks).where(
+      and(eq(sceneBreaks.wordId, wordId), eq(sceneBreaks.level, level))
+    );
+    // Only remove paragraph break if no other section breaks remain at this wordId
+    const remaining = await db
+      .select({ id: sceneBreaks.id })
+      .from(sceneBreaks)
+      .where(eq(sceneBreaks.wordId, wordId))
+      .limit(1);
+    if (remaining.length === 0) {
+      await db.delete(paragraphBreaks).where(eq(paragraphBreaks.wordId, wordId));
+    }
     return { added: false };
   } else {
-    // Add scene break and ensure a paragraph break exists
-    await db.insert(sceneBreaks).values({ wordId, book, chapter, textSource });
+    // Add this (wordId, level) section break with verse
+    await db.insert(sceneBreaks).values({ wordId, book, chapter, verse, textSource, level });
+    // Ensure a paragraph break exists (only if not already present)
     const pbExists = await db
       .select({ id: paragraphBreaks.id })
       .from(paragraphBreaks)
@@ -226,26 +297,121 @@ export async function toggleSceneBreak(
   }
 }
 
-/** Updates the heading text for an existing scene break (null clears it). */
+/** Deletes a specific (wordId, level) section break. Removes paragraph break if no others remain. */
+export async function deleteSceneBreak(wordId: string, level: number): Promise<void> {
+  await db.delete(sceneBreaks).where(
+    and(eq(sceneBreaks.wordId, wordId), eq(sceneBreaks.level, level))
+  );
+  const remaining = await db
+    .select({ id: sceneBreaks.id })
+    .from(sceneBreaks)
+    .where(eq(sceneBreaks.wordId, wordId))
+    .limit(1);
+  if (remaining.length === 0) {
+    await db.delete(paragraphBreaks).where(eq(paragraphBreaks.wordId, wordId));
+  }
+}
+
+/** Updates the heading text for a specific (wordId, level) section break (null clears it). */
 export async function updateSceneBreakHeading(
   wordId: string,
+  level: number,
   heading: string | null
 ): Promise<void> {
   await db
     .update(sceneBreaks)
     .set({ heading: heading && heading.trim() ? heading.trim() : null })
-    .where(eq(sceneBreaks.wordId, wordId));
+    .where(and(eq(sceneBreaks.wordId, wordId), eq(sceneBreaks.level, level)));
 }
 
-/** Marks or unmarks a scene break as out of chronological sequence. */
+/** Marks or unmarks a specific (wordId, level) section break as out of chronological sequence. */
 export async function updateSceneBreakOutOfSequence(
   wordId: string,
+  level: number,
   outOfSequence: boolean
 ): Promise<void> {
   await db
     .update(sceneBreaks)
     .set({ outOfSequence })
-    .where(eq(sceneBreaks.wordId, wordId));
+    .where(and(eq(sceneBreaks.wordId, wordId), eq(sceneBreaks.level, level)));
+}
+
+/**
+ * Sets the "extended through" chapter for a Psalms section break (null = no extension).
+ * Only meaningful for book "Ps" — allows grouping adjacent psalms (e.g. Ps 9+10).
+ */
+export async function updateSceneBreakExtendedThrough(
+  wordId: string,
+  level: number,
+  extendedThrough: number | null
+): Promise<void> {
+  await db
+    .update(sceneBreaks)
+    .set({ extendedThrough })
+    .where(and(eq(sceneBreaks.wordId, wordId), eq(sceneBreaks.level, level)));
+}
+
+/**
+ * One-time migration: copies passage labels → level-2 section breaks.
+ * Idempotent — uses onConflictDoNothing so re-running is safe.
+ */
+export async function migratePassageLabelsToSectionBreaks(): Promise<void> {
+  // Fetch all passages that have a non-empty label
+  const labelledPassages = await db
+    .select()
+    .from(passages)
+    .where(sql`trim(${passages.label}) != ''`);
+
+  if (labelledPassages.length === 0) return;
+
+  for (const passage of labelledPassages) {
+    // Find the first word at (book, textSource, startChapter, startVerse)
+    const bookRow = await getBook(passage.book);
+    if (!bookRow) continue;
+
+    const firstWords = await db
+      .select({ wordId: words.wordId, verse: words.verse })
+      .from(words)
+      .where(
+        and(
+          eq(words.bookId, bookRow.id),
+          eq(words.textSource, passage.textSource),
+          eq(words.chapter, passage.startChapter),
+          eq(words.verse, passage.startVerse)
+        )
+      )
+      .orderBy(asc(words.positionInVerse))
+      .limit(1);
+
+    if (firstWords.length === 0) continue;
+
+    const { wordId, verse } = firstWords[0];
+
+    // Insert level-2 section break for this passage label (ignore if already exists)
+    await db
+      .insert(sceneBreaks)
+      .values({
+        wordId,
+        heading: passage.label.trim(),
+        level: 2,
+        verse,
+        textSource: passage.textSource,
+        book: passage.book,
+        chapter: passage.startChapter,
+      })
+      .onConflictDoNothing();
+
+    // Ensure a paragraph break exists at this position
+    await db
+      .insert(paragraphBreaks)
+      .values({
+        wordId,
+        textSource: passage.textSource,
+        book: passage.book,
+        chapter: passage.startChapter,
+      })
+      .onConflictDoNothing();
+  }
 }
 
 /** Group words by verse for display */
@@ -485,6 +651,20 @@ export async function removeSpeechSectionContaining(
   return getChapterSpeechSections(book, chapter, textSource);
 }
 
+export async function updateSpeechSectionCharacter(
+  sectionId: number,
+  newCharacterId: number,
+  book: string,
+  chapter: number,
+  textSource: string
+): Promise<SpeechSection[]> {
+  await db
+    .update(speechSections)
+    .set({ characterId: newCharacterId })
+    .where(eq(speechSections.id, sectionId));
+  return getChapterSpeechSections(book, chapter, textSource);
+}
+
 // ── Word / Concept Tags (book-scoped) ─────────────────────────────────────────
 
 export async function getWordTags(book: string): Promise<WordTag[]> {
@@ -705,6 +885,60 @@ export async function createClauseRelationship(
 
 export async function deleteClauseRelationship(id: number): Promise<void> {
   await db.delete(clauseRelationships).where(eq(clauseRelationships.id, id));
+}
+
+// ── RST Relations ─────────────────────────────────────────────────────────────
+
+export async function getChapterRstRelations(
+  book: string,
+  chapter: number,
+  textSource: string
+): Promise<RstRelation[]> {
+  return db
+    .select()
+    .from(rstRelations)
+    .where(
+      and(
+        eq(rstRelations.book, book),
+        eq(rstRelations.chapter, chapter),
+        eq(rstRelations.textSource, textSource)
+      )
+    )
+    .orderBy(asc(rstRelations.groupId), asc(rstRelations.sortOrder));
+}
+
+export async function createRstRelationGroup(
+  groupId: string,
+  members: { segWordId: string; role: "nucleus" | "satellite"; sortOrder: number }[],
+  relType: string,
+  book: string,
+  chapter: number,
+  textSource: string
+): Promise<RstRelation[]> {
+  const rows = await db
+    .insert(rstRelations)
+    .values(
+      members.map((m) => ({
+        groupId,
+        segWordId: m.segWordId,
+        role: m.role,
+        relType,
+        sortOrder: m.sortOrder,
+        book,
+        chapter,
+        textSource,
+      }))
+    )
+    .returning();
+  return rows;
+}
+
+export async function deleteRstRelationGroup(groupId: string): Promise<void> {
+  await db.delete(rstRelations).where(eq(rstRelations.groupId, groupId));
+}
+
+export async function deleteRstRelation(id: number): Promise<void> {
+  await db.delete(rstRelations).where(eq(rstRelations.id, id));
 }
 
 // ── Word Arrows ───────────────────────────────────────────────────────────────

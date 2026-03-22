@@ -109,7 +109,7 @@ export default function DefinePassageDialog({
 
       const { passage } = await res.json();
       onClose();
-      router.push(`/${encodeURIComponent(book)}/${textSource}/passage/${passage.id}`);
+      router.push(`/${encodeURIComponent(book)}/${textSource}/passage/${passage.id}?newPassage=true`);
     } catch {
       setError("Network error. Please try again.");
     } finally {

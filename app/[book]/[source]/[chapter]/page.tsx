@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
-import { getChapterWords, getBook, getBooksBySource, getChapterCount, getAvailableTranslationsForChapter, getTranslationVerses, getChapterParagraphBreaks, getCharacters, getChapterCharacterRefs, getChapterSpeechSections, getWordTags, getChapterWordTagRefs, getChapterLineIndents, getChapterClauseRelationships, getChapterWordArrows, getChapterWordFormatting, getChapterSceneBreaks, getChapterLineAnnotations } from "@/lib/db/queries";
+import { getChapterWords, getBook, getBooksBySource, getChapterCount, getAvailableTranslationsForChapter, getTranslationVerses, getChapterParagraphBreaks, getCharacters, getChapterCharacterRefs, getChapterSpeechSections, getWordTags, getChapterWordTagRefs, getChapterLineIndents, getChapterRstRelations, getChapterWordArrows, getChapterWordFormatting, getChapterSceneBreaks, getChapterLineAnnotations, getBookSceneBreaks, getBookChapterMaxVerses } from "@/lib/db/queries";
 import type { TranslationVerse } from "@/lib/db/schema";
 import type { TextSource } from "@/lib/morphology/types";
 import ChapterDisplay from "@/components/text/ChapterDisplay";
@@ -41,8 +41,9 @@ export default async function ChapterPage({ params }: PageProps) {
   const [availableTranslations, initialParagraphBreakIds, initialCharacters,
          initialCharacterRefs, initialSpeechSections,
          initialWordTags, initialWordTagRefs, initialLineIndents,
-         initialClauseRelationships, initialWordArrows, initialWordFormatting,
-         initialSceneBreaks, initialLineAnnotations] = await Promise.all([
+         initialRstRelations, initialWordArrows, initialWordFormatting,
+         initialSceneBreaks, initialLineAnnotations,
+         bookSceneBreaks, bookMaxVerses] = await Promise.all([
     getAvailableTranslationsForChapter(osisBook, chapter),
     getChapterParagraphBreaks(osisBook, chapter),
     getCharacters(osisBook),
@@ -51,11 +52,13 @@ export default async function ChapterPage({ params }: PageProps) {
     getWordTags(osisBook),
     getChapterWordTagRefs(osisBook, chapter),
     getChapterLineIndents(osisBook, chapter),
-    getChapterClauseRelationships(osisBook, chapter, textSource),
+    getChapterRstRelations(osisBook, chapter, textSource),
     getChapterWordArrows(osisBook, chapter, textSource),
     getChapterWordFormatting(osisBook, chapter),
     getChapterSceneBreaks(osisBook, chapter),
     getChapterLineAnnotations(osisBook, chapter, textSource),
+    getBookSceneBreaks(osisBook, textSource),
+    getBookChapterMaxVerses(osisBook, textSource),
   ]);
   const translationVerseData: Record<number, TranslationVerse[]> = {};
   await Promise.all(
@@ -208,11 +211,13 @@ export default async function ChapterPage({ params }: PageProps) {
           initialWordTags={initialWordTags}
           initialWordTagRefs={initialWordTagRefs}
           initialLineIndents={initialLineIndents}
-          initialClauseRelationships={initialClauseRelationships}
+          initialRstRelations={initialRstRelations}
           initialWordArrows={initialWordArrows}
           initialWordFormatting={initialWordFormatting}
           initialSceneBreaks={initialSceneBreaks}
           initialLineAnnotations={initialLineAnnotations}
+          bookSceneBreaks={bookSceneBreaks}
+          bookMaxVerses={bookMaxVerses}
         />
       </div>
     </div>
