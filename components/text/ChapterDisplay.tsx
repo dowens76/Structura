@@ -16,8 +16,11 @@ import WordArrowOverlay from "./WordArrowOverlay";
 import ClearAnnotationsDialog, { type ClearCategory } from "@/components/controls/ClearAnnotationsDialog";
 import TranslationPicker from "@/components/controls/TranslationPicker";
 import NotesPane from "@/components/notes/NotesPane";
+import RstTypeManager from "@/components/controls/RstTypeManager";
 import type { ColorRule } from "@/lib/morphology/colorRules";
 import { RELATIONSHIP_TYPES, RELATIONSHIP_MAP } from "@/lib/morphology/clauseRelationships";
+import type { RstTypeEntry } from "@/lib/morphology/clauseRelationships";
+import type { RstCustomType } from "@/lib/db/schema";
 import hebrewLemmas from "@/lib/data/hebrew-lemmas.json";
 import { computeSectionRanges } from "@/lib/utils/sectionRanges";
 
@@ -196,6 +199,9 @@ export default function ChapterDisplay({
   const [showRstPicker, setShowRstPicker]  = useState(false);
   // groupId of the relation whose type is being edited via chip click
   const [rstEditGroupId, setRstEditGroupId] = useState<string | null>(null);
+  // Custom RST label types
+  const [customRstTypes, setCustomRstTypes] = useState<RstCustomType[]>([]);
+  const [showRstTypeManager, setShowRstTypeManager] = useState(false);
 
   // ── Word arrows state ──────────────────────────────────────────────────────
   const [wordArrowsState, setWordArrowsState] = useState<WordArrow[]>(initialWordArrows);
@@ -332,6 +338,20 @@ export default function ChapterDisplay({
   useEffect(() => { writeLocal("structura:displayMode", displayMode); }, [displayMode]);
   useEffect(() => { writeLocal("structura:useLinguisticTerms", useLinguisticTerms); }, [useLinguisticTerms]);
   useEffect(() => { writeLocal("structura:hideSourceText", hideSourceText); }, [hideSourceText]);
+
+  // Fetch custom RST types on mount
+  useEffect(() => {
+    fetch("/api/rst-custom-types")
+      .then((r) => r.json())
+      .then((rows: RstCustomType[]) => setCustomRstTypes(rows))
+      .catch(() => {});
+  }, []);
+
+  // Merged RST types (built-in + custom)
+  const allRstTypes = useMemo<RstTypeEntry[]>(
+    () => [...RELATIONSHIP_TYPES, ...customRstTypes],
+    [customRstTypes]
+  );
 
   const isHebrew = words[0]?.language === "hebrew";
 
@@ -1676,6 +1696,7 @@ export default function ChapterDisplay({
             onSelectSegment={handleSelectRstSegment}
             onDeleteGroup={handleDeleteRstGroup}
             onEditGroup={handleEditRstGroup}
+            customTypes={customRstTypes}
           />
           <WordArrowOverlay
             arrows={wordArrowsState}
@@ -1885,13 +1906,15 @@ export default function ChapterDisplay({
           {/* RST relation mode */}
           <button
             onClick={() => {
-              setEditingRst((v) => !v);
+              const entering = !editingRst;
+              setEditingRst(entering);
               setEditingArrows(false);
               setArrowFromWordId(null);
               setRstSegA(null);
               setRstSegB(null);
               setShowRstPicker(false);
               setRstEditGroupId(null);
+              if (!entering) setShowRstTypeManager(false);
             }}
             title={editingRst
               ? "Exit RST relation mode"
@@ -1905,6 +1928,20 @@ export default function ChapterDisplay({
           >
             ↳
           </button>
+          {editingRst && (
+            <button
+              onClick={() => setShowRstTypeManager((v) => !v)}
+              title="Manage RST label types"
+              className={[
+                "px-2.5 py-1 rounded text-xs font-medium transition-colors",
+                showRstTypeManager
+                  ? "bg-amber-500 text-white"
+                  : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
+              ].join(" ")}
+            >
+              Labels
+            </button>
+          )}
 
           {/* Word arrow mode */}
           <button
@@ -2180,7 +2217,7 @@ export default function ChapterDisplay({
                 RST Relation:
               </span>
               <span className="text-xs opacity-50 mr-0.5 select-none">Coord.</span>
-              {RELATIONSHIP_TYPES.filter((r) => r.category === "coordinate").map((r) => (
+              {allRstTypes.filter((r) => r.category === "coordinate").map((r) => (
                 <button
                   key={r.key}
                   onClick={() => handleCreateRstRelation(r.key)}
@@ -2192,7 +2229,7 @@ export default function ChapterDisplay({
               ))}
               <span className="text-xs opacity-30 mx-1 select-none">|</span>
               <span className="text-xs opacity-50 mr-0.5 select-none">Sub.</span>
-              {RELATIONSHIP_TYPES.filter((r) => r.category === "subordinate").map((r) => (
+              {allRstTypes.filter((r) => r.category === "subordinate").map((r) => (
                 <button
                   key={r.key}
                   onClick={() => handleCreateRstRelation(r.key)}
@@ -2240,7 +2277,7 @@ export default function ChapterDisplay({
                 Change type:
               </span>
               <span className="text-xs opacity-50 mr-0.5 select-none">Coord.</span>
-              {RELATIONSHIP_TYPES.filter((r) => r.category === "coordinate").map((r) => (
+              {allRstTypes.filter((r) => r.category === "coordinate").map((r) => (
                 <button
                   key={r.key}
                   onClick={() => handleUpdateRstGroupType(r.key)}
@@ -2252,7 +2289,7 @@ export default function ChapterDisplay({
               ))}
               <span className="text-xs opacity-30 mx-1 select-none">|</span>
               <span className="text-xs opacity-50 mr-0.5 select-none">Sub.</span>
-              {RELATIONSHIP_TYPES.filter((r) => r.category === "subordinate").map((r) => (
+              {allRstTypes.filter((r) => r.category === "subordinate").map((r) => (
                 <button
                   key={r.key}
                   onClick={() => handleUpdateRstGroupType(r.key)}
@@ -2270,6 +2307,39 @@ export default function ChapterDisplay({
               </button>
             </div>
           </div>
+        )}
+
+        {/* RST type manager panel */}
+        {editingRst && showRstTypeManager && (
+          <RstTypeManager
+            customTypes={customRstTypes}
+            onAdd={async (t) => {
+              const res = await fetch("/api/rst-custom-types", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(t),
+              });
+              if (res.ok) {
+                const row: RstCustomType = await res.json();
+                setCustomRstTypes((prev) => [...prev, row]);
+              }
+            }}
+            onUpdate={async (id, updates) => {
+              const res = await fetch("/api/rst-custom-types", {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ id, ...updates }),
+              });
+              if (res.ok) {
+                const row: RstCustomType = await res.json();
+                setCustomRstTypes((prev) => prev.map((t) => t.id === id ? row : t));
+              }
+            }}
+            onDelete={async (id) => {
+              await fetch(`/api/rst-custom-types?id=${id}`, { method: "DELETE" });
+              setCustomRstTypes((prev) => prev.filter((t) => t.id !== id));
+            }}
+          />
         )}
 
         {/* Word arrow hint */}

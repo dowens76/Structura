@@ -20,7 +20,10 @@ import RstRelationOverlay from "@/components/text/RstRelationOverlay";
 import WordArrowOverlay from "@/components/text/WordArrowOverlay";
 import ClearAnnotationsDialog, { type ClearCategory } from "@/components/controls/ClearAnnotationsDialog";
 import PassageNotesPane from "@/components/notes/PassageNotesPane";
+import RstTypeManager from "@/components/controls/RstTypeManager";
 import { RELATIONSHIP_TYPES, RELATIONSHIP_MAP } from "@/lib/morphology/clauseRelationships";
+import type { RstTypeEntry } from "@/lib/morphology/clauseRelationships";
+import type { RstCustomType } from "@/lib/db/schema";
 import hebrewLemmas from "@/lib/data/hebrew-lemmas.json";
 import { computeSectionRanges } from "@/lib/utils/sectionRanges";
 import { generateOutline, downloadOutline } from "@/lib/utils/outlineExport";
@@ -225,6 +228,9 @@ export default function PassageView({
   const [rstSegB, setRstSegB]                 = useState<string | null>(null);
   const [rstRolesSwapped, setRstRolesSwapped] = useState(false);
   const [showRstPicker, setShowRstPicker]     = useState(false);
+  // Custom RST label types
+  const [customRstTypes, setCustomRstTypes]   = useState<RstCustomType[]>([]);
+  const [showRstTypeManager, setShowRstTypeManager] = useState(false);
 
   // ── Word arrows state ──────────────────────────────────────────────────────
   const [wordArrowsState, setWordArrowsState] = useState<WordArrow[]>(initialWordArrows);
@@ -296,6 +302,20 @@ export default function PassageView({
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
+
+  // Fetch custom RST types on mount
+  useEffect(() => {
+    fetch("/api/rst-custom-types")
+      .then((r) => r.json())
+      .then((rows: RstCustomType[]) => setCustomRstTypes(rows))
+      .catch(() => {});
+  }, []);
+
+  // Merged RST types (built-in + custom)
+  const allRstTypes = useMemo<RstTypeEntry[]>(
+    () => [...RELATIONSHIP_TYPES, ...customRstTypes],
+    [customRstTypes]
+  );
 
   // ── Word → chapter lookup (for API calls that require chapter) ────────────
   const wordToChapter = useMemo(
@@ -1724,6 +1744,7 @@ export default function PassageView({
           selectedSatelliteWordId={rstSegB}
           onSelectSegment={handleSelectRstSegment}
           onDeleteGroup={handleDeleteRstGroup}
+          customTypes={customRstTypes}
         />
         {/* Overlay: word-to-word arrows */}
         <WordArrowOverlay
@@ -2006,12 +2027,14 @@ export default function PassageView({
           {/* RST relation mode */}
           <button
             onClick={() => {
-              setEditingRst((v) => !v);
+              const entering = !editingRst;
+              setEditingRst(entering);
               setEditingArrows(false);
               setArrowFromWordId(null);
               setRstSegA(null);
               setRstSegB(null);
               setShowRstPicker(false);
+              if (!entering) setShowRstTypeManager(false);
             }}
             title={editingRst ? "Exit RST relation mode" : "Mark RST (Rhetorical Structure Theory) relations between paragraph segments"}
             className={["px-2.5 py-1 rounded text-xs font-medium transition-colors",
@@ -2019,6 +2042,20 @@ export default function PassageView({
                 : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
             ].join(" ")}
           >↳</button>
+          {editingRst && (
+            <button
+              onClick={() => setShowRstTypeManager((v) => !v)}
+              title="Manage RST label types"
+              className={[
+                "px-2.5 py-1 rounded text-xs font-medium transition-colors",
+                showRstTypeManager
+                  ? "bg-amber-500 text-white"
+                  : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
+              ].join(" ")}
+            >
+              Labels
+            </button>
+          )}
 
           {/* Word arrow mode */}
           <button
@@ -2264,7 +2301,7 @@ export default function PassageView({
                 RST Relation:
               </span>
               <span className="text-xs opacity-50 mr-0.5 select-none">Coord.</span>
-              {RELATIONSHIP_TYPES.filter((r) => r.category === "coordinate").map((r) => (
+              {allRstTypes.filter((r) => r.category === "coordinate").map((r) => (
                 <button
                   key={r.key}
                   onClick={() => handleCreateRstRelation(r.key)}
@@ -2276,7 +2313,7 @@ export default function PassageView({
               ))}
               <span className="text-xs opacity-30 mx-1 select-none">|</span>
               <span className="text-xs opacity-50 mr-0.5 select-none">Sub.</span>
-              {RELATIONSHIP_TYPES.filter((r) => r.category === "subordinate").map((r) => (
+              {allRstTypes.filter((r) => r.category === "subordinate").map((r) => (
                 <button
                   key={r.key}
                   onClick={() => handleCreateRstRelation(r.key)}
@@ -2311,6 +2348,39 @@ export default function PassageView({
               <span className="text-[10px] opacity-50">(applies to subordinate relations only)</span>
             </div>
           </div>
+        )}
+
+        {/* RST type manager panel */}
+        {editingRst && showRstTypeManager && (
+          <RstTypeManager
+            customTypes={customRstTypes}
+            onAdd={async (t) => {
+              const res = await fetch("/api/rst-custom-types", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(t),
+              });
+              if (res.ok) {
+                const row: RstCustomType = await res.json();
+                setCustomRstTypes((prev) => [...prev, row]);
+              }
+            }}
+            onUpdate={async (id, updates) => {
+              const res = await fetch("/api/rst-custom-types", {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ id, ...updates }),
+              });
+              if (res.ok) {
+                const row: RstCustomType = await res.json();
+                setCustomRstTypes((prev) => prev.map((t) => t.id === id ? row : t));
+              }
+            }}
+            onDelete={async (id) => {
+              await fetch(`/api/rst-custom-types?id=${id}`, { method: "DELETE" });
+              setCustomRstTypes((prev) => prev.filter((t) => t.id !== id));
+            }}
+          />
         )}
 
         {/* Word arrow hint */}

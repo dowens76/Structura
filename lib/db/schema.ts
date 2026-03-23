@@ -318,6 +318,17 @@ export const lineAnnotations = sqliteTable(
   (t) => [index("la_book_ch_src_idx").on(t.book, t.chapter, t.textSource)]
 );
 
+// User-defined RST relationship type labels (supplement the 14 built-ins)
+export const rstCustomTypes = sqliteTable("rst_custom_types", {
+  id:        integer("id").primaryKey({ autoIncrement: true }),
+  key:       text("key").notNull().unique(),   // "custom_<8 random chars>"
+  label:     text("label").notNull(),
+  abbr:      text("abbr").notNull(),           // 1–4 chars shown on chip
+  color:     text("color").notNull(),          // hex e.g. "#DC2626"
+  category:  text("category").$type<"coordinate" | "subordinate">().notNull(),
+  sortOrder: integer("sort_order").notNull().default(0),
+});
+
 // Free-form notes keyed by a string ref.
 // key format:  "verse:Gen.1.1"  |  "chapter:Gen.1"  |  "passage:42"
 export const notes = sqliteTable(
@@ -374,3 +385,4 @@ export type WordArrow = typeof wordArrows.$inferSelect;
 export type WordFormatting = typeof wordFormatting.$inferSelect;
 export type LineAnnotation = typeof lineAnnotations.$inferSelect;
 export type Note = typeof notes.$inferSelect;
+export type RstCustomType = typeof rstCustomTypes.$inferSelect;

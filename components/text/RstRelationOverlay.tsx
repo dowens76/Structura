@@ -2,12 +2,11 @@
 
 import { useLayoutEffect, useRef, useState, useCallback, RefObject } from "react";
 import type { RstRelation } from "@/lib/db/schema";
-import { RELATIONSHIP_MAP } from "@/lib/morphology/clauseRelationships";
+import { RELATIONSHIP_MAP, buildRelationshipMap, type RstTypeEntry } from "@/lib/morphology/clauseRelationships";
 
 // ── Layout constants ──────────────────────────────────────────────────────────
 const HANG_PX     = 32;  // must match VerseDisplay HANG_PX
 const SIDE_OFFSET = 6;   // px outside the segment text-start edge for the vertical RST line
-const TICK_PAD    = 5;   // px above/below segment row for the bracket tick anchor points
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -48,6 +47,8 @@ export interface Props {
   onSelectSegment: (wordId: string) => void;
   onDeleteGroup: (groupId: string) => void;
   onEditGroup?: (groupId: string) => void; // click chip body → change relation type
+  /** Custom user-defined RST types to merge with the built-in map */
+  customTypes?: RstTypeEntry[];
 }
 
 // ── Position measurement ──────────────────────────────────────────────────────
@@ -92,7 +93,8 @@ function measureSegments(
 function buildGroupGeometries(
   relations: RstRelation[],
   posMap: Map<string, SegPos>,
-  isHebrew: boolean
+  isHebrew: boolean,
+  relMap: Record<string, { abbr: string; color: string; category: string }>
 ): GroupGeom[] {
   // Group relations by groupId
   const byGroup = new Map<string, RstRelation[]>();
@@ -143,12 +145,12 @@ function buildGroupGeometries(
       ? minTransLeftX - HANG_PX
       : undefined;
 
-    // Vertical line spans from TICK_PAD above the first member's text top
-    // to TICK_PAD below the last member's text bottom — matching the bracket ticks.
+    // Vertical line spans from the centre of the first member to the centre of
+    // the last member — anchoring exactly at the single tick point per segment.
     const firstPos = withPos[0].pos;
     const lastPos  = withPos[withPos.length - 1].pos;
-    const topY     = firstPos.top    - TICK_PAD;
-    const bottomY  = lastPos.bottom  + TICK_PAD;
+    const topY     = firstPos.top  + (firstPos.bottom  - firstPos.top)  / 2;
+    const bottomY  = lastPos.top   + (lastPos.bottom   - lastPos.top)   / 2;
 
     // Labels between consecutive members.
     // Clamp so the chip (16px tall) stays entirely within the inter-segment gap.
@@ -216,7 +218,10 @@ export default function RstRelationOverlay({
   onSelectSegment,
   onDeleteGroup,
   onEditGroup,
+  customTypes = [],
 }: Props) {
+  // Merged map: built-in types overrideable/augmented by custom types
+  const relMap = customTypes.length > 0 ? buildRelationshipMap(customTypes) : RELATIONSHIP_MAP;
   const svgRef   = useRef<SVGSVGElement>(null);
   const frameRef = useRef<number | null>(null);
   const [svgH, setSvgH] = useState(0);
@@ -241,7 +246,7 @@ export default function RstRelationOverlay({
       const newPos = measureSegments(allSegIds, container);
       setPosMap(newPos);
       setSvgH(newH);
-      setGeoms(buildGroupGeometries(relations, newPos, isHebrew));
+      setGeoms(buildGroupGeometries(relations, newPos, isHebrew, relMap));
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [relations, containerRef, isHebrew, editing, paragraphFirstWordIds.join(",")]);
@@ -279,7 +284,7 @@ export default function RstRelationOverlay({
    * isTransMirror=true → translation side (always LTR chip placement, no hit target / delete ×).
    */
   const renderLine = (g: GroupGeom, lx: number, isTransMirror: boolean) => {
-    const relMeta      = RELATIONSHIP_MAP[g.relType];
+    const relMeta      = relMap[g.relType];
     const color        = relMeta?.color ?? "#6B7280";
     const isHovered    = hoveredGroup === g.groupId;
     const isEditingThis = !isTransMirror && editingGroupId === g.groupId;
@@ -310,31 +315,17 @@ export default function RstRelationOverlay({
           style={{ pointerEvents: "none" }}
         />
 
-        {/* Per-member bracket ticks: a dot + horizontal line at segTop-2 and segBottom+2,
-            anchored at the text-start X, connecting across to the vertical line. */}
+        {/* Per-member bracket tick: a dot + horizontal line at the segment's
+            centre Y, connecting from the vertical line toward the text. */}
         {g.members.map((m, mi) => {
-          // Dot sits ON the vertical line (lx); a short tick extends toward the text start edge.
-          // For LTR:    line is left of text  → tick goes right (+1) toward leftX.
-          // For Hebrew: line is left of rightX → tick goes right (+1) toward rightX.
-          // For trans:  line is left of translation column → tick goes right (+1).
-          // In all cases tickDir = +1.
-          const tickDir  = 1;
-          const tickEndX = lx + tickDir * (SIDE_OFFSET - 3);
-          const topTickY = m.segTop    - TICK_PAD;
-          const botTickY = m.segBottom + TICK_PAD;
+          const tickEndX = lx + (SIDE_OFFSET - 3);  // always rightward toward text
           return (
             <g key={`tick-${mi}`} style={{ pointerEvents: "none" }}>
-              {/* Top anchor dot on the vertical line */}
-              <circle cx={lx} cy={topTickY} r={2}
+              {/* Anchor dot on the vertical line */}
+              <circle cx={lx} cy={m.y} r={2}
                 fill={color} opacity={0.9} />
-              {/* Top tick extending toward text */}
-              <line x1={lx} y1={topTickY} x2={tickEndX} y2={topTickY}
-                stroke={color} strokeWidth={1.5} opacity={0.7} />
-              {/* Bottom anchor dot on the vertical line */}
-              <circle cx={lx} cy={botTickY} r={2}
-                fill={color} opacity={0.9} />
-              {/* Bottom tick extending toward text */}
-              <line x1={lx} y1={botTickY} x2={tickEndX} y2={botTickY}
+              {/* Horizontal tick extending toward text */}
+              <line x1={lx} y1={m.y} x2={tickEndX} y2={m.y}
                 stroke={color} strokeWidth={1.5} opacity={0.7} />
             </g>
           );
