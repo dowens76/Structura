@@ -20,8 +20,27 @@
   --nav-border: #2e4256;
 }
 
+/* Dark mode: applied via .dark class (manual toggle) or system preference */
+.dark,
+:root:not(.light):has(+ * .dark-sentinel) {
+  --background: #111a24;
+  --foreground: #ede8df;
+  --surface: #1a2535;
+  --surface-muted: #1f2f3f;
+  --border: #2a3a4a;
+  --border-muted: #3a4e62;
+  --text-muted: #8a9aaa;
+  --accent: #d4aa50;
+  --accent-hover: #e0be70;
+  --interlinear-color: #c96448;
+  --nav-bg: #0f1820;
+  --nav-fg: #ede8df;
+  --nav-fg-muted: #7a9ab8;
+  --nav-border: #1a2c3e;
+}
+
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not(.light):not(.dark) {
     --background: #111a24;
     --foreground: #ede8df;
     --surface: #1a2535;

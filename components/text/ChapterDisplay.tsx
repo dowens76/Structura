@@ -190,6 +190,8 @@ export default function ChapterDisplay({
   // Whether the user wants to swap nucleus/satellite roles (for subordinate types)
   const [rstRolesSwapped, setRstRolesSwapped] = useState(false);
   const [showRstPicker, setShowRstPicker]  = useState(false);
+  // groupId of the relation whose type is being edited via chip click
+  const [rstEditGroupId, setRstEditGroupId] = useState<string | null>(null);
 
   // ── Word arrows state ──────────────────────────────────────────────────────
   const [wordArrowsState, setWordArrowsState] = useState<WordArrow[]>(initialWordArrows);
@@ -1487,6 +1489,30 @@ export default function ChapterDisplay({
     setRstRolesSwapped(false);
   }
 
+  /** Called when the user clicks a relation chip label to change its type. */
+  function handleEditRstGroup(groupId: string) {
+    setRstEditGroupId(groupId);
+    // Clear any in-progress "create new relation" state so the two pickers don't conflict.
+    setShowRstPicker(false);
+    setRstSegA(null);
+    setRstSegB(null);
+    setRstRolesSwapped(false);
+  }
+
+  /** Apply the new type to an existing group (PATCH API + local state update). */
+  async function handleUpdateRstGroupType(relType: string) {
+    if (!rstEditGroupId) return;
+    await fetch("/api/rst-relations", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ groupId: rstEditGroupId, relType }),
+    });
+    setRstRelations((prev) =>
+      prev.map((r) => r.groupId === rstEditGroupId ? { ...r, relType } : r)
+    );
+    setRstEditGroupId(null);
+  }
+
   async function handleDeleteRstGroup(groupId: string) {
     await fetch("/api/rst-relations", {
       method: "DELETE",
@@ -1642,8 +1668,10 @@ export default function ChapterDisplay({
             paragraphFirstWordIds={paragraphFirstWordIds}
             selectedNucleusWordId={rstSegA}
             selectedSatelliteWordId={rstSegB}
+            editingGroupId={rstEditGroupId}
             onSelectSegment={handleSelectRstSegment}
             onDeleteGroup={handleDeleteRstGroup}
+            onEditGroup={handleEditRstGroup}
           />
           <WordArrowOverlay
             arrows={wordArrowsState}
@@ -1858,6 +1886,7 @@ export default function ChapterDisplay({
               setRstSegA(null);
               setRstSegB(null);
               setShowRstPicker(false);
+              setRstEditGroupId(null);
             }}
             title={editingRst
               ? "Exit RST relation mode"
@@ -2119,12 +2148,12 @@ export default function ChapterDisplay({
         )}
 
         {/* RST relation hint */}
-        {editingRst && !showRstPicker && (
+        {editingRst && !showRstPicker && !rstEditGroupId && (
           <div className="px-6 py-1 text-xs border-b border-[var(--border)] text-stone-500 dark:text-stone-400"
                style={{ backgroundColor: "var(--nav-bg)" }}>
             {rstSegA
               ? "First segment selected — click another segment dot to choose a relation type"
-              : "Click a segment dot (◉) to start an RST relation"}
+              : "Click a segment dot (◉) to start an RST relation, or click a label chip to change its type"}
           </div>
         )}
 
@@ -2185,6 +2214,49 @@ export default function ChapterDisplay({
                 title="Swap nucleus and satellite roles"
               >⇄ swap</button>
               <span className="text-[10px] opacity-50">(applies to subordinate relations only)</span>
+            </div>
+          </div>
+        )}
+
+        {/* RST edit relation type picker bar — shown when a chip label is clicked */}
+        {rstEditGroupId && (
+          <div
+            className="border-b border-[var(--border)] px-4 py-2 shrink-0"
+            style={{ backgroundColor: "var(--nav-bg)" }}
+          >
+            <div className="flex flex-wrap gap-1.5 items-center">
+              <span className="text-xs font-medium mr-1" style={{ color: "var(--nav-fg-muted)" }}>
+                Change type:
+              </span>
+              <span className="text-xs opacity-50 mr-0.5 select-none">Coord.</span>
+              {RELATIONSHIP_TYPES.filter((r) => r.category === "coordinate").map((r) => (
+                <button
+                  key={r.key}
+                  onClick={() => handleUpdateRstGroupType(r.key)}
+                  className="px-2 py-0.5 rounded text-xs font-medium text-white transition-opacity hover:opacity-90"
+                  style={{ backgroundColor: r.color }}
+                >
+                  {r.label}
+                </button>
+              ))}
+              <span className="text-xs opacity-30 mx-1 select-none">|</span>
+              <span className="text-xs opacity-50 mr-0.5 select-none">Sub.</span>
+              {RELATIONSHIP_TYPES.filter((r) => r.category === "subordinate").map((r) => (
+                <button
+                  key={r.key}
+                  onClick={() => handleUpdateRstGroupType(r.key)}
+                  className="px-2 py-0.5 rounded text-xs font-medium text-white transition-opacity hover:opacity-90"
+                  style={{ backgroundColor: r.color }}
+                >
+                  {r.label}
+                </button>
+              ))}
+              <button
+                onClick={() => setRstEditGroupId(null)}
+                className="ml-auto text-xs px-2 py-0.5 rounded bg-stone-200 dark:bg-stone-700 text-stone-600 dark:text-stone-300"
+              >
+                Cancel
+              </button>
             </div>
           </div>
         )}

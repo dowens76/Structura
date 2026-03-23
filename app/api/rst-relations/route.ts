@@ -4,6 +4,7 @@ import {
   createRstRelationGroup,
   deleteRstRelationGroup,
   deleteRstRelation,
+  updateRstRelationGroupType,
 } from "@/lib/db/queries";
 
 /** GET ?book=&chapter=&source= → { relations: RstRelation[] } */
@@ -39,6 +40,19 @@ export async function POST(req: NextRequest) {
     groupId, members, relType, book, Number(chapter), source
   );
   return NextResponse.json({ relations });
+}
+
+/**
+ * PATCH { groupId, relType }
+ * Updates the relation type for all members of a group (e.g. change "cause" → "result").
+ */
+export async function PATCH(req: NextRequest) {
+  const body = await req.json();
+  const { groupId, relType } = body as { groupId: string; relType: string };
+  if (!groupId || !relType)
+    return NextResponse.json({ error: "Missing groupId or relType" }, { status: 400 });
+  await updateRstRelationGroupType(groupId, relType);
+  return NextResponse.json({ ok: true });
 }
 
 /**

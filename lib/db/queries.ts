@@ -941,6 +941,16 @@ export async function deleteRstRelation(id: number): Promise<void> {
   await db.delete(rstRelations).where(eq(rstRelations.id, id));
 }
 
+export async function updateRstRelationGroupType(
+  groupId: string,
+  newRelType: string
+): Promise<void> {
+  await db
+    .update(rstRelations)
+    .set({ relType: newRelType })
+    .where(eq(rstRelations.groupId, groupId));
+}
+
 // ── Word Arrows ───────────────────────────────────────────────────────────────
 
 export async function getChapterWordArrows(

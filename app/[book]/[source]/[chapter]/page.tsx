@@ -8,6 +8,7 @@ import ChapterDisplay from "@/components/text/ChapterDisplay";
 import PassageNavButtons from "@/components/passage/PassageNavButtons";
 import ChapterDropdown from "@/components/navigation/ChapterDropdown";
 import BookDropdown from "@/components/navigation/BookDropdown";
+import ThemeToggle from "@/components/ThemeToggle";
 import { OSIS_BOOK_NAMES } from "@/lib/utils/osis";
 
 interface PageProps {
@@ -154,6 +155,9 @@ export default async function ChapterPage({ params }: PageProps) {
           currentChapter={chapter}
           chapterCount={chapterCount}
         />
+
+        {/* Theme toggle */}
+        <ThemeToggle />
 
         {/* Chapter navigation — right-aligned */}
         <div className="ml-auto flex items-center gap-1">

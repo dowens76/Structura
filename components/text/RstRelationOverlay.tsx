@@ -5,9 +5,9 @@ import type { RstRelation } from "@/lib/db/schema";
 import { RELATIONSHIP_MAP } from "@/lib/morphology/clauseRelationships";
 
 // ── Layout constants ──────────────────────────────────────────────────────────
-const HANG_PX  = 32;          // must match VerseDisplay HANG_PX
-const COORD_X  = 3;           // px from segment left/right edge for coordinate line
-const SUBORD_X = HANG_PX - 3; // = 17px — inside hanging indent, 3px from continuation text
+const HANG_PX     = 32;  // must match VerseDisplay HANG_PX
+const SIDE_OFFSET = 6;   // px outside the segment text-start edge for the vertical RST line
+const TICK_PAD    = 5;   // px above/below segment row for the bracket tick anchor points
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -30,8 +30,8 @@ interface GroupGeom {
   bottomY: number;     // bottom of line (center Y of last member)
   /** Between-member labels: [{y, text, color}] */
   labels: { y: number; text: string; color: string }[];
-  /** Members sorted by Y for rendering dots */
-  members: { segWordId: string; role: string; y: number; lineX: number }[];
+  /** Members sorted by Y for rendering dots and bracket ticks */
+  members: { segWordId: string; role: string; y: number; lineX: number; segTop: number; segBottom: number; textStartX: number }[];
   /** Center-Y of each satellite segment (subordinate only) — for branch arrows */
   satelliteYs: number[];
 }
@@ -44,8 +44,10 @@ export interface Props {
   paragraphFirstWordIds: string[];
   selectedNucleusWordId: string | null;
   selectedSatelliteWordId: string | null;
+  editingGroupId?: string | null;      // group whose label chip is being edited (highlighted)
   onSelectSegment: (wordId: string) => void;
   onDeleteGroup: (groupId: string) => void;
+  onEditGroup?: (groupId: string) => void; // click chip body → change relation type
 }
 
 // ── Position measurement ──────────────────────────────────────────────────────
@@ -68,12 +70,11 @@ function measureSegments(
     const textEl = container.querySelector<HTMLElement>(`[data-rst-text="${CSS.escape(id)}"]`) ?? outerEl;
     const textR  = textEl.getBoundingClientRect();
 
-    // Translation mirror: left edge of the first text child inside the translation div.
-    // Using the inner <p> (actual text content) rather than the outer div gives a cleaner
-    // anchor — the line lands at the text's visual left margin, not the div's outer edge.
+    // Translation mirror: use the translation cell div's left edge directly.
+    // The cell div IS the translation column, so its left edge reliably reflects
+    // where the translation content begins (regardless of inner paragraph structure).
     const transEl    = container.querySelector<HTMLElement>(`[data-seg-translation="${CSS.escape(id)}"]`);
-    const transTextEl = transEl?.querySelector<HTMLElement>("p, span") ?? transEl;
-    const transLeftX = transTextEl ? transTextEl.getBoundingClientRect().left - cRect.left : undefined;
+    const transLeftX = transEl ? transEl.getBoundingClientRect().left - cRect.left : undefined;
 
     result.set(id, {
       top:    outerR.top    - cRect.top + scrollTop,
@@ -117,7 +118,8 @@ function buildGroupGeometries(
 
     if (!withPos.length) continue;
 
-    // Source line X: use the leftmost (LTR) or rightmost (RTL) segment as anchor
+    // Source line X: 2px inward from the text-start edge of each member's text span.
+    // Use the most-outward segment as the anchor so all members share one vertical line.
     const refPos = withPos.reduce(
       (best, m) => (isHebrew
         ? m.pos.rightX > best.pos.rightX ? m : best
@@ -126,57 +128,32 @@ function buildGroupGeometries(
       withPos[0]
     ).pos;
 
+    // Line placement:
+    //   LTR:    SIDE_OFFSET px to the LEFT of leftX  — in the hanging-indent gap.
+    //   Hebrew: SIDE_OFFSET px to the RIGHT of (rightX - HANG_PX) — in the RTL hanging-indent
+    //           gap (continuation lines are indented HANG_PX from the right, leaving empty space
+    //           between rightX-HANG_PX and rightX; the line sits at rightX-HANG_PX+SIDE_OFFSET).
+    //           Using rightX + SIDE_OFFSET would push the line into the center label column or
+    //           beyond the SVG viewport, so we anchor inside the hanging-indent zone instead.
     const lineX = isHebrew
-      ? refPos.rightX - (category === "coordinate" ? COORD_X : SUBORD_X)
-      : refPos.leftX  + (category === "coordinate" ? COORD_X : SUBORD_X);
+      ? refPos.rightX - HANG_PX + SIDE_OFFSET
+      : refPos.leftX  - SIDE_OFFSET;
 
-    // Translation mirror line X: leftmost transLeftX + offset (always LTR side)
+    // Translation mirror line X: outside/left of transLeftX (always LTR)
     const transMembers  = withPos.filter(m => m.pos.transLeftX !== undefined);
     const minTransLeftX = transMembers.length > 0
       ? Math.min(...transMembers.map(m => m.pos.transLeftX!))
       : undefined;
     const transLineX = minTransLeftX !== undefined
-      ? minTransLeftX + (category === "coordinate" ? COORD_X : SUBORD_X)
+      ? minTransLeftX - SIDE_OFFSET
       : undefined;
 
-    // Line Y endpoints:
-    //   subordinate → nucleus edge faces away from the group (not through nucleus text)
-    //   coordinate  → center-to-center of first/last member
-    const firstPos    = withPos[0].pos;
-    const lastPos     = withPos[withPos.length - 1].pos;
-    const firstCenter = firstPos.top + (firstPos.bottom - firstPos.top) / 2;
-    const lastCenter  = lastPos.top  + (lastPos.bottom  - lastPos.top)  / 2;
-
-    let topY: number;
-    let bottomY: number;
-
-    if (category === "subordinate") {
-      const nucPos = withPos.find(m => m.role === "nucleus")?.pos;
-      if (nucPos) {
-        const isNucFirst = nucPos.top === firstPos.top;
-        const isNucLast  = nucPos.top === lastPos.top;
-        if (isNucFirst) {
-          // Nucleus at top: line starts at nucleus bottom edge (below its text)
-          topY    = nucPos.bottom;
-          bottomY = lastCenter;
-        } else if (isNucLast) {
-          // Nucleus at bottom: line ends at nucleus top edge (above its text)
-          topY    = firstCenter;
-          bottomY = nucPos.top;
-        } else {
-          // Nucleus in middle: fall back to centers
-          topY    = firstCenter;
-          bottomY = lastCenter;
-        }
-      } else {
-        topY    = firstCenter;
-        bottomY = lastCenter;
-      }
-    } else {
-      // Coordinate: center-to-center
-      topY    = firstCenter;
-      bottomY = lastCenter;
-    }
+    // Vertical line spans from TICK_PAD above the first member's text top
+    // to TICK_PAD below the last member's text bottom — matching the bracket ticks.
+    const firstPos = withPos[0].pos;
+    const lastPos  = withPos[withPos.length - 1].pos;
+    const topY     = firstPos.top    - TICK_PAD;
+    const bottomY  = lastPos.bottom  + TICK_PAD;
 
     // Labels between consecutive members.
     // Clamp so the chip (16px tall) stays entirely within the inter-segment gap.
@@ -208,10 +185,13 @@ function buildGroupGeometries(
     }
 
     const memberDots = withPos.map((m) => ({
-      segWordId: m.segWordId,
-      role:      m.role,
-      y:         m.pos.top + (m.pos.bottom - m.pos.top) / 2,
+      segWordId:  m.segWordId,
+      role:       m.role,
+      y:          m.pos.top + (m.pos.bottom - m.pos.top) / 2,
       lineX,
+      segTop:     m.pos.top,
+      segBottom:  m.pos.bottom,
+      textStartX: isHebrew ? m.pos.rightX : m.pos.leftX,
     }));
 
     // Satellite center Ys — for the branch arrows on subordinate relations
@@ -237,8 +217,10 @@ export default function RstRelationOverlay({
   paragraphFirstWordIds,
   selectedNucleusWordId,
   selectedSatelliteWordId,
+  editingGroupId,
   onSelectSegment,
   onDeleteGroup,
+  onEditGroup,
 }: Props) {
   const svgRef   = useRef<SVGSVGElement>(null);
   const frameRef = useRef<number | null>(null);
@@ -302,16 +284,15 @@ export default function RstRelationOverlay({
    * isTransMirror=true → translation side (always LTR chip placement, no hit target / delete ×).
    */
   const renderLine = (g: GroupGeom, lx: number, isTransMirror: boolean) => {
-    const relMeta   = RELATIONSHIP_MAP[g.relType];
-    const color     = relMeta?.color ?? "#6B7280";
-    const isHovered = hoveredGroup === g.groupId;
+    const relMeta      = RELATIONSHIP_MAP[g.relType];
+    const color        = relMeta?.color ?? "#6B7280";
+    const isHovered    = hoveredGroup === g.groupId;
+    const isEditingThis = !isTransMirror && editingGroupId === g.groupId;
 
-    // Chip starts just past the line's stroke edge (touching, not overlapping)
-    // Source: LTR → chip to the right; RTL/Hebrew → chip to the left
-    // Translation mirror: always LTR (chip to the right)
-    const chipLeft = isTransMirror
-      ? lx + 2
-      : (isHebrew ? lx - 26 : lx + 2);  // lx-26 → chip right edge = lx-1 for Hebrew
+    // Chip starts just past the line's stroke edge (touching, not overlapping).
+    // For Hebrew the line sits inside the RTL hanging-indent zone (rightX - HANG_PX + SIDE_OFFSET),
+    // so the chip goes to the right of the line (toward the text's right edge) to stay in that zone.
+    const chipLeft = lx + 2;  // chip always to the right of the bracket line
 
     // Satellite branch arrows for subordinate relations.
     // Arrow points outward from the text (left for Hebrew, right for LTR/translation).
@@ -333,6 +314,36 @@ export default function RstRelationOverlay({
           opacity={0.8}
           style={{ pointerEvents: "none" }}
         />
+
+        {/* Per-member bracket ticks: a dot + horizontal line at segTop-2 and segBottom+2,
+            anchored at the text-start X, connecting across to the vertical line. */}
+        {g.members.map((m, mi) => {
+          // Dot sits ON the vertical line (lx); a short tick extends toward the text start edge.
+          // For LTR:    line is left of text  → tick goes right (+1) toward leftX.
+          // For Hebrew: line is left of rightX → tick goes right (+1) toward rightX.
+          // For trans:  line is left of translation column → tick goes right (+1).
+          // In all cases tickDir = +1.
+          const tickDir  = 1;
+          const tickEndX = lx + tickDir * (SIDE_OFFSET - 3);
+          const topTickY = m.segTop    - TICK_PAD;
+          const botTickY = m.segBottom + TICK_PAD;
+          return (
+            <g key={`tick-${mi}`} style={{ pointerEvents: "none" }}>
+              {/* Top anchor dot on the vertical line */}
+              <circle cx={lx} cy={topTickY} r={2}
+                fill={color} opacity={0.9} />
+              {/* Top tick extending toward text */}
+              <line x1={lx} y1={topTickY} x2={tickEndX} y2={topTickY}
+                stroke={color} strokeWidth={1.5} opacity={0.7} />
+              {/* Bottom anchor dot on the vertical line */}
+              <circle cx={lx} cy={botTickY} r={2}
+                fill={color} opacity={0.9} />
+              {/* Bottom tick extending toward text */}
+              <line x1={lx} y1={botTickY} x2={tickEndX} y2={botTickY}
+                stroke={color} strokeWidth={1.5} opacity={0.7} />
+            </g>
+          );
+        })}
 
         {/* Satellite branch arrows (subordinate only) */}
         {g.satelliteYs.map((satY, si) => (
@@ -376,7 +387,23 @@ export default function RstRelationOverlay({
             onMouseLeave={() => editing && !isTransMirror && setHoveredGroup(null)}
             style={{ pointerEvents: (editing && !isTransMirror) ? "all" : "none" }}
           >
-            {/* Pill background */}
+            {/* Active-edit highlight ring (white outline around the chip) */}
+            {isEditingThis && (
+              <rect
+                x={chipLeft - 3}
+                y={lbl.y - 10}
+                width={30}
+                height={20}
+                rx={4}
+                fill="none"
+                stroke="white"
+                strokeWidth={2}
+                opacity={1}
+                style={{ pointerEvents: "none" }}
+              />
+            )}
+
+            {/* Pill background — clickable to edit relation type */}
             <rect
               x={chipLeft - 1}
               y={lbl.y - 8}
@@ -384,7 +411,17 @@ export default function RstRelationOverlay({
               height={16}
               rx={3}
               fill={lbl.color}
-              opacity={0.9}
+              opacity={isEditingThis ? 1 : 0.9}
+              style={{
+                cursor: (editing && !isTransMirror && onEditGroup) ? "pointer" : "default",
+                pointerEvents: "all",
+              }}
+              onClick={(e) => {
+                if (editing && !isTransMirror && onEditGroup) {
+                  e.stopPropagation();
+                  onEditGroup(g.groupId);
+                }
+              }}
             />
             <text
               x={chipLeft + 12}
@@ -403,7 +440,7 @@ export default function RstRelationOverlay({
             {editing && !isTransMirror && isHovered && (
               <g
                 style={{ cursor: "pointer", pointerEvents: "all" }}
-                onClick={() => onDeleteGroup(g.groupId)}
+                onClick={(e) => { e.stopPropagation(); onDeleteGroup(g.groupId); }}
               >
                 <circle cx={chipLeft + 12} cy={lbl.y - 11} r={6} fill="#DC2626" />
                 <text
@@ -449,8 +486,8 @@ export default function RstRelationOverlay({
         const isRelated   = relatedSegIds.has(wordId);
 
         const dotX = isHebrew
-          ? pos.rightX - (isRelated ? SUBORD_X - 1 : COORD_X - 1)
-          : pos.leftX  + (isRelated ? SUBORD_X - 1 : COORD_X - 1);
+          ? pos.rightX - HANG_PX + SIDE_OFFSET  // same zone as the bracket line
+          : pos.leftX  + SIDE_OFFSET;
         const dotY = pos.top + (pos.bottom - pos.top) / 2;
 
         const r      = isNucleus ? NUCLEUS_R : isSatellite ? SAT_R : SEG_R;
