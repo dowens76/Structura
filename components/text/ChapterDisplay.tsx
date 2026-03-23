@@ -14,6 +14,7 @@ import WordTagPanel from "@/components/controls/WordTagPanel";
 import RstRelationOverlay from "./RstRelationOverlay";
 import WordArrowOverlay from "./WordArrowOverlay";
 import ClearAnnotationsDialog, { type ClearCategory } from "@/components/controls/ClearAnnotationsDialog";
+import TranslationPicker from "@/components/controls/TranslationPicker";
 import type { ColorRule } from "@/lib/morphology/colorRules";
 import { RELATIONSHIP_TYPES, RELATIONSHIP_MAP } from "@/lib/morphology/clauseRelationships";
 import hebrewLemmas from "@/lib/data/hebrew-lemmas.json";
@@ -2023,12 +2024,17 @@ export default function ChapterDisplay({
             </button>
           )}
 
-          {/* Translation toggles + source visibility toggle + translation edit */}
+          {/* Translation picker + source visibility toggle + translation edit */}
           {availableTranslations.length > 0 && (
             <div className="flex items-center gap-1 border-l border-[var(--border)] pl-4">
               <span className="text-xs text-stone-400 dark:text-stone-500 mr-1 select-none">
-                Translations:
+                Tr:
               </span>
+              <TranslationPicker
+                availableTranslations={availableTranslations}
+                activeTranslationIds={activeTranslationIds}
+                onToggle={toggleTranslation}
+              />
               {/* Source text visibility — shown only when a translation is active */}
               {hasActiveTranslations && (
                 <button
@@ -2059,21 +2065,6 @@ export default function ChapterDisplay({
                   ✏
                 </button>
               )}
-              {availableTranslations.map((t) => (
-                <button
-                  key={t.id}
-                  onClick={() => toggleTranslation(t.id)}
-                  title={t.name}
-                  className={[
-                    "px-2.5 py-1 rounded text-xs font-medium font-mono transition-colors",
-                    activeTranslationIds.has(t.id)
-                      ? "bg-emerald-600 text-white"
-                      : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
-                  ].join(" ")}
-                >
-                  {t.abbreviation}
-                </button>
-              ))}
             </div>
           )}
 

@@ -70,6 +70,7 @@ export const translations = sqliteTable("translations", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   name: text("name").notNull(),
   abbreviation: text("abbreviation").notNull().unique(),
+  language: text("language"),   // e.g. 'English', 'French', 'German' — null if unset
   createdAt: integer("created_at", { mode: "timestamp" }).$defaultFn(() => new Date()),
 });
 
