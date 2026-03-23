@@ -23,6 +23,7 @@ interface Props {
   editing: boolean;
   selectedFromWordId: string | null;
   onDeleteArrow: (id: number) => void;
+  isHebrew?: boolean; // true → RTL text; routes gutter to the right of words
 }
 
 function getWordRect(
@@ -62,6 +63,13 @@ function bezierMid(
 
 const ARROW_COLOR = "#64748B"; // slate-500
 
+/**
+ * How far (px) past the nearest word edge the gutter routing dips before
+ * turning to travel vertically. Should be ≤ the verse-label column width so
+ * the arc stays inside the label column rather than overflowing to the left.
+ */
+const GUTTER_REACH = 28;
+
 export default function WordArrowOverlay({
   arrows,
   containerRef,
@@ -69,6 +77,7 @@ export default function WordArrowOverlay({
   editing,
   selectedFromWordId,
   onDeleteArrow,
+  isHebrew = false,
 }: Props) {
   const [drawn, setDrawn]         = useState<DrawnArrow[]>([]);
   const [svgHeight, setSvgHeight] = useState(0);
@@ -161,32 +170,54 @@ export default function WordArrowOverlay({
       </defs>
 
       {drawn.map(({ arrow, fromR, toR }) => {
-        const fromX = fromR.x + fromR.width / 2;
-        const toX   = toR.x  + toR.width   / 2;
+        const fromCY = fromR.y + fromR.height / 2;
+        const toCY   = toR.y  + toR.height  / 2;
 
-        // Facing-anchor scheme:
-        //   Going up  → top of lower (from) word  ↔  bottom of upper (to) word
-        //               anchors face each other through the gap; arc threads between them.
-        //   Going down → bottom of both words; arc swings below.
-        const goingUp = (toR.y + toR.height / 2) < (fromR.y + fromR.height / 2);
-        const fromY = goingUp ? fromR.y - 3                : fromR.y + fromR.height + 3;
-        const toY   =           toR.y   + toR.height + 3;  // always bottom of to-word
+        // Arrows between words on the same line arc downward below the text —
+        // this avoids the curve overlapping the words themselves.
+        // Arrows spanning multiple lines are routed through the side gutter so
+        // they don't pass through intermediate lines of text.
+        const sameLine = Math.abs(fromCY - toCY) < fromR.height * 0.75;
 
-        // Curve depth scales with horizontal distance, minimum 24px
-        const horizDist  = Math.abs(toX - fromX);
-        const curveDepth = Math.max(horizDist * 0.35 + 20, 24);
+        let d: string;
+        let midX: number, midY: number;
+        let labelDy: number, handleDy: number;
 
-        const cx0 = fromX;
-        const cy0 = goingUp ? fromY - curveDepth : fromY + curveDepth;
-        const cx1 = toX;
-        const cy1 = toY + curveDepth;  // always pull below the to-anchor
+        if (sameLine) {
+          // ── Below-line arc ──────────────────────────────────────────────
+          // Anchors at the bottom edge of each word; control points pull down.
+          const fromX = fromR.x + fromR.width / 2;
+          const toX   = toR.x  + toR.width   / 2;
+          const fromY = fromR.y + fromR.height + 3;
+          const toY   = toR.y  + toR.height   + 3;
+          const horizDist  = Math.abs(toX - fromX);
+          const curveDepth = Math.max(horizDist * 0.35 + 20, 24);
+          const cx0 = fromX, cy0 = fromY + curveDepth;
+          const cx1 = toX,   cy1 = toY   + curveDepth;
+          d = `M ${fromX} ${fromY} C ${cx0} ${cy0}, ${cx1} ${cy1}, ${toX} ${toY}`;
+          [midX, midY] = bezierMid(fromX, fromY, cx0, cy0, cx1, cy1, toX, toY);
+          labelDy  = curveDepth / 2 + 8;
+          handleDy = curveDepth / 2 + 2;
+        } else {
+          // ── Side-gutter C-elbow ──────────────────────────────────────────
+          // Anchor at the gutter-side edge of each word (left for LTR, right for RTL),
+          // at the word's vertical centre. Two control points at the same gutterX
+          // create a horizontal exit → vertical travel → horizontal entry path that
+          // never crosses the text content between the two words.
+          const fromXEdge = isHebrew ? fromR.x + fromR.width : fromR.x;
+          const toXEdge   = isHebrew ? toR.x  + toR.width   : toR.x;
+          const gutterX   = isHebrew
+            ? Math.max(fromXEdge, toXEdge) + GUTTER_REACH
+            : Math.min(fromXEdge, toXEdge) - GUTTER_REACH;
 
-        const d = `M ${fromX} ${fromY} C ${cx0} ${cy0}, ${cx1} ${cy1}, ${toX} ${toY}`;
-        const [midX, midY] = bezierMid(fromX, fromY, cx0, cy0, cx1, cy1, toX, toY);
-
-        // For upward arrows midY is in the gap between words; keep label/handle in that space.
-        const labelDy  = goingUp ? -12 : curveDepth / 2 + 12;
-        const handleDy = goingUp ?  -8 : 10;
+          const cx0 = gutterX, cy0 = fromCY;
+          const cx1 = gutterX, cy1 = toCY;
+          d = `M ${fromXEdge} ${fromCY} C ${cx0} ${cy0}, ${cx1} ${cy1}, ${toXEdge} ${toCY}`;
+          [midX, midY] = bezierMid(fromXEdge, fromCY, cx0, cy0, cx1, cy1, toXEdge, toCY);
+          // Label/handle sit just outside the gutter column, clear of all text
+          labelDy  = -12;
+          handleDy = 0;
+        }
 
         const isHovered = hoveredId === arrow.id;
 
@@ -243,17 +274,20 @@ export default function WordArrowOverlay({
         );
       })}
 
-      {/* Highlight selected "from" word with a small indicator */}
+      {/* Highlight selected "from" word with a small indicator in the gutter */}
       {editing && selectedFromWordId && (() => {
         const container = containerRef.current;
         const outer     = effectiveOuterRef.current;
         if (!container || !outer) return null;
         const r = getWordRect(selectedFromWordId, container, outer);
         if (!r) return null;
+        // Place the dot in the gutter, aligned with the word's vertical centre
+        const dotX = isHebrew ? r.x + r.width + GUTTER_REACH / 2 : r.x - GUTTER_REACH / 2;
+        const dotY = r.y + r.height / 2;
         return (
           <circle
-            cx={r.x + r.width / 2}
-            cy={r.y + r.height + 8}
+            cx={dotX}
+            cy={dotY}
             r={4}
             fill={ARROW_COLOR}
             opacity={0.8}

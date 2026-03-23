@@ -19,6 +19,7 @@ import WordTagPanel from "@/components/controls/WordTagPanel";
 import RstRelationOverlay from "@/components/text/RstRelationOverlay";
 import WordArrowOverlay from "@/components/text/WordArrowOverlay";
 import ClearAnnotationsDialog, { type ClearCategory } from "@/components/controls/ClearAnnotationsDialog";
+import PassageNotesPane from "@/components/notes/PassageNotesPane";
 import { RELATIONSHIP_TYPES, RELATIONSHIP_MAP } from "@/lib/morphology/clauseRelationships";
 import hebrewLemmas from "@/lib/data/hebrew-lemmas.json";
 import { computeSectionRanges } from "@/lib/utils/sectionRanges";
@@ -140,6 +141,8 @@ export default function PassageView({
   const [grammarFilter, setGrammarFilter] = useState<GrammarFilterState>(DEFAULT_FILTER);
   const [selectedWord, setSelectedWord] = useState<Word | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
+  const [notesOpen, setNotesOpen] = useState(false);
+  const [notesScrollVerse, setNotesScrollVerse] = useState<{ ch: number; v: number } | null>(null);
   const [showTooltips, setShowTooltips] = useState(false);
   const [activeTranslationAbbrs, setActiveTranslationAbbrs] = useState<Set<string>>(new Set());
   const [colorRules, setColorRules] = useState<ColorRule[]>([]);
@@ -2107,6 +2110,22 @@ export default function PassageView({
             </button>
           </div>
 
+          {/* Notes panel toggle */}
+          <div className="border-l border-[var(--border)] pl-3 ml-1">
+            <button
+              onClick={() => setNotesOpen((v) => !v)}
+              title={notesOpen ? "Hide notes pane" : "Show notes pane"}
+              className={[
+                "px-2.5 py-1 rounded text-xs font-medium transition-colors",
+                notesOpen
+                  ? "bg-amber-500 text-white"
+                  : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
+              ].join(" ")}
+            >
+              📝
+            </button>
+          </div>
+
           {/* Linguistic terms toggle — Hebrew only */}
           {isHebrew && (
             <button
@@ -2429,6 +2448,10 @@ export default function PassageView({
                     editingArrows={editingArrows}
                     onSelectArrowWordById={handleSelectArrowWordById}
                     hideSourceText={hideSourceText}
+                    onVerseClick={(v) => {
+                      setNotesOpen(true);
+                      setNotesScrollVerse({ ch: verse.ch, v });
+                    }}
                   />
                 </div>
               );
@@ -2441,6 +2464,21 @@ export default function PassageView({
           </div>
         )}
       </div>
+
+      {/* ── Notes pane ───────────────────────────────────────────────────── */}
+      {notesOpen && (
+        <PassageNotesPane
+          passageId={passage.id}
+          passageLabel={passage.label || `${bookName} ${passage.startChapter}:${passage.startVerse}–${passage.endChapter}:${passage.endVerse}`}
+          book={osisBook}
+          bookName={bookName}
+          orderedVerses={orderedVerses}
+          isMultiChapter={isMultiChapter}
+          scrollToVerse={notesScrollVerse}
+          onScrollHandled={() => setNotesScrollVerse(null)}
+          onClose={() => setNotesOpen(false)}
+        />
+      )}
 
       {/* ── Morphology side panel ────────────────────────────────────────── */}
       {panelOpen && (

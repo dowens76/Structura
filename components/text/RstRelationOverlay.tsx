@@ -118,34 +118,29 @@ function buildGroupGeometries(
 
     if (!withPos.length) continue;
 
-    // Source line X: 2px inward from the text-start edge of each member's text span.
-    // Use the most-outward segment as the anchor so all members share one vertical line.
+    // Source line X: anchored to the LEFT edge of the source text column for both
+    // writing directions. This places the bracket line in the verse-label gutter
+    // (to the left of the source text column), which is always clear of text
+    // regardless of whether the first line is LTR or RTL.
+    //   HANG_PX offset keeps the line HANG_PX px clear of the text column's left
+    //   edge — enough to avoid overlap with the first (non-indented) line of text.
+    // Use the leftmost (smallest leftX) segment as the anchor so all members
+    // share one vertical line positioned at the outermost text start.
     const refPos = withPos.reduce(
-      (best, m) => (isHebrew
-        ? m.pos.rightX > best.pos.rightX ? m : best
-        : m.pos.leftX  < best.pos.leftX  ? m : best
-      ),
+      (best, m) => (m.pos.leftX < best.pos.leftX ? m : best),
       withPos[0]
     ).pos;
 
-    // Line placement:
-    //   LTR:    SIDE_OFFSET px to the LEFT of leftX  — in the hanging-indent gap.
-    //   Hebrew: SIDE_OFFSET px to the RIGHT of (rightX - HANG_PX) — in the RTL hanging-indent
-    //           gap (continuation lines are indented HANG_PX from the right, leaving empty space
-    //           between rightX-HANG_PX and rightX; the line sits at rightX-HANG_PX+SIDE_OFFSET).
-    //           Using rightX + SIDE_OFFSET would push the line into the center label column or
-    //           beyond the SVG viewport, so we anchor inside the hanging-indent zone instead.
-    const lineX = isHebrew
-      ? refPos.rightX - HANG_PX + SIDE_OFFSET
-      : refPos.leftX  - SIDE_OFFSET;
+    const lineX = refPos.leftX - HANG_PX;
 
-    // Translation mirror line X: outside/left of transLeftX (always LTR)
+    // Translation mirror line X: HANG_PX to the left of the translation column,
+    // landing inside the centre verse-label column which is always text-free.
     const transMembers  = withPos.filter(m => m.pos.transLeftX !== undefined);
     const minTransLeftX = transMembers.length > 0
       ? Math.min(...transMembers.map(m => m.pos.transLeftX!))
       : undefined;
     const transLineX = minTransLeftX !== undefined
-      ? minTransLeftX - SIDE_OFFSET
+      ? minTransLeftX - HANG_PX
       : undefined;
 
     // Vertical line spans from TICK_PAD above the first member's text top
@@ -295,11 +290,11 @@ export default function RstRelationOverlay({
     const chipLeft = lx + 2;  // chip always to the right of the bracket line
 
     // Satellite branch arrows for subordinate relations.
-    // Arrow points outward from the text (left for Hebrew, right for LTR/translation).
-    // Stem starts exactly at the vertical line so they touch.
+    // Arrow always points RIGHT (+1) — toward the source/translation text — since
+    // the bracket line is now always to the LEFT of the text column.
     const ARROW_LEN   = 8;  // total arrow length px
     const ARROW_TIP   = 4;  // arrowhead depth px
-    const arrowDir    = (isTransMirror || !isHebrew) ? 1 : -1;  // +1 = right, -1 = left
+    const arrowDir    = 1;  // always right (toward text)
     const tipX        = lx + arrowDir * ARROW_LEN;
     const stemX       = lx + arrowDir * (ARROW_LEN - ARROW_TIP);
 
@@ -485,9 +480,9 @@ export default function RstRelationOverlay({
         const isSatellite = wordId === selectedSatelliteWordId;
         const isRelated   = relatedSegIds.has(wordId);
 
-        const dotX = isHebrew
-          ? pos.rightX - HANG_PX + SIDE_OFFSET  // same zone as the bracket line
-          : pos.leftX  + SIDE_OFFSET;
+        // Dot sits at the same x as the bracket line — in the gutter to the
+        // left of the source text column.
+        const dotX = pos.leftX - HANG_PX;
         const dotY = pos.top + (pos.bottom - pos.top) / 2;
 
         const r      = isNucleus ? NUCLEUS_R : isSatellite ? SAT_R : SEG_R;

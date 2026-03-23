@@ -138,3 +138,82 @@ body {
   line-height: 1.2;
   margin-top: 2px;
 }
+
+/* ── Tiptap note editor ────────────────────────────────────────────────────── */
+.note-editor {
+  font-size: 0.8125rem; /* 13px */
+  color: var(--foreground);
+}
+
+/* Content area — ProseMirror sets the editable root */
+.note-editor-content {
+  min-height: 3.5rem;
+  padding: 0.5rem 0.75rem;
+  line-height: 1.65;
+}
+
+/* Headings */
+.note-editor-content h1 { font-size: 1.05rem; font-weight: 700; margin: 0.6em 0 0.25em; }
+.note-editor-content h2 { font-size: 0.95rem; font-weight: 700; margin: 0.5em 0 0.2em; }
+.note-editor-content h3 { font-size: 0.875rem; font-weight: 600; margin: 0.4em 0 0.15em; }
+
+/* Paragraphs */
+.note-editor-content p { margin: 0.25em 0; }
+
+/* Bold / italic */
+.note-editor-content strong { font-weight: 700; }
+.note-editor-content em     { font-style: italic; }
+
+/* Highlight — yellow tint that works in both modes */
+.note-editor-content mark {
+  background-color: rgba(250, 204, 21, 0.45);
+  border-radius: 2px;
+  padding: 0 1px;
+  color: inherit;
+}
+.dark .note-editor-content mark {
+  background-color: rgba(250, 204, 21, 0.25);
+}
+
+/* Super / subscript */
+.note-editor-content sup,
+.note-editor-content sub { font-size: 0.7em; line-height: 0; position: relative; vertical-align: baseline; }
+.note-editor-content sup { top: -0.4em; }
+.note-editor-content sub { bottom: -0.3em; }
+
+/* Lists */
+.note-editor-content ul,
+.note-editor-content ol {
+  margin: 0.2em 0;
+  padding-left: 1.35em;
+}
+.note-editor-content ul { list-style-type: disc; }
+.note-editor-content ol { list-style-type: decimal; }
+.note-editor-content li { margin: 0.1em 0; }
+/* Nested lists */
+.note-editor-content ul ul,
+.note-editor-content ol ul { list-style-type: circle; }
+.note-editor-content ul ul ul,
+.note-editor-content ol ol ul { list-style-type: square; }
+.note-editor-content li > ul,
+.note-editor-content li > ol { margin: 0.1em 0; }
+
+/* Block quote */
+.note-editor-content blockquote {
+  border-left: 3px solid var(--border);
+  margin: 0.4em 0;
+  padding: 0.1em 0.75em;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+/* Placeholder hint — @tiptap/extension-placeholder adds .is-empty to empty nodes */
+.note-editor-content p.is-empty:first-child::before {
+  content: attr(data-placeholder);
+  pointer-events: none;
+  float: left;
+  height: 0;
+  color: var(--text-muted);
+  opacity: 0.55;
+  font-style: italic;
+}

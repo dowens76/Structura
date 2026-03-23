@@ -318,6 +318,24 @@ export const lineAnnotations = sqliteTable(
   (t) => [index("la_book_ch_src_idx").on(t.book, t.chapter, t.textSource)]
 );
 
+// Free-form notes keyed by a string ref.
+// key format:  "verse:Gen.1.1"  |  "chapter:Gen.1"  |  "passage:42"
+export const notes = sqliteTable(
+  "notes",
+  {
+    id:        integer("id").primaryKey({ autoIncrement: true }),
+    key:       text("key").notNull().unique(),   // unique composite key (see above)
+    noteType:  text("note_type").notNull(),       // "verse" | "chapter" | "passage"
+    content:   text("content").notNull().default("{}"), // Tiptap JSON
+    book:      text("book"),                      // for verse/chapter notes
+    chapter:   integer("chapter"),               // for verse/chapter notes
+    updatedAt: text("updated_at").$defaultFn(() => new Date().toISOString()),
+  },
+  (t) => [
+    index("notes_book_ch_idx").on(t.book, t.chapter),
+  ]
+);
+
 // Per-word bold/italic formatting
 export const wordFormatting = sqliteTable(
   "word_formatting",
@@ -355,3 +373,4 @@ export type RstRelation = typeof rstRelations.$inferSelect;
 export type WordArrow = typeof wordArrows.$inferSelect;
 export type WordFormatting = typeof wordFormatting.$inferSelect;
 export type LineAnnotation = typeof lineAnnotations.$inferSelect;
+export type Note = typeof notes.$inferSelect;

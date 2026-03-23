@@ -110,6 +110,8 @@ interface VerseDisplayProps {
   onUpdateAnnotation?: (id: number, updates: { label?: string; color?: string; description?: string | null; outOfSequence?: boolean }) => void;
   onExpandAnnotationRange?: (id: number, direction: "expand-start" | "shrink-start" | "expand-end" | "shrink-end") => void;
   showAnnotationCol?: boolean;
+  /** Called when the user clicks a verse-number label; used to scroll the notes pane */
+  onVerseClick?: (verseNum: number) => void;
 }
 
 // ── Annotation sub-components ────────────────────────────────────────────────
@@ -674,6 +676,7 @@ export default function VerseDisplay({
   onUpdateAnnotation,
   onExpandAnnotationRange,
   showAnnotationCol = false,
+  onVerseClick,
 }: VerseDisplayProps) {
   const firstWordId = words[0]?.wordId;
   const verseStartsNewParagraph = firstWordId ? paragraphBreakIds.has(firstWordId) : false;
@@ -1213,7 +1216,7 @@ export default function VerseDisplay({
             : "calc(0.625 * var(--greek-font-size, 1.25rem))";
 
           const segLabelEl = editingIndents ? (
-            <div className="flex items-start gap-0.5" data-seg-label={seg[0].wordId} style={{ minWidth: "3.5rem" }}>
+            <div className="flex items-start gap-0.5" data-seg-label={seg[0].wordId} style={{ minWidth: "5rem" }}>
               <button
                 type="button"
                 onClick={(e) => { e.stopPropagation(); onSetSegmentIndent(paraStartId, Math.max(0, indentLevel - 1)); }}
@@ -1234,10 +1237,17 @@ export default function VerseDisplay({
             </div>
           ) : (
             <span
-              className="text-stone-400 dark:text-stone-600 text-sm font-mono"
+              className={[
+                "text-stone-400 dark:text-stone-600 text-sm font-mono",
+                si === 0 && onVerseClick
+                  ? "cursor-pointer hover:text-stone-600 dark:hover:text-stone-400 transition-colors"
+                  : "",
+              ].join(" ")}
               data-seg-label={seg[0].wordId}
               data-osis-ref={`${book}.${chapter}.${verseNum}`}
-              style={{ minWidth: "1.75rem", textAlign: isHebrew ? "right" : "left", paddingTop: labelPaddingTop }}
+              style={{ minWidth: "5rem", textAlign: isHebrew ? "right" : "left", paddingTop: labelPaddingTop }}
+              onClick={si === 0 && onVerseClick ? () => onVerseClick(verseNum) : undefined}
+              title={si === 0 && onVerseClick ? "Scroll notes to this verse" : undefined}
             >
               {paraLabels[si]}
             </span>
@@ -1647,7 +1657,7 @@ export default function VerseDisplay({
                         className="text-stone-400 dark:text-stone-600 text-sm font-mono select-none"
                         data-seg-label={seg[0].wordId}
                         data-osis-ref={`${book}.${chapter}.${verseNum}`}
-                        style={{ minWidth: "2.5rem", textAlign: "center", paddingTop: labelPaddingTop }}
+                        style={{ minWidth: "5rem", textAlign: "center", paddingTop: labelPaddingTop }}
                       >
                         {paraLabels[si]}
                       </span>

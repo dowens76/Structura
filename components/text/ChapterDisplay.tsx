@@ -15,6 +15,7 @@ import RstRelationOverlay from "./RstRelationOverlay";
 import WordArrowOverlay from "./WordArrowOverlay";
 import ClearAnnotationsDialog, { type ClearCategory } from "@/components/controls/ClearAnnotationsDialog";
 import TranslationPicker from "@/components/controls/TranslationPicker";
+import NotesPane from "@/components/notes/NotesPane";
 import type { ColorRule } from "@/lib/morphology/colorRules";
 import { RELATIONSHIP_TYPES, RELATIONSHIP_MAP } from "@/lib/morphology/clauseRelationships";
 import hebrewLemmas from "@/lib/data/hebrew-lemmas.json";
@@ -98,6 +99,8 @@ export default function ChapterDisplay({
   const [grammarFilter, setGrammarFilter] = useState<GrammarFilterState>(DEFAULT_FILTER);
   const [selectedWord, setSelectedWord] = useState<Word | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
+  const [notesOpen, setNotesOpen] = useState(false);
+  const [notesScrollVerse, setNotesScrollVerse] = useState<number | null>(null);
   const [showTooltips, setShowTooltips] = useState(false);
   // Store active translations by abbreviation so they survive cross-book navigation
   const [activeTranslationAbbrs, setActiveTranslationAbbrs] = useState<Set<string>>(new Set());
@@ -1680,6 +1683,7 @@ export default function ChapterDisplay({
             editing={editingArrows}
             selectedFromWordId={arrowFromWordId}
             onDeleteArrow={handleDeleteWordArrow}
+            isHebrew={isHebrew}
           />
         {/* Sticky control area: toolbar + all editing panels/hints */}
         <div className="sticky top-0 z-20 shrink-0 flex flex-col" style={{ backgroundColor: "var(--background)" }}>
@@ -2003,6 +2007,22 @@ export default function ChapterDisplay({
               className="px-2.5 py-1 rounded text-xs font-medium transition-colors bg-stone-100 dark:bg-stone-800 text-stone-500 dark:text-stone-400 hover:bg-red-100 hover:text-red-600 dark:hover:bg-red-950 dark:hover:text-red-400"
             >
               🗑
+            </button>
+          </div>
+
+          {/* Notes panel toggle */}
+          <div className="border-l border-[var(--border)] pl-3 ml-1">
+            <button
+              onClick={() => setNotesOpen((v) => !v)}
+              title={notesOpen ? "Hide notes pane" : "Show notes pane"}
+              className={[
+                "px-2.5 py-1 rounded text-xs font-medium transition-colors",
+                notesOpen
+                  ? "bg-amber-500 text-white"
+                  : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
+              ].join(" ")}
+            >
+              📝
             </button>
           </div>
 
@@ -2369,12 +2389,28 @@ export default function ChapterDisplay({
                 onUpdateAnnotation={handleUpdateAnnotation}
                 onExpandAnnotationRange={handleExpandAnnotationRange}
                 showAnnotationCol={editingAnnotations || lineAnnotations.length > 0}
+                onVerseClick={(v) => {
+                  setNotesOpen(true);
+                  setNotesScrollVerse(v);
+                }}
               />
             );
           })}
         </div>
       </div>
       </div> {/* end outerRef wrapper */}
+
+      {/* Notes pane */}
+      {notesOpen && (
+        <NotesPane
+          book={book}
+          chapter={chapter}
+          verses={verseNums}
+          scrollToVerse={notesScrollVerse}
+          onScrollHandled={() => setNotesScrollVerse(null)}
+          onClose={() => setNotesOpen(false)}
+        />
+      )}
 
       {/* Morphology panel */}
       {panelOpen && (
