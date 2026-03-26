@@ -27,7 +27,7 @@ import type { RstTypeEntry } from "@/lib/morphology/clauseRelationships";
 import type { RstCustomType } from "@/lib/db/schema";
 import hebrewLemmas from "@/lib/data/hebrew-lemmas.json";
 import { computeSectionRanges } from "@/lib/utils/sectionRanges";
-import { generateOutline, downloadOutline } from "@/lib/utils/outlineExport";
+import { generateOutline } from "@/lib/utils/outlineExport";
 
 /** Returns true if the word's surface text is entirely punctuation and should
  *  be skipped during character / word-tag selection. */
@@ -1769,8 +1769,10 @@ export default function PassageView({
     await handleUpdateTranslationVerse(abbr, verse, snapRecord.text);
   }
 
-  // ── Export outline ────────────────────────────────────────────────────────
-  function handleExportOutline() {
+  // ── Copy outline to clipboard ─────────────────────────────────────────────
+  const [outlineCopied, setOutlineCopied] = useState(false);
+
+  async function handleExportOutline() {
     const allBreaks: { wordId: string; heading: string | null; level: number; chapter: number; verse: number }[] = [];
     for (const [wordId, arr] of sceneBreakMap) {
       for (const br of arr) {
@@ -1780,7 +1782,9 @@ export default function PassageView({
     }
     allBreaks.sort((a, b) => a.chapter !== b.chapter ? a.chapter - b.chapter : a.verse !== b.verse ? a.verse - b.verse : a.level - b.level);
     const text = generateOutline(allBreaks, sectionRanges);
-    downloadOutline(text, `${bookName}-outline.txt`);
+    await navigator.clipboard.writeText(text);
+    setOutlineCopied(true);
+    setTimeout(() => setOutlineCopied(false), 2000);
   }
 
   // ── Shared range button helper ────────────────────────────────────────────
@@ -1843,16 +1847,16 @@ export default function PassageView({
               {rangeLabel}
             </span>
 
-            {/* Export outline */}
+            {/* Copy outline to clipboard */}
             {sceneBreakMap.size > 0 && (
               <button
                 type="button"
                 onClick={handleExportOutline}
                 className="shrink-0 text-xs px-2 py-0.5 rounded hover:bg-stone-200 dark:hover:bg-stone-700 transition-colors"
                 style={{ color: "var(--text-muted)" }}
-                title="Export section break outline as .txt"
+                title="Copy section break outline to clipboard"
               >
-                📋 Outline
+                {outlineCopied ? "✓ Copied" : "📋 Outline"}
               </button>
             )}
 
