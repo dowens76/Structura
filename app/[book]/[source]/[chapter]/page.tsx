@@ -357,6 +357,7 @@ export default async function ChapterPage({ params, searchParams }: PageProps) {
             bookMaxVerses={bookMaxVerses}
             headingSlot={
               <div
+                key="chapter-heading"
                 className="shrink-0 px-6 pt-4 pb-2 border-b"
                 style={{ borderColor: "var(--border)", color: "var(--text-muted)" }}
               >

@@ -24,6 +24,7 @@ import type { RstTypeEntry } from "@/lib/morphology/clauseRelationships";
 import type { RstCustomType } from "@/lib/db/schema";
 import hebrewLemmas from "@/lib/data/hebrew-lemmas.json";
 import { computeSectionRanges } from "@/lib/utils/sectionRanges";
+import { generateOutline } from "@/lib/utils/outlineExport";
 
 /** Returns true if the word's surface text is entirely punctuation and should
  *  be skipped during character / word-tag selection. */
