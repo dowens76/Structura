@@ -152,17 +152,21 @@ function parseUSFM(raw: string): ParseResult {
  * Convert plain verse numbers in non-USFM text into \v N markers so the USFM
  * parser can handle verse splitting reliably.
  *
- * Two patterns are handled:
+ * Three passes are applied:
  *
- *  1. Line-start: a line whose first token is 1–3 digits (with or without a
- *     following space / immediately adjacent letter).
- *       "1Blessed is the man"  →  "\v 1 Blessed is the man"
- *       "1 Blessed is the man" →  "\v 1 Blessed is the man"
- *       "1"  (standalone, next line has text) → merged first, then matched
+ *  1. Standalone verse-number lines: a line that is purely 1–3 digits is merged
+ *     with the next non-empty line (skipping blank lines between them).
+ *     If no following content line exists the number becomes a bare \v marker.
+ *       "1\n\nIn the beginning…"  →  "1 In the beginning…"  →  "\v 1 In the beginning…"
  *
- *  2. Inline: digits preceded by whitespace and followed by a space + letter/quote,
- *     as found in Bible.com single-paragraph chapter dumps.
- *       "…form and void 2 Now the Spirit…" → "…form and void \v 2 Now the Spirit…"
+ *  2. Line-start injection: after normalising "1Letter" → "1 Letter", a line
+ *     beginning with 1–3 digits followed by any non-whitespace is converted.
+ *       "1 Blessed is the man"  →  "\v 1 Blessed is the man"
+ *       "2"In the beginning"    →  "\v 2 "In the beginning"
+ *
+ *  3. Inline injection: digits preceded by a non-newline space and followed by
+ *     a space + non-digit/non-whitespace character.
+ *       "…void 2 Now the Spirit…"  →  "…void \v 2 Now the Spirit…"
  *
  * The 1–3 digit limit keeps large inline numbers ("130 years", "1000 shekels")
  * from being misidentified as verse markers.
@@ -170,35 +174,46 @@ function parseUSFM(raw: string): ParseResult {
 function injectVerseMarkers(body: string): string {
   const lines = body.split(/\r?\n/);
 
-  // Pass 1: merge standalone verse-number lines with the following line and
-  // normalise "1Letter" → "1 Letter" so the regex below can match uniformly.
+  // Pass 1: merge standalone verse-number lines with the following non-empty line,
+  // skipping any blank lines in between. "1Letter" → "1 Letter" normalisation.
   const merged: string[] = [];
   let i = 0;
   while (i < lines.length) {
     let line = lines[i].trim();
-    if (/^\d{1,3}$/.test(line) && i + 1 < lines.length && lines[i + 1].trim().length > 0) {
-      line = line + " " + lines[i + 1].trim();
-      i += 2;
+    if (/^\d{1,3}$/.test(line)) {
+      // Find next non-empty line (skip blank lines between number and text)
+      let j = i + 1;
+      while (j < lines.length && lines[j].trim().length === 0) j++;
+      if (j < lines.length) {
+        line = line + " " + lines[j].trim();
+        i = j + 1;
+      } else {
+        // Standalone number at end of input: convert directly to a \v marker
+        line = `\\v ${line} `;
+        i++;
+      }
     } else {
       i++;
     }
-    // "1Letter" → "1 Letter"
-    line = line.replace(/^(\d{1,3})([A-Za-z"'\u201C\u2018\[«])/, "$1 $2");
+    // "1Letter" → "1 Letter" (only at line start, handles adjacent digits+letters)
+    line = line.replace(/^(\d{1,3})([^\s\d\\])/, "$1 $2");
     if (line) merged.push(line);
   }
 
   // Pass 2: inject \v before line-start verse numbers.
+  //   Lookahead requires any non-whitespace character so Unicode text, quotes,
+  //   brackets and other non-ASCII letters are all matched correctly.
   //   "1 Blessed…"  →  "\v 1 Blessed…"
   const withLineStart = merged
-    .map((line) => line.replace(/^(\d{1,3})\s+(?=[A-Za-z"'\u201C\u2018\[«])/, "\\v $1 "))
+    .map((line) => line.replace(/^(\d{1,3})\s+(?=\S)/, "\\v $1 "))
     .join("\n");
 
   // Pass 3: inject \v before inline verse numbers (mid-paragraph).
+  //   Lookahead accepts any non-digit, non-whitespace character so Unicode
+  //   letters and opening punctuation all qualify.
   //   "…void 2 Now…"  →  "…void \v 2 Now…"
-  //   Use a non-newline space in the lookbehind so already-converted line-starts
-  //   (which now start with "\v") are not double-processed.
   const withInline = withLineStart.replace(
-    /([^\S\r\n])(\d{1,3}) (?=[A-Za-z"'\u201C\u2018\[«])/g,
+    /([^\S\r\n])(\d{1,3}) (?=[^\d\s])/g,
     "$1\\v $2 "
   );
 

@@ -1,10 +1,19 @@
 import Link from "next/link";
 import Image from "next/image";
-import { getBooks } from "@/lib/db/queries";
+import { getBooks, getBooksWithWords } from "@/lib/db/queries";
 import type { Book } from "@/lib/db/schema";
 import type { Testament } from "@/lib/morphology/types";
+import { LXX_BOOK_DISPLAY_ORDER, OSIS_BOOK_NAMES } from "@/lib/utils/osis";
 
-function BookGrid({ books, title }: { books: Book[]; title: string }) {
+function BookGrid({
+  books,
+  title,
+  linkSource,
+}: {
+  books: Book[];
+  title: string;
+  linkSource?: string; // override the source used in links (e.g. "STEPBIBLE_LXX")
+}) {
   if (books.length === 0) return null;
   return (
     <section className="mb-10">
@@ -12,18 +21,22 @@ function BookGrid({ books, title }: { books: Book[]; title: string }) {
         {title}
       </h2>
       <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-2">
-        {books.map((book) => (
-          <Link
-            key={`${book.osisCode}-${book.textSource}`}
-            href={`/${encodeURIComponent(book.osisCode)}/${book.textSource}/1`}
-            className="block px-3 py-2 rounded-lg border text-sm transition-colors text-center hover:border-[var(--accent)] hover:bg-[var(--surface-muted)]"
-            style={{ backgroundColor: "var(--surface)", borderColor: "var(--border)", color: "var(--foreground)" }}
-            title={book.name}
-          >
-            <div className="font-medium truncate">{book.osisCode}</div>
-            <div className="text-xs" style={{ color: "var(--text-muted)" }}>{book.name}</div>
-          </Link>
-        ))}
+        {books.map((book) => {
+          const src = linkSource ?? book.textSource;
+          const displayName = OSIS_BOOK_NAMES[book.osisCode] ?? book.name;
+          return (
+            <Link
+              key={`${book.osisCode}-${src}`}
+              href={`/${encodeURIComponent(book.osisCode)}/${src}/1`}
+              className="block px-3 py-2 rounded-lg border text-sm transition-colors text-center hover:border-[var(--accent)] hover:bg-[var(--surface-muted)]"
+              style={{ backgroundColor: "var(--surface)", borderColor: "var(--border)", color: "var(--foreground)" }}
+              title={displayName}
+            >
+              <div className="font-medium truncate text-xs">{book.osisCode}</div>
+              <div className="text-[11px] truncate" style={{ color: "var(--text-muted)" }}>{displayName}</div>
+            </Link>
+          );
+        })}
       </div>
     </section>
   );
@@ -35,9 +48,20 @@ export default async function Home() {
   let lxxBooks: Book[] = [];
 
   try {
-    otBooks = await getBooks("OT" as Testament);
-    ntBooks = await getBooks("NT" as Testament);
-    lxxBooks = await getBooks("LXX" as Testament);
+    [otBooks, ntBooks, lxxBooks] = await Promise.all([
+      getBooks("OT" as Testament),
+      getBooks("NT" as Testament),
+      // Use getBooksWithWords so canonical OT books (stored as OSHB) are included
+      // when they also have STEPBIBLE_LXX content.
+      getBooksWithWords("STEPBIBLE_LXX"),
+    ]);
+    // Sort LXX books by the LXX canonical display order
+    const lxxOrder = new Map(LXX_BOOK_DISPLAY_ORDER.map((c, i) => [c, i]));
+    lxxBooks.sort((a, b) => {
+      const ai = lxxOrder.get(a.osisCode) ?? 999;
+      const bi = lxxOrder.get(b.osisCode) ?? 999;
+      return ai - bi;
+    });
   } catch {
     // DB not initialized yet
   }
@@ -62,7 +86,7 @@ export default async function Home() {
           <>
             <BookGrid books={otBooks} title="Hebrew Old Testament (OSHB)" />
             <BookGrid books={ntBooks} title="Greek New Testament (SBLGNT + MorphGNT)" />
-            <BookGrid books={lxxBooks} title="Septuagint LXX (Rahlfs)" />
+            <BookGrid books={lxxBooks} title="Septuagint LXX (Rahlfs-1935)" linkSource="STEPBIBLE_LXX" />
           </>
         ) : (
           <div className="text-center py-20" style={{ color: "var(--text-muted)" }}>

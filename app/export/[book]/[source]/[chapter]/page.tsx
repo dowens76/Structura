@@ -15,6 +15,8 @@ import {
   getChapterClauseRelationships,
   getChapterWordArrows,
   getChapterSceneBreaks,
+  getChapterLineAnnotations,
+  getChapterRstRelations,
 } from "@/lib/db/queries";
 import type { TranslationVerse } from "@/lib/db/schema";
 import type { TextSource } from "@/lib/morphology/types";
@@ -61,6 +63,8 @@ export default async function ExportChapterPage({ params }: PageProps) {
     availableTranslations,
     clauseRelationships,
     wordArrows,
+    lineAnnotations,
+    rstRelations,
   ] = await Promise.all([
     getChapterParagraphBreaks(osisBook, chapter),
     getCharacters(osisBook),
@@ -74,6 +78,8 @@ export default async function ExportChapterPage({ params }: PageProps) {
     getAvailableTranslationsForChapter(osisBook, chapter),
     getChapterClauseRelationships(osisBook, chapter, textSource),
     getChapterWordArrows(osisBook, chapter, textSource),
+    getChapterLineAnnotations(osisBook, chapter, textSource),
+    getChapterRstRelations(osisBook, chapter, textSource),
   ]);
 
   const translationVerseData: Record<number, TranslationVerse[]> = {};
@@ -88,6 +94,16 @@ export default async function ExportChapterPage({ params }: PageProps) {
   const filename  = `${osisBook}-${chapter}`;
   const revealHref = `/api/export/reveal?book=${encodeURIComponent(osisBook)}&source=${textSource}&chapter=${chapter}`;
 
+  // Build note keys for every verse in this chapter plus the chapter-level note.
+  const verseNums = [...new Set(words.map((w) => w.verse))].sort((a, b) => a - b);
+  const noteContext = {
+    title: `${bookName} ${chapter}`,
+    keys: [
+      `chapter:${osisBook}.${chapter}`,
+      ...verseNums.map((v) => `verse:${osisBook}.${chapter}.${v}`),
+    ],
+  };
+
   return (
     <div style={{ backgroundColor: "var(--background)", minHeight: "100vh" }}>
       {/* Print header — visible only in print */}
@@ -98,7 +114,7 @@ export default async function ExportChapterPage({ params }: PageProps) {
         <p style={{ fontSize: "0.75rem", color: "#78716c" }}>Structura · {textSource}</p>
       </div>
 
-      <ExportLayout revealHref={revealHref} filename={filename}>
+      <ExportLayout revealHref={revealHref} filename={filename} noteContext={noteContext}>
         <div className="px-6 pt-4 pb-2 print:hidden" style={{ borderBottom: "1px solid var(--border)" }}>
           <h1
             style={{
@@ -134,6 +150,8 @@ export default async function ExportChapterPage({ params }: PageProps) {
           translationVerseData={translationVerseData}
           clauseRelationships={clauseRelationships}
           wordArrows={wordArrows}
+          lineAnnotations={lineAnnotations}
+          rstRelations={rstRelations}
         />
       </ExportLayout>
     </div>

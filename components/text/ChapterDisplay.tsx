@@ -16,6 +16,7 @@ import WordArrowOverlay from "./WordArrowOverlay";
 import ClearAnnotationsDialog, { type ClearCategory } from "@/components/controls/ClearAnnotationsDialog";
 import TranslationPicker from "@/components/controls/TranslationPicker";
 import NotesPane from "@/components/notes/NotesPane";
+import ResizablePane from "@/components/ResizablePane";
 import RstTypeManager from "@/components/controls/RstTypeManager";
 import type { ColorRule } from "@/lib/morphology/colorRules";
 import { RELATIONSHIP_TYPES, RELATIONSHIP_MAP } from "@/lib/morphology/clauseRelationships";
@@ -224,6 +225,8 @@ export default function ChapterDisplay({
   // Local mutable copy of translationVerseData so edits can be reflected immediately.
   const [localTranslationVerseData, setLocalTranslationVerseData] = useState(translationVerseData);
   const [editingTranslation, setEditingTranslation] = useState(false);
+  // Snapshot taken when translation editing mode is entered, used for Cancel
+  const translationEditSnapshotRef = useRef(translationVerseData);
 
   // ── Overlay refs ───────────────────────────────────────────────────────────
   const textContainerRef = useRef<HTMLDivElement>(null);
@@ -300,21 +303,27 @@ export default function ChapterDisplay({
   // ── Undo stack ─────────────────────────────────────────────────────────────
   type UndoEntry = { label: string; undo: () => void | Promise<void> };
   const [undoStack, setUndoStack] = useState<UndoEntry[]>([]);
+  const undoStackRef = useRef<UndoEntry[]>([]);
 
   function pushUndo(entry: UndoEntry) {
-    setUndoStack((prev) => [...prev.slice(-49), entry]);
+    setUndoStack((prev) => {
+      const next = [...prev.slice(-49), entry];
+      undoStackRef.current = next;
+      return next;
+    });
   }
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
       if ((e.metaKey || e.ctrlKey) && e.key === "z" && !e.shiftKey) {
         e.preventDefault();
-        setUndoStack((prev) => {
-          if (prev.length === 0) return prev;
-          const entry = prev[prev.length - 1];
-          entry.undo();
-          return prev.slice(0, -1);
-        });
+        const stack = undoStackRef.current;
+        if (stack.length === 0) return;
+        const entry = stack[stack.length - 1];
+        const next = stack.slice(0, -1);
+        undoStackRef.current = next;
+        setUndoStack(next);
+        entry.undo();
       }
     }
     window.addEventListener("keydown", onKeyDown);
@@ -333,6 +342,14 @@ export default function ChapterDisplay({
     setTranslationFontSize(readLocal<number>("structura:translationFontSize", 0.875));
     setHideSourceText(readLocal<boolean>("structura:hideSourceText", false));
   }, []); // empty deps → runs once after first render (client only)
+
+  // Snapshot translation data when editing mode is entered so Cancel can revert to it
+  useEffect(() => {
+    if (editingTranslation) {
+      translationEditSnapshotRef.current = localTranslationVerseData;
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editingTranslation]);
 
   // Persist sticky settings whenever they change
   useEffect(() => { writeLocal("structura:displayMode", displayMode); }, [displayMode]);
@@ -1717,11 +1734,19 @@ export default function ChapterDisplay({
   }
 
   // ── Translation verse text edit handler ────────────────────────────────────
-  async function handleUpdateTranslationVerse(abbr: string, verse: number, newText: string) {
+  async function handleUpdateTranslationVerse(abbr: string, verse: number, newText: string, record = true) {
     const translation = availableTranslations.find((t) => t.abbreviation === abbr);
     if (!translation) return;
     const tvRecord = localTranslationVerseData[translation.id]?.find((tv) => tv.verse === verse);
     if (!tvRecord) return;
+
+    const oldText = tvRecord.text;
+    if (record && newText !== oldText) {
+      pushUndo({
+        label: `Edit translation ${abbr} ${verse}`,
+        undo: () => handleUpdateTranslationVerse(abbr, verse, oldText, false),
+      });
+    }
 
     // Optimistic update
     setLocalTranslationVerseData((prev) => ({
@@ -1742,10 +1767,20 @@ export default function ChapterDisplay({
       setLocalTranslationVerseData((prev) => ({
         ...prev,
         [translation.id]: (prev[translation.id] ?? []).map((tv) =>
-          tv.verse === verse ? { ...tv, text: tvRecord.text } : tv
+          tv.verse === verse ? { ...tv, text: oldText } : tv
         ),
       }));
     }
+  }
+
+  // Revert a verse back to the text it had when translation editing mode was entered
+  async function handleCancelTranslationVerse(abbr: string, verse: number) {
+    const translation = availableTranslations.find((t) => t.abbreviation === abbr);
+    if (!translation) return;
+    const snapshot = translationEditSnapshotRef.current;
+    const snapRecord = snapshot[translation.id]?.find((tv) => tv.verse === verse);
+    if (!snapRecord) return;
+    await handleUpdateTranslationVerse(abbr, verse, snapRecord.text, false);
   }
 
   return (
@@ -2514,6 +2549,7 @@ export default function ChapterDisplay({
                 hideSourceText={hideSourceText}
                 editingTranslation={editingTranslation}
                 onUpdateTranslationVerse={handleUpdateTranslationVerse}
+                onCancelTranslationVerse={handleCancelTranslationVerse}
                 editingArrows={editingArrows}
                 onSelectArrowWordById={handleSelectArrowWordById}
                 sceneBreakMap={sceneBreakMap}
@@ -2550,35 +2586,39 @@ export default function ChapterDisplay({
 
       {/* Notes pane */}
       {notesOpen && (
-        <NotesPane
-          book={book}
-          chapter={chapter}
-          verses={verseNums}
-          scrollToVerse={notesScrollVerse}
-          onScrollHandled={() => setNotesScrollVerse(null)}
-          onClose={() => setNotesOpen(false)}
-        />
+        <ResizablePane storageKey="pane-notes-width" defaultWidth={320} minWidth={200} maxWidth={700}>
+          <NotesPane
+            book={book}
+            chapter={chapter}
+            verses={verseNums}
+            scrollToVerse={notesScrollVerse}
+            onScrollHandled={() => setNotesScrollVerse(null)}
+            onClose={() => setNotesOpen(false)}
+          />
+        </ResizablePane>
       )}
 
       {/* Morphology panel */}
       {panelOpen && (
-        <div className="w-72 border-l border-[var(--border)] flex flex-col shrink-0">
-          <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border)]">
-            <h2 className="text-sm font-semibold text-stone-700 dark:text-stone-300">
-              Word Analysis
-            </h2>
-            <button
-              onClick={() => setPanelOpen(false)}
-              className="text-stone-400 hover:text-stone-600 dark:hover:text-stone-200 text-lg leading-none"
-              aria-label="Close"
-            >
-              ×
-            </button>
+        <ResizablePane storageKey="pane-morphology-width" defaultWidth={288} minWidth={200} maxWidth={700}>
+          <div className="flex flex-col h-full">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border)] shrink-0">
+              <h2 className="text-sm font-semibold text-stone-700 dark:text-stone-300">
+                Word Analysis
+              </h2>
+              <button
+                onClick={() => setPanelOpen(false)}
+                className="text-stone-400 hover:text-stone-600 dark:hover:text-stone-200 text-lg leading-none"
+                aria-label="Close"
+              >
+                ×
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto">
+              <MorphologyPanel word={selectedWord} useLinguisticTerms={useLinguisticTerms} />
+            </div>
           </div>
-          <div className="flex-1 overflow-y-auto">
-            <MorphologyPanel word={selectedWord} useLinguisticTerms={useLinguisticTerms} />
-          </div>
-        </div>
+        </ResizablePane>
       )}
 
       {/* Clear annotations dialog */}

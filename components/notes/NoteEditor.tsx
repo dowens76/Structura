@@ -145,7 +145,7 @@ export default function NoteEditor({
     // Only replace if the doc actually changed
     const current = JSON.stringify(editor.getJSON());
     if (current !== JSON.stringify(content)) {
-      editor.commands.setContent(content, false);
+      editor.commands.setContent(content);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [noteKey]);

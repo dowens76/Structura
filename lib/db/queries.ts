@@ -1,4 +1,4 @@
-import { eq, and, asc, inArray, or, gte, lte, gt, lt, sql } from "drizzle-orm";
+import { eq, and, asc, inArray, or, gte, lte, gt, lt, sql, max } from "drizzle-orm";
 import { db } from "./index";
 import { books, words, verses, translations, translationVerses, paragraphBreaks, characters, characterRefs, speechSections, wordTags, wordTagRefs, lineIndents, sceneBreaks, passages, clauseRelationships, rstRelations, wordArrows, wordFormatting, lineAnnotations } from "./schema";
 import type { Book, Word, Translation, TranslationVerse, Character, CharacterRef, SpeechSection, WordTag, WordTagRef, Passage, ClauseRelationship, RstRelation, WordArrow, LineAnnotation } from "./schema";
@@ -21,6 +21,42 @@ export async function getBooksBySource(textSource: string): Promise<Book[]> {
     .from(books)
     .where(eq(books.textSource, textSource))
     .orderBy(asc(books.bookNumber));
+}
+
+/**
+ * Returns all books that have at least one word with the given textSource.
+ * Unlike getBooksBySource (which filters by the book record's textSource),
+ * this also finds canonical OT books whose record is stored under a different
+ * source (e.g. "OSHB") but whose words include STEPBIBLE_LXX entries.
+ * Results are ordered by book_number for a consistent listing.
+ */
+export async function getBooksWithWords(textSource: string): Promise<Book[]> {
+  const rows = await db
+    .selectDistinct({ book: books })
+    .from(books)
+    .innerJoin(words, eq(words.bookId, books.id))
+    .where(eq(words.textSource, textSource))
+    .orderBy(asc(books.bookNumber));
+  return rows.map((r) => r.book);
+}
+
+/**
+ * Returns the highest chapter number that exists in the words table for a
+ * given book / textSource combination.  Use this instead of book.chapterCount
+ * when the book record belongs to a different source (e.g. canonical OSHB
+ * books viewed as STEPBIBLE_LXX, which can have more or fewer chapters).
+ */
+export async function getMaxChapterForSource(
+  osisBook: string,
+  textSource: string
+): Promise<number> {
+  const book = await getBook(osisBook);
+  if (!book) return 1;
+  const result = await db
+    .select({ maxCh: max(words.chapter) })
+    .from(words)
+    .where(and(eq(words.bookId, book.id), eq(words.textSource, textSource)));
+  return result[0]?.maxCh ?? book.chapterCount;
 }
 
 export async function getBook(osisCode: string): Promise<Book | undefined> {

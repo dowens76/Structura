@@ -1,80 +1,60 @@
 /**
- * Import script: Hebrew lexicon from openscriptures/HebrewLexicon (HebrewStrong.xml)
- * Populates the lexicon_entries table with BDB/Strong's entries for Hebrew words.
+ * Import script: Hebrew lexicon from eliranwong/unabridged-BDB-Hebrew-lexicon (DictBDB.json)
+ * Populates the lexicon_entries table with full unabridged BDB entries for Hebrew words.
  *
  * Run: npm run import:hebrew-lexicon
  */
 
 import Database from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
-import { XMLParser } from "fast-xml-parser";
 import { mkdirSync, existsSync, writeFileSync, readFileSync } from "fs";
 import path from "path";
 import * as schema from "../lib/db/schema";
 import { sql } from "drizzle-orm";
 
-const DB_PATH = path.join(process.cwd(), "data", "structura.db");
-const CACHE_DIR = path.join(process.cwd(), "data", "sources", "lexicon");
-const CACHE_FILE = path.join(CACHE_DIR, "HebrewStrong.xml");
+const DB_PATH    = path.join(process.cwd(), "data", "structura.db");
+const CACHE_DIR  = path.join(process.cwd(), "data", "sources", "lexicon");
+const CACHE_FILE = path.join(CACHE_DIR, "DictBDB.json");
 const SOURCE_URL =
-  "https://raw.githubusercontent.com/openscriptures/HebrewLexicon/master/HebrewStrong.xml";
+  "https://raw.githubusercontent.com/eliranwong/unabridged-BDB-Hebrew-lexicon/master/DictBDB.json";
 
-const sqlite = new Database(DB_PATH);
-sqlite.pragma("journal_mode = WAL");
-const db = drizzle(sqlite, { schema });
-
-const parser = new XMLParser({
-  ignoreAttributes: false,
-  attributeNamePrefix: "@_",
-  textNodeName: "#text",
-  processEntities: true,
-  isArray: (name) => ["entry", "w", "def"].includes(name),
-});
-
-// ── Text helpers ──────────────────────────────────────────────────────────────
-
-/** Recursively flatten any parsed XML node to plain text. */
-function flattenText(node: unknown): string {
-  if (node === null || node === undefined) return "";
-  if (typeof node === "string") return node;
-  if (typeof node === "number") return String(node);
-  if (Array.isArray(node)) {
-    return node
-      .map(flattenText)
-      .filter(Boolean)
-      .join(" ");
-  }
-  if (typeof node === "object") {
-    const obj = node as Record<string, unknown>;
-    const parts: string[] = [];
-    // Collect #text first (preserves leading text before child elements)
-    if (obj["#text"] !== undefined) parts.push(flattenText(obj["#text"]));
-    for (const [key, val] of Object.entries(obj)) {
-      if (key === "#text" || key.startsWith("@_")) continue;
-      parts.push(flattenText(val));
-    }
-    return parts.join(" ").replace(/\s+/g, " ").trim();
-  }
-  return "";
+interface DictEntry {
+  top: string; // "H1", "H2", …  (or "DictInfo" for the header record)
+  def: string; // Full HTML string for the entry
 }
 
-/** Extract the first <def> text from a <meaning> node as a short gloss. */
-function firstDef(node: unknown): string {
-  if (!node || typeof node !== "object") return "";
-  const obj = node as Record<string, unknown>;
-  const defs = obj["def"];
-  if (defs === undefined) {
-    // No <def> child — fall back to the raw #text (may be a simple phrase)
-    const t = typeof obj["#text"] === "string" ? obj["#text"] : "";
-    return t.split(",")[0].trim();
-  }
-  const defArr = Array.isArray(defs) ? defs : [defs];
-  const first = defArr[0];
-  if (typeof first === "string") return first.trim();
-  if (typeof first === "object" && first !== null) {
-    return flattenText((first as Record<string, unknown>)["#text"] ?? first);
-  }
-  return String(first ?? "").trim();
+// ── HTML extraction helpers ────────────────────────────────────────────────────
+
+/**
+ * Extract the Hebrew lemma from the first <font class='c3'>…</font> inside
+ * a <heb> tag, falling back to the raw <heb> text content.
+ */
+function extractLemma(html: string): string | null {
+  const fontMatch = html.match(/<font[^>]*class=['"]c3['"][^>]*>([^<]+)<\/font>/);
+  if (fontMatch) return fontMatch[1].trim() || null;
+  const hebMatch = html.match(/<heb>([^<]+)/);
+  if (hebMatch) return hebMatch[1].trim() || null;
+  return null;
+}
+
+/**
+ * Extract the transliteration from the opening bold tag: <b>H1. ab</b> → "ab"
+ */
+function extractTranslit(html: string): string | null {
+  const m = html.match(/<b>H\d+\.\s*([^<]+)<\/b>/);
+  return m ? m[1].trim() || null : null;
+}
+
+/**
+ * Build a short gloss from bold elements beyond the first (which is the
+ * Strong# + transliteration heading).  POS labels and gloss words are joined
+ * with "; " and capped at 200 characters.
+ */
+function extractGloss(html: string): string | null {
+  const bolds = [...html.matchAll(/<b>([^<]+)<\/b>/g)].map((m) => m[1].trim());
+  const candidates = bolds.slice(1).filter((t) => t && !/^\d/.test(t));
+  const gloss = candidates.join("; ").slice(0, 200);
+  return gloss || null;
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────────
@@ -87,31 +67,27 @@ async function main() {
     console.log(`Fetching ${SOURCE_URL} …`);
     const res = await fetch(SOURCE_URL);
     if (!res.ok) throw new Error(`HTTP ${res.status} fetching ${SOURCE_URL}`);
-    const xml = await res.text();
-    writeFileSync(CACHE_FILE, xml, "utf-8");
-    console.log(`  Cached ${(xml.length / 1024).toFixed(0)} KB → ${CACHE_FILE}`);
+    const text = await res.text();
+    writeFileSync(CACHE_FILE, text, "utf-8");
+    console.log(`  Cached ${(text.length / 1024 / 1024).toFixed(1)} MB → ${CACHE_FILE}`);
   } else {
     console.log(`Using cached ${CACHE_FILE}`);
   }
 
-  const xml = readFileSync(CACHE_FILE, "utf-8");
-  console.log("Parsing XML …");
-  const doc = parser.parse(xml) as Record<string, unknown>;
+  console.log("Parsing JSON …");
+  const entries: DictEntry[] = JSON.parse(readFileSync(CACHE_FILE, "utf-8"));
+  console.log(`  Found ${entries.length} total records`);
 
-  // The root element may be namespaced; try both "lexicon" and the first key.
-  const rootKey = Object.keys(doc).find((k) => !k.startsWith("?")) ?? "";
-  const lexicon = (doc["lexicon"] ?? doc[rootKey]) as Record<string, unknown> | undefined;
-  const entries: unknown[] = Array.isArray(lexicon?.entry) ? lexicon.entry : [];
-  console.log(`  Found ${entries.length} entries`);
+  const sqlite = new Database(DB_PATH);
+  sqlite.pragma("journal_mode = WAL");
+  const db = drizzle(sqlite, { schema });
 
   let inserted = 0;
-  let skipped = 0;
-
   const BATCH = 500;
   const rows: (typeof schema.lexiconEntries.$inferInsert)[] = [];
 
   function flush() {
-    if (rows.length === 0) return;
+    if (!rows.length) return;
     db.insert(schema.lexiconEntries)
       .values(rows)
       .onConflictDoUpdate({
@@ -129,56 +105,30 @@ async function main() {
       .run();
     inserted += rows.length;
     rows.length = 0;
+    process.stdout.write(`\r  ${inserted} entries…`);
   }
 
   for (const entry of entries) {
-    const e = entry as Record<string, unknown>;
-    const strongNumber = String(e["@_id"] ?? "").trim();
-    if (!strongNumber.startsWith("H")) { skipped++; continue; }
-
-    // ── Lemma (<w> element) ──────────────────────────────────────────────────
-    const ws: unknown[] = Array.isArray(e.w) ? e.w : e.w ? [e.w] : [];
-    let lemma = "";
-    let xlit = "";
-    let pron = "";
-    for (const w of ws) {
-      const wEl = w as Record<string, unknown>;
-      if (wEl["@_src"]) continue; // cross-reference — skip
-      const text = flattenText(wEl["#text"] ?? wEl).trim();
-      if (text) {
-        lemma = text;
-        xlit = String(wEl["@_xlit"] ?? "").trim();
-        pron = String(wEl["@_pron"] ?? "").trim();
-        break;
-      }
-    }
-    if (!lemma) { skipped++; continue; }
-
-    // ── Definition (<meaning>) ───────────────────────────────────────────────
-    const meaning = e.meaning;
-    const shortGloss = firstDef(meaning);
-    const definition = flattenText(meaning);
-
-    // ── Usage (<usage>) ──────────────────────────────────────────────────────
-    const usage = flattenText(e.usage);
+    // Skip the DictInfo header and anything that isn't a Strong's entry
+    if (!/^H\d+$/.test(entry.top)) continue;
 
     rows.push({
-      strongNumber,
-      language: "hebrew",
-      lemma,
-      transliteration: xlit || null,
-      pronunciation: pron || null,
-      shortGloss: shortGloss || null,
-      definition: definition || null,
-      usage: usage || null,
-      source: "HebrewStrong",
+      strongNumber:    entry.top,
+      language:        "hebrew",
+      lemma:           extractLemma(entry.def),
+      transliteration: extractTranslit(entry.def),
+      pronunciation:   null,
+      shortGloss:      extractGloss(entry.def),
+      definition:      entry.def,   // full HTML — rendered in LexiconPane
+      usage:           null,
+      source:          "BDB",
     });
 
     if (rows.length >= BATCH) flush();
   }
   flush();
 
-  console.log(`Done: ${inserted} entries inserted/updated, ${skipped} skipped.`);
+  console.log(`\nDone: ${inserted} Hebrew entries inserted/updated.`);
 }
 
 main().catch((err) => {

@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState, type ReactNode } from "react";
+import NotesExportMenu from "./NotesExportMenu";
 
 interface Props {
   children: ReactNode;
@@ -8,9 +9,16 @@ interface Props {
   revealHref: string;
   /** Suggested filename stem, e.g. "Gen-1" or "passage-4" */
   filename: string;
+  /** When provided, a Notes export menu is shown in the toolbar. */
+  noteContext?: {
+    /** Human-readable document title, e.g. "Genesis 1" */
+    title: string;
+    /** All note keys to include (chapter + verse keys in order) */
+    keys: string[];
+  };
 }
 
-export default function ExportLayout({ children, revealHref, filename }: Props) {
+export default function ExportLayout({ children, revealHref, filename, noteContext }: Props) {
   const textRef = useRef<HTMLDivElement>(null);
   const [pngStatus, setPngStatus] = useState<"idle" | "loading" | "done">("idle");
   const [slidesStatus, setSlidesStatus] = useState<"idle" | "loading" | "done">("idle");
@@ -115,6 +123,21 @@ export default function ExportLayout({ children, revealHref, filename }: Props) 
           >
             {slidesStatus === "loading" ? "Building…" : slidesStatus === "done" ? "✓ Slides" : "🎞 Slides"}
           </button>
+
+          {noteContext && (
+            <>
+              <span
+                className="w-px h-4 rounded"
+                style={{ backgroundColor: "var(--border)" }}
+                aria-hidden="true"
+              />
+              <NotesExportMenu
+                noteKeys={noteContext.keys}
+                title={noteContext.title}
+                filename={filename}
+              />
+            </>
+          )}
         </div>
       </div>
 

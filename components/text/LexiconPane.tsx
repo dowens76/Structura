@@ -49,29 +49,73 @@ export default function LexiconPane({ strongNumber, isHebrew }: LexiconPaneProps
     );
   }
 
-  const sourceName = entry.source === "HebrewStrong"
-    ? "Brown-Driver-Briggs"
-    : entry.source === "AbbottSmith"
-    ? "Abbott-Smith"
-    : entry.source ?? "";
+  const sourceName =
+    entry.source === "BDB"          ? "Brown-Driver-Briggs (Unabridged)" :
+    entry.source === "HebrewStrong" ? "Brown-Driver-Briggs" :
+    entry.source === "Dodson"       ? "Dodson Greek Lexicon" :
+    entry.source === "AbbottSmith"  ? "Abbott-Smith" :
+    (entry.source ?? "");
+
+  // ── Full BDB HTML rendering ─────────────────────────────────────────────────
+  // The .bdb-entry CSS class handles <heb> → Ezra SIL and all other styling.
+  if (entry.source === "BDB" && entry.definition) {
+    return (
+      <div className="mt-5 pt-4 border-t border-stone-100 dark:border-stone-800">
+        <div
+          className="bdb-entry"
+          // Content is from a trusted local DB populated from a known academic source.
+          // eslint-disable-next-line react/no-danger
+          dangerouslySetInnerHTML={{ __html: entry.definition }}
+        />
+        <p className="text-[10px] text-stone-300 dark:text-stone-700 mt-3">
+          {sourceName}
+        </p>
+      </div>
+    );
+  }
+
+  // ── Structured rendering (Dodson / HebrewStrong / Abbott-Smith) ────────────
+  //
+  // .lexicon-hebrew  sets font-family: Ezra SIL + rtl, no size/line-height side-effects
+  // .lexicon-greek   sets font-family: Gentium Plus,    no size/line-height side-effects
+  //
+  const headwordFont = isHebrew ? "lexicon-hebrew" : "lexicon-greek";
+  const headwordDir  = isHebrew ? "rtl" : "ltr";
+  const headwordLang = isHebrew ? "he"  : "grc";
 
   return (
     <div className="mt-5 pt-4 border-t border-stone-100 dark:border-stone-800">
-      {/* Headword */}
+
+      {/* Headword — large, script-appropriate font */}
       <div
-        className={`text-2xl leading-relaxed mb-0.5 ${isHebrew ? "text-hebrew text-right" : "text-greek"}`}
-        dir={isHebrew ? "rtl" : "ltr"}
-        lang={isHebrew ? "he" : "grc"}
+        className={`text-2xl leading-snug mb-1 ${headwordFont} ${isHebrew ? "text-right" : ""}`}
+        dir={headwordDir}
+        lang={headwordLang}
       >
         {entry.lemma}
       </div>
 
-      {/* Transliteration / pronunciation */}
+      {/* Sub-headword line:
+          • Dodson  → full Greek form, e.g. "θεός, οῦ, ὁ"  (Gentium, muted)
+          • BDB/HebrewStrong → Latin transliteration / pronunciation (italic, muted) */}
       {(entry.transliteration || entry.pronunciation) && (
-        <div className="text-xs text-stone-400 dark:text-stone-500 italic mb-2">
-          {entry.transliteration && <span>{entry.transliteration}</span>}
+        <div className="mb-2">
+          {entry.transliteration && (
+            entry.source === "Dodson" ? (
+              <span
+                className="text-sm lexicon-greek text-stone-500 dark:text-stone-400"
+                lang="grc"
+              >
+                {entry.transliteration}
+              </span>
+            ) : (
+              <span className="text-xs italic text-stone-400 dark:text-stone-500">
+                {entry.transliteration}
+              </span>
+            )
+          )}
           {entry.pronunciation && (
-            <span className="ml-1 not-italic text-stone-400 dark:text-stone-600">
+            <span className="ml-1 text-xs text-stone-400 dark:text-stone-600">
               ({entry.pronunciation})
             </span>
           )}
@@ -85,7 +129,7 @@ export default function LexiconPane({ strongNumber, isHebrew }: LexiconPaneProps
         </p>
       )}
 
-      {/* Full definition (shown only when it adds content beyond the gloss) */}
+      {/* Full definition */}
       {entry.definition && entry.definition !== entry.shortGloss && (
         <p className="text-xs text-stone-600 dark:text-stone-400 leading-relaxed mb-2">
           {entry.definition}
@@ -94,7 +138,7 @@ export default function LexiconPane({ strongNumber, isHebrew }: LexiconPaneProps
 
       {/* Usage / occurrence note */}
       {entry.usage && (
-        <p className="text-xs text-stone-400 dark:text-stone-500 italic leading-relaxed mb-2">
+        <p className="text-xs italic text-stone-400 dark:text-stone-500 leading-relaxed mb-2">
           {entry.usage}
         </p>
       )}

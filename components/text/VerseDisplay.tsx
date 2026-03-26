@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import type { Word, CharacterRef, Character, SpeechSection, WordTag, WordTagRef, LineAnnotation } from "@/lib/db/schema";
 import type { DisplayMode, GrammarFilterState, TranslationTextEntry } from "@/lib/morphology/types";
 import type { ColorRule } from "@/lib/morphology/colorRules";
@@ -85,6 +85,7 @@ interface VerseDisplayProps {
   // Translation text editing
   editingTranslation?: boolean;
   onUpdateTranslationVerse?: (abbr: string, verse: number, newText: string) => void;
+  onCancelTranslationVerse?: (abbr: string, verse: number) => void;
   // Free-form arrows (applies to both source and translation words)
   editingArrows?: boolean;
   onSelectArrowWordById?: (wordId: string) => void;
@@ -613,6 +614,63 @@ function computeSegments(ws: Word[], breakIds: Set<string>): Word[][] {
   return segs;
 }
 
+// ── TranslationTextarea ──────────────────────────────────────────────────────
+// Controlled sub-component for editing a single translation verse.
+// useEffect syncs `initialText` into local state so that calling onCancel
+// (which restores initialText from the snapshot) also resets the textarea.
+interface TranslationTextareaProps {
+  initialText: string;
+  abbr: string;
+  verseNum: number;
+  onSave: (abbr: string, verse: number, text: string) => void;
+  onCancel: (abbr: string, verse: number) => void;
+}
+function TranslationTextarea({ initialText, abbr, verseNum, onSave, onCancel }: TranslationTextareaProps) {
+  const [value, setValue] = useState(initialText);
+  const savedRef = useRef(false);
+
+  // If the parent resets initialText (e.g. after Cancel), mirror it here and allow saving again
+  useEffect(() => {
+    setValue(initialText);
+    savedRef.current = false;
+  }, [initialText]);
+
+  return (
+    <div>
+      <textarea
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        onBlur={() => {
+          if (!savedRef.current) {
+            savedRef.current = true;
+            onSave(abbr, verseNum, value.trim());
+          }
+        }}
+        rows={3}
+        className="w-full resize-y rounded border border-stone-300 dark:border-stone-600 bg-stone-50 dark:bg-stone-900 px-2 py-1 focus:outline-none focus:ring-1 focus:ring-sky-500"
+        style={{
+          color: "var(--foreground)",
+          fontSize: "var(--translation-font-size, 0.875rem)",
+          lineHeight: 1.6,
+        }}
+        spellCheck={false}
+      />
+      <button
+        type="button"
+        // Prevent blur from firing before the click is processed
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={() => {
+          savedRef.current = true;
+          onCancel(abbr, verseNum);
+        }}
+        className="mt-0.5 text-xs text-stone-400 hover:text-stone-600 dark:hover:text-stone-300 underline"
+      >
+        Cancel
+      </button>
+    </div>
+  );
+}
+
 export default function VerseDisplay({
   verseNum,
   words,
@@ -659,6 +717,7 @@ export default function VerseDisplay({
   hideSourceText = false,
   editingTranslation = false,
   onUpdateTranslationVerse,
+  onCancelTranslationVerse,
   editingArrows = false,
   onSelectArrowWordById,
   sceneBreakMap = new Map() as Map<string, Array<{ heading: string | null; level: number; verse: number; outOfSequence: boolean; extendedThrough: number | null }>>,
@@ -856,23 +915,23 @@ export default function VerseDisplay({
 
     function headingClass(level: number): string {
       switch (level) {
-        case 1: return "text-sm font-bold uppercase tracking-widest text-stone-800 dark:text-stone-200";
-        case 2: return "text-xs font-semibold uppercase tracking-wider text-stone-700 dark:text-stone-300";
-        case 3: return "text-[11px] font-medium uppercase tracking-wide text-stone-600 dark:text-stone-400";
-        case 4: return "text-[11px] font-normal uppercase tracking-wide text-stone-500 dark:text-stone-500";
-        case 5: return "text-[10px] font-normal uppercase tracking-normal text-stone-500 dark:text-stone-500";
-        case 6: return "text-[10px] font-normal text-stone-500 dark:text-stone-500";
-        default: return "text-xs text-stone-500";
+        case 1: return "text-sm font-bold uppercase tracking-widest text-stone-800 dark:text-stone-100";
+        case 2: return "text-xs font-semibold uppercase tracking-wider text-stone-700 dark:text-stone-200";
+        case 3: return "text-[11px] font-medium uppercase tracking-wide text-stone-600 dark:text-stone-300";
+        case 4: return "text-[11px] font-normal uppercase tracking-wide text-stone-500 dark:text-stone-400";
+        case 5: return "text-[10px] font-normal uppercase tracking-normal text-stone-500 dark:text-stone-400";
+        case 6: return "text-[10px] font-normal text-stone-500 dark:text-stone-400";
+        default: return "text-xs text-stone-500 dark:text-stone-400";
       }
     }
 
     function lineColorClass(level: number): string {
       if (editingScenes) return "border-amber-400";
       switch (level) {
-        case 1: return "border-stone-700 dark:border-stone-300";
-        case 2: return "border-stone-600 dark:border-stone-400";
-        case 3: return "border-stone-500 dark:border-stone-500";
-        default: return "border-stone-400 dark:border-stone-600";
+        case 1: return "border-stone-700 dark:border-stone-200";
+        case 2: return "border-stone-600 dark:border-stone-300";
+        case 3: return "border-stone-500 dark:border-stone-400";
+        default: return "border-stone-400 dark:border-stone-500";
       }
     }
 
@@ -891,7 +950,7 @@ export default function VerseDisplay({
       <div className="mt-5 mb-2" onClick={editingScenes ? (e) => e.stopPropagation() : undefined}>
         {/* Render each existing break stacked */}
         {sorted.map((br) => (
-          <div key={br.level} className="mb-1">
+          <div key={`${br.wordId}-${br.level}`} className="mb-1">
             {editingScenes ? (
               <div className="flex flex-col gap-1 pb-1">
                 <div className="flex items-center gap-1.5">
@@ -1436,17 +1495,13 @@ export default function VerseDisplay({
                     {abbr}
                   </span>
                 )}
-                <textarea
+                <TranslationTextarea
                   key={`${abbr}-${verseNum}`}
-                  defaultValue={tvFullText}
-                  onBlur={(e) => onUpdateTranslationVerse?.(abbr, verseNum, e.target.value.trim())}
-                  rows={3}
-                  className="w-full resize-y rounded border border-stone-300 dark:border-stone-600 bg-stone-50 dark:bg-stone-900 px-2 py-1 focus:outline-none focus:ring-1 focus:ring-sky-500 dark:text-stone-100"
-                  style={{
-                    fontSize: "var(--translation-font-size, 0.875rem)",
-                    lineHeight: 1.6,
-                  }}
-                  spellCheck={false}
+                  initialText={tvFullText}
+                  abbr={abbr}
+                  verseNum={verseNum}
+                  onSave={(a, v, t) => onUpdateTranslationVerse?.(a, v, t)}
+                  onCancel={(a, v) => onCancelTranslationVerse?.(a, v)}
                 />
               </div>
             );
@@ -1482,8 +1537,8 @@ export default function VerseDisplay({
               )}
               {hasContent && (
                 <p
-                  className="text-stone-800 dark:text-stone-200"
                   style={{
+                    color: "var(--foreground)",
                     fontSize: "var(--translation-font-size, 0.875rem)",
                     lineHeight: "var(--source-row-height, 1.625)",
                     paddingLeft: tvIndentLevel > 0 ? `${tvIndentLevel * 2}rem` : undefined,

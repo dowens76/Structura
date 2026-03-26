@@ -90,7 +90,7 @@ export default function NotesPane({
   }, [scrollToVerse, loaded, book, chapter, onScrollHandled]);
 
   return (
-    <div className="flex flex-col h-full w-80 border-l border-[var(--border)] shrink-0" style={{ minWidth: "20rem", maxWidth: "26rem" }}>
+    <div className="flex flex-col h-full">
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border)] shrink-0">
         <h2 className="text-sm font-semibold" style={{ color: "var(--foreground)" }}>

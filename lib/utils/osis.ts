@@ -67,6 +67,7 @@ export const OSIS_BOOK_ORDER: Record<string, number> = {};
 });
 
 export const OSIS_BOOK_NAMES: Record<string, string> = {
+  // Old Testament (canonical)
   Gen: "Genesis", Exod: "Exodus", Lev: "Leviticus", Num: "Numbers",
   Deut: "Deuteronomy", Josh: "Joshua", Judg: "Judges", Ruth: "Ruth",
   "1Sam": "1 Samuel", "2Sam": "2 Samuel", "1Kgs": "1 Kings", "2Kgs": "2 Kings",
@@ -77,6 +78,7 @@ export const OSIS_BOOK_NAMES: Record<string, string> = {
   Joel: "Joel", Amos: "Amos", Obad: "Obadiah", Jonah: "Jonah",
   Mic: "Micah", Nah: "Nahum", Hab: "Habakkuk", Zeph: "Zephaniah",
   Hag: "Haggai", Zech: "Zechariah", Mal: "Malachi",
+  // New Testament
   Matt: "Matthew", Mark: "Mark", Luke: "Luke", John: "John",
   Acts: "Acts", Rom: "Romans", "1Cor": "1 Corinthians", "2Cor": "2 Corinthians",
   Gal: "Galatians", Eph: "Ephesians", Phil: "Philippians", Col: "Colossians",
@@ -86,7 +88,52 @@ export const OSIS_BOOK_NAMES: Record<string, string> = {
   "1Pet": "1 Peter", "2Pet": "2 Peter",
   "1John": "1 John", "2John": "2 John", "3John": "3 John",
   Jude: "Jude", Rev: "Revelation",
+  // LXX / Deuterocanonical books
+  Jdt: "Judith", Tob: "Tobit", TobBA: "Tobit (BA)", TobS: "Tobit (S)",
+  "1Macc": "1 Maccabees", "2Macc": "2 Maccabees",
+  "3Macc": "3 Maccabees", "4Macc": "4 Maccabees",
+  Wis: "Wisdom of Solomon", Sir: "Sirach",
+  Bar: "Baruch", EpJer: "Epistle of Jeremiah",
+  "1Esdr": "1 Esdras", "2Esdr": "2 Esdras",
+  JoshA: "Joshua (LXX A)", JoshB: "Joshua (LXX B)",
+  JudgA: "Judges (LXX A)", JudgB: "Judges (LXX B)",
+  DanOG: "Daniel (OG)", DanTh: "Daniel (Th)",
+  BelOG: "Bel and the Dragon (OG)", BelTh: "Bel and the Dragon (Th)",
+  SusOG: "Susanna (OG)", SusTh: "Susanna (Th)",
+  Odes: "Odes", PsSol: "Psalms of Solomon",
 };
+
+/** Canonical OT books that also exist in the LXX (STEPBIBLE_LXX source).
+ *  Used to show the "Parallel LXX" toggle when viewing OSHB. */
+export const OSHB_LXX_PARALLEL_BOOKS = new Set([
+  "Gen", "Exod", "Lev", "Num", "Deut",
+  "Josh", "Judg", "Ruth",
+  "1Sam", "2Sam", "1Kgs", "2Kgs",
+  "1Chr", "2Chr", "Ezra", "Neh", "Esth",
+  "Job", "Ps", "Prov", "Eccl", "Song",
+  "Isa", "Jer", "Lam", "Ezek", "Dan",
+  "Hos", "Joel", "Amos", "Obad", "Jonah",
+  "Mic", "Nah", "Hab", "Zeph", "Hag", "Zech", "Mal",
+]);
+
+/** Preferred display order for LXX books in the navigation dropdown.
+ *  Canonical books first (using OSHB/Protestant order), then deuterocanonicals. */
+export const LXX_BOOK_DISPLAY_ORDER: string[] = [
+  // Pentateuch
+  "Gen", "Exod", "Lev", "Num", "Deut",
+  // Historical
+  "Josh", "JoshA", "JoshB", "Judg", "JudgA", "JudgB", "Ruth",
+  "1Sam", "2Sam", "1Kgs", "2Kgs", "1Chr", "2Chr",
+  "1Esdr", "2Esdr", "Ezra", "Neh", "Esth", "Jdt", "TobBA", "TobS",
+  "1Macc", "2Macc", "3Macc", "4Macc",
+  // Wisdom/Poetry
+  "Job", "Ps", "Prov", "Eccl", "Song", "Wis", "Sir", "Odes", "PsSol",
+  // Prophets
+  "Isa", "Jer", "Lam", "EpJer", "Bar", "Ezek",
+  "DanOG", "DanTh", "SusOG", "SusTh", "BelOG", "BelTh",
+  "Hos", "Joel", "Amos", "Obad", "Jonah", "Mic",
+  "Nah", "Hab", "Zeph", "Hag", "Zech", "Mal",
+];
 
 /** MorphGNT 2-char book codes → OSIS codes */
 export const MORPHGNT_BOOK_MAP: Record<string, string> = {

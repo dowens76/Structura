@@ -20,6 +20,7 @@ import RstRelationOverlay from "@/components/text/RstRelationOverlay";
 import WordArrowOverlay from "@/components/text/WordArrowOverlay";
 import ClearAnnotationsDialog, { type ClearCategory } from "@/components/controls/ClearAnnotationsDialog";
 import PassageNotesPane from "@/components/notes/PassageNotesPane";
+import ResizablePane from "@/components/ResizablePane";
 import RstTypeManager from "@/components/controls/RstTypeManager";
 import { RELATIONSHIP_TYPES, RELATIONSHIP_MAP } from "@/lib/morphology/clauseRelationships";
 import type { RstTypeEntry } from "@/lib/morphology/clauseRelationships";
@@ -275,28 +276,44 @@ export default function PassageView({
   const [localTranslationVerseData, setLocalTranslationVerseData] = useState<Record<number, TranslationVerse[]>>(
     () => translationVerseData
   );
+  // Snapshot taken when translation editing mode is entered, used for Cancel
+  const translationEditSnapshotRef = useRef(translationVerseData);
 
   // ── Overlay ref ────────────────────────────────────────────────────────────
   const overlayContainerRef = useRef<HTMLDivElement>(null);
 
+  // Snapshot translation data when editing mode is entered so Cancel can revert to it
+  useEffect(() => {
+    if (editingTranslation) {
+      translationEditSnapshotRef.current = localTranslationVerseData;
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editingTranslation]);
+
   // ── Undo stack ────────────────────────────────────────────────────────────
   type UndoEntry = { label: string; undo: () => void | Promise<void> };
   const [undoStack, setUndoStack] = useState<UndoEntry[]>([]);
+  const undoStackRef = useRef<UndoEntry[]>([]);
 
   function pushUndo(entry: UndoEntry) {
-    setUndoStack((prev) => [...prev.slice(-49), entry]);
+    setUndoStack((prev) => {
+      const next = [...prev.slice(-49), entry];
+      undoStackRef.current = next;
+      return next;
+    });
   }
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
       if ((e.metaKey || e.ctrlKey) && e.key === "z" && !e.shiftKey) {
         e.preventDefault();
-        setUndoStack((prev) => {
-          if (prev.length === 0) return prev;
-          const entry = prev[prev.length - 1];
-          entry.undo();
-          return prev.slice(0, -1);
-        });
+        const stack = undoStackRef.current;
+        if (stack.length === 0) return;
+        const entry = stack[stack.length - 1];
+        const next = stack.slice(0, -1);
+        undoStackRef.current = next;
+        setUndoStack(next);
+        entry.undo();
       }
     }
     window.addEventListener("keydown", onKeyDown);
@@ -1719,6 +1736,7 @@ export default function PassageView({
     if (!translation) return;
     const tvRecord = localTranslationVerseData[translation.id]?.find((tv) => tv.verse === verse);
     if (!tvRecord) return;
+    const oldText = tvRecord.text;
     setLocalTranslationVerseData((prev) => ({
       ...prev,
       [translation.id]: (prev[translation.id] ?? []).map((tv) =>
@@ -1735,10 +1753,20 @@ export default function PassageView({
       setLocalTranslationVerseData((prev) => ({
         ...prev,
         [translation.id]: (prev[translation.id] ?? []).map((tv) =>
-          tv.verse === verse ? { ...tv, text: tvRecord.text } : tv
+          tv.verse === verse ? { ...tv, text: oldText } : tv
         ),
       }));
     }
+  }
+
+  // Revert a verse back to the text it had when translation editing mode was entered
+  async function handleCancelTranslationVerse(abbr: string, verse: number) {
+    const translation = availableTranslations.find((t) => t.abbreviation === abbr);
+    if (!translation) return;
+    const snapshot = translationEditSnapshotRef.current;
+    const snapRecord = snapshot[translation.id]?.find((tv) => tv.verse === verse);
+    if (!snapRecord) return;
+    await handleUpdateTranslationVerse(abbr, verse, snapRecord.text);
   }
 
   // ── Export outline ────────────────────────────────────────────────────────
@@ -2547,6 +2575,7 @@ export default function PassageView({
                     editingFormatting={editingBold || editingItalic}
                     editingTranslation={editingTranslation}
                     onUpdateTranslationVerse={handleUpdateTranslationVerse}
+                    onCancelTranslationVerse={handleCancelTranslationVerse}
                     sceneBreakMap={sceneBreakMap}
                     editingScenes={editingScenes}
                     onToggleSceneBreak={handleToggleSceneBreak}
@@ -2589,34 +2618,38 @@ export default function PassageView({
 
       {/* ── Notes pane ───────────────────────────────────────────────────── */}
       {notesOpen && (
-        <PassageNotesPane
-          passageId={passage.id}
-          passageLabel={passage.label || `${bookName} ${passage.startChapter}:${passage.startVerse}–${passage.endChapter}:${passage.endVerse}`}
-          book={osisBook}
-          bookName={bookName}
-          orderedVerses={orderedVerses}
-          isMultiChapter={isMultiChapter}
-          scrollToVerse={notesScrollVerse}
-          onScrollHandled={() => setNotesScrollVerse(null)}
-          onClose={() => setNotesOpen(false)}
-        />
+        <ResizablePane storageKey="pane-notes-width" defaultWidth={320} minWidth={200} maxWidth={700}>
+          <PassageNotesPane
+            passageId={passage.id}
+            passageLabel={passage.label || `${bookName} ${passage.startChapter}:${passage.startVerse}–${passage.endChapter}:${passage.endVerse}`}
+            book={osisBook}
+            bookName={bookName}
+            orderedVerses={orderedVerses}
+            isMultiChapter={isMultiChapter}
+            scrollToVerse={notesScrollVerse}
+            onScrollHandled={() => setNotesScrollVerse(null)}
+            onClose={() => setNotesOpen(false)}
+          />
+        </ResizablePane>
       )}
 
       {/* ── Morphology side panel ────────────────────────────────────────── */}
       {panelOpen && (
-        <div className="w-72 border-l border-[var(--border)] flex flex-col shrink-0">
-          <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border)]">
-            <h2 className="text-sm font-semibold text-stone-700 dark:text-stone-300">Word Analysis</h2>
-            <button
-              onClick={() => setPanelOpen(false)}
-              className="text-stone-400 hover:text-stone-600 dark:hover:text-stone-200 text-lg leading-none"
-              aria-label="Close"
-            >×</button>
+        <ResizablePane storageKey="pane-morphology-width" defaultWidth={288} minWidth={200} maxWidth={700}>
+          <div className="flex flex-col h-full">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border)] shrink-0">
+              <h2 className="text-sm font-semibold text-stone-700 dark:text-stone-300">Word Analysis</h2>
+              <button
+                onClick={() => setPanelOpen(false)}
+                className="text-stone-400 hover:text-stone-600 dark:hover:text-stone-200 text-lg leading-none"
+                aria-label="Close"
+              >×</button>
+            </div>
+            <div className="flex-1 overflow-y-auto">
+              <MorphologyPanel word={selectedWord} useLinguisticTerms={useLinguisticTerms} />
+            </div>
           </div>
-          <div className="flex-1 overflow-y-auto">
-            <MorphologyPanel word={selectedWord} useLinguisticTerms={useLinguisticTerms} />
-          </div>
-        </div>
+        </ResizablePane>
       )}
 
       {/* Clear annotations dialog */}

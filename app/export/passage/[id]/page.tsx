@@ -16,6 +16,8 @@ import {
   getChapterClauseRelationships,
   getChapterWordArrows,
   getChapterSceneBreaks,
+  getChapterLineAnnotations,
+  getChapterRstRelations,
 } from "@/lib/db/queries";
 import type { TranslationVerse } from "@/lib/db/schema";
 import type { TextSource } from "@/lib/morphology/types";
@@ -70,6 +72,8 @@ export default async function ExportPassagePage({ params }: PageProps) {
           getChapterSceneBreaks(osisBook, ch),
           getChapterClauseRelationships(osisBook, ch, textSource),
           getChapterWordArrows(osisBook, ch, textSource),
+          getChapterLineAnnotations(osisBook, ch, textSource),
+          getChapterRstRelations(osisBook, ch, textSource),
         ])
       )
     ),
@@ -86,6 +90,8 @@ export default async function ExportPassagePage({ params }: PageProps) {
   const sceneBreaks         = perChapterResults.flatMap(([,,,,,, sb]) => sb);
   const clauseRelationships = perChapterResults.flatMap(([,,,,,,, cr]) => cr);
   const wordArrows          = perChapterResults.flatMap(([,,,,,,,, wa]) => wa);
+  const lineAnnotations     = perChapterResults.flatMap(([,,,,,,,,, la]) => la);
+  const rstRelations        = perChapterResults.flatMap(([,,,,,,,,,, rr]) => rr);
 
   // Translation verses for all covered chapters
   const translationVerseData: Record<number, TranslationVerse[]> = {};
@@ -108,6 +114,22 @@ export default async function ExportPassagePage({ params }: PageProps) {
   const filename = `passage-${id}`;
   const revealHref = `/api/export/reveal?passageId=${id}`;
 
+  // Build note keys: passage-level, then per-chapter, then per-verse (ordered).
+  const verseRefsSorted = [...new Set(words.map((w) => `${w.chapter}:${w.verse}`))]
+    .sort((a, b) => {
+      const [ac, av] = a.split(":").map(Number);
+      const [bc, bv] = b.split(":").map(Number);
+      return ac !== bc ? ac - bc : av - bv;
+    });
+  const noteContext = {
+    title: passageLabel,
+    keys: [
+      `passage:${id}`,
+      ...chapterRange.map((ch) => `chapter:${osisBook}.${ch}`),
+      ...verseRefsSorted.map((ref) => { const [ch, v] = ref.split(":"); return `verse:${osisBook}.${ch}.${v}`; }),
+    ],
+  };
+
   return (
     <div style={{ backgroundColor: "var(--background)", minHeight: "100vh" }}>
       {/* Print header — visible only in print */}
@@ -118,7 +140,7 @@ export default async function ExportPassagePage({ params }: PageProps) {
         <p style={{ fontSize: "0.75rem", color: "#78716c" }}>Structura · {textSource}</p>
       </div>
 
-      <ExportLayout revealHref={revealHref} filename={filename}>
+      <ExportLayout revealHref={revealHref} filename={filename} noteContext={noteContext}>
         <div className="px-6 pt-4 pb-2 print:hidden" style={{ borderBottom: "1px solid var(--border)" }}>
           <h1
             style={{
@@ -153,6 +175,8 @@ export default async function ExportPassagePage({ params }: PageProps) {
           translationVerseData={translationVerseData}
           clauseRelationships={clauseRelationships}
           wordArrows={wordArrows}
+          lineAnnotations={lineAnnotations}
+          rstRelations={rstRelations}
         />
       </ExportLayout>
     </div>

@@ -141,6 +141,76 @@ body {
   margin-top: 2px;
 }
 
+/* ── Lexicon font helpers ─────────────────────────────────────────────────── */
+/*
+ * Narrow font-only classes for the LexiconPane.  Unlike .text-hebrew/.text-greek
+ * these do NOT set font-size or line-height, so they compose cleanly with
+ * Tailwind sizing utilities.
+ */
+.lexicon-hebrew {
+  font-family: "Ezra SIL", "SBL Hebrew", serif;
+  direction: rtl;
+  unicode-bidi: embed;
+}
+.lexicon-greek {
+  font-family: "Gentium Plus", serif;
+}
+
+/* ── BDB lexicon HTML content ─────────────────────────────────────────────── */
+/*
+ * DictBDB.json uses non-standard HTML elements (<heb>, <ref0>, <font>) along
+ * with standard markup.  These rules make them render correctly in both themes.
+ */
+.bdb-entry {
+  font-size: 0.8rem;
+  line-height: 1.7;
+  color: var(--foreground);
+}
+.bdb-entry p   { margin: 0.35em 0; }
+.bdb-entry div { margin: 0; }
+.bdb-entry b   { font-weight: 600; }
+.bdb-entry i   { font-style: italic; }
+
+/* <heb> — inline Hebrew text; Ezra SIL, RTL.
+ * Use * to cover all descendants regardless of nesting (<ref0>, <font>, etc.) */
+.bdb-entry heb,
+.bdb-entry heb * {
+  font-family: "Ezra SIL", "SBL Hebrew", serif !important;
+  direction: rtl;
+  display: inline;
+  unicode-bidi: embed;
+  font-size: 1.15em;
+  line-height: 1.4;
+}
+
+/* <sub> used for occurrence counts */
+.bdb-entry sub {
+  font-size: 0.7em;
+  vertical-align: sub;
+  line-height: 0;
+  color: var(--text-muted);
+}
+
+/* <ref0> cross-reference spans — show inline, muted */
+.bdb-entry ref0 {
+  display: inline;
+  color: var(--text-muted);
+}
+
+/* Scripture links — neutralise bible:// href (won't navigate; style as subtle) */
+.bdb-entry a {
+  color: var(--accent);
+  text-decoration: none;
+}
+.bdb-entry a:hover {
+  text-decoration: underline;
+}
+
+/* Dark mode adjustments */
+.dark .bdb-entry {
+  color: var(--foreground);
+}
+
 /* ── Tiptap note editor ────────────────────────────────────────────────────── */
 .note-editor {
   font-size: 0.8125rem; /* 13px */
