@@ -1,5 +1,8 @@
 @import "tailwindcss";
 
+/* Make Tailwind dark: utilities respond to the .dark class, not just the OS media query */
+@variant dark (&:is(.dark *));
+
 /* Brand palette derived from the Structura logo:
    Navy  #1f2f3f  — structural lines, headings, nav background
    Gold  #c89b3c  — subtitle, accent, hover states                */
@@ -134,7 +137,6 @@ body {
 
 .word-interlinear .word-parse {
   letter-spacing: 0;
-  text-transform: uppercase;
   line-height: 1.2;
   margin-top: 2px;
 }

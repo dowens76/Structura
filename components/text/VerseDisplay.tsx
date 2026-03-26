@@ -11,8 +11,8 @@ const HANG_PX = 32;
 
 /** Split a translation token into leading punctuation, core word text, and trailing
  *  punctuation so that only the core is wrapped in the styled/clickable span. */
-const LEADING_PUNCT = /^["""''\u2018\u2019\u201C\u201D.,:;?·\u00B7]+/;
-const TRAILING_PUNCT = /["""''\u2018\u2019\u201C\u201D.,:;?·\u00B7]+$/;
+const LEADING_PUNCT = /^["""''\u2018\u2019\u201C\u201D.,:;?·\u00B7\u2014]+/;
+const TRAILING_PUNCT = /["""''\u2018\u2019\u201C\u201D.,:;?·\u00B7\u2014]+$/;
 function splitTokenPunctuation(token: string): { leading: string; core: string; trailing: string } {
   const leading = token.match(LEADING_PUNCT)?.[0] ?? "";
   const rest = token.slice(leading.length);
@@ -95,6 +95,7 @@ interface VerseDisplayProps {
   onUpdateSceneHeading?: (wordId: string, level: number, heading: string) => void;
   onUpdateSceneOutOfSequence?: (wordId: string, level: number, outOfSequence: boolean) => void;
   onUpdateSceneExtendedThrough?: (wordId: string, level: number, extendedThrough: number | null) => void;
+  onChangeSceneBreakLevel?: (wordId: string, fromLevel: number, toLevel: number, verse: number) => void;
   // Precomputed verse ranges: key = `${wordId}:${level}` → { endChapter, endVerse }
   sectionRanges?: Map<string, { endChapter: number; endVerse: number }>;
   // Line annotations
@@ -112,6 +113,9 @@ interface VerseDisplayProps {
   showAnnotationCol?: boolean;
   /** Called when the user clicks a verse-number label; used to scroll the notes pane */
   onVerseClick?: (verseNum: number) => void;
+  /** Extra gap (px) inserted between the verse-label column and the source-text column
+   *  so that RST tree arrows don't overlap the verse number. */
+  rstSourcePad?: number;
 }
 
 // ── Annotation sub-components ────────────────────────────────────────────────
@@ -663,6 +667,7 @@ export default function VerseDisplay({
   onUpdateSceneHeading,
   onUpdateSceneOutOfSequence,
   onUpdateSceneExtendedThrough,
+  onChangeSceneBreakLevel,
   sectionRanges,
   annotationsBySegment,
   themeColorsByLabel,
@@ -677,6 +682,7 @@ export default function VerseDisplay({
   onExpandAnnotationRange,
   showAnnotationCol = false,
   onVerseClick,
+  rstSourcePad = 0,
 }: VerseDisplayProps) {
   const firstWordId = words[0]?.wordId;
   const verseStartsNewParagraph = firstWordId ? paragraphBreakIds.has(firstWordId) : false;
@@ -710,6 +716,14 @@ export default function VerseDisplay({
     ? (wordSpeechMap.get(crossLastWord.wordId) ?? null) : null;
   const speechContinuesIntoNext =
     !!(crossNextSec && crossLastSec2 && crossNextSec.id === crossLastSec2.id);
+
+  // Annotation box: suppress inter-verse spacing when an annotation spans the verse boundary.
+  const firstSegWordId = sourceSegments[0]?.[0]?.wordId ?? null;
+  const lastSegWordId  = sourceSegments[sourceSegments.length - 1]?.[0]?.wordId ?? null;
+  const annotContinuesFromPrev = !!(firstSegWordId &&
+    (annotationsBySegment?.get(firstSegWordId) ?? []).some(e => !e.isStart));
+  const annotContinuesIntoNext = !!(lastSegWordId &&
+    (annotationsBySegment?.get(lastSegWordId) ?? []).some(e => !e.isEnd));
 
 
   // ── Speech box helpers ──────────────────────────────────────────────────
@@ -747,10 +761,14 @@ export default function VerseDisplay({
     isSegEnd: boolean
   ): React.CSSProperties {
     if (!segSpeaker) return {};
+    const side = `3px solid ${segSpeaker.color}`;
+    const edge = `1.5px solid ${segSpeaker.color}`;
     return {
       backgroundColor: `${segSpeaker.color}0C`,
-      borderLeft:   isHebrew ? "none"                          : `3px solid ${segSpeaker.color}`,
-      borderRight:  isHebrew ? `3px solid ${segSpeaker.color}` : "none",
+      borderLeft:   isHebrew ? "none" : side,
+      borderRight:  isHebrew ? side   : "none",
+      borderTop:    isSegStart ? edge : "none",
+      borderBottom: isSegEnd   ? edge : "none",
       paddingLeft:  isHebrew ? "0.5rem"   : "0.75rem",
       paddingRight: isHebrew ? "0.75rem"  : "0.5rem",
       marginLeft:   isHebrew ? 0          : "-0.75rem",
@@ -879,6 +897,7 @@ export default function VerseDisplay({
                 <div className="flex items-center gap-1.5">
                   <span className="text-[10px] text-stone-400 dark:text-stone-500 shrink-0 w-10">L{br.level}:</span>
                   <input
+                    id={`scene-heading-${wordId}-${br.level}`}
                     key={`${wordId}-${br.level}`}
                     className="flex-1 min-w-0 text-xs font-semibold uppercase tracking-widest text-stone-500 dark:text-stone-400 bg-transparent border-none outline-none focus:ring-0 px-0 placeholder:text-stone-300 dark:placeholder:text-stone-600"
                     defaultValue={br.heading ?? ""}
@@ -920,6 +939,25 @@ export default function VerseDisplay({
                     />
                   </div>
                 )}
+                {/* Change level buttons — move this break to a different level */}
+                {([1, 2, 3, 4, 5, 6] as const).filter(l => l !== br.level && !existingLevels.has(l)).length > 0 && (
+                  <div className="flex items-center gap-1 ml-10">
+                    <span className="text-[10px] text-stone-400 dark:text-stone-500">Change level:</span>
+                    {([1, 2, 3, 4, 5, 6] as const)
+                      .filter(l => l !== br.level && !existingLevels.has(l))
+                      .map(l => (
+                        <button
+                          key={l}
+                          type="button"
+                          onClick={() => onChangeSceneBreakLevel?.(wordId, br.level, l, br.verse)}
+                          className="text-[10px] px-1.5 h-5 rounded font-semibold bg-stone-200 dark:bg-stone-700 text-stone-500 dark:text-stone-400 hover:bg-amber-200 dark:hover:bg-amber-800/50 transition-colors"
+                          title={`Change this break from level ${br.level} to level ${l}`}
+                        >
+                          {l}
+                        </button>
+                      ))}
+                  </div>
+                )}
               </div>
             ) : (br.heading || br.outOfSequence) ? (
               <div className="flex items-center gap-1.5 pb-0.5 select-none">
@@ -944,7 +982,7 @@ export default function VerseDisplay({
           </div>
         ))}
 
-        {/* Add new level UI — only shown in editing mode, only if fewer than 6 levels present */}
+        {/* Add level row — shown in editing mode when fewer than 6 levels present */}
         {editingScenes && missingLevels.length > 0 && (
           <div className="flex items-center gap-1 mt-1.5">
             <span className="text-[10px] text-stone-400 dark:text-stone-500">Add level:</span>
@@ -1031,13 +1069,28 @@ export default function VerseDisplay({
   // scene break → solid HR + heading; regular paragraph break → dashed line.
   function renderSegSeparator(wordId: string): React.ReactNode {
     if ((sceneBreakMap.get(wordId)?.length ?? 0) > 0) return renderSceneSeparator(wordId);
+    if (editingParagraphs) {
+      const breakWord = words.find((w) => w.wordId === wordId);
+      return (
+        <div className="relative flex items-center mb-2">
+          <div className="flex-1 border-t border-dashed border-amber-400" />
+          {breakWord && (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onSelectWord(breakWord); }}
+              title="Remove paragraph break"
+              className="mx-1 flex items-center justify-center w-4 h-4 rounded-full bg-amber-400 text-white text-[11px] leading-none hover:bg-amber-500 shrink-0"
+            >
+              ×
+            </button>
+          )}
+          <div className="flex-1 border-t border-dashed border-amber-400" />
+        </div>
+      );
+    }
     return (
       <div
-        className={`w-full border-t border-dashed mb-2 ${
-          editingParagraphs
-            ? "border-amber-400"
-            : "border-stone-300 dark:border-stone-600"
-        }`}
+        className="w-full border-t border-dashed mb-2 border-stone-300 dark:border-stone-600"
         aria-hidden="true"
       />
     );
@@ -1199,7 +1252,7 @@ export default function VerseDisplay({
   // ── Single-column layout (no translation) ──────────────────────────────
   if (translationTexts.length === 0) {
     return (
-      <div className={`${verseStartsNewParagraph ? "mt-5" : ""} ${speechContinuesIntoNext ? "" : "mb-4"}`}>
+      <div className={`${verseStartsNewParagraph ? "mt-5" : ""} ${(speechContinuesIntoNext || annotContinuesIntoNext) ? "" : "mb-4"}`}>
         {verseStartsNewParagraph && firstWordId && renderSegSeparator(firstWordId)}
         {sourceSegments.map((seg, si) => {
           const { segSpeech, segSpeaker, isSegStart, isSegEnd } = getSegSpeech(seg, si);
@@ -1270,24 +1323,33 @@ export default function VerseDisplay({
             </span>
           );
 
+          // Suppress the dashed separator (and its margin) when this segment is a
+          // continuation of the same speech box or annotation — no gap inside the box.
+          const suppressSeparator = !editingParagraphs && (
+            (!isSegStart && !!segSpeaker) ||
+            (annotationsBySegment?.get(seg[0].wordId) ?? []).some(e => !e.isStart)
+          );
+
           return (
             // data-rst-seg is used by RstRelationOverlay to measure segment position
             <div key={si} data-rst-seg={seg[0].wordId}>
-              {/* Scene break on a within-verse paragraph segment */}
-              {si > 0 && (sceneBreakMap.get(seg[0].wordId)?.length ?? 0) > 0 && renderSceneSeparator(seg[0].wordId)}
+              {/* Separator (scene or regular paragraph break) on a within-verse segment */}
+              {si > 0 && !suppressSeparator && renderSegSeparator(seg[0].wordId)}
               {/* Flex wrapper so the annotation column can sit to the right of the text grid */}
               <div className="flex items-stretch">
                 <div className="flex-1 min-w-0">
-                  {/* 2-column grid. Hebrew (RTL): source first → rightmost; label second → leftmost.
-                      Greek (LTR): label first → leftmost; source second → rightmost. */}
+                  {/* 2-column grid: label first, source second. For Hebrew (RTL) dir="rtl"
+                      reverses visual column order so label appears on the RIGHT.
+                      rstSourcePad adds a gap between the label and source columns so
+                      RST tree arrows don't overlap the verse number. */}
                   <div
-                    style={{ gridTemplateColumns: isHebrew ? "1fr auto" : "auto 1fr", ...segBoxStyle(segSpeaker, isSegStart, isSegEnd) }}
-                    className={`grid items-start${editingSpeech ? " cursor-crosshair" : ""}${editingAnnotations ? " cursor-pointer" : ""}${si > 0 ? " mt-1" : ""}`}
+                    style={{ gridTemplateColumns: "auto 1fr", columnGap: rstSourcePad || undefined, ...segBoxStyle(segSpeaker, isSegStart, isSegEnd) }}
+                    className={`grid items-start${editingSpeech ? " cursor-crosshair" : ""}${editingAnnotations ? " cursor-pointer" : ""}${si > 0 && !suppressSeparator ? " mt-1" : ""}`}
                     dir={isHebrew ? "rtl" : "ltr"}
                   >
                     {renderDeleteBtn(segSpeaker, segSpeech, isSegStart)}
-                    {isHebrew ? segSourceEl : segLabelEl}
-                    {isHebrew ? segLabelEl  : segSourceEl}
+                    {segLabelEl}
+                    {segSourceEl}
                   </div>
                 </div>
                 {renderAnnotationColForSeg(seg[0].wordId)}
@@ -1307,7 +1369,11 @@ export default function VerseDisplay({
   type TvSeg = { startIdx: number; tokens: string[] };
 
   const allTvSegs = translationTexts.map(({ abbr, text }) => {
-    const tokens = text.split(/\s+/).filter(Boolean);
+    // Split on whitespace first, then split each token after any mid-word em-dash
+    // so "bread—purifying" → ["bread—", "purifying"] rather than one joined token.
+    const tokens = text.split(/\s+/).filter(Boolean).flatMap(t =>
+      t.split(/(?<=\u2014)(?=.)/)
+    );
     const segs: TvSeg[] = [];
     let cur: string[] = [];
     let curStart = 0;
@@ -1326,10 +1392,10 @@ export default function VerseDisplay({
   return (
     <div
       className={`${
-        speechContinuesIntoNext ? "" : "border-b border-[var(--border)]"
-      } ${speechContinuesFromPrev ? "pt-0" : "pt-4"} ${
-        speechContinuesIntoNext ? "pb-0" : "pb-4"
-      } last:border-0${verseStartsNewParagraph && !speechContinuesFromPrev ? " mt-4" : ""}`}
+        (speechContinuesIntoNext || annotContinuesIntoNext) ? "" : "border-b border-[var(--border)]"
+      } ${(speechContinuesFromPrev || annotContinuesFromPrev) ? "pt-0" : "pt-4"} ${
+        (speechContinuesIntoNext || annotContinuesIntoNext) ? "pb-0" : "pb-4"
+      } last:border-0${verseStartsNewParagraph && !(speechContinuesFromPrev || annotContinuesFromPrev) ? " mt-4" : ""}`}
     >
       {verseStartsNewParagraph && firstWordId && renderSegSeparator(firstWordId)}
 
@@ -1391,14 +1457,22 @@ export default function VerseDisplay({
           return (
             <div key={abbr}>
               {tvStartsNewParagraph && (
-                <div
-                  className={`w-full border-t border-dashed mb-1 ${
-                    editingParagraphs
-                      ? "border-amber-400"
-                      : "border-stone-300 dark:border-stone-600"
-                  }`}
-                  aria-hidden="true"
-                />
+                editingParagraphs ? (
+                  <div className="relative flex items-center mb-1">
+                    <div className="flex-1 border-t border-dashed border-amber-400" />
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); onToggleTranslationParagraphBreak(`tv:${abbr}:${book}.${chapter}.${verseNum}.0`, abbr); }}
+                      title="Remove paragraph break"
+                      className="mx-1 flex items-center justify-center w-4 h-4 rounded-full bg-amber-400 text-white text-[11px] leading-none hover:bg-amber-500 shrink-0"
+                    >
+                      ×
+                    </button>
+                    <div className="flex-1 border-t border-dashed border-amber-400" />
+                  </div>
+                ) : (
+                  <div className="w-full border-t border-dashed mb-1 border-stone-300 dark:border-stone-600" aria-hidden="true" />
+                )
               )}
               {/* Abbreviation label: only on row 0, only when multiple translations */}
               {translationTexts.length > 1 && si === 0 && (
@@ -1523,12 +1597,20 @@ export default function VerseDisplay({
                           {(isMidVerseBreak || isInterSegBreak) && (
                             <>
                               <br />
-                              <span
-                                className={`text-xs select-none font-mono mr-1 ${pilcrowClass}`}
-                                aria-hidden="true"
-                              >
-                                ¶
-                              </span>
+                              {editingParagraphs ? (
+                                <button
+                                  type="button"
+                                  onClick={(e) => { e.stopPropagation(); onToggleTranslationParagraphBreak(wordId, abbr); }}
+                                  title="Remove paragraph break"
+                                  className="text-xs font-mono mr-1 text-amber-500 hover:text-amber-600 cursor-pointer"
+                                >
+                                  ¶×
+                                </button>
+                              ) : (
+                                <span className={`text-xs select-none font-mono mr-1 ${pilcrowClass}`} aria-hidden="true">
+                                  ¶
+                                </span>
+                              )}
                             </>
                           )}
                           {tokLead}
@@ -1556,11 +1638,17 @@ export default function VerseDisplay({
           ? "calc(0.75 * var(--hebrew-font-size, 1.375rem))"
           : "calc(0.625 * var(--greek-font-size, 1.25rem))";
 
+        // Suppress the dashed separator when this segment continues the same speech box or annotation.
+        const suppressSeparator = !editingParagraphs && (
+          (!isSegStart && !!segSpeaker) ||
+          (annotationsBySegment?.get(seg[0].wordId) ?? []).some(e => !e.isStart)
+        );
+
         return (
           // data-rst-seg is used by RstRelationOverlay to measure segment position
           <div key={si} data-rst-seg={seg[0].wordId}>
-            {/* Scene break on a within-verse paragraph segment */}
-            {si > 0 && (sceneBreakMap.get(seg[0].wordId)?.length ?? 0) > 0 && renderSceneSeparator(seg[0].wordId)}
+            {/* Separator (scene or regular paragraph break) on a within-verse segment */}
+            {si > 0 && !suppressSeparator && renderSegSeparator(seg[0].wordId)}
             {/* Flex wrapper so the annotation column can sit to the right of the text grid */}
             <div className="flex items-stretch">
               <div className="flex-1 min-w-0">
@@ -1583,12 +1671,16 @@ export default function VerseDisplay({
                   {!hideSourceText && (
                     <div
                       dir={isHebrew ? "rtl" : "ltr"}
+                      data-rst-src-block={seg[0].wordId}
                       style={{
                         // "Xpx hanging" indents continuation lines without negative positioning,
                         // so inline-flex interlinear chips on the first line are never displaced.
                         paddingLeft:  !isHebrew && indentLevel > 0 ? `${indentLevel * 2}rem` : undefined,
                         paddingRight: isHebrew  && indentLevel > 0 ? `${indentLevel * 2}rem` : undefined,
                         textIndent:   `${HANG_PX}px hanging` as React.CSSProperties["textIndent"],
+                        // Hebrew 3-col: pull source block's right edge leftward so RST arrows
+                        // (anchored from srcCellRightX) don't overlap the centre label column.
+                        marginRight:  isHebrew && rstSourcePad ? rstSourcePad : undefined,
                       }}
                     >
                       <span
@@ -1668,7 +1760,13 @@ export default function VerseDisplay({
                   <div
                     className="flex flex-col gap-1"
                     data-seg-translation={seg[0].wordId}
-                    style={{ paddingTop: "4px" }}
+                    style={{
+                      paddingTop: "4px",
+                      // Push translation text rightward so the RST mirror tree
+                      // (which extends left from transLeftX) doesn't overlap the
+                      // centre label column.
+                      marginLeft: rstSourcePad || undefined,
+                    }}
                   >
                     {tvRowContent}
                   </div>

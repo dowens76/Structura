@@ -38,9 +38,9 @@ interface WordTokenProps {
 /** Split surface text into leading punctuation, core word, and trailing punctuation.
  *  Punctuation placed outside the styled/clickable span so it is never visually
  *  included in character or word-tag selection indicators. */
-const PUNCT_RE = /["""''\u2018\u2019\u201C\u201D.,:;?·\u00B7]/;
-const LEADING_PUNCT = /^["""''\u2018\u2019\u201C\u201D.,:;?·\u00B7]+/;
-const TRAILING_PUNCT = /["""''\u2018\u2019\u201C\u201D.,:;?·\u00B7]+$/;
+const PUNCT_RE = /["""''\u2018\u2019\u201C\u201D.,:;?·\u00B7\u2014]/;
+const LEADING_PUNCT = /^["""''\u2018\u2019\u201C\u201D.,:;?·\u00B7\u2014]+/;
+const TRAILING_PUNCT = /["""''\u2018\u2019\u201C\u201D.,:;?·\u00B7\u2014]+$/;
 
 function splitPunctuation(text: string): { leading: string; core: string; trailing: string } {
   const leading = text.match(LEADING_PUNCT)?.[0] ?? "";
@@ -58,8 +58,10 @@ function getInterlinearLabel(word: Word): string {
       : null;
     return lemma ?? word.lemma ?? "—";
   }
-  // Greek (SBLGNT/MorphGNT): word.lemma already contains the Greek lemma text
-  return word.lemma ?? word.partOfSpeech?.slice(0, 4) ?? "—";
+  // Greek (SBLGNT/MorphGNT): word.lemma already contains the Greek lemma text.
+  // Lower-case to normalise sentence-start capitalisation (e.g. "Ἐν" → "ἐν").
+  const label = word.lemma ?? word.partOfSpeech?.slice(0, 4) ?? "—";
+  return label.toLowerCase();
 }
 
 export default function WordToken({

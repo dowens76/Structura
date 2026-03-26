@@ -1480,6 +1480,56 @@ export default function PassageView({
     } catch { /* non-critical */ }
   }
 
+  async function handleChangeSceneBreakLevel(wordId: string, fromLevel: number, toLevel: number, verse: number) {
+    const existing = sceneBreakMap.get(wordId)?.find(b => b.level === fromLevel);
+    if (!existing) return;
+    const wordChapter = wordToChapter.get(wordId) ?? passage.startChapter;
+    setSceneBreakMap((prev) => {
+      const next = new Map(prev);
+      const arr = (prev.get(wordId) ?? [])
+        .filter(b => b.level !== fromLevel)
+        .concat({ ...existing, level: toLevel });
+      arr.sort((a, b) => a.level - b.level);
+      next.set(wordId, arr);
+      return next;
+    });
+    try {
+      await fetch("/api/scene-breaks", { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ wordId, book: bookName, chapter: wordChapter, verse, source: textSource, level: fromLevel }) });
+      await fetch("/api/scene-breaks", { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ wordId, book: bookName, chapter: wordChapter, verse, source: textSource, level: toLevel }) });
+      if (existing.heading) {
+        await fetch("/api/scene-breaks", { method: "PATCH", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ wordId, level: toLevel, heading: existing.heading }) });
+      }
+    } catch {
+      setSceneBreakMap((prev) => {
+        const next = new Map(prev);
+        const arr = (prev.get(wordId) ?? [])
+          .filter(b => b.level !== toLevel)
+          .concat(existing);
+        arr.sort((a, b) => a.level - b.level);
+        next.set(wordId, arr);
+        return next;
+      });
+    }
+  }
+
+  function handleExitSceneEditing() {
+    const emptyBreaks: { wordId: string; level: number; verse: number }[] = [];
+    for (const [wordId, breaks] of sceneBreakMap) {
+      for (const br of breaks) {
+        const inputEl = document.getElementById(`scene-heading-${wordId}-${br.level}`) as HTMLInputElement | null;
+        const currentValue = inputEl ? inputEl.value.trim() : (br.heading?.trim() ?? "");
+        if (!currentValue) emptyBreaks.push({ wordId, level: br.level, verse: br.verse });
+      }
+    }
+    setEditingScenes(false);
+    for (const { wordId, level, verse } of emptyBreaks) {
+      handleToggleSceneBreak(wordId, level, verse);
+    }
+  }
+
   async function handleUpdateSceneExtendedThrough(wordId: string, level: number, extendedThrough: number | null) {
     setSceneBreakMap((prev) => {
       const next = new Map(prev);
@@ -1738,6 +1788,7 @@ export default function PassageView({
           relations={rstRelations}
           containerRef={overlayContainerRef}
           isHebrew={isHebrew}
+          hasTranslation={hasActiveTranslations}
           editing={editingRst}
           paragraphFirstWordIds={paragraphFirstWordIds}
           selectedNucleusWordId={rstSegA}
@@ -1908,7 +1959,7 @@ export default function PassageView({
 
           {/* Scene / episode break mode */}
           <button
-            onClick={() => setEditingScenes((v) => !v)}
+            onClick={() => editingScenes ? handleExitSceneEditing() : setEditingScenes(true)}
             title={editingScenes
               ? "Exit section break mode"
               : "Enter section break mode — click any word to start/remove a section break there"}
@@ -2502,6 +2553,7 @@ export default function PassageView({
                     onUpdateSceneHeading={handleUpdateSceneHeading}
                     onUpdateSceneOutOfSequence={handleUpdateSceneOutOfSequence}
                     onUpdateSceneExtendedThrough={handleUpdateSceneExtendedThrough}
+                    onChangeSceneBreakLevel={handleChangeSceneBreakLevel}
                     sectionRanges={sectionRanges}
                     annotationsBySegment={annotationsBySegment}
                     themeColorsByLabel={themeColorsByLabel}

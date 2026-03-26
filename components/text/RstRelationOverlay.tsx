@@ -1,207 +1,362 @@
 "use client";
 
 import { useLayoutEffect, useRef, useState, useCallback, RefObject } from "react";
+import { hierarchy } from "d3-hierarchy";
 import type { RstRelation } from "@/lib/db/schema";
-import { RELATIONSHIP_MAP, buildRelationshipMap, type RstTypeEntry } from "@/lib/morphology/clauseRelationships";
+import {
+  RELATIONSHIP_MAP,
+  buildRelationshipMap,
+  type RstTypeEntry,
+} from "@/lib/morphology/clauseRelationships";
+import { buildRstTree } from "@/lib/rst/buildRstTree";
 
 // ── Layout constants ──────────────────────────────────────────────────────────
-const HANG_PX     = 32;  // must match VerseDisplay HANG_PX
-const SIDE_OFFSET = 6;   // px outside the segment text-start edge for the vertical RST line
+const HANG_PX      = 32;  // must match VerseDisplay HANG_PX
+const LEVEL_WIDTH  = 18;  // px per nesting depth level
+
+/**
+ * LTR texts: extra left padding added to the container so the tree has room.
+ * The padding is applied imperatively to containerRef when !isHebrew.
+ */
+const LTR_GUTTER   = 72;  // px left padding for LTR view
+
+/**
+ * LTR/translation leaf nodes sit this many px to the left of each segment's
+ * own text-start position.  Groups step further left by LEVEL_WIDTH each level.
+ */
+const LEAF_MARGIN  = 8;   // px left of each segment's leftX for leaf nodes
+
+// TRANS_GUTTER and HEB_ANCHOR removed — all trees use LEAF_MARGIN.
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 interface SegPos {
-  top: number;         // content-relative top Y (px)
-  bottom: number;      // content-relative bottom Y (px)
-  leftX: number;       // left edge of source text span (px from container left)
-  rightX: number;      // right edge of source text span (px from container left)
-  transLeftX?: number; // left edge of translation div, if visible
+  top: number;
+  bottom: number;
+  leftX: number;
+  rightX: number;
+  transLeftX?: number;
+  /** Right edge of the source grid-cell div (3-col layout only). Used to anchor
+   *  the source tree from the column boundary rather than from the inline text span. */
+  srcCellRightX?: number;
 }
 
-/** One "rendered group" — all geometry calculated for a single groupId. */
-interface GroupGeom {
-  groupId: string;
+interface LayoutNode {
+  id: string;
+  type: "group" | "segment";
+  x: number;
+  y: number;
+  relType?: string;
+  role?: string;
+  /** true = this node belongs to the translation-column mirror tree */
+  isTrans?: boolean;
+}
+
+interface LayoutLink {
+  parentId: string;
+  childId: string;
+  x1: number; y1: number;
+  x2: number; y2: number;
   relType: string;
-  category: "coordinate" | "subordinate";
-  lineX: number;       // absolute SVG x of the source vertical line
-  transLineX?: number; // absolute SVG x of the translation mirror line (if visible)
-  topY: number;        // top of line (center Y of first member)
-  bottomY: number;     // bottom of line (center Y of last member)
-  /** Between-member labels: [{y, text, color}] */
-  labels: { y: number; text: string; color: string }[];
-  /** Members sorted by Y for rendering dots and bracket ticks */
-  members: { segWordId: string; role: string; y: number; lineX: number; segTop: number; segBottom: number; textStartX: number }[];
-  /** Center-Y of each satellite segment (subordinate only) — for branch arrows */
-  satelliteYs: number[];
+  role: string;
+  isTrans?: boolean;
 }
 
 export interface Props {
   relations: RstRelation[];
   containerRef: RefObject<HTMLDivElement | null>;
   isHebrew: boolean;
+  /** True when a translation column is visible (3-col layout). Controls whether
+   *  the source tree mirrors toward the centre label rather than using a left gutter. */
+  hasTranslation: boolean;
   editing: boolean;
   paragraphFirstWordIds: string[];
   selectedNucleusWordId: string | null;
   selectedSatelliteWordId: string | null;
-  editingGroupId?: string | null;      // group whose label chip is being edited (highlighted)
+  editingGroupId?: string | null;
   onSelectSegment: (wordId: string) => void;
   onDeleteGroup: (groupId: string) => void;
-  onEditGroup?: (groupId: string) => void; // click chip body → change relation type
-  /** Custom user-defined RST types to merge with the built-in map */
+  onEditGroup?: (groupId: string) => void;
+  /** Called when the user clicks the connector dot on an existing group chip,
+   *  selecting that group (by its groupId) as an RST endpoint. */
+  onSelectGroup?: (groupId: string) => void;
   customTypes?: RstTypeEntry[];
 }
 
-// ── Position measurement ──────────────────────────────────────────────────────
+// ── DOM measurement ───────────────────────────────────────────────────────────
 
 function measureSegments(
   wordIds: string[],
-  container: HTMLElement
+  container: HTMLElement,
 ): Map<string, SegPos> {
   const cRect     = container.getBoundingClientRect();
   const scrollTop = container.scrollTop;
   const result    = new Map<string, SegPos>();
 
   for (const id of wordIds) {
-    // Outer div → top/bottom (full vertical extent of the segment row)
-    const outerEl = container.querySelector<HTMLElement>(`[data-rst-seg="${CSS.escape(id)}"]`);
+    const outerEl = container.querySelector<HTMLElement>(
+      `[data-rst-seg="${CSS.escape(id)}"]`,
+    );
     if (!outerEl) continue;
-    const outerR = outerEl.getBoundingClientRect();
 
-    // Source text span → leftX/rightX so lines anchor to text start
-    const textEl = container.querySelector<HTMLElement>(`[data-rst-text="${CSS.escape(id)}"]`) ?? outerEl;
-    const textR  = textEl.getBoundingClientRect();
+    // Y anchors to the source-text span so ticks land at the text line,
+    // not in the middle of a tall div that includes translation rows.
+    const textEl = container.querySelector<HTMLElement>(
+      `[data-rst-text="${CSS.escape(id)}"]`,
+    ) ?? outerEl;
+    const textR = textEl.getBoundingClientRect();
 
-    // Translation mirror: use the translation cell div's left edge directly.
-    // The cell div IS the translation column, so its left edge reliably reflects
-    // where the translation content begins (regardless of inner paragraph structure).
-    const transEl    = container.querySelector<HTMLElement>(`[data-seg-translation="${CSS.escape(id)}"]`);
-    const transLeftX = transEl ? transEl.getBoundingClientRect().left - cRect.left : undefined;
+    const transEl    = container.querySelector<HTMLElement>(
+      `[data-seg-translation="${CSS.escape(id)}"]`,
+    );
+    const transLeftX = transEl
+      ? transEl.getBoundingClientRect().left - cRect.left
+      : undefined;
+
+    // 3-col only: measure the source grid-cell div (blockified, stable column bounds).
+    const srcBlockEl = container.querySelector<HTMLElement>(
+      `[data-rst-src-block="${CSS.escape(id)}"]`,
+    );
+    const srcCellRightX = srcBlockEl
+      ? srcBlockEl.getBoundingClientRect().right - cRect.left
+      : undefined;
 
     result.set(id, {
-      top:    outerR.top    - cRect.top + scrollTop,
-      bottom: outerR.bottom - cRect.top + scrollTop,
-      leftX:  textR.left    - cRect.left,
-      rightX: textR.right   - cRect.left,
+      top:       textR.top    - cRect.top + scrollTop,
+      bottom:    textR.bottom - cRect.top + scrollTop,
+      leftX:     textR.left   - cRect.left,
+      rightX:    textR.right  - cRect.left,
       transLeftX,
+      srcCellRightX,
     });
   }
   return result;
 }
 
-// ── Geometry builder ──────────────────────────────────────────────────────────
+// ── d3-hierarchy layout ───────────────────────────────────────────────────────
 
-function buildGroupGeometries(
+/**
+ * Build a flat list of nodes + links from the d3 hierarchy, given a
+ * function that maps (depth) → x position.
+ *
+ * @param rootNode - output of buildRstTree
+ * @param yMap     - segWordId/groupId → centre Y (px)
+ * @param xFn      - depth → SVG x position
+ * @param isTrans  - tag all produced nodes/links as translation-side
+ */
+function flattenHierarchy(
+  rootNode: ReturnType<typeof buildRstTree>,
+  yMap: Map<string, number>,
+  xFn: (depth: number) => number,
+  isTrans: boolean,
+): { nodes: LayoutNode[]; links: LayoutLink[] } {
+  const hier = hierarchy(rootNode, n => n.children);
+
+  // Leaf-Y from yMap (already computed before calling this function)
+  // Group-Y = average of children (bottom-up)
+  hier.eachAfter(hNode => {
+    const d = hNode.data;
+    if (d.type === "root" || d.type === "group") {
+      const childYs = (hNode.children ?? [])
+        .map(ch => yMap.get(ch.data.id))
+        .filter((y): y is number => y !== undefined);
+      if (childYs.length)
+        yMap.set(d.id, childYs.reduce((a, b) => a + b, 0) / childYs.length);
+    }
+  });
+
+  const rawNodes: LayoutNode[] = [];
+  const links: LayoutLink[] = [];
+
+  hier.each(hNode => {
+    const d = hNode.data;
+    if (d.type === "root") return;
+
+    const y = yMap.get(d.id);
+    if (y === undefined) return; // skip unmeasured segments/groups
+
+    const x = xFn(hNode.depth);
+
+    rawNodes.push({
+      id:      d.id,
+      type:    d.type as "group" | "segment",
+      x, y,
+      relType: d.relType,
+      role:    d.role,
+      isTrans,
+    });
+
+    const parent = hNode.parent;
+    if (parent && parent.data.type !== "root") {
+      const parentY = yMap.get(parent.data.id);
+      if (parentY !== undefined) {
+        links.push({
+          parentId: parent.data.id,
+          childId:  d.id,
+          x1: xFn(parent.depth), y1: parentY,
+          x2: x,                 y2: y,
+          relType: parent.data.relType ?? "",
+          role:    d.role ?? "nucleus",
+          isTrans,
+        });
+      }
+    }
+  });
+
+  // Deduplicate nodes by id (same group can appear at multiple tree positions
+  // if nesting detection mis-fires; keep the first/shallowest occurrence).
+  const seenIds = new Set<string>();
+  const nodes: LayoutNode[] = [];
+  for (const n of rawNodes) {
+    if (!seenIds.has(n.id)) { seenIds.add(n.id); nodes.push(n); }
+  }
+
+  return { nodes, links };
+}
+
+function layoutTree(
   relations: RstRelation[],
+  paragraphFirstWordIds: string[],
   posMap: Map<string, SegPos>,
   isHebrew: boolean,
-  relMap: Record<string, { abbr: string; color: string; category: string }>
-): GroupGeom[] {
-  // Group relations by groupId
-  const byGroup = new Map<string, RstRelation[]>();
-  for (const r of relations) {
-    const arr = byGroup.get(r.groupId) ?? [];
-    arr.push(r);
-    byGroup.set(r.groupId, arr);
+  hasTranslationProp: boolean,
+): { nodes: LayoutNode[]; links: LayoutLink[] } {
+  const treeRoot = buildRstTree(relations, paragraphFirstWordIds);
+
+  // ── Pre-compute leaf Y values (shared between source + trans passes) ────────
+  const hierForLeaves = hierarchy(treeRoot, n => n.children);
+  const yMapSource   = new Map<string, number>();
+  const yMapTrans    = new Map<string, number>();
+
+  for (const hNode of hierForLeaves.leaves()) {
+    const d = hNode.data;
+    if (d.type !== "segment") continue;
+    const pos = posMap.get(d.id);
+    if (!pos) continue;
+    const cy = pos.top + (pos.bottom - pos.top) / 2;
+    yMapSource.set(d.id, cy);
+    if (pos.transLeftX !== undefined) yMapTrans.set(d.id, cy);
   }
 
-  const geoms: GroupGeom[] = [];
+  // ── Reference x values ──────────────────────────────────────────────────────
+  let refLeftX = Infinity;
+  for (const pos of posMap.values()) refLeftX = Math.min(refLeftX, pos.leftX);
+  if (!isFinite(refLeftX)) refLeftX = HANG_PX;
 
-  for (const [groupId, members] of byGroup) {
-    if (!members.length) continue;
-    const relType  = members[0].relType;
-    const relMeta  = RELATIONSHIP_MAP[relType];
-    const category = (relMeta?.category ?? "subordinate") as "coordinate" | "subordinate";
+  // Hebrew: anchor from the RIGHT edge of the text (start of RTL text).
+  let refRightX = -Infinity;
+  for (const pos of posMap.values()) refRightX = Math.max(refRightX, pos.rightX);
+  if (!isFinite(refRightX)) refRightX = refLeftX + HANG_PX;
 
-    // Resolve positions and sort by Y
-    const withPos = members
-      .map((m) => ({ ...m, pos: posMap.get(m.segWordId) }))
-      .filter((m): m is typeof m & { pos: SegPos } => m.pos !== undefined)
-      .sort((a, b) => a.pos.top - b.pos.top);
+  let refTransLeftX = Infinity;
+  for (const pos of posMap.values()) {
+    if (pos.transLeftX !== undefined)
+      refTransLeftX = Math.min(refTransLeftX, pos.transLeftX);
+  }
+  const hasTransMeasured = isFinite(refTransLeftX);
 
-    if (!withPos.length) continue;
+  // Stable right edge of the source grid cell (only set in the 3-col layout
+  // where data-rst-src-block is present on the source wrapper div).
+  let refSrcCellRightX = -Infinity;
+  for (const pos of posMap.values()) {
+    if (pos.srcCellRightX !== undefined)
+      refSrcCellRightX = Math.max(refSrcCellRightX, pos.srcCellRightX);
+  }
+  // Use 3-col right-edge anchoring only for Hebrew (RTL) with translation.
+  // LTR Greek uses the same left-gutter positioning as 2-col regardless of translation.
+  const use3Col = hasTranslationProp && isFinite(refSrcCellRightX) && isHebrew;
 
-    // Source line X: anchored to the LEFT edge of the source text column for both
-    // writing directions. This places the bracket line in the verse-label gutter
-    // (to the left of the source text column), which is always clear of text
-    // regardless of whether the first line is LTR or RTL.
-    //   HANG_PX offset keeps the line HANG_PX px clear of the text column's left
-    //   edge — enough to avoid overlap with the first (non-indented) line of text.
-    // Use the leftmost (smallest leftX) segment as the anchor so all members
-    // share one vertical line positioned at the outermost text start.
-    const refPos = withPos.reduce(
-      (best, m) => (m.pos.leftX < best.pos.leftX ? m : best),
-      withPos[0]
-    ).pos;
+  // Pre-compute max hierarchy depth.
+  const maxDepth = hierForLeaves.height; // 0 if only root; typically 2–4
 
-    const lineX = refPos.leftX - HANG_PX;
+  // ── x-position formulas ─────────────────────────────────────────────────────
+  //
+  // LTR (Greek, 2-col or 3-col): arrows on the LEFT of source text.
+  //   Leaf dots at pos.leftX − LEAF_MARGIN; groups step further left into gutter.
+  //
+  // Hebrew 2-col: arrows on the RIGHT of source text (start of RTL text).
+  //   Leaf dots at pos.rightX + LEAF_MARGIN; groups step further right (into label area).
+  //
+  // Hebrew 3-col: source tree anchors from RIGHT edge of source column toward centre.
+  //   Leaves at srcCellRightX + LEAF_MARGIN (just outside column boundary);
+  //   groups step further RIGHT into the centre label area.
+  //   Translation tree: leaves at transLeftX − LEAF_MARGIN; groups step LEFT.
+  //
+  // Elbow direction is implicit: x2 > x1 → right; x2 < x1 → left.
 
-    // Translation mirror line X: HANG_PX to the left of the translation column,
-    // landing inside the centre verse-label column which is always text-free.
-    const transMembers  = withPos.filter(m => m.pos.transLeftX !== undefined);
-    const minTransLeftX = transMembers.length > 0
-      ? Math.min(...transMembers.map(m => m.pos.transLeftX!))
-      : undefined;
-    const transLineX = minTransLeftX !== undefined
-      ? minTransLeftX - HANG_PX
-      : undefined;
+  const srcXFn = use3Col
+    ? (d: number) => (refSrcCellRightX + LEAF_MARGIN) + (maxDepth - d) * LEVEL_WIDTH
+    : isHebrew
+      ? (d: number) => (refRightX + LEAF_MARGIN) + (maxDepth - d) * LEVEL_WIDTH
+      : (d: number) => (refLeftX - LEAF_MARGIN) - (maxDepth - d) * LEVEL_WIDTH;
 
-    // Vertical line spans from the centre of the first member to the centre of
-    // the last member — anchoring exactly at the single tick point per segment.
-    const firstPos = withPos[0].pos;
-    const lastPos  = withPos[withPos.length - 1].pos;
-    const topY     = firstPos.top  + (firstPos.bottom  - firstPos.top)  / 2;
-    const bottomY  = lastPos.top   + (lastPos.bottom   - lastPos.top)   / 2;
+  const transXFn = (d: number) =>
+    (refTransLeftX - LEAF_MARGIN) - (maxDepth - d) * LEVEL_WIDTH;
 
-    // Labels between consecutive members.
-    // Clamp so the chip (16px tall) stays entirely within the inter-segment gap.
-    const CHIP_HALF = 8;
-    const CHIP_H    = CHIP_HALF * 2; // 16px total height
-    const labels: GroupGeom["labels"] = [];
-    for (let i = 0; i < withPos.length - 1; i++) {
-      const gapTop  = withPos[i].pos.bottom;
-      const gapBot  = withPos[i + 1].pos.top;
-      const gapMid  = (gapTop + gapBot) / 2;
-      // Clamp both edges: chip top ≥ gapTop, chip bottom ≤ gapBot.
-      // If the gap is narrower than the chip, center in the gap.
-      const minY = gapTop + CHIP_HALF;
-      const maxY = gapBot - CHIP_HALF;
-      const y = minY <= maxY ? Math.max(minY, Math.min(maxY, gapMid)) : gapMid;
-      labels.push({
-        y,
-        text:  relMeta?.abbr ?? relType.slice(0, 3),
-        color: relMeta?.color ?? "#6B7280",
-      });
+  // ── Build source tree ────────────────────────────────────────────────────────
+  const src = flattenHierarchy(treeRoot, yMapSource, srcXFn, false);
+
+  if (use3Col) {
+    // Hebrew 3-col: override leaf x to just outside the column-cell right boundary.
+    for (const node of src.nodes) {
+      if (node.type === "segment") {
+        const pos = posMap.get(node.id);
+        if (pos?.srcCellRightX !== undefined) node.x = pos.srcCellRightX + LEAF_MARGIN;
+      }
     }
-
-    // Post-pass: ensure consecutive chips never overlap each other.
-    // If two chips are too close (gap < chip height + 2px clearance), push the
-    // lower one down so they are separated by exactly chip height + 2px.
-    for (let i = 1; i < labels.length; i++) {
-      const minSep = labels[i - 1].y + CHIP_H + 2;
-      if (labels[i].y < minSep) labels[i] = { ...labels[i], y: minSep };
+    for (const link of src.links) {
+      const child = src.nodes.find(n => n.id === link.childId);
+      if (child?.type === "segment") link.x2 = child.x;
     }
-
-    const memberDots = withPos.map((m) => ({
-      segWordId:  m.segWordId,
-      role:       m.role,
-      y:          m.pos.top + (m.pos.bottom - m.pos.top) / 2,
-      lineX,
-      segTop:     m.pos.top,
-      segBottom:  m.pos.bottom,
-      textStartX: isHebrew ? m.pos.rightX : m.pos.leftX,
-    }));
-
-    // Satellite center Ys — for the branch arrows on subordinate relations
-    const satelliteYs = category === "subordinate"
-      ? withPos
-          .filter(m => m.role === "satellite")
-          .map(m => m.pos.top + (m.pos.bottom - m.pos.top) / 2)
-      : [];
-
-    geoms.push({ groupId, relType, category, lineX, transLineX, topY, bottomY, labels, members: memberDots, satelliteYs });
+  } else if (isHebrew) {
+    // 2-col Hebrew: override leaf x to each segment's own text-right position so
+    // indented paragraphs (with narrower right edge) get a proportionally shorter arm.
+    for (const node of src.nodes) {
+      if (node.type === "segment") {
+        const pos = posMap.get(node.id);
+        if (pos) node.x = pos.rightX + LEAF_MARGIN;
+      }
+    }
+    for (const link of src.links) {
+      const child = src.nodes.find(n => n.id === link.childId);
+      if (child?.type === "segment") link.x2 = child.x;
+    }
+  } else {
+    // 2-col LTR: override leaf x to each segment's own text-start position so
+    // indented paragraphs get a proportionally longer horizontal arm.
+    for (const node of src.nodes) {
+      if (node.type === "segment") {
+        const pos = posMap.get(node.id);
+        if (pos) node.x = pos.leftX - LEAF_MARGIN;
+      }
+    }
+    for (const link of src.links) {
+      const child = src.nodes.find(n => n.id === link.childId);
+      if (child?.type === "segment") link.x2 = child.x;
+    }
   }
 
-  return geoms;
+  // ── Build translation mirror tree (if any segment has transLeftX) ────────────
+  let trans: { nodes: LayoutNode[]; links: LayoutLink[] } = { nodes: [], links: [] };
+  if (hasTransMeasured && yMapTrans.size > 0) {
+    const treeRootTrans = buildRstTree(relations, paragraphFirstWordIds);
+    trans = flattenHierarchy(treeRootTrans, yMapTrans, transXFn, true);
+    for (const node of trans.nodes) {
+      if (node.type === "segment") {
+        const pos = posMap.get(node.id);
+        if (pos?.transLeftX !== undefined) node.x = pos.transLeftX - LEAF_MARGIN;
+      }
+    }
+    for (const link of trans.links) {
+      const child = trans.nodes.find(n => n.id === link.childId);
+      if (child?.type === "segment") link.x2 = child.x;
+    }
+  }
+
+  return {
+    nodes: [...src.nodes, ...trans.nodes],
+    links: [...src.links, ...trans.links],
+  };
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -210,6 +365,7 @@ export default function RstRelationOverlay({
   relations,
   containerRef,
   isHebrew,
+  hasTranslation,
   editing,
   paragraphFirstWordIds,
   selectedNucleusWordId,
@@ -218,50 +374,61 @@ export default function RstRelationOverlay({
   onSelectSegment,
   onDeleteGroup,
   onEditGroup,
+  onSelectGroup,
   customTypes = [],
 }: Props) {
-  // Merged map: built-in types overrideable/augmented by custom types
-  const relMap = customTypes.length > 0 ? buildRelationshipMap(customTypes) : RELATIONSHIP_MAP;
-  const svgRef   = useRef<SVGSVGElement>(null);
-  const frameRef = useRef<number | null>(null);
-  const [svgH, setSvgH] = useState(0);
-  const [geoms, setGeoms] = useState<GroupGeom[]>([]);
-  const [posMap, setPosMap] = useState<Map<string, SegPos>>(new Map());
+  const relMap = customTypes.length > 0
+    ? buildRelationshipMap(customTypes)
+    : RELATIONSHIP_MAP;
+
+  const svgRef    = useRef<SVGSVGElement>(null);
+  const frameRef  = useRef<number | null>(null);
+  const [svgH,        setSvgH]        = useState(0);
+  const [layoutNodes, setLayoutNodes] = useState<LayoutNode[]>([]);
+  const [layoutLinks, setLayoutLinks] = useState<LayoutLink[]>([]);
+  const [posMap,      setPosMap]      = useState<Map<string, SegPos>>(new Map());
   const [hoveredGroup, setHoveredGroup] = useState<string | null>(null);
+
+  // ── LTR: add left padding so the source tree has gutter room ─────────────────
+  // Applied for all LTR layouts (2-col and 3-col with translation).
+  useLayoutEffect(() => {
+    const container = containerRef.current;
+    if (!container || isHebrew) return;
+    const prev = container.style.paddingLeft;
+    container.style.paddingLeft = `${LTR_GUTTER}px`;
+    return () => { container.style.paddingLeft = prev; };
+  }, [containerRef, isHebrew, hasTranslation]);
 
   const allSegIds = [
     ...new Set([
-      ...relations.map((r) => r.segWordId),
+      ...relations.map(r => r.segWordId),
       ...(editing ? paragraphFirstWordIds : []),
     ]),
   ];
 
-  // Use requestAnimationFrame (like WordArrowOverlay) so scrollHeight is non-zero at measurement.
   const scheduleRemeasure = useCallback(() => {
     if (frameRef.current) cancelAnimationFrame(frameRef.current);
     frameRef.current = requestAnimationFrame(() => {
       const container = containerRef.current;
       if (!container) return;
-      const newH   = container.scrollHeight;
-      const newPos = measureSegments(allSegIds, container);
+      const newPos           = measureSegments(allSegIds, container);
+      const { nodes, links } = layoutTree(relations, paragraphFirstWordIds, newPos, isHebrew, hasTranslation);
       setPosMap(newPos);
-      setSvgH(newH);
-      setGeoms(buildGroupGeometries(relations, newPos, isHebrew, relMap));
+      setSvgH(container.scrollHeight);
+      setLayoutNodes(nodes);
+      setLayoutLinks(links);
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [relations, containerRef, isHebrew, editing, paragraphFirstWordIds.join(",")]);
+  }, [relations, containerRef, isHebrew, hasTranslation, editing, paragraphFirstWordIds.join(",")]);
 
   useLayoutEffect(() => {
     scheduleRemeasure();
     const container = containerRef.current;
     if (!container) return;
-
     const ro = new ResizeObserver(scheduleRemeasure);
     ro.observe(container);
-
     const mo = new MutationObserver(scheduleRemeasure);
     mo.observe(container, { childList: true, subtree: true, attributes: false });
-
     container.addEventListener("scroll", scheduleRemeasure, { passive: true });
     return () => {
       ro.disconnect();
@@ -277,173 +444,15 @@ export default function RstRelationOverlay({
   const SAT_R     = 4;
   const SEG_R     = 3.5;
 
-  const relatedSegIds = new Set(relations.map((r) => r.segWordId));
+  const relatedSegIds = new Set(relations.map(r => r.segWordId));
 
-  /**
-   * Render a vertical line + label chips for one group at a given x position.
-   * isTransMirror=true → translation side (always LTR chip placement, no hit target / delete ×).
-   */
-  const renderLine = (g: GroupGeom, lx: number, isTransMirror: boolean) => {
-    const relMeta      = relMap[g.relType];
-    const color        = relMeta?.color ?? "#6B7280";
-    const isHovered    = hoveredGroup === g.groupId;
-    const isEditingThis = !isTransMirror && editingGroupId === g.groupId;
+  const groupNodes = layoutNodes.filter(n => n.type === "group");
 
-    // Chip starts just past the line's stroke edge (touching, not overlapping).
-    // For Hebrew the line sits inside the RTL hanging-indent zone (rightX - HANG_PX + SIDE_OFFSET),
-    // so the chip goes to the right of the line (toward the text's right edge) to stay in that zone.
-    const chipLeft = lx + 2;  // chip always to the right of the bracket line
-
-    // Satellite branch arrows for subordinate relations.
-    // Arrow always points RIGHT (+1) — toward the source/translation text — since
-    // the bracket line is now always to the LEFT of the text column.
-    const ARROW_LEN   = 8;  // total arrow length px
-    const ARROW_TIP   = 4;  // arrowhead depth px
-    const arrowDir    = 1;  // always right (toward text)
-    const tipX        = lx + arrowDir * ARROW_LEN;
-    const stemX       = lx + arrowDir * (ARROW_LEN - ARROW_TIP);
-
-    return (
-      <>
-        {/* Vertical line */}
-        <line
-          x1={lx} y1={g.topY}
-          x2={lx} y2={g.bottomY}
-          stroke={color}
-          strokeWidth={editing ? 2 : 1.5}
-          opacity={0.8}
-          style={{ pointerEvents: "none" }}
-        />
-
-        {/* Per-member bracket tick: a dot + horizontal line at the segment's
-            centre Y, connecting from the vertical line toward the text. */}
-        {g.members.map((m, mi) => {
-          const tickEndX = lx + (SIDE_OFFSET - 3);  // always rightward toward text
-          return (
-            <g key={`tick-${mi}`} style={{ pointerEvents: "none" }}>
-              {/* Anchor dot on the vertical line */}
-              <circle cx={lx} cy={m.y} r={2}
-                fill={color} opacity={0.9} />
-              {/* Horizontal tick extending toward text */}
-              <line x1={lx} y1={m.y} x2={tickEndX} y2={m.y}
-                stroke={color} strokeWidth={1.5} opacity={0.7} />
-            </g>
-          );
-        })}
-
-        {/* Satellite branch arrows (subordinate only) */}
-        {g.satelliteYs.map((satY, si) => (
-          <g key={`arr-${si}`} style={{ pointerEvents: "none" }}>
-            {/* Arrow stem */}
-            <line
-              x1={lx} y1={satY}
-              x2={stemX} y2={satY}
-              stroke={color}
-              strokeWidth={editing ? 2 : 1.5}
-              opacity={0.8}
-            />
-            {/* Arrowhead */}
-            <polygon
-              points={`${stemX},${satY - ARROW_TIP / 2} ${tipX},${satY} ${stemX},${satY + ARROW_TIP / 2}`}
-              fill={color}
-              opacity={0.8}
-            />
-          </g>
-        ))}
-
-        {/* Wide transparent hit-target for hover + delete (source line only) */}
-        {editing && !isTransMirror && (
-          <line
-            x1={lx} y1={g.topY}
-            x2={lx} y2={g.bottomY}
-            stroke="transparent"
-            strokeWidth={16}
-            style={{ pointerEvents: "stroke", cursor: "pointer" }}
-            onMouseEnter={() => setHoveredGroup(g.groupId)}
-            onMouseLeave={() => setHoveredGroup(null)}
-            onClick={() => onDeleteGroup(g.groupId)}
-          />
-        )}
-
-        {/* Label chips between consecutive members */}
-        {g.labels.map((lbl, li) => (
-          <g
-            key={li}
-            onMouseEnter={() => editing && !isTransMirror && setHoveredGroup(g.groupId)}
-            onMouseLeave={() => editing && !isTransMirror && setHoveredGroup(null)}
-            style={{ pointerEvents: (editing && !isTransMirror) ? "all" : "none" }}
-          >
-            {/* Active-edit highlight ring (white outline around the chip) */}
-            {isEditingThis && (
-              <rect
-                x={chipLeft - 3}
-                y={lbl.y - 10}
-                width={30}
-                height={20}
-                rx={4}
-                fill="none"
-                stroke="white"
-                strokeWidth={2}
-                opacity={1}
-                style={{ pointerEvents: "none" }}
-              />
-            )}
-
-            {/* Pill background — clickable to edit relation type */}
-            <rect
-              x={chipLeft - 1}
-              y={lbl.y - 8}
-              width={26}
-              height={16}
-              rx={3}
-              fill={lbl.color}
-              opacity={isEditingThis ? 1 : 0.9}
-              style={{
-                cursor: (editing && !isTransMirror && onEditGroup) ? "pointer" : "default",
-                pointerEvents: "all",
-              }}
-              onClick={(e) => {
-                if (editing && !isTransMirror && onEditGroup) {
-                  e.stopPropagation();
-                  onEditGroup(g.groupId);
-                }
-              }}
-            />
-            <text
-              x={chipLeft + 12}
-              y={lbl.y + 4}
-              textAnchor="middle"
-              fill="white"
-              fontSize={9}
-              fontFamily="monospace"
-              fontWeight="bold"
-              style={{ pointerEvents: "none", userSelect: "none" }}
-            >
-              {lbl.text}
-            </text>
-
-            {/* Delete × badge on hover (source line only) */}
-            {editing && !isTransMirror && isHovered && (
-              <g
-                style={{ cursor: "pointer", pointerEvents: "all" }}
-                onClick={(e) => { e.stopPropagation(); onDeleteGroup(g.groupId); }}
-              >
-                <circle cx={chipLeft + 12} cy={lbl.y - 11} r={6} fill="#DC2626" />
-                <text
-                  x={chipLeft + 12} y={lbl.y - 7}
-                  textAnchor="middle"
-                  fill="white"
-                  fontSize={9}
-                  fontFamily="sans-serif"
-                  style={{ pointerEvents: "none", userSelect: "none" }}
-                >×</text>
-              </g>
-            )}
-          </g>
-        ))}
-      </>
-    );
-  };
+  // If a group's nucleus segWordId is the currently-selected first endpoint,
+  // that group should be visually highlighted.
+  const selectedGroupId = selectedNucleusWordId
+    ? (relations.find(r => r.segWordId === selectedNucleusWordId && r.role === "nucleus")?.groupId ?? null)
+    : null;
 
   return (
     <svg
@@ -452,28 +461,153 @@ export default function RstRelationOverlay({
       style={{ width: "100%", height: svgH }}
       aria-hidden="true"
     >
-      {/* ── RST group lines ──────────────────────────────────────────────── */}
-      {geoms.map((g) => (
-        <g key={g.groupId}>
-          {/* Source-side line */}
-          {renderLine(g, g.lineX, false)}
-          {/* Translation mirror line (when a translation column is visible) */}
-          {g.transLineX !== undefined && renderLine(g, g.transLineX, true)}
-        </g>
-      ))}
+      {/* ── Tree edges ────────────────────────────────────────────────────── */}
+      {layoutLinks.map((lk, i) => {
+        const meta  = relMap[lk.relType];
+        const color = meta?.color ?? "#6B7280";
+        const isSat = lk.role === "satellite";
+        // Elbow: horizontal to midpoint, vertical to child Y, horizontal to child X.
+        // Direction (left or right) is determined automatically by the sign of (x2−x1).
+        const midX  = lk.x1 + (lk.x2 - lk.x1) / 2;
+        const pathD = `M ${lk.x1},${lk.y1} H ${midX} V ${lk.y2} H ${lk.x2}`;
+        return (
+          <path
+            key={i}
+            d={pathD}
+            fill="none"
+            stroke={color}
+            strokeWidth={editing ? 2 : 1.5}
+            strokeDasharray={isSat ? "4 3" : undefined}
+            opacity={0.85}
+            style={{ pointerEvents: "none" }}
+          />
+        );
+      })}
+
+      {/* ── Group nodes (relation-type chips) ─────────────────────────────── */}
+      {groupNodes.map((n, i) => {
+        const meta          = relMap[n.relType ?? ""];
+        const color         = meta?.color ?? "#6B7280";
+        const abbr          = meta?.abbr  ?? (n.relType ?? "?").slice(0, 3);
+        const isHovered     = hoveredGroup === n.id;
+        const isEditingThis = editingGroupId === n.id;
+        // Translation mirror chips are read-only (no edit/delete hit targets)
+        const isInteractive = editing && !n.isTrans;
+        const CHIP_W = 28;
+        const CHIP_H = 16;
+
+        const isSelectedEndpoint = n.id === selectedGroupId && !n.isTrans;
+        // Move the chip one LEVEL_WIDTH toward the text ("inside the bracket").
+        // Hebrew source tree extends rightward, so inward = left (−).
+        // LTR and translation trees extend leftward, so inward = right (+).
+        const chipX = (isHebrew && !n.isTrans) ? n.x - LEVEL_WIDTH : n.x + LEVEL_WIDTH;
+        // Connector dot position: on the tree-facing (outer) side of the chip.
+        const connDotX = isHebrew
+          ? chipX + CHIP_W / 2 + 7
+          : chipX - CHIP_W / 2 - 7;
+
+        return (
+          <g
+            key={`${n.id}-${i}`}
+            onMouseEnter={() => isInteractive && setHoveredGroup(n.id)}
+            onMouseLeave={() => isInteractive && setHoveredGroup(null)}
+            style={{ pointerEvents: isInteractive ? "all" : "none" }}
+          >
+            {/* Purple ring when this group is the currently-selected RST endpoint */}
+            {isSelectedEndpoint && (
+              <rect
+                x={chipX - CHIP_W / 2 - 3} y={n.y - CHIP_H / 2 - 3}
+                width={CHIP_W + 6}          height={CHIP_H + 6}
+                rx={5} fill="none" stroke="#7C3AED" strokeWidth={2}
+                style={{ pointerEvents: "none" }}
+              />
+            )}
+            {/* White ring when this group's type is being edited */}
+            {isEditingThis && !n.isTrans && (
+              <rect
+                x={chipX - CHIP_W / 2 - 3} y={n.y - CHIP_H / 2 - 3}
+                width={CHIP_W + 6}          height={CHIP_H + 6}
+                rx={5} fill="none" stroke="white" strokeWidth={2}
+                style={{ pointerEvents: "none" }}
+              />
+            )}
+            <rect
+              x={chipX - CHIP_W / 2} y={n.y - CHIP_H / 2}
+              width={CHIP_W}          height={CHIP_H}
+              rx={3}
+              fill={color}
+              opacity={n.isTrans ? 0.6 : isEditingThis ? 1 : 0.9}
+              style={{ cursor: (isInteractive && onEditGroup) ? "pointer" : "default" }}
+              onClick={e => {
+                if (isInteractive && onEditGroup) { e.stopPropagation(); onEditGroup(n.id); }
+              }}
+            />
+            <text
+              x={chipX} y={n.y + 4}
+              textAnchor="middle" fill="white"
+              fontSize={9} fontFamily="monospace" fontWeight="bold"
+              style={{ pointerEvents: "none", userSelect: "none" }}
+            >{abbr}</text>
+
+            {isInteractive && isHovered && (
+              <g
+                style={{ cursor: "pointer", pointerEvents: "all" }}
+                onClick={e => { e.stopPropagation(); onDeleteGroup(n.id); }}
+              >
+                <circle cx={chipX + CHIP_W / 2} cy={n.y - CHIP_H / 2} r={6} fill="#DC2626" />
+                <text
+                  x={chipX + CHIP_W / 2} y={n.y - CHIP_H / 2 + 4}
+                  textAnchor="middle" fill="white" fontSize={9} fontFamily="sans-serif"
+                  style={{ pointerEvents: "none", userSelect: "none" }}
+                >×</text>
+              </g>
+            )}
+
+            {/* Connector dot: selects this group as an RST endpoint */}
+            {editing && !n.isTrans && onSelectGroup && (
+              <circle
+                cx={connDotX} cy={n.y} r={SEG_R}
+                fill={isSelectedEndpoint ? "#7C3AED" : "transparent"}
+                stroke={isSelectedEndpoint ? "#7C3AED" : "#94A3B8"}
+                strokeWidth={1.5}
+                style={{ cursor: "pointer", pointerEvents: "all" }}
+                onClick={e => { e.stopPropagation(); onSelectGroup(n.id); }}
+              />
+            )}
+          </g>
+        );
+      })}
+
+      {/* ── Segment leaf dots (role-coloured anchors on source tree only) ─── */}
+      {layoutNodes
+        .filter(n => n.type === "segment" && !n.isTrans && relatedSegIds.has(n.id))
+        .map(n => (
+          <circle
+            key={`leaf-${n.id}`}
+            cx={n.x} cy={n.y} r={3}
+            fill={n.role === "nucleus" ? "#7C3AED" : "#F59E0B"}
+            opacity={0.9}
+            style={{ pointerEvents: "none" }}
+          />
+        ))}
 
       {/* ── Editing mode: segment selector dots ──────────────────────────── */}
-      {editing && paragraphFirstWordIds.map((wordId) => {
+      {editing && paragraphFirstWordIds.map(wordId => {
         const pos = posMap.get(wordId);
         if (!pos) return null;
 
         const isNucleus   = wordId === selectedNucleusWordId;
         const isSatellite = wordId === selectedSatelliteWordId;
-        const isRelated   = relatedSegIds.has(wordId);
 
-        // Dot sits at the same x as the bracket line — in the gutter to the
-        // left of the source text column.
-        const dotX = pos.leftX - HANG_PX;
+        // Selector dots match the leaf-dot position used by the rendered tree.
+        // Hebrew 3-col: just outside the source column's right boundary.
+        // Hebrew 2-col: just right of the text's right edge.
+        // LTR (2-col or 3-col): just left of the text start (in the left gutter).
+        const dotX = (isHebrew && pos.srcCellRightX !== undefined)
+          ? pos.srcCellRightX + LEAF_MARGIN          // Hebrew 3-col
+          : isHebrew
+            ? pos.rightX + LEAF_MARGIN               // Hebrew 2-col
+            : pos.leftX - LEAF_MARGIN;               // LTR (any layout)
         const dotY = pos.top + (pos.bottom - pos.top) / 2;
 
         const r      = isNucleus ? NUCLEUS_R : isSatellite ? SAT_R : SEG_R;
@@ -485,9 +619,7 @@ export default function RstRelationOverlay({
           <circle
             key={wordId}
             cx={dotX} cy={dotY} r={r}
-            fill={fill}
-            stroke={stroke}
-            strokeWidth={sw}
+            fill={fill} stroke={stroke} strokeWidth={sw}
             style={{ cursor: "pointer", pointerEvents: "all" }}
             onClick={() => onSelectSegment(wordId)}
           />

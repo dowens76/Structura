@@ -551,6 +551,16 @@ export default function ChapterDisplay({
   }
 
   function handleToggleParagraphBreak(wordId: string) {
+    // When ADDING a break inside an indented paragraph, inherit the indent level
+    // so the new segment starts at the same indentation as the paragraph it splits from.
+    const wasSet = paragraphBreakIds.has(wordId);
+    if (!wasSet) {
+      const paraStartId = wordToParaStart.get(wordId) ?? wordId;
+      const inheritedIndent = lineIndentMap.get(paraStartId) ?? 0;
+      if (inheritedIndent > 0) {
+        handleSetIndent(wordId, inheritedIndent);
+      }
+    }
     return handleToggleParagraphBreakById(wordId, textSource);
   }
 
@@ -640,6 +650,63 @@ export default function ChapterDisplay({
       });
     } catch {
       // Non-critical; leave optimistic state
+    }
+  }
+
+  async function handleChangeSceneBreakLevel(wordId: string, fromLevel: number, toLevel: number, verse: number) {
+    const existing = sceneBreakMap.get(wordId)?.find(b => b.level === fromLevel);
+    if (!existing) return;
+    // Optimistic update: swap level in state
+    setSceneBreakMap((prev) => {
+      const next = new Map(prev);
+      const arr = (prev.get(wordId) ?? [])
+        .filter(b => b.level !== fromLevel)
+        .concat({ ...existing, level: toLevel });
+      arr.sort((a, b) => a.level - b.level);
+      next.set(wordId, arr);
+      return next;
+    });
+    try {
+      // Toggle old level off, new level on
+      await fetch("/api/scene-breaks", { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ wordId, book, chapter, verse, source: textSource, level: fromLevel }) });
+      await fetch("/api/scene-breaks", { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ wordId, book, chapter, verse, source: textSource, level: toLevel }) });
+      // Restore heading on the new level
+      if (existing.heading) {
+        await fetch("/api/scene-breaks", { method: "PATCH", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ wordId, level: toLevel, heading: existing.heading }) });
+      }
+    } catch {
+      // Rollback
+      setSceneBreakMap((prev) => {
+        const next = new Map(prev);
+        const arr = (prev.get(wordId) ?? [])
+          .filter(b => b.level !== toLevel)
+          .concat(existing);
+        arr.sort((a, b) => a.level - b.level);
+        next.set(wordId, arr);
+        return next;
+      });
+    }
+  }
+
+  function handleExitSceneEditing() {
+    // Read DOM input values while inputs are still mounted, then remove any breaks
+    // whose heading the user left blank.
+    const emptyBreaks: { wordId: string; level: number; verse: number }[] = [];
+    for (const [wordId, breaks] of sceneBreakMap) {
+      for (const br of breaks) {
+        const inputEl = document.getElementById(`scene-heading-${wordId}-${br.level}`) as HTMLInputElement | null;
+        const currentValue = inputEl ? inputEl.value.trim() : (br.heading?.trim() ?? "");
+        if (!currentValue) {
+          emptyBreaks.push({ wordId, level: br.level, verse: br.verse });
+        }
+      }
+    }
+    setEditingScenes(false);
+    for (const { wordId, level, verse } of emptyBreaks) {
+      handleToggleSceneBreak(wordId, level, verse);
     }
   }
 
@@ -1442,6 +1509,13 @@ export default function ChapterDisplay({
     }
   }
 
+  /** Select an existing RST group as an endpoint by resolving its nucleus segWordId. */
+  function handleSelectRstGroup(groupId: string) {
+    const nucleusRow = rstRelations.find(r => r.groupId === groupId && r.role === "nucleus")
+      ?? rstRelations.find(r => r.groupId === groupId);
+    if (nucleusRow) handleSelectRstSegment(nucleusRow.segWordId);
+  }
+
   async function handleCreateRstRelation(relType: string) {
     if (!rstSegA || !rstSegB) return;
     const relMeta  = RELATIONSHIP_MAP[relType];
@@ -1688,6 +1762,7 @@ export default function ChapterDisplay({
             relations={rstRelations}
             containerRef={textContainerRef}
             isHebrew={isHebrew}
+            hasTranslation={hasActiveTranslations}
             editing={editingRst}
             paragraphFirstWordIds={paragraphFirstWordIds}
             selectedNucleusWordId={rstSegA}
@@ -1696,6 +1771,7 @@ export default function ChapterDisplay({
             onSelectSegment={handleSelectRstSegment}
             onDeleteGroup={handleDeleteRstGroup}
             onEditGroup={handleEditRstGroup}
+            onSelectGroup={handleSelectRstGroup}
             customTypes={customRstTypes}
           />
           <WordArrowOverlay
@@ -1749,7 +1825,7 @@ export default function ChapterDisplay({
 
           {/* Scene / episode break mode */}
           <button
-            onClick={() => setEditingScenes((v) => !v)}
+            onClick={() => editingScenes ? handleExitSceneEditing() : setEditingScenes(true)}
             title={editingScenes
               ? "Exit section break mode"
               : "Enter section break mode — click any word to start/remove a section break there"}
@@ -2200,8 +2276,8 @@ export default function ChapterDisplay({
           <div className="px-6 py-1 text-xs border-b border-[var(--border)] text-stone-500 dark:text-stone-400"
                style={{ backgroundColor: "var(--nav-bg)" }}>
             {rstSegA
-              ? "First segment selected — click another segment dot to choose a relation type"
-              : "Click a segment dot (◉) to start an RST relation, or click a label chip to change its type"}
+              ? "First endpoint selected — click a segment dot or group connector dot to complete the relation"
+              : "Click a segment dot (◉) or group connector dot to start an RST relation. Click a label chip to change its type."}
           </div>
         )}
 
@@ -2446,6 +2522,7 @@ export default function ChapterDisplay({
                 onUpdateSceneHeading={handleUpdateSceneHeading}
                 onUpdateSceneOutOfSequence={handleUpdateSceneOutOfSequence}
                 onUpdateSceneExtendedThrough={handleUpdateSceneExtendedThrough}
+                onChangeSceneBreakLevel={handleChangeSceneBreakLevel}
                 sectionRanges={sectionRanges}
                 annotationsBySegment={annotationsBySegment}
                 themeColorsByLabel={themeColorsByLabel}
@@ -2463,6 +2540,7 @@ export default function ChapterDisplay({
                   setNotesOpen(true);
                   setNotesScrollVerse(v);
                 }}
+                rstSourcePad={(rstRelations.length > 0 || editingRst) ? 48 : 0}
               />
             );
           })}

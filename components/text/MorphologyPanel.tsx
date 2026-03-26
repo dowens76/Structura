@@ -4,6 +4,7 @@ import type { Word } from "@/lib/db/schema";
 import { POS_COLORS, POS_LABELS, formatTense } from "@/lib/morphology/types";
 import { getMorphology } from "@/lib/morphology/decode";
 import { OSIS_BOOK_NAMES } from "@/lib/utils/osis";
+import LexiconPane from "./LexiconPane";
 
 interface MorphologyPanelProps {
   word: Word | null;
@@ -116,6 +117,11 @@ export default function MorphologyPanel({ word, useLinguisticTerms = false }: Mo
         <div className="mt-4 p-2 bg-stone-50 dark:bg-stone-900 rounded text-xs font-mono text-stone-400 dark:text-stone-500">
           {word.morphCode}
         </div>
+      )}
+
+      {/* Lexicon entry (Hebrew + Greek only; LXX has no strong numbers) */}
+      {word.strongNumber && word.textSource !== "STEPBIBLE_LXX" && (
+        <LexiconPane strongNumber={word.strongNumber} isHebrew={isHebrew} />
       )}
 
       {/* Word ID */}

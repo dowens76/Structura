@@ -329,6 +329,24 @@ export const rstCustomTypes = sqliteTable("rst_custom_types", {
   sortOrder: integer("sort_order").notNull().default(0),
 });
 
+// Lexicon entries — one row per Strong's number (Hebrew or Greek)
+export const lexiconEntries = sqliteTable(
+  "lexicon_entries",
+  {
+    id:              integer("id").primaryKey({ autoIncrement: true }),
+    strongNumber:    text("strong_number").notNull().unique(), // "H7225" | "G3056"
+    language:        text("language").notNull(),               // "hebrew" | "greek"
+    lemma:           text("lemma"),           // Hebrew/Greek headword
+    transliteration: text("transliteration"), // xlit from HebrewStrong / orth from Abbott-Smith
+    pronunciation:   text("pronunciation"),   // pron attribute (Hebrew only)
+    shortGloss:      text("short_gloss"),     // concise definition
+    definition:      text("definition"),      // longer definition prose
+    usage:           text("usage"),           // KJV usage (Hebrew) or NT occurrence count (Greek)
+    source:          text("source"),          // "HebrewStrong" | "AbbottSmith"
+  },
+  (t) => [index("lex_strong_idx").on(t.strongNumber)]
+);
+
 // Free-form notes keyed by a string ref.
 // key format:  "verse:Gen.1.1"  |  "chapter:Gen.1"  |  "passage:42"
 export const notes = sqliteTable(
@@ -386,3 +404,4 @@ export type WordFormatting = typeof wordFormatting.$inferSelect;
 export type LineAnnotation = typeof lineAnnotations.$inferSelect;
 export type Note = typeof notes.$inferSelect;
 export type RstCustomType = typeof rstCustomTypes.$inferSelect;
+export type LexiconEntry = typeof lexiconEntries.$inferSelect;
