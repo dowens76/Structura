@@ -302,41 +302,37 @@ export default async function ChapterPage({ params, searchParams }: PageProps) {
         </div>
       </nav>
 
-      {/* Chapter heading */}
-      <div
-        className="shrink-0 px-6 pt-4 pb-2 border-b"
-        style={{ borderColor: "var(--border)", color: "var(--text-muted)" }}
-      >
-        <h1
-          className="text-xl font-bold tracking-tight"
-          style={{ color: "var(--foreground)", fontFamily: "Georgia, 'Times New Roman', serif" }}
-        >
-          {bookName} <span style={{ color: "var(--accent)" }}>{chapter}</span>
-          {parallelMode && (
-            <span
-              className="text-sm font-normal ml-3"
-              style={{ color: "var(--text-muted)" }}
-            >
-              Hebrew ‖ Septuagint
-            </span>
-          )}
-        </h1>
-        <p className="text-xs mt-0.5">
-          {parallelMode
-            ? `${words.length.toLocaleString()} Hebrew + ${lxxWords.length.toLocaleString()} Greek words`
-            : `${words.length.toLocaleString()} words`}
-        </p>
-      </div>
-
       {/* Text content */}
-      <div className="flex-1 min-h-0">
+      <div className="flex-1 min-h-0 flex flex-col">
         {parallelMode ? (
-          <ParallelChapterView
-            osisBook={osisBook}
-            chapter={chapter}
-            oshbWords={words}
-            lxxWords={lxxWords}
-          />
+          <>
+            {/* Chapter heading — always visible in parallel mode (no presentation toggle) */}
+            <div
+              className="shrink-0 px-6 pt-4 pb-2 border-b"
+              style={{ borderColor: "var(--border)", color: "var(--text-muted)" }}
+            >
+              <h1
+                className="text-xl font-bold tracking-tight"
+                style={{ color: "var(--foreground)", fontFamily: "Georgia, 'Times New Roman', serif" }}
+              >
+                {bookName} <span style={{ color: "var(--accent)" }}>{chapter}</span>
+                <span className="text-sm font-normal ml-3" style={{ color: "var(--text-muted)" }}>
+                  Hebrew ‖ Septuagint
+                </span>
+              </h1>
+              <p className="text-xs mt-0.5">
+                {`${words.length.toLocaleString()} Hebrew + ${lxxWords.length.toLocaleString()} Greek words`}
+              </p>
+            </div>
+            <div className="flex-1 min-h-0">
+              <ParallelChapterView
+                osisBook={osisBook}
+                chapter={chapter}
+                oshbWords={words}
+                lxxWords={lxxWords}
+              />
+            </div>
+          </>
         ) : (
           <ChapterDisplay
             words={words}
@@ -359,6 +355,22 @@ export default async function ChapterPage({ params, searchParams }: PageProps) {
             initialLineAnnotations={initialLineAnnotations}
             bookSceneBreaks={bookSceneBreaks}
             bookMaxVerses={bookMaxVerses}
+            headingSlot={
+              <div
+                className="shrink-0 px-6 pt-4 pb-2 border-b"
+                style={{ borderColor: "var(--border)", color: "var(--text-muted)" }}
+              >
+                <h1
+                  className="text-xl font-bold tracking-tight"
+                  style={{ color: "var(--foreground)", fontFamily: "Georgia, 'Times New Roman', serif" }}
+                >
+                  {bookName} <span style={{ color: "var(--accent)" }}>{chapter}</span>
+                </h1>
+                <p className="text-xs mt-0.5">
+                  {`${words.length.toLocaleString()} words`}
+                </p>
+              </div>
+            }
           />
         )}
       </div>

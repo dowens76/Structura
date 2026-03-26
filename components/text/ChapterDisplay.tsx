@@ -54,6 +54,9 @@ interface ChapterDisplayProps {
   initialLineAnnotations: LineAnnotation[];
   bookSceneBreaks: { wordId: string; level: number; chapter: number; verse: number; extendedThrough: number | null }[];
   bookMaxVerses: Map<number, number>;
+  /** Optional heading strip (book title, chapter number, word count) rendered
+   *  above the toolbar; hidden automatically in presentation mode. */
+  headingSlot?: React.ReactNode;
 }
 
 const DEFAULT_FILTER: GrammarFilterState = {
@@ -97,6 +100,7 @@ export default function ChapterDisplay({
   initialLineAnnotations,
   bookSceneBreaks,
   bookMaxVerses,
+  headingSlot,
 }: ChapterDisplayProps) {
   // Use fallback defaults for SSR — localStorage values are loaded in useEffect after hydration
   const [displayMode, setDisplayMode] = useState<DisplayMode>("clean");
@@ -220,6 +224,9 @@ export default function ChapterDisplay({
   // ── Source text visibility ─────────────────────────────────────────────────
   // When true, source text columns are hidden so the user works with translation only.
   const [hideSourceText, setHideSourceText] = useState(false);
+
+  // ── Presentation mode ─────────────────────────────────────────────────────
+  const [presentationMode, setPresentationMode] = useState(false);
 
   // ── Translation text editing ───────────────────────────────────────────────
   // Local mutable copy of translationVerseData so edits can be reflected immediately.
@@ -1817,84 +1824,128 @@ export default function ChapterDisplay({
             onDeleteArrow={handleDeleteWordArrow}
             isHebrew={isHebrew}
           />
+        {/* Chapter heading strip — hidden in presentation mode */}
+        {!presentationMode && headingSlot}
+
         {/* Sticky control area: toolbar + all editing panels/hints */}
         <div className="sticky top-0 z-20 shrink-0 flex flex-col" style={{ backgroundColor: "var(--background)" }}>
 
         {/* Toolbar */}
         <div className="border-b border-[var(--border)] px-6 py-3 flex items-center gap-4 flex-wrap">
-          <DisplayModeToggle mode={displayMode} onChange={setDisplayMode} />
-          {displayMode === "color" && (
-            <>
-              <GrammarFilter filter={grammarFilter} onChange={setGrammarFilter} />
-              <ColorRulePanel rules={colorRules} onChange={setColorRules} isHebrew={isHebrew} />
-            </>
-          )}
-          <button
-            onClick={() => setShowTooltips((v) => !v)}
-            title={showTooltips ? "Disable hover tooltips" : "Enable hover tooltips"}
-            className={[
-              "px-2.5 py-1 rounded text-xs font-medium transition-colors",
-              showTooltips
-                ? "bg-blue-600 text-white"
-                : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
-            ].join(" ")}
-          >
-            Tooltips
-          </button>
 
-          {/* Paragraph edit mode toggle */}
-          <button
-            onClick={() => setEditingParagraphs((v) => !v)}
-            title={editingParagraphs
-              ? "Exit paragraph edit mode"
-              : "Enter paragraph edit mode — click any word to start/remove a paragraph there"}
-            className={[
-              "px-2.5 py-1 rounded text-xs font-medium transition-colors",
-              editingParagraphs
-                ? "bg-amber-500 text-white"
-                : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
-            ].join(" ")}
-          >
-            ¶
-          </button>
-
-          {/* Scene / episode break mode */}
-          <button
-            onClick={() => editingScenes ? handleExitSceneEditing() : setEditingScenes(true)}
-            title={editingScenes
-              ? "Exit section break mode"
-              : "Enter section break mode — click any word to start/remove a section break there"}
-            className={[
-              "px-2.5 py-1 rounded text-xs font-medium transition-colors",
-              editingScenes
-                ? "bg-amber-500 text-white"
-                : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
-            ].join(" ")}
-          >
-            §
-          </button>
-
-          {/* Line annotation mode */}
+          {/* Presentation mode toggle — always visible */}
           <button
             onClick={() => {
-              setEditingAnnotations((v) => !v);
-              setAnnotRangeStart(null);
-              setAnnotRangeEnd(null);
+              const entering = !presentationMode;
+              setPresentationMode(entering);
+              if (entering) {
+                setEditingParagraphs(false);
+                setEditingScenes(false);
+                setEditingAnnotations(false);
+                setEditingSpeech(false);
+                setEditingIndents(false);
+                setEditingRst(false);
+                setEditingArrows(false);
+                setEditingBold(false);
+                setEditingItalic(false);
+                setEditingTranslation(false);
+                setSpeechRangeStart(null);
+                setRstSegA(null);
+                setRstSegB(null);
+                setShowRstPicker(false);
+                setArrowFromWordId(null);
+                setNotesOpen(false);
+                setPanelOpen(false);
+              }
             }}
-            title={editingAnnotations
-              ? "Exit annotation mode"
-              : "Add plot/theme annotations to paragraph segments"}
+            title={presentationMode ? "Exit presentation mode" : "Enter presentation mode — larger text, minimal toolbar"}
             className={[
               "px-2.5 py-1 rounded text-xs font-medium transition-colors",
-              editingAnnotations
-                ? "bg-indigo-600 text-white"
+              presentationMode
+                ? "bg-sky-600 text-white"
                 : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
             ].join(" ")}
           >
-            ≡
+            ⊞
           </button>
 
-          {/* Character reference tag mode */}
+          {!presentationMode && (
+            <>
+              <DisplayModeToggle mode={displayMode} onChange={setDisplayMode} />
+              {displayMode === "color" && (
+                <>
+                  <GrammarFilter filter={grammarFilter} onChange={setGrammarFilter} />
+                  <ColorRulePanel rules={colorRules} onChange={setColorRules} isHebrew={isHebrew} />
+                </>
+              )}
+              <button
+                onClick={() => setShowTooltips((v) => !v)}
+                title={showTooltips ? "Disable hover tooltips" : "Enable hover tooltips"}
+                className={[
+                  "px-2.5 py-1 rounded text-xs font-medium transition-colors",
+                  showTooltips
+                    ? "bg-blue-600 text-white"
+                    : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
+                ].join(" ")}
+              >
+                Tooltips
+              </button>
+
+              {/* Paragraph edit mode toggle */}
+              <button
+                onClick={() => setEditingParagraphs((v) => !v)}
+                title={editingParagraphs
+                  ? "Exit paragraph edit mode"
+                  : "Enter paragraph edit mode — click any word to start/remove a paragraph there"}
+                className={[
+                  "px-2.5 py-1 rounded text-xs font-medium transition-colors",
+                  editingParagraphs
+                    ? "bg-amber-500 text-white"
+                    : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
+                ].join(" ")}
+              >
+                ¶
+              </button>
+
+              {/* Scene / episode break mode */}
+              <button
+                onClick={() => editingScenes ? handleExitSceneEditing() : setEditingScenes(true)}
+                title={editingScenes
+                  ? "Exit section break mode"
+                  : "Enter section break mode — click any word to start/remove a section break there"}
+                className={[
+                  "px-2.5 py-1 rounded text-xs font-medium transition-colors",
+                  editingScenes
+                    ? "bg-amber-500 text-white"
+                    : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
+                ].join(" ")}
+              >
+                §
+              </button>
+
+              {/* Line annotation mode */}
+              <button
+                onClick={() => {
+                  setEditingAnnotations((v) => !v);
+                  setAnnotRangeStart(null);
+                  setAnnotRangeEnd(null);
+                }}
+                title={editingAnnotations
+                  ? "Exit annotation mode"
+                  : "Add plot/theme annotations to paragraph segments"}
+                className={[
+                  "px-2.5 py-1 rounded text-xs font-medium transition-colors",
+                  editingAnnotations
+                    ? "bg-indigo-600 text-white"
+                    : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
+                ].join(" ")}
+              >
+                ≡
+              </button>
+            </>
+          )}
+
+          {/* Character reference tag mode — always visible */}
           <button
             onClick={() => {
               setEditingRefs((v) => !v);
@@ -1914,29 +1965,31 @@ export default function ChapterDisplay({
             👤
           </button>
 
-          {/* Speech section tag mode */}
-          <button
-            onClick={() => {
-              setEditingSpeech((v) => !v);
-              setEditingRefs(false);
-              setEditingWordTags(false);
-              setPendingWordTag(false);
-              setSpeechRangeStart(null);
-            }}
-            title={editingSpeech
-              ? "Exit speech tagging"
-              : "Mark word ranges as spoken by a character (two clicks: start then end)"}
-            className={[
-              "px-2.5 py-1 rounded text-xs font-medium transition-colors",
-              editingSpeech
-                ? "bg-violet-600 text-white"
-                : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
-            ].join(" ")}
-          >
-            💬
-          </button>
+          {!presentationMode && (
+            /* Speech section tag mode */
+            <button
+              onClick={() => {
+                setEditingSpeech((v) => !v);
+                setEditingRefs(false);
+                setEditingWordTags(false);
+                setPendingWordTag(false);
+                setSpeechRangeStart(null);
+              }}
+              title={editingSpeech
+                ? "Exit speech tagging"
+                : "Mark word ranges as spoken by a character (two clicks: start then end)"}
+              className={[
+                "px-2.5 py-1 rounded text-xs font-medium transition-colors",
+                editingSpeech
+                  ? "bg-violet-600 text-white"
+                  : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
+              ].join(" ")}
+            >
+              💬
+            </button>
+          )}
 
-          {/* Word / concept tag mode */}
+          {/* Word / concept tag mode — always visible */}
           <button
             onClick={() => {
               setEditingWordTags((v) => !v);
@@ -1959,303 +2012,303 @@ export default function ChapterDisplay({
             🏷
           </button>
 
-          {/* Paragraph indent mode */}
-          <button
-            onClick={() => {
-              setEditingIndents((v) => !v);
-              setEditingRefs(false);
-              setEditingSpeech(false);
-              setEditingWordTags(false);
-              setSpeechRangeStart(null);
-              setPendingWordTag(false);
-            }}
-            title={editingIndents
-              ? "Exit indent mode"
-              : "Indent paragraphs to indicate subordinate clauses (use − / + next to the paragraph label)"}
-            className={[
-              "px-2.5 py-1 rounded text-xs font-medium transition-colors",
-              editingIndents
-                ? "bg-teal-600 text-white"
-                : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
-            ].join(" ")}
-          >
-            ⇥
-          </button>
-
-          {/* Source/translation indent link toggle — visible only in indent mode */}
-          {editingIndents && (
-            <label
-              className="flex items-center gap-1 text-[11px] text-stone-500 dark:text-stone-400 cursor-pointer select-none"
-              title={indentsLinked
-                ? "Source and translation indent are linked — uncheck to set them independently"
-                : "Source and translation indent are independent — check to link them"}
-            >
-              <input
-                type="checkbox"
-                checked={indentsLinked}
-                onChange={(e) => {
-                  const nowLinked = e.target.checked;
-                  setIndentsLinked(nowLinked);
-                  if (!nowLinked) {
-                    // Seed T with S values for any paragraph not yet explicitly set,
-                    // so T starts equal to S and can be changed independently from there.
-                    setTvLineIndentMap((prev) => {
-                      const next = new Map(prev);
-                      for (const [wId, lvl] of lineIndentMap) {
-                        if (!next.has(wId)) next.set(wId, lvl);
-                      }
-                      return next;
-                    });
-                  }
+          {!presentationMode && (
+            <>
+              {/* Paragraph indent mode */}
+              <button
+                onClick={() => {
+                  setEditingIndents((v) => !v);
+                  setEditingRefs(false);
+                  setEditingSpeech(false);
+                  setEditingWordTags(false);
+                  setSpeechRangeStart(null);
+                  setPendingWordTag(false);
                 }}
-                className="w-3 h-3 accent-teal-600 cursor-pointer"
-              />
-              S↔T
-            </label>
-          )}
+                title={editingIndents
+                  ? "Exit indent mode"
+                  : "Indent paragraphs to indicate subordinate clauses (use − / + next to the paragraph label)"}
+                className={[
+                  "px-2.5 py-1 rounded text-xs font-medium transition-colors",
+                  editingIndents
+                    ? "bg-teal-600 text-white"
+                    : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
+                ].join(" ")}
+              >
+                ⇥
+              </button>
 
-          {/* RST relation mode */}
-          <button
-            onClick={() => {
-              const entering = !editingRst;
-              setEditingRst(entering);
-              setEditingArrows(false);
-              setArrowFromWordId(null);
-              setRstSegA(null);
-              setRstSegB(null);
-              setShowRstPicker(false);
-              setRstEditGroupId(null);
-              if (!entering) setShowRstTypeManager(false);
-            }}
-            title={editingRst
-              ? "Exit RST relation mode"
-              : "Mark RST (Rhetorical Structure Theory) relations between paragraph segments"}
-            className={[
-              "px-2.5 py-1 rounded text-xs font-medium transition-colors",
-              editingRst
-                ? "bg-rose-600 text-white"
-                : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
-            ].join(" ")}
-          >
-            ↳
-          </button>
-          {editingRst && (
-            <button
-              onClick={() => setShowRstTypeManager((v) => !v)}
-              title="Manage RST label types"
-              className={[
-                "px-2.5 py-1 rounded text-xs font-medium transition-colors",
-                showRstTypeManager
-                  ? "bg-amber-500 text-white"
-                  : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
-              ].join(" ")}
-            >
-              Labels
-            </button>
-          )}
-
-          {/* Word arrow mode */}
-          <button
-            onClick={() => {
-              setEditingArrows((v) => !v);
-              setEditingRst(false);
-              setRstSegA(null);
-              setRstSegB(null);
-              setShowRstPicker(false);
-              setArrowFromWordId(null);
-            }}
-            title={editingArrows
-              ? "Exit word arrow mode"
-              : "Draw free-form arrows between words"}
-            className={[
-              "px-2.5 py-1 rounded text-xs font-medium transition-colors",
-              editingArrows
-                ? "bg-rose-600 text-white"
-                : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
-            ].join(" ")}
-          >
-            ↷
-          </button>
-
-          {/* Undo button */}
-          {undoStack.length > 0 && (
-            <button
-              onClick={() => {
-                setUndoStack((prev) => {
-                  if (prev.length === 0) return prev;
-                  const entry = prev[prev.length - 1];
-                  entry.undo();
-                  return prev.slice(0, -1);
-                });
-              }}
-              title={`Undo: ${undoStack[undoStack.length - 1].label} (Ctrl/Cmd+Z)`}
-              className="px-2.5 py-1 rounded text-xs font-medium bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700 transition-colors"
-            >
-              ↩ {undoStack[undoStack.length - 1].label}
-            </button>
-          )}
-
-          {/* Bold formatting mode */}
-          <button
-            onClick={() => {
-              setEditingBold((v) => !v);
-              setEditingParagraphs(false);
-              setEditingRefs(false);
-              setEditingSpeech(false);
-              setEditingWordTags(false);
-              setEditingIndents(false);
-              setEditingRst(false);
-              setEditingArrows(false);
-              setSpeechRangeStart(null);
-              setRstSegA(null);
-              setArrowFromWordId(null);
-            }}
-            title={editingBold ? "Exit bold mode" : "Click words to toggle bold"}
-            className={[
-              "px-2.5 py-1 rounded text-xs font-bold transition-colors",
-              editingBold
-                ? "bg-stone-800 text-white dark:bg-stone-200 dark:text-stone-900"
-                : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
-            ].join(" ")}
-          >
-            B
-          </button>
-
-          {/* Italic formatting mode */}
-          <button
-            onClick={() => {
-              setEditingItalic((v) => !v);
-              setEditingParagraphs(false);
-              setEditingRefs(false);
-              setEditingSpeech(false);
-              setEditingWordTags(false);
-              setEditingIndents(false);
-              setEditingRst(false);
-              setEditingArrows(false);
-              setSpeechRangeStart(null);
-              setRstSegA(null);
-              setArrowFromWordId(null);
-            }}
-            title={editingItalic ? "Exit italic mode" : "Click words to toggle italic"}
-            className={[
-              "px-2.5 py-1 rounded text-xs italic transition-colors",
-              editingItalic
-                ? "bg-stone-800 text-white dark:bg-stone-200 dark:text-stone-900"
-                : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
-            ].join(" ")}
-          >
-            I
-          </button>
-
-          {/* Clear annotations */}
-          <div className="border-l border-[var(--border)] pl-3 ml-1">
-            <button
-              onClick={() => setShowClearDialog(true)}
-              title="Clear annotations by category"
-              className="px-2.5 py-1 rounded text-xs font-medium transition-colors bg-stone-100 dark:bg-stone-800 text-stone-500 dark:text-stone-400 hover:bg-red-100 hover:text-red-600 dark:hover:bg-red-950 dark:hover:text-red-400"
-            >
-              🗑
-            </button>
-          </div>
-
-          {/* Notes panel toggle */}
-          <div className="border-l border-[var(--border)] pl-3 ml-1">
-            <button
-              onClick={() => setNotesOpen((v) => !v)}
-              title={notesOpen ? "Hide notes pane" : "Show notes pane"}
-              className={[
-                "px-2.5 py-1 rounded text-xs font-medium transition-colors",
-                notesOpen
-                  ? "bg-amber-500 text-white"
-                  : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
-              ].join(" ")}
-            >
-              📝
-            </button>
-          </div>
-
-          {/* Linguistic terms toggle — Hebrew only */}
-          {isHebrew && (
-            <button
-              onClick={() => setUseLinguisticTerms((v) => !v)}
-              title={useLinguisticTerms
-                ? "Show descriptive aspect names (Perfect, Imperfect…)"
-                : "Show linguistic terms (Qatal, Yiqtol, Wayyiqtol, Weqatal)"}
-              className={[
-                "px-2.5 py-1 rounded text-xs font-medium transition-colors",
-                useLinguisticTerms
-                  ? "bg-blue-600 text-white"
-                  : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
-              ].join(" ")}
-            >
-              Qatal
-            </button>
-          )}
-
-          {/* Translation picker + source visibility toggle + translation edit */}
-          {availableTranslations.length > 0 && (
-            <div className="flex items-center gap-1 border-l border-[var(--border)] pl-4">
-              <span className="text-xs text-stone-400 dark:text-stone-500 mr-1 select-none">
-                Tr:
-              </span>
-              <TranslationPicker
-                availableTranslations={availableTranslations}
-                activeTranslationIds={activeTranslationIds}
-                onToggle={toggleTranslation}
-              />
-              {/* Source text visibility — shown only when a translation is active */}
-              {hasActiveTranslations && (
-                <button
-                  onClick={() => setHideSourceText((v) => !v)}
-                  title={hideSourceText ? `Show ${textSource} text` : `Hide ${textSource} text`}
-                  className={[
-                    "px-2.5 py-1 rounded text-xs font-medium font-mono transition-colors",
-                    !hideSourceText
-                      ? "bg-emerald-600 text-white"
-                      : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
-                  ].join(" ")}
+              {/* Source/translation indent link toggle — visible only in indent mode */}
+              {editingIndents && (
+                <label
+                  className="flex items-center gap-1 text-[11px] text-stone-500 dark:text-stone-400 cursor-pointer select-none"
+                  title={indentsLinked
+                    ? "Source and translation indent are linked — uncheck to set them independently"
+                    : "Source and translation indent are independent — check to link them"}
                 >
-                  {textSource}
-                </button>
+                  <input
+                    type="checkbox"
+                    checked={indentsLinked}
+                    onChange={(e) => {
+                      const nowLinked = e.target.checked;
+                      setIndentsLinked(nowLinked);
+                      if (!nowLinked) {
+                        setTvLineIndentMap((prev) => {
+                          const next = new Map(prev);
+                          for (const [wId, lvl] of lineIndentMap) {
+                            if (!next.has(wId)) next.set(wId, lvl);
+                          }
+                          return next;
+                        });
+                      }
+                    }}
+                    className="w-3 h-3 accent-teal-600 cursor-pointer"
+                  />
+                  S↔T
+                </label>
               )}
-              {/* Translation text edit mode */}
-              {hasActiveTranslations && (
+
+              {/* RST relation mode */}
+              <button
+                onClick={() => {
+                  const entering = !editingRst;
+                  setEditingRst(entering);
+                  setEditingArrows(false);
+                  setArrowFromWordId(null);
+                  setRstSegA(null);
+                  setRstSegB(null);
+                  setShowRstPicker(false);
+                  setRstEditGroupId(null);
+                  if (!entering) setShowRstTypeManager(false);
+                }}
+                title={editingRst
+                  ? "Exit RST relation mode"
+                  : "Mark RST (Rhetorical Structure Theory) relations between paragraph segments"}
+                className={[
+                  "px-2.5 py-1 rounded text-xs font-medium transition-colors",
+                  editingRst
+                    ? "bg-rose-600 text-white"
+                    : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
+                ].join(" ")}
+              >
+                ↳
+              </button>
+              {editingRst && (
                 <button
-                  onClick={() => setEditingTranslation((v) => !v)}
-                  title={editingTranslation ? "Exit translation edit mode" : "Edit translation text"}
+                  onClick={() => setShowRstTypeManager((v) => !v)}
+                  title="Manage RST label types"
                   className={[
                     "px-2.5 py-1 rounded text-xs font-medium transition-colors",
-                    editingTranslation
-                      ? "bg-sky-600 text-white"
+                    showRstTypeManager
+                      ? "bg-amber-500 text-white"
                       : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
                   ].join(" ")}
                 >
-                  ✏
+                  Labels
                 </button>
               )}
-            </div>
-          )}
 
-          {/* Font size controls */}
-          {(() => {
-            const sizeBtn = "w-6 h-6 flex items-center justify-center rounded text-xs font-medium bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700 transition-colors select-none";
-            return (
-              <div className="flex items-center gap-2 border-l border-[var(--border)] pl-4">
-                <span className="text-xs text-stone-400 dark:text-stone-500 select-none">
-                  {isHebrew ? "Heb" : "Grk"}
-                </span>
-                <button className={sizeBtn} onClick={() => adjustFontSize("source", -0.125)} title="Decrease source text size">A−</button>
-                <button className={sizeBtn} onClick={() => adjustFontSize("source", +0.125)} title="Increase source text size">A+</button>
-                {hasActiveTranslations && (
-                  <>
-                    <span className="text-xs text-stone-400 dark:text-stone-500 select-none ml-1">Tr</span>
-                    <button className={sizeBtn} onClick={() => adjustFontSize("translation", -0.0625)} title="Decrease translation text size">A−</button>
-                    <button className={sizeBtn} onClick={() => adjustFontSize("translation", +0.0625)} title="Increase translation text size">A+</button>
-                  </>
-                )}
+              {/* Word arrow mode */}
+              <button
+                onClick={() => {
+                  setEditingArrows((v) => !v);
+                  setEditingRst(false);
+                  setRstSegA(null);
+                  setRstSegB(null);
+                  setShowRstPicker(false);
+                  setArrowFromWordId(null);
+                }}
+                title={editingArrows
+                  ? "Exit word arrow mode"
+                  : "Draw free-form arrows between words"}
+                className={[
+                  "px-2.5 py-1 rounded text-xs font-medium transition-colors",
+                  editingArrows
+                    ? "bg-rose-600 text-white"
+                    : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
+                ].join(" ")}
+              >
+                ↷
+              </button>
+
+              {/* Undo button */}
+              {undoStack.length > 0 && (
+                <button
+                  onClick={() => {
+                    setUndoStack((prev) => {
+                      if (prev.length === 0) return prev;
+                      const entry = prev[prev.length - 1];
+                      entry.undo();
+                      return prev.slice(0, -1);
+                    });
+                  }}
+                  title={`Undo: ${undoStack[undoStack.length - 1].label} (Ctrl/Cmd+Z)`}
+                  className="px-2.5 py-1 rounded text-xs font-medium bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700 transition-colors"
+                >
+                  ↩ {undoStack[undoStack.length - 1].label}
+                </button>
+              )}
+
+              {/* Bold formatting mode */}
+              <button
+                onClick={() => {
+                  setEditingBold((v) => !v);
+                  setEditingParagraphs(false);
+                  setEditingRefs(false);
+                  setEditingSpeech(false);
+                  setEditingWordTags(false);
+                  setEditingIndents(false);
+                  setEditingRst(false);
+                  setEditingArrows(false);
+                  setSpeechRangeStart(null);
+                  setRstSegA(null);
+                  setArrowFromWordId(null);
+                }}
+                title={editingBold ? "Exit bold mode" : "Click words to toggle bold"}
+                className={[
+                  "px-2.5 py-1 rounded text-xs font-bold transition-colors",
+                  editingBold
+                    ? "bg-stone-800 text-white dark:bg-stone-200 dark:text-stone-900"
+                    : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
+                ].join(" ")}
+              >
+                B
+              </button>
+
+              {/* Italic formatting mode */}
+              <button
+                onClick={() => {
+                  setEditingItalic((v) => !v);
+                  setEditingParagraphs(false);
+                  setEditingRefs(false);
+                  setEditingSpeech(false);
+                  setEditingWordTags(false);
+                  setEditingIndents(false);
+                  setEditingRst(false);
+                  setEditingArrows(false);
+                  setSpeechRangeStart(null);
+                  setRstSegA(null);
+                  setArrowFromWordId(null);
+                }}
+                title={editingItalic ? "Exit italic mode" : "Click words to toggle italic"}
+                className={[
+                  "px-2.5 py-1 rounded text-xs italic transition-colors",
+                  editingItalic
+                    ? "bg-stone-800 text-white dark:bg-stone-200 dark:text-stone-900"
+                    : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
+                ].join(" ")}
+              >
+                I
+              </button>
+
+              {/* Clear annotations */}
+              <div className="border-l border-[var(--border)] pl-3 ml-1">
+                <button
+                  onClick={() => setShowClearDialog(true)}
+                  title="Clear annotations by category"
+                  className="px-2.5 py-1 rounded text-xs font-medium transition-colors bg-stone-100 dark:bg-stone-800 text-stone-500 dark:text-stone-400 hover:bg-red-100 hover:text-red-600 dark:hover:bg-red-950 dark:hover:text-red-400"
+                >
+                  🗑
+                </button>
               </div>
-            );
-          })()}
+
+              {/* Notes panel toggle */}
+              <div className="border-l border-[var(--border)] pl-3 ml-1">
+                <button
+                  onClick={() => setNotesOpen((v) => !v)}
+                  title={notesOpen ? "Hide notes pane" : "Show notes pane"}
+                  className={[
+                    "px-2.5 py-1 rounded text-xs font-medium transition-colors",
+                    notesOpen
+                      ? "bg-amber-500 text-white"
+                      : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
+                  ].join(" ")}
+                >
+                  📝
+                </button>
+              </div>
+
+              {/* Linguistic terms toggle — Hebrew only */}
+              {isHebrew && (
+                <button
+                  onClick={() => setUseLinguisticTerms((v) => !v)}
+                  title={useLinguisticTerms
+                    ? "Show descriptive aspect names (Perfect, Imperfect…)"
+                    : "Show linguistic terms (Qatal, Yiqtol, Wayyiqtol, Weqatal)"}
+                  className={[
+                    "px-2.5 py-1 rounded text-xs font-medium transition-colors",
+                    useLinguisticTerms
+                      ? "bg-blue-600 text-white"
+                      : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
+                  ].join(" ")}
+                >
+                  Qatal
+                </button>
+              )}
+
+              {/* Translation picker + source visibility toggle + translation edit */}
+              {availableTranslations.length > 0 && (
+                <div className="flex items-center gap-1 border-l border-[var(--border)] pl-4">
+                  <span className="text-xs text-stone-400 dark:text-stone-500 mr-1 select-none">
+                    Tr:
+                  </span>
+                  <TranslationPicker
+                    availableTranslations={availableTranslations}
+                    activeTranslationIds={activeTranslationIds}
+                    onToggle={toggleTranslation}
+                  />
+                  {hasActiveTranslations && (
+                    <button
+                      onClick={() => setHideSourceText((v) => !v)}
+                      title={hideSourceText ? `Show ${textSource} text` : `Hide ${textSource} text`}
+                      className={[
+                        "px-2.5 py-1 rounded text-xs font-medium font-mono transition-colors",
+                        !hideSourceText
+                          ? "bg-emerald-600 text-white"
+                          : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
+                      ].join(" ")}
+                    >
+                      {textSource}
+                    </button>
+                  )}
+                  {hasActiveTranslations && (
+                    <button
+                      onClick={() => setEditingTranslation((v) => !v)}
+                      title={editingTranslation ? "Exit translation edit mode" : "Edit translation text"}
+                      className={[
+                        "px-2.5 py-1 rounded text-xs font-medium transition-colors",
+                        editingTranslation
+                          ? "bg-sky-600 text-white"
+                          : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
+                      ].join(" ")}
+                    >
+                      ✏
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {/* Font size controls */}
+              {(() => {
+                const sizeBtn = "w-6 h-6 flex items-center justify-center rounded text-xs font-medium bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700 transition-colors select-none";
+                return (
+                  <div className="flex items-center gap-2 border-l border-[var(--border)] pl-4">
+                    <span className="text-xs text-stone-400 dark:text-stone-500 select-none">
+                      {isHebrew ? "Heb" : "Grk"}
+                    </span>
+                    <button className={sizeBtn} onClick={() => adjustFontSize("source", -0.125)} title="Decrease source text size">A−</button>
+                    <button className={sizeBtn} onClick={() => adjustFontSize("source", +0.125)} title="Increase source text size">A+</button>
+                    {hasActiveTranslations && (
+                      <>
+                        <span className="text-xs text-stone-400 dark:text-stone-500 select-none ml-1">Tr</span>
+                        <button className={sizeBtn} onClick={() => adjustFontSize("translation", -0.0625)} title="Decrease translation text size">A−</button>
+                        <button className={sizeBtn} onClick={() => adjustFontSize("translation", +0.0625)} title="Increase translation text size">A+</button>
+                      </>
+                    )}
+                  </div>
+                );
+              })()}
+            </>
+          )}
         </div>
 
         {/* Character palette bar (shows when in ref or speech mode) */}
@@ -2491,10 +2544,10 @@ export default function ChapterDisplay({
           style={{
             paddingLeft:  "1.5rem",
             paddingRight: "1.5rem",
-            "--hebrew-font-size": `${hebrewFontSize}rem`,
-            "--greek-font-size": `${greekFontSize}rem`,
-            "--translation-font-size": `${translationFontSize}rem`,
-            "--source-row-height": `${(isHebrew ? hebrewFontSize : greekFontSize) * 2.0}rem`,
+            "--hebrew-font-size": `${hebrewFontSize * (presentationMode ? 2 : 1)}rem`,
+            "--greek-font-size": `${greekFontSize * (presentationMode ? 2 : 1)}rem`,
+            "--translation-font-size": `${translationFontSize * (presentationMode ? 2 : 1)}rem`,
+            "--source-row-height": `${(isHebrew ? hebrewFontSize : greekFontSize) * (presentationMode ? 2 : 1) * 2.0}rem`,
           } as React.CSSProperties}
         >
           {verseNums.map((verseNum) => {
@@ -2577,6 +2630,7 @@ export default function ChapterDisplay({
                   setNotesScrollVerse(v);
                 }}
                 rstSourcePad={(rstRelations.length > 0 || editingRst) ? 48 : 0}
+                presentationMode={presentationMode}
               />
             );
           })}
@@ -2585,7 +2639,7 @@ export default function ChapterDisplay({
       </div> {/* end outerRef wrapper */}
 
       {/* Notes pane */}
-      {notesOpen && (
+      {notesOpen && !presentationMode && (
         <ResizablePane storageKey="pane-notes-width" defaultWidth={320} minWidth={200} maxWidth={700}>
           <NotesPane
             book={book}
@@ -2599,7 +2653,7 @@ export default function ChapterDisplay({
       )}
 
       {/* Morphology panel */}
-      {panelOpen && (
+      {panelOpen && !presentationMode && (
         <ResizablePane storageKey="pane-morphology-width" defaultWidth={288} minWidth={200} maxWidth={700}>
           <div className="flex flex-col h-full">
             <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border)] shrink-0">

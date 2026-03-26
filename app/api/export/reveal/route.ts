@@ -637,11 +637,9 @@ function buildRevealHtml(
       margin-bottom: 0.1em;
     }
 
-    /* Explicit paragraph break — dashed separator above */
+    /* Explicit paragraph break — extra spacing above (no border) */
     .para-break {
       margin-top: 0.65em;
-      padding-top: 0.25em;
-      border-top: 1px dashed rgba(0,0,0,0.18);
     }
 
     /* Side-by-side verse table: [source ~47%] [verse# ~6%] [translation ~47%] */
@@ -697,11 +695,9 @@ function buildRevealHtml(
       margin-bottom: 0.2em;
     }
 
-    /* Translation paragraph break — dashed separator above, matching source */
+    /* Translation paragraph break — extra spacing above (no border) */
     .trans-para-break {
       margin-top: 0.65em;
-      padding-top: 0.25em;
-      border-top: 1px dashed rgba(0,0,0,0.18);
     }
 
     /* Scene break — solid rule + optional heading */

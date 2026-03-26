@@ -117,6 +117,8 @@ interface VerseDisplayProps {
   /** Extra gap (px) inserted between the verse-label column and the source-text column
    *  so that RST tree arrows don't overlap the verse number. */
   rstSourcePad?: number;
+  /** When true, doubles font sizes for section headings and annotation labels */
+  presentationMode?: boolean;
 }
 
 // ── Annotation sub-components ────────────────────────────────────────────────
@@ -179,6 +181,7 @@ function AnnotBadge({
   isStart,
   isEnd,
   editingAnnotations,
+  presentationMode,
   onDelete,
   onUpdate,
   onAdjustRange,
@@ -187,6 +190,7 @@ function AnnotBadge({
   isStart: boolean;
   isEnd: boolean;
   editingAnnotations: boolean;
+  presentationMode?: boolean;
   onDelete?: (id: number) => void;
   onUpdate?: (id: number, updates: { label?: string; description?: string | null; color?: string; outOfSequence?: boolean }) => void;
   onAdjustRange?: (id: number, direction: "expand-start" | "shrink-start" | "expand-end" | "shrink-end") => void;
@@ -374,6 +378,7 @@ function AnnotBadge({
   }
 
   // ── Normal (read / edit-hover) state ─────────────────────────────────────
+  const badgeTextCls = presentationMode ? "text-sm" : "text-[10px]";
   return (
     <div
       className={[
@@ -387,18 +392,18 @@ function AnnotBadge({
     >
       <div className="flex items-start gap-1 px-1.5 py-1">
         {annotation.outOfSequence && (
-          <span className="shrink-0 text-[10px] font-bold text-amber-500 dark:text-amber-400 leading-none mt-0.5" title="Out of chronological sequence">↩</span>
+          <span className={`shrink-0 ${badgeTextCls} font-bold text-amber-500 dark:text-amber-400 leading-none mt-0.5`} title="Out of chronological sequence">↩</span>
         )}
         {hasLabel && (
           <span
-            className="shrink-0 text-[10px] font-bold px-1 py-0.5 rounded text-white leading-none mt-0.5"
+            className={`shrink-0 ${badgeTextCls} font-bold px-1 py-0.5 rounded text-white leading-none mt-0.5`}
             style={{ backgroundColor: color }}
           >
             {annotation.label}
           </span>
         )}
         {annotation.description && (
-          <span className="text-[10px] text-stone-600 dark:text-stone-400 leading-tight min-w-0 break-words">
+          <span className={`${badgeTextCls} text-stone-600 dark:text-stone-400 leading-tight min-w-0 break-words`}>
             {annotation.description}
           </span>
         )}
@@ -742,6 +747,7 @@ export default function VerseDisplay({
   showAnnotationCol = false,
   onVerseClick,
   rstSourcePad = 0,
+  presentationMode = false,
 }: VerseDisplayProps) {
   const firstWordId = words[0]?.wordId;
   const verseStartsNewParagraph = firstWordId ? paragraphBreakIds.has(firstWordId) : false;
@@ -914,6 +920,17 @@ export default function VerseDisplay({
     }
 
     function headingClass(level: number): string {
+      if (presentationMode) {
+        switch (level) {
+          case 1: return "text-[28px] font-bold uppercase tracking-widest text-stone-800 dark:text-stone-100";
+          case 2: return "text-2xl font-semibold uppercase tracking-wider text-stone-700 dark:text-stone-200";
+          case 3: return "text-xl font-medium uppercase tracking-wide text-stone-600 dark:text-stone-300";
+          case 4: return "text-lg font-normal uppercase tracking-wide text-stone-500 dark:text-stone-400";
+          case 5: return "text-base font-normal uppercase tracking-normal text-stone-500 dark:text-stone-400";
+          case 6: return "text-base font-normal text-stone-500 dark:text-stone-400";
+          default: return "text-lg text-stone-500 dark:text-stone-400";
+        }
+      }
       switch (level) {
         case 1: return "text-sm font-bold uppercase tracking-widest text-stone-800 dark:text-stone-100";
         case 2: return "text-xs font-semibold uppercase tracking-wider text-stone-700 dark:text-stone-200";
@@ -1078,7 +1095,8 @@ export default function VerseDisplay({
     return (
       <div
         className={[
-          "w-48 flex-none pl-3 self-stretch flex flex-col",
+          presentationMode ? "w-72" : "w-48",
+          "flex-none pl-3 self-stretch flex flex-col",
           editingAnnotations
             ? "cursor-pointer hover:bg-indigo-50 dark:hover:bg-indigo-950/20 rounded transition-colors"
             : "",
@@ -1098,6 +1116,7 @@ export default function VerseDisplay({
             isStart={isStart}
             isEnd={isEnd}
             editingAnnotations={editingAnnotations}
+            presentationMode={presentationMode}
             onDelete={onDeleteAnnotation}
             onUpdate={onUpdateAnnotation}
             onAdjustRange={onExpandAnnotationRange}

@@ -115,6 +115,7 @@ export default function ExportLayout({ children, revealHref, filename, noteConte
           >
             {pngStatus === "loading" ? "Rendering…" : pngStatus === "done" ? "✓ PNG" : "🖼 PNG"}
           </button>
+          {/* Slides export hidden — code preserved, not yet exposed in UI
           <button
             className={btnSecondary}
             onClick={handleSlides}
@@ -123,6 +124,7 @@ export default function ExportLayout({ children, revealHref, filename, noteConte
           >
             {slidesStatus === "loading" ? "Building…" : slidesStatus === "done" ? "✓ Slides" : "🎞 Slides"}
           </button>
+          */}
 
           {noteContext && (
             <>
