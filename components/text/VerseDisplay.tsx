@@ -922,23 +922,23 @@ export default function VerseDisplay({
     function headingClass(level: number): string {
       if (presentationMode) {
         switch (level) {
-          case 1: return "text-[28px] font-bold uppercase tracking-widest text-stone-800 dark:text-stone-100";
-          case 2: return "text-2xl font-semibold uppercase tracking-wider text-stone-700 dark:text-stone-200";
-          case 3: return "text-xl font-medium uppercase tracking-wide text-stone-600 dark:text-stone-300";
-          case 4: return "text-lg font-normal uppercase tracking-wide text-stone-500 dark:text-stone-400";
-          case 5: return "text-base font-normal uppercase tracking-normal text-stone-500 dark:text-stone-400";
-          case 6: return "text-base font-normal text-stone-500 dark:text-stone-400";
-          default: return "text-lg text-stone-500 dark:text-stone-400";
+          case 1: return "text-[31px] font-bold uppercase tracking-widest text-stone-800 dark:text-stone-100";
+          case 2: return "text-[26px] font-semibold uppercase tracking-wider text-stone-700 dark:text-stone-200";
+          case 3: return "text-[22px] font-medium uppercase tracking-wide text-stone-600 dark:text-stone-300";
+          case 4: return "text-[20px] font-normal uppercase tracking-wide text-stone-500 dark:text-stone-400";
+          case 5: return "text-[18px] font-normal uppercase tracking-normal text-stone-500 dark:text-stone-400";
+          case 6: return "text-[18px] font-normal text-stone-500 dark:text-stone-400";
+          default: return "text-[20px] text-stone-500 dark:text-stone-400";
         }
       }
       switch (level) {
-        case 1: return "text-sm font-bold uppercase tracking-widest text-stone-800 dark:text-stone-100";
-        case 2: return "text-xs font-semibold uppercase tracking-wider text-stone-700 dark:text-stone-200";
-        case 3: return "text-[11px] font-medium uppercase tracking-wide text-stone-600 dark:text-stone-300";
-        case 4: return "text-[11px] font-normal uppercase tracking-wide text-stone-500 dark:text-stone-400";
-        case 5: return "text-[10px] font-normal uppercase tracking-normal text-stone-500 dark:text-stone-400";
-        case 6: return "text-[10px] font-normal text-stone-500 dark:text-stone-400";
-        default: return "text-xs text-stone-500 dark:text-stone-400";
+        case 1: return "text-[15px] font-bold uppercase tracking-widest text-stone-800 dark:text-stone-100";
+        case 2: return "text-[13px] font-semibold uppercase tracking-wider text-stone-700 dark:text-stone-200";
+        case 3: return "text-[12px] font-medium uppercase tracking-wide text-stone-600 dark:text-stone-300";
+        case 4: return "text-[12px] font-normal uppercase tracking-wide text-stone-500 dark:text-stone-400";
+        case 5: return "text-[11px] font-normal uppercase tracking-normal text-stone-500 dark:text-stone-400";
+        case 6: return "text-[11px] font-normal text-stone-500 dark:text-stone-400";
+        default: return "text-[13px] text-stone-500 dark:text-stone-400";
       }
     }
 

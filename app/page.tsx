@@ -114,6 +114,13 @@ export default async function Home() {
           >
             Backup & Restore →
           </Link>
+          <Link
+            href="/account"
+            className="text-sm hover:underline"
+            style={{ color: "var(--accent)" }}
+          >
+            Account & Workspaces →
+          </Link>
         </div>
 
         <footer className="mt-8 pt-6 border-t text-xs space-y-1" style={{ borderColor: "var(--border)", color: "var(--text-muted)" }}>

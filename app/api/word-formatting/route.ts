@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getChapterWordFormatting, setWordFormatting } from "@/lib/db/queries";
+import { getActiveWorkspaceId } from "@/lib/workspace";
 
 // GET /api/word-formatting?book=Gen&chapter=1
 export async function GET(request: NextRequest) {
+  const workspaceId = await getActiveWorkspaceId();
   const { searchParams } = new URL(request.url);
   const book = searchParams.get("book");
   const chapter = parseInt(searchParams.get("chapter") ?? "", 10);
@@ -11,7 +13,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Missing params" }, { status: 400 });
   }
 
-  const formatting = await getChapterWordFormatting(book, chapter);
+  const formatting = await getChapterWordFormatting(book, chapter, workspaceId);
   return NextResponse.json({ formatting });
 }
 
@@ -19,6 +21,7 @@ export async function GET(request: NextRequest) {
 // Body: { wordId, isBold, isItalic, textSource, book, chapter }
 // If both isBold and isItalic are false, the record is removed (resets to no formatting).
 export async function POST(request: NextRequest) {
+  const workspaceId = await getActiveWorkspaceId();
   let body: { wordId?: string; isBold?: boolean; isItalic?: boolean; textSource?: string; book?: string; chapter?: number };
   try {
     body = await request.json();
@@ -31,6 +34,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Missing fields" }, { status: 400 });
   }
 
-  await setWordFormatting(wordId, isBold, isItalic, textSource, book, chapter);
+  await setWordFormatting(wordId, isBold, isItalic, textSource, book, chapter, workspaceId);
   return NextResponse.json({ ok: true });
 }

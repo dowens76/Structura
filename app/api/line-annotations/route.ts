@@ -5,20 +5,23 @@ import {
   updateLineAnnotation,
   deleteLineAnnotation,
 } from "@/lib/db/queries";
+import { getActiveWorkspaceId } from "@/lib/workspace";
 
 /** GET ?book=&chapter=&source= → { annotations: LineAnnotation[] } */
 export async function GET(req: NextRequest) {
+  const workspaceId = await getActiveWorkspaceId();
   const { searchParams } = new URL(req.url);
   const book    = searchParams.get("book")    ?? "";
   const chapter = parseInt(searchParams.get("chapter") ?? "0", 10);
   const source  = searchParams.get("source")  ?? "";
-  const annotations = await getChapterLineAnnotations(book, chapter, source);
+  const annotations = await getChapterLineAnnotations(book, chapter, source, workspaceId);
   return NextResponse.json({ annotations });
 }
 
 /** POST { annotType, label, color, description, outOfSequence?, startWordId, endWordId, book, chapter, source }
  *   → { annotation: LineAnnotation } */
 export async function POST(req: NextRequest) {
+  const workspaceId = await getActiveWorkspaceId();
   const body = await req.json();
   const { annotType, label, color, description, outOfSequence, startWordId, endWordId, book, chapter, source } = body;
   const annotation = await createLineAnnotation(
@@ -31,7 +34,8 @@ export async function POST(req: NextRequest) {
     endWordId,
     source,
     book,
-    chapter
+    chapter,
+    workspaceId
   );
   return NextResponse.json({ annotation });
 }

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { db } from "@/lib/db";
+import { sourceDb } from "@/lib/db";
 import { lexiconEntries } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 
@@ -10,7 +10,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ entry: null });
   }
 
-  const results = await db
+  const results = await sourceDb
     .select()
     .from(lexiconEntries)
     .where(eq(lexiconEntries.strongNumber, strong))

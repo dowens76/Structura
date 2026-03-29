@@ -9,9 +9,11 @@ import {
 } from "@/lib/db/queries";
 import type { SpeechSection } from "@/lib/db/schema";
 import type { TextSource } from "@/lib/morphology/types";
+import { getActiveWorkspaceId } from "@/lib/workspace";
 
 // GET /api/speech-sections?book=Gen&chapter=1&source=OSHB
 export async function GET(request: NextRequest) {
+  const workspaceId = await getActiveWorkspaceId();
   const { searchParams } = new URL(request.url);
   const book = searchParams.get("book");
   const chapter = parseInt(searchParams.get("chapter") ?? "", 10);
@@ -21,7 +23,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Missing params" }, { status: 400 });
   }
 
-  const sections = await getChapterSpeechSections(book, chapter, source);
+  const sections = await getChapterSpeechSections(book, chapter, source, workspaceId);
   return NextResponse.json({ sections });
 }
 
@@ -29,6 +31,7 @@ export async function GET(request: NextRequest) {
 // Body: { characterId, startWordId, endWordId, book, chapter, source }
 // Returns updated full section list for the chapter
 export async function POST(request: NextRequest) {
+  const workspaceId = await getActiveWorkspaceId();
   let body: {
     characterId?: number;
     startWordId?: string;
@@ -50,7 +53,7 @@ export async function POST(request: NextRequest) {
 
   const chapterWords = await getChapterWords(book, chapter, source as TextSource);
   const sections = await upsertSpeechSection(
-    characterId, startWordId, endWordId, book, chapter, source, chapterWords
+    characterId, startWordId, endWordId, book, chapter, source, chapterWords, workspaceId
   );
   return NextResponse.json({ sections });
 }
@@ -58,6 +61,7 @@ export async function POST(request: NextRequest) {
 // PUT /api/speech-sections — replace the full section list for a chapter (used by undo)
 // Body: { book, chapter, source, sections }
 export async function PUT(request: NextRequest) {
+  const workspaceId = await getActiveWorkspaceId();
   let body: {
     book?: string;
     chapter?: number;
@@ -75,8 +79,8 @@ export async function PUT(request: NextRequest) {
     return NextResponse.json({ error: "Missing fields" }, { status: 400 });
   }
 
-  await replaceChapterSpeechSections(book, chapter, source, sections);
-  const updated = await getChapterSpeechSections(book, chapter, source);
+  await replaceChapterSpeechSections(book, chapter, source, sections, workspaceId);
+  const updated = await getChapterSpeechSections(book, chapter, source, workspaceId);
   return NextResponse.json({ sections: updated });
 }
 
@@ -84,6 +88,7 @@ export async function PUT(request: NextRequest) {
 // Body: { sectionId, characterId, book, chapter, source }
 // Reassigns an existing speech section to a different character.
 export async function PATCH(request: NextRequest) {
+  const workspaceId = await getActiveWorkspaceId();
   let body: { sectionId?: number; characterId?: number; book?: string; chapter?: number; source?: string };
   try {
     body = await request.json();
@@ -96,7 +101,7 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ error: "Missing fields" }, { status: 400 });
   }
 
-  const sections = await updateSpeechSectionCharacter(sectionId, characterId, book, chapter, source);
+  const sections = await updateSpeechSectionCharacter(sectionId, characterId, book, chapter, source, workspaceId);
   return NextResponse.json({ sections });
 }
 
@@ -104,6 +109,7 @@ export async function PATCH(request: NextRequest) {
 // Body: { wordId, book, chapter, source }
 // Returns updated full section list for the chapter
 export async function DELETE(request: NextRequest) {
+  const workspaceId = await getActiveWorkspaceId();
   let body: {
     wordId?: string;
     book?: string;
@@ -122,6 +128,6 @@ export async function DELETE(request: NextRequest) {
   }
 
   const chapterWords = await getChapterWords(book, chapter, source as TextSource);
-  const sections = await removeSpeechSectionContaining(wordId, book, chapter, source, chapterWords);
+  const sections = await removeSpeechSectionContaining(wordId, book, chapter, source, chapterWords, workspaceId);
   return NextResponse.json({ sections });
 }

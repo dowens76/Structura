@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPassagesForBook, createPassage } from "@/lib/db/queries";
+import { getActiveWorkspaceId } from "@/lib/workspace";
 
 // GET /api/passages?book=Gen&source=OSHB
 export async function GET(request: NextRequest) {
+  const workspaceId = await getActiveWorkspaceId();
   const { searchParams } = new URL(request.url);
   const book   = searchParams.get("book");
   const source = searchParams.get("source");
@@ -11,13 +13,14 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Missing params" }, { status: 400 });
   }
 
-  const list = await getPassagesForBook(book, source);
+  const list = await getPassagesForBook(book, source, workspaceId);
   return NextResponse.json({ passages: list });
 }
 
 // POST /api/passages
 // Body: { book, textSource, label, startChapter, startVerse, endChapter, endVerse }
 export async function POST(request: NextRequest) {
+  const workspaceId = await getActiveWorkspaceId();
   let body: {
     book?: string;
     textSource?: string;
@@ -52,7 +55,7 @@ export async function POST(request: NextRequest) {
 
   const passage = await createPassage(
     book, textSource, label,
-    startChapter, startVerse, endChapter, endVerse
+    startChapter, startVerse, endChapter, endVerse, workspaceId
   );
   return NextResponse.json({ passage }, { status: 201 });
 }

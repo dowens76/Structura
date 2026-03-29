@@ -4,25 +4,28 @@ import {
   createClauseRelationship,
   deleteClauseRelationship,
 } from "@/lib/db/queries";
+import { getActiveWorkspaceId } from "@/lib/workspace";
 
 export async function GET(req: NextRequest) {
+  const workspaceId = await getActiveWorkspaceId();
   const { searchParams } = req.nextUrl;
   const book    = searchParams.get("book");
   const chapter = parseInt(searchParams.get("chapter") ?? "");
   const source  = searchParams.get("source");
   if (!book || isNaN(chapter) || !source)
     return NextResponse.json({ error: "Missing params" }, { status: 400 });
-  const relationships = await getChapterClauseRelationships(book, chapter, source);
+  const relationships = await getChapterClauseRelationships(book, chapter, source, workspaceId);
   return NextResponse.json({ relationships });
 }
 
 export async function POST(req: NextRequest) {
+  const workspaceId = await getActiveWorkspaceId();
   const body = await req.json();
   const { fromSegWordId, toSegWordId, relType, book, chapter, source } = body;
   if (!fromSegWordId || !toSegWordId || !relType || !book || !chapter || !source)
     return NextResponse.json({ error: "Missing fields" }, { status: 400 });
   const relationship = await createClauseRelationship(
-    fromSegWordId, toSegWordId, relType, book, Number(chapter), source
+    fromSegWordId, toSegWordId, relType, book, Number(chapter), source, workspaceId
   );
   return NextResponse.json({ relationship });
 }

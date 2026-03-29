@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getChapterCharacterRefs, upsertCharacterRef, removeCharacterRef } from "@/lib/db/queries";
+import { getActiveWorkspaceId } from "@/lib/workspace";
 
 // GET /api/character-refs?book=Gen&chapter=1
 // Returns refs for ALL text sources in this chapter (source text + translations)
 export async function GET(request: NextRequest) {
+  const workspaceId = await getActiveWorkspaceId();
   const { searchParams } = new URL(request.url);
   const book = searchParams.get("book");
   const chapter = parseInt(searchParams.get("chapter") ?? "", 10);
@@ -12,7 +14,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Missing params" }, { status: 400 });
   }
 
-  const refs = await getChapterCharacterRefs(book, chapter);
+  const refs = await getChapterCharacterRefs(book, chapter, workspaceId);
   return NextResponse.json({ refs });
 }
 
@@ -20,6 +22,7 @@ export async function GET(request: NextRequest) {
 // Body: { wordId, character1Id, character2Id|null, book, chapter, source }
 // If character1Id is null → remove the ref entirely
 export async function POST(request: NextRequest) {
+  const workspaceId = await getActiveWorkspaceId();
   let body: {
     wordId?: string;
     character1Id?: number | null;
@@ -40,9 +43,9 @@ export async function POST(request: NextRequest) {
   }
 
   if (character1Id == null) {
-    await removeCharacterRef(wordId);
+    await removeCharacterRef(wordId, workspaceId);
   } else {
-    await upsertCharacterRef(wordId, character1Id, character2Id ?? null, book, chapter, source);
+    await upsertCharacterRef(wordId, character1Id, character2Id ?? null, book, chapter, source, workspaceId);
   }
 
   return NextResponse.json({ ok: true });

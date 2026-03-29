@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { upsertWordTagRef, removeWordTagRef } from "@/lib/db/queries";
+import { getActiveWorkspaceId } from "@/lib/workspace";
 
 // POST /api/word-tag-refs
 // body: { wordId, tagId, book, chapter, source }
 // If tagId is null → remove the ref
 export async function POST(request: NextRequest) {
+  const workspaceId = await getActiveWorkspaceId();
   let body: {
     wordId?: string;
     tagId?: number | null;
@@ -20,9 +22,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Missing fields" }, { status: 400 });
   }
   if (tagId == null) {
-    await removeWordTagRef(wordId);
+    await removeWordTagRef(wordId, workspaceId);
   } else {
-    await upsertWordTagRef(wordId, tagId, source, book, chapter);
+    await upsertWordTagRef(wordId, tagId, source, book, chapter, workspaceId);
   }
   return NextResponse.json({ ok: true });
 }

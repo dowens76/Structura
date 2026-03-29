@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { db } from "@/lib/db";
+import { userDb } from "@/lib/db";
 import {
   paragraphBreaks,
   characterRefs,
@@ -11,6 +11,7 @@ import {
   clauseRelationships,
 } from "@/lib/db/schema";
 import { and, eq, gte, lte, type SQL } from "drizzle-orm";
+import { getActiveWorkspaceId } from "@/lib/workspace";
 
 const VALID_CATEGORIES = [
   "paragraphBreaks",
@@ -25,6 +26,7 @@ const VALID_CATEGORIES = [
 type Category = (typeof VALID_CATEGORIES)[number];
 
 export async function POST(req: NextRequest) {
+  const workspaceId = await getActiveWorkspaceId();
   const body = await req.json() as {
     book: string;
     textSource: string;
@@ -57,43 +59,43 @@ export async function POST(req: NextRequest) {
   for (const cat of toDelete) {
     switch (cat) {
       case "paragraphBreaks":
-        await db.delete(paragraphBreaks).where(
-          and(eq(paragraphBreaks.book, book), chapterCond(paragraphBreaks.chapter), eq(paragraphBreaks.textSource, textSource))
+        await userDb.delete(paragraphBreaks).where(
+          and(eq(paragraphBreaks.workspaceId, workspaceId), eq(paragraphBreaks.book, book), chapterCond(paragraphBreaks.chapter), eq(paragraphBreaks.textSource, textSource))
         );
         break;
       case "characterRefs":
-        await db.delete(characterRefs).where(
-          and(eq(characterRefs.book, book), chapterCond(characterRefs.chapter), eq(characterRefs.textSource, textSource))
+        await userDb.delete(characterRefs).where(
+          and(eq(characterRefs.workspaceId, workspaceId), eq(characterRefs.book, book), chapterCond(characterRefs.chapter), eq(characterRefs.textSource, textSource))
         );
         break;
       case "speechSections":
-        await db.delete(speechSections).where(
-          and(eq(speechSections.book, book), chapterCond(speechSections.chapter), eq(speechSections.textSource, textSource))
+        await userDb.delete(speechSections).where(
+          and(eq(speechSections.workspaceId, workspaceId), eq(speechSections.book, book), chapterCond(speechSections.chapter), eq(speechSections.textSource, textSource))
         );
         break;
       case "wordTagRefs":
-        await db.delete(wordTagRefs).where(
-          and(eq(wordTagRefs.book, book), chapterCond(wordTagRefs.chapter), eq(wordTagRefs.textSource, textSource))
+        await userDb.delete(wordTagRefs).where(
+          and(eq(wordTagRefs.workspaceId, workspaceId), eq(wordTagRefs.book, book), chapterCond(wordTagRefs.chapter), eq(wordTagRefs.textSource, textSource))
         );
         break;
       case "lineIndents":
-        await db.delete(lineIndents).where(
-          and(eq(lineIndents.book, book), chapterCond(lineIndents.chapter), eq(lineIndents.textSource, textSource))
+        await userDb.delete(lineIndents).where(
+          and(eq(lineIndents.workspaceId, workspaceId), eq(lineIndents.book, book), chapterCond(lineIndents.chapter), eq(lineIndents.textSource, textSource))
         );
         break;
       case "wordArrows":
-        await db.delete(wordArrows).where(
-          and(eq(wordArrows.book, book), chapterCond(wordArrows.chapter), eq(wordArrows.textSource, textSource))
+        await userDb.delete(wordArrows).where(
+          and(eq(wordArrows.workspaceId, workspaceId), eq(wordArrows.book, book), chapterCond(wordArrows.chapter), eq(wordArrows.textSource, textSource))
         );
         break;
       case "wordFormatting":
-        await db.delete(wordFormatting).where(
-          and(eq(wordFormatting.book, book), chapterCond(wordFormatting.chapter), eq(wordFormatting.textSource, textSource))
+        await userDb.delete(wordFormatting).where(
+          and(eq(wordFormatting.workspaceId, workspaceId), eq(wordFormatting.book, book), chapterCond(wordFormatting.chapter), eq(wordFormatting.textSource, textSource))
         );
         break;
       case "clauseRelationships":
-        await db.delete(clauseRelationships).where(
-          and(eq(clauseRelationships.book, book), chapterCond(clauseRelationships.chapter), eq(clauseRelationships.textSource, textSource))
+        await userDb.delete(clauseRelationships).where(
+          and(eq(clauseRelationships.workspaceId, workspaceId), eq(clauseRelationships.book, book), chapterCond(clauseRelationships.chapter), eq(clauseRelationships.textSource, textSource))
         );
         break;
     }

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { db } from "@/lib/db";
+import { userDb } from "@/lib/db";
 import {
   paragraphBreaks,
   characters,
@@ -15,6 +15,8 @@ import {
   translations,
   translationVerses,
 } from "@/lib/db/schema";
+import { eq } from "drizzle-orm";
+import { getActiveWorkspaceId } from "@/lib/workspace";
 
 // Split an array into chunks of at most `size` elements.
 // SQLite has a parameter limit of 999 per statement; 500-row batches stay well under it.
@@ -30,24 +32,25 @@ const BATCH = 500;
 // Returns a downloadable JSON file containing all user annotation and
 // translation data (everything except the source texts books/words/verses).
 export async function GET() {
+  const workspaceId = await getActiveWorkspaceId();
   const [
     pbRows, charRows, charRefRows, speechRows,
     wtRows, wtrRows, liRows, passRows, clRelRows, waRows, wfRows,
     transRows, tvRows,
   ] = await Promise.all([
-    db.select().from(paragraphBreaks),
-    db.select().from(characters),
-    db.select().from(characterRefs),
-    db.select().from(speechSections),
-    db.select().from(wordTags),
-    db.select().from(wordTagRefs),
-    db.select().from(lineIndents),
-    db.select().from(passages),
-    db.select().from(clauseRelationships),
-    db.select().from(wordArrows),
-    db.select().from(wordFormatting),
-    db.select().from(translations),
-    db.select().from(translationVerses),
+    userDb.select().from(paragraphBreaks).where(eq(paragraphBreaks.workspaceId, workspaceId)),
+    userDb.select().from(characters).where(eq(characters.workspaceId, workspaceId)),
+    userDb.select().from(characterRefs).where(eq(characterRefs.workspaceId, workspaceId)),
+    userDb.select().from(speechSections).where(eq(speechSections.workspaceId, workspaceId)),
+    userDb.select().from(wordTags).where(eq(wordTags.workspaceId, workspaceId)),
+    userDb.select().from(wordTagRefs).where(eq(wordTagRefs.workspaceId, workspaceId)),
+    userDb.select().from(lineIndents).where(eq(lineIndents.workspaceId, workspaceId)),
+    userDb.select().from(passages).where(eq(passages.workspaceId, workspaceId)),
+    userDb.select().from(clauseRelationships).where(eq(clauseRelationships.workspaceId, workspaceId)),
+    userDb.select().from(wordArrows).where(eq(wordArrows.workspaceId, workspaceId)),
+    userDb.select().from(wordFormatting).where(eq(wordFormatting.workspaceId, workspaceId)),
+    userDb.select().from(translations).where(eq(translations.workspaceId, workspaceId)),
+    userDb.select().from(translationVerses).where(eq(translationVerses.workspaceId, workspaceId)),
   ]);
 
   const backup = {
@@ -85,6 +88,7 @@ export async function GET() {
 // Restores all user annotation and translation data from a previously exported
 // backup JSON. All existing data in the annotation tables is cleared first.
 export async function POST(request: NextRequest) {
+  const workspaceId = await getActiveWorkspaceId();
   let backup: unknown;
   try {
     backup = await request.json();
@@ -104,96 +108,107 @@ export async function POST(request: NextRequest) {
   const data = (backup as { data: Record<string, AnyRow[]> }).data;
 
   try {
-    // ── Delete all existing data, children before parents ─────────────────
-    await db.delete(wordFormatting);
-    await db.delete(wordArrows);
-    await db.delete(clauseRelationships);
-    await db.delete(lineIndents);
-    await db.delete(passages);
-    await db.delete(wordTagRefs);
-    await db.delete(wordTags);
-    await db.delete(characterRefs);
-    await db.delete(speechSections);
-    await db.delete(characters);
-    await db.delete(paragraphBreaks);
-    await db.delete(translationVerses);
-    await db.delete(translations);
+    // ── Delete all existing data for this workspace, children before parents ─
+    await userDb.delete(wordFormatting).where(eq(wordFormatting.workspaceId, workspaceId));
+    await userDb.delete(wordArrows).where(eq(wordArrows.workspaceId, workspaceId));
+    await userDb.delete(clauseRelationships).where(eq(clauseRelationships.workspaceId, workspaceId));
+    await userDb.delete(lineIndents).where(eq(lineIndents.workspaceId, workspaceId));
+    await userDb.delete(passages).where(eq(passages.workspaceId, workspaceId));
+    await userDb.delete(wordTagRefs).where(eq(wordTagRefs.workspaceId, workspaceId));
+    await userDb.delete(wordTags).where(eq(wordTags.workspaceId, workspaceId));
+    await userDb.delete(characterRefs).where(eq(characterRefs.workspaceId, workspaceId));
+    await userDb.delete(speechSections).where(eq(speechSections.workspaceId, workspaceId));
+    await userDb.delete(characters).where(eq(characters.workspaceId, workspaceId));
+    await userDb.delete(paragraphBreaks).where(eq(paragraphBreaks.workspaceId, workspaceId));
+    await userDb.delete(translationVerses).where(eq(translationVerses.workspaceId, workspaceId));
+    await userDb.delete(translations).where(eq(translations.workspaceId, workspaceId));
 
     // ── Re-insert from backup, parents before children ─────────────────────
     // paragraphBreaks
     if (data.paragraphBreaks?.length) {
-      for (const batch of chunk(data.paragraphBreaks as typeof paragraphBreaks.$inferInsert[], BATCH)) {
-        await db.insert(paragraphBreaks).values(batch);
+      const rows = (data.paragraphBreaks as typeof paragraphBreaks.$inferInsert[]).map((r) => ({ ...r, workspaceId }));
+      for (const batch of chunk(rows, BATCH)) {
+        await userDb.insert(paragraphBreaks).values(batch);
       }
     }
 
     // characters
     if (data.characters?.length) {
-      for (const batch of chunk(data.characters as typeof characters.$inferInsert[], BATCH)) {
-        await db.insert(characters).values(batch);
+      const rows = (data.characters as typeof characters.$inferInsert[]).map((r) => ({ ...r, workspaceId }));
+      for (const batch of chunk(rows, BATCH)) {
+        await userDb.insert(characters).values(batch);
       }
     }
 
     // characterRefs (FK → characters)
     if (data.characterRefs?.length) {
-      for (const batch of chunk(data.characterRefs as typeof characterRefs.$inferInsert[], BATCH)) {
-        await db.insert(characterRefs).values(batch);
+      const rows = (data.characterRefs as typeof characterRefs.$inferInsert[]).map((r) => ({ ...r, workspaceId }));
+      for (const batch of chunk(rows, BATCH)) {
+        await userDb.insert(characterRefs).values(batch);
       }
     }
 
     // speechSections (FK → characters)
     if (data.speechSections?.length) {
-      for (const batch of chunk(data.speechSections as typeof speechSections.$inferInsert[], BATCH)) {
-        await db.insert(speechSections).values(batch);
+      const rows = (data.speechSections as typeof speechSections.$inferInsert[]).map((r) => ({ ...r, workspaceId }));
+      for (const batch of chunk(rows, BATCH)) {
+        await userDb.insert(speechSections).values(batch);
       }
     }
 
     // wordTags
     if (data.wordTags?.length) {
-      for (const batch of chunk(data.wordTags as typeof wordTags.$inferInsert[], BATCH)) {
-        await db.insert(wordTags).values(batch);
+      const rows = (data.wordTags as typeof wordTags.$inferInsert[]).map((r) => ({ ...r, workspaceId }));
+      for (const batch of chunk(rows, BATCH)) {
+        await userDb.insert(wordTags).values(batch);
       }
     }
 
     // wordTagRefs (FK → wordTags)
     if (data.wordTagRefs?.length) {
-      for (const batch of chunk(data.wordTagRefs as typeof wordTagRefs.$inferInsert[], BATCH)) {
-        await db.insert(wordTagRefs).values(batch);
+      const rows = (data.wordTagRefs as typeof wordTagRefs.$inferInsert[]).map((r) => ({ ...r, workspaceId }));
+      for (const batch of chunk(rows, BATCH)) {
+        await userDb.insert(wordTagRefs).values(batch);
       }
     }
 
     // lineIndents
     if (data.lineIndents?.length) {
-      for (const batch of chunk(data.lineIndents as typeof lineIndents.$inferInsert[], BATCH)) {
-        await db.insert(lineIndents).values(batch);
+      const rows = (data.lineIndents as typeof lineIndents.$inferInsert[]).map((r) => ({ ...r, workspaceId }));
+      for (const batch of chunk(rows, BATCH)) {
+        await userDb.insert(lineIndents).values(batch);
       }
     }
 
     // passages
     if (data.passages?.length) {
-      for (const batch of chunk(data.passages as typeof passages.$inferInsert[], BATCH)) {
-        await db.insert(passages).values(batch);
+      const rows = (data.passages as typeof passages.$inferInsert[]).map((r) => ({ ...r, workspaceId }));
+      for (const batch of chunk(rows, BATCH)) {
+        await userDb.insert(passages).values(batch);
       }
     }
 
     // clauseRelationships
     if (data.clauseRelationships?.length) {
-      for (const batch of chunk(data.clauseRelationships as typeof clauseRelationships.$inferInsert[], BATCH)) {
-        await db.insert(clauseRelationships).values(batch);
+      const rows = (data.clauseRelationships as typeof clauseRelationships.$inferInsert[]).map((r) => ({ ...r, workspaceId }));
+      for (const batch of chunk(rows, BATCH)) {
+        await userDb.insert(clauseRelationships).values(batch);
       }
     }
 
     // wordArrows
     if (data.wordArrows?.length) {
-      for (const batch of chunk(data.wordArrows as typeof wordArrows.$inferInsert[], BATCH)) {
-        await db.insert(wordArrows).values(batch);
+      const rows = (data.wordArrows as typeof wordArrows.$inferInsert[]).map((r) => ({ ...r, workspaceId }));
+      for (const batch of chunk(rows, BATCH)) {
+        await userDb.insert(wordArrows).values(batch);
       }
     }
 
     // wordFormatting
     if (data.wordFormatting?.length) {
-      for (const batch of chunk(data.wordFormatting as typeof wordFormatting.$inferInsert[], BATCH)) {
-        await db.insert(wordFormatting).values(batch);
+      const rows = (data.wordFormatting as typeof wordFormatting.$inferInsert[]).map((r) => ({ ...r, workspaceId }));
+      for (const batch of chunk(rows, BATCH)) {
+        await userDb.insert(wordFormatting).values(batch);
       }
     }
 
@@ -203,17 +218,19 @@ export async function POST(request: NextRequest) {
     if (data.translations?.length) {
       const rows = data.translations.map((r) => ({
         ...r,
+        workspaceId,
         createdAt: r.createdAt ? new Date(r.createdAt as string | number) : undefined,
       })) as typeof translations.$inferInsert[];
       for (const batch of chunk(rows, BATCH)) {
-        await db.insert(translations).values(batch);
+        await userDb.insert(translations).values(batch);
       }
     }
 
     // translationVerses (FK → translations) — potentially 40K+ rows, batched
     if (data.translationVerses?.length) {
-      for (const batch of chunk(data.translationVerses as typeof translationVerses.$inferInsert[], BATCH)) {
-        await db.insert(translationVerses).values(batch);
+      const rows = (data.translationVerses as typeof translationVerses.$inferInsert[]).map((r) => ({ ...r, workspaceId }));
+      for (const batch of chunk(rows, BATCH)) {
+        await userDb.insert(translationVerses).values(batch);
       }
     }
 

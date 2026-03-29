@@ -17,6 +17,7 @@ import {
   getTranslationVerses,
   getChapterSceneBreaks,
 } from "@/lib/db/queries";
+import { getActiveWorkspaceId } from "@/lib/workspace";
 import { OSIS_BOOK_NAMES } from "@/lib/utils/osis";
 import type {
   Word, Character, CharacterRef, SpeechSection,
@@ -757,12 +758,13 @@ async function buildTranslationMap(
   translations: Translation[],
   osisBook:     string,
   chapters:     number[],
+  workspaceId:  number,
 ): Promise<Map<string, { abbr: string; text: string }[]>> {
   const map = new Map<string, { abbr: string; text: string }[]>();
   await Promise.all(
     translations.map(async (t) => {
       const versesPerChapter = await Promise.all(
-        chapters.map((ch) => getTranslationVerses(t.id, osisBook, ch))
+        chapters.map((ch) => getTranslationVerses(t.id, osisBook, ch, workspaceId))
       );
       for (const v of versesPerChapter.flat()) {
         const key     = `${v.chapter}.${v.verse}`;
@@ -780,6 +782,8 @@ async function buildTranslationMap(
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const passageIdStr = searchParams.get("passageId");
+
+  const workspaceId = await getActiveWorkspaceId();
 
   let words:                Word[];
   let characters:           Character[];
@@ -824,25 +828,25 @@ export async function GET(req: NextRequest) {
           passage.startChapter, passage.startVerse,
           passage.endChapter,   passage.endVerse,
         ),
-        getCharacters(osisBook),
-        getWordTags(osisBook),
+        getCharacters(osisBook, workspaceId),
+        getWordTags(osisBook, workspaceId),
         Promise.all(
           chapterRange.map((ch) =>
             Promise.all([
-              getChapterCharacterRefs(osisBook, ch),
-              getChapterSpeechSections(osisBook, ch, textSource),
-              getChapterWordFormatting(osisBook, ch),
-              getChapterParagraphBreaks(osisBook, ch),
-              getChapterWordTagRefs(osisBook, ch),
-              getChapterLineIndents(osisBook, ch),
-              getChapterSceneBreaks(osisBook, ch),
+              getChapterCharacterRefs(osisBook, ch, workspaceId),
+              getChapterSpeechSections(osisBook, ch, textSource, workspaceId),
+              getChapterWordFormatting(osisBook, ch, workspaceId),
+              getChapterParagraphBreaks(osisBook, ch, workspaceId),
+              getChapterWordTagRefs(osisBook, ch, workspaceId),
+              getChapterLineIndents(osisBook, ch, workspaceId),
+              getChapterSceneBreaks(osisBook, ch, workspaceId),
             ])
           )
         ),
         Promise.all(
-          chapterRange.map((ch) => getChapterWordArrows(osisBook, ch, textSource))
+          chapterRange.map((ch) => getChapterWordArrows(osisBook, ch, textSource, workspaceId))
         ),
-        getAvailableTranslationsForChapter(osisBook, passage.startChapter),
+        getAvailableTranslationsForChapter(osisBook, passage.startChapter, workspaceId),
       ]);
 
     words             = passageWords;
@@ -856,7 +860,7 @@ export async function GET(req: NextRequest) {
     lineIndentRows    = perChapter.flatMap(([,,,,, l]) => l);
     sceneBreakRows    = perChapter.flatMap(([,,,,,, sb]) => sb);
     wordArrows        = arrowsByChapter.flat();
-    translationMap    = await buildTranslationMap(availableTranslations, osisBook, chapterRange);
+    translationMap    = await buildTranslationMap(availableTranslations, osisBook, chapterRange, workspaceId);
 
     title    = passage.label
       || `${bookName} ${passage.startChapter}:${passage.startVerse}–${passage.endChapter}:${passage.endVerse}`;
@@ -890,17 +894,17 @@ export async function GET(req: NextRequest) {
     const [chapterWords, chars, refs, sections, fmt, paraBreaks, sceneBreaks, tags, tagRefs, indents, arrows, availableTranslations] =
       await Promise.all([
         getChapterWords(osisBook, chapter, textSource),
-        getCharacters(osisBook),
-        getChapterCharacterRefs(osisBook, chapter),
-        getChapterSpeechSections(osisBook, chapter, textSource),
-        getChapterWordFormatting(osisBook, chapter),
-        getChapterParagraphBreaks(osisBook, chapter),
-        getChapterSceneBreaks(osisBook, chapter),
-        getWordTags(osisBook),
-        getChapterWordTagRefs(osisBook, chapter),
-        getChapterLineIndents(osisBook, chapter),
-        getChapterWordArrows(osisBook, chapter, textSource),
-        getAvailableTranslationsForChapter(osisBook, chapter),
+        getCharacters(osisBook, workspaceId),
+        getChapterCharacterRefs(osisBook, chapter, workspaceId),
+        getChapterSpeechSections(osisBook, chapter, textSource, workspaceId),
+        getChapterWordFormatting(osisBook, chapter, workspaceId),
+        getChapterParagraphBreaks(osisBook, chapter, workspaceId),
+        getChapterSceneBreaks(osisBook, chapter, workspaceId),
+        getWordTags(osisBook, workspaceId),
+        getChapterWordTagRefs(osisBook, chapter, workspaceId),
+        getChapterLineIndents(osisBook, chapter, workspaceId),
+        getChapterWordArrows(osisBook, chapter, textSource, workspaceId),
+        getAvailableTranslationsForChapter(osisBook, chapter, workspaceId),
       ]);
 
     words             = chapterWords;
@@ -914,7 +918,7 @@ export async function GET(req: NextRequest) {
     wordTagRefs       = tagRefs;
     lineIndentRows    = indents;
     wordArrows        = arrows;
-    translationMap    = await buildTranslationMap(availableTranslations, osisBook, [chapter]);
+    translationMap    = await buildTranslationMap(availableTranslations, osisBook, [chapter], workspaceId);
 
     title    = `${bookName} ${chapter}`;
     filename = `structura-${osisBook}-${chapter}`;

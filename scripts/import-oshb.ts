@@ -17,7 +17,7 @@ import { parseOshbMorph, parseOshbLemma } from "../lib/morphology/oshb-parser";
 import { OSIS_BOOKS_OT, OSIS_BOOK_NAMES } from "../lib/utils/osis";
 import { getChapterCount } from "../lib/utils/scripture";
 
-const DB_PATH = path.join(process.cwd(), "data", "structura.db");
+const DB_PATH = path.join(process.cwd(), "data", "source.db");
 const WLC_PATH = path.join(process.cwd(), "node_modules", "morphhb", "wlc");
 
 const sqlite = new Database(DB_PATH);

@@ -15,7 +15,7 @@ import path from "path";
 import * as schema from "../lib/db/schema";
 import { sql } from "drizzle-orm";
 
-const DB_PATH    = path.join(process.cwd(), "data", "structura.db");
+const DB_PATH    = path.join(process.cwd(), "data", "source.db");
 const CACHE_DIR  = path.join(process.cwd(), "data", "sources", "lexicon");
 const CACHE_FILE = path.join(CACHE_DIR, "dodson.xml");
 const SOURCE_URL =

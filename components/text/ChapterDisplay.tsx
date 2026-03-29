@@ -53,7 +53,7 @@ interface ChapterDisplayProps {
   initialWordFormatting: { wordId: string; isBold: boolean; isItalic: boolean }[];
   initialSceneBreaks: { wordId: string; heading: string | null; level: number; verse: number; outOfSequence: boolean; extendedThrough: number | null }[];
   initialLineAnnotations: LineAnnotation[];
-  bookSceneBreaks: { wordId: string; level: number; chapter: number; verse: number; extendedThrough: number | null }[];
+  bookSceneBreaks: { wordId: string; heading: string | null; level: number; chapter: number; verse: number; extendedThrough: number | null }[];
   bookMaxVerses: Map<number, number>;
   /** Optional heading strip (book title, chapter number, word count) rendered
    *  above the toolbar; hidden automatically in presentation mode. */
@@ -228,6 +228,9 @@ export default function ChapterDisplay({
 
   // ── Presentation mode ─────────────────────────────────────────────────────
   const [presentationMode, setPresentationMode] = useState(false);
+
+  // ── Outline copy ──────────────────────────────────────────────────────────
+  const [outlineCopied, setOutlineCopied] = useState(false);
 
   // ── Translation text editing ───────────────────────────────────────────────
   // Local mutable copy of translationVerseData so edits can be reflected immediately.
@@ -733,6 +736,28 @@ export default function ChapterDisplay({
     for (const { wordId, level, verse } of emptyBreaks) {
       handleToggleSceneBreak(wordId, level, verse);
     }
+  }
+
+  async function handleExportOutline() {
+    // Book-wide breaks: other chapters come from the static prop; current chapter uses live state.
+    const allBreaks: { wordId: string; heading: string | null; level: number; chapter: number; verse: number }[] = [];
+    for (const b of bookSceneBreaks) {
+      if (b.chapter !== chapter) allBreaks.push(b);
+    }
+    for (const [wordId, arr] of sceneBreakMap) {
+      for (const br of arr) {
+        allBreaks.push({ wordId, heading: br.heading, level: br.level, chapter, verse: br.verse });
+      }
+    }
+    allBreaks.sort((a, b) =>
+      a.chapter !== b.chapter ? a.chapter - b.chapter :
+      a.verse !== b.verse ? a.verse - b.verse :
+      a.level - b.level
+    );
+    const text = generateOutline(allBreaks, sectionRanges);
+    await navigator.clipboard.writeText(text);
+    setOutlineCopied(true);
+    setTimeout(() => setOutlineCopied(false), 2000);
   }
 
   async function handleUpdateSceneOutOfSequence(wordId: string, level: number, outOfSequence: boolean) {
@@ -2227,6 +2252,19 @@ export default function ChapterDisplay({
                   📝
                 </button>
               </div>
+
+              {/* Copy outline to clipboard */}
+              {(sceneBreakMap.size > 0 || bookSceneBreaks.length > 0) && (
+                <button
+                  type="button"
+                  onClick={handleExportOutline}
+                  className="shrink-0 text-xs px-2 py-1 rounded hover:bg-stone-200 dark:hover:bg-stone-700 transition-colors bg-stone-100 dark:bg-stone-800"
+                  style={{ color: "var(--text-muted)" }}
+                  title="Copy section break outline to clipboard"
+                >
+                  {outlineCopied ? "✓ Copied" : "📋 Outline"}
+                </button>
+              )}
 
               {/* Linguistic terms toggle — Hebrew only */}
               {isHebrew && (

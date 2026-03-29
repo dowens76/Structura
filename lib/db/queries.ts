@@ -1,22 +1,23 @@
 import { eq, and, asc, inArray, or, gte, lte, gt, lt, sql, max } from "drizzle-orm";
-import { db } from "./index";
-import { books, words, verses, translations, translationVerses, paragraphBreaks, characters, characterRefs, speechSections, wordTags, wordTagRefs, lineIndents, sceneBreaks, passages, clauseRelationships, rstRelations, wordArrows, wordFormatting, lineAnnotations } from "./schema";
+import { sourceDb, userDb } from "./index";
+import { books, words } from "./source-schema";
+import { translations, translationVerses, paragraphBreaks, characters, characterRefs, speechSections, wordTags, wordTagRefs, lineIndents, sceneBreaks, passages, clauseRelationships, rstRelations, wordArrows, wordFormatting, lineAnnotations } from "./user-schema";
 import type { Book, Word, Translation, TranslationVerse, Character, CharacterRef, SpeechSection, WordTag, WordTagRef, Passage, ClauseRelationship, RstRelation, WordArrow, LineAnnotation } from "./schema";
 import type { TextSource, Testament } from "@/lib/morphology/types";
 
 export async function getBooks(testament?: Testament): Promise<Book[]> {
   if (testament) {
-    return db
+    return sourceDb
       .select()
       .from(books)
       .where(eq(books.testament, testament))
       .orderBy(asc(books.bookNumber));
   }
-  return db.select().from(books).orderBy(asc(books.bookNumber));
+  return sourceDb.select().from(books).orderBy(asc(books.bookNumber));
 }
 
 export async function getBooksBySource(textSource: string): Promise<Book[]> {
-  return db
+  return sourceDb
     .select()
     .from(books)
     .where(eq(books.textSource, textSource))
@@ -31,7 +32,7 @@ export async function getBooksBySource(textSource: string): Promise<Book[]> {
  * Results are ordered by book_number for a consistent listing.
  */
 export async function getBooksWithWords(textSource: string): Promise<Book[]> {
-  const rows = await db
+  const rows = await sourceDb
     .selectDistinct({ book: books })
     .from(books)
     .innerJoin(words, eq(words.bookId, books.id))
@@ -52,7 +53,7 @@ export async function getMaxChapterForSource(
 ): Promise<number> {
   const book = await getBook(osisBook);
   if (!book) return 1;
-  const result = await db
+  const result = await sourceDb
     .select({ maxCh: max(words.chapter) })
     .from(words)
     .where(and(eq(words.bookId, book.id), eq(words.textSource, textSource)));
@@ -60,7 +61,7 @@ export async function getMaxChapterForSource(
 }
 
 export async function getBook(osisCode: string): Promise<Book | undefined> {
-  const results = await db
+  const results = await sourceDb
     .select()
     .from(books)
     .where(eq(books.osisCode, osisCode))
@@ -76,7 +77,7 @@ export async function getChapterWords(
   const book = await getBook(osisBook);
   if (!book) return [];
 
-  return db
+  return sourceDb
     .select()
     .from(words)
     .where(
@@ -90,7 +91,7 @@ export async function getChapterWords(
 }
 
 export async function getWordById(wordId: string): Promise<Word | undefined> {
-  const results = await db
+  const results = await sourceDb
     .select()
     .from(words)
     .where(eq(words.wordId, wordId))
@@ -103,22 +104,28 @@ export async function getChapterCount(osisBook: string): Promise<number> {
   return book?.chapterCount ?? 0;
 }
 
-export async function getTranslations(): Promise<Translation[]> {
-  return db.select().from(translations).orderBy(asc(translations.abbreviation));
+export async function getTranslations(workspaceId: number): Promise<Translation[]> {
+  return userDb
+    .select()
+    .from(translations)
+    .where(eq(translations.workspaceId, workspaceId))
+    .orderBy(asc(translations.abbreviation));
 }
 
 export async function getAvailableTranslationsForChapter(
   osisBook: string,
-  chapter: number
+  chapter: number,
+  workspaceId: number
 ): Promise<Translation[]> {
   const book = await getBook(osisBook);
   if (!book) return [];
 
-  const rows = await db
+  const rows = await userDb
     .selectDistinct({ translationId: translationVerses.translationId })
     .from(translationVerses)
     .where(
       and(
+        eq(translationVerses.workspaceId, workspaceId),
         eq(translationVerses.bookId, book.id),
         eq(translationVerses.chapter, chapter)
       )
@@ -127,26 +134,28 @@ export async function getAvailableTranslationsForChapter(
   const ids = rows.map((r) => r.translationId);
   if (ids.length === 0) return [];
 
-  return db
+  return userDb
     .select()
     .from(translations)
-    .where(inArray(translations.id, ids))
+    .where(and(eq(translations.workspaceId, workspaceId), inArray(translations.id, ids)))
     .orderBy(asc(translations.abbreviation));
 }
 
 export async function getTranslationVerses(
   translationId: number,
   osisBook: string,
-  chapter: number
+  chapter: number,
+  workspaceId: number
 ): Promise<TranslationVerse[]> {
   const book = await getBook(osisBook);
   if (!book) return [];
 
-  return db
+  return userDb
     .select()
     .from(translationVerses)
     .where(
       and(
+        eq(translationVerses.workspaceId, workspaceId),
         eq(translationVerses.translationId, translationId),
         eq(translationVerses.bookId, book.id),
         eq(translationVerses.chapter, chapter)
@@ -155,18 +164,18 @@ export async function getTranslationVerses(
     .orderBy(asc(translationVerses.verse));
 }
 
-export async function upsertTranslation(name: string, abbreviation: string): Promise<number> {
+export async function upsertTranslation(name: string, abbreviation: string, workspaceId: number): Promise<number> {
   const upper = abbreviation.toUpperCase();
-  const existing = await db
+  const existing = await userDb
     .select()
     .from(translations)
-    .where(eq(translations.abbreviation, upper))
+    .where(and(eq(translations.workspaceId, workspaceId), eq(translations.abbreviation, upper)))
     .limit(1);
   if (existing[0]) return existing[0].id;
 
-  const result = await db
+  const result = await userDb
     .insert(translations)
-    .values({ name, abbreviation: upper })
+    .values({ name, abbreviation: upper, workspaceId })
     .returning({ id: translations.id });
   return result[0].id;
 }
@@ -174,13 +183,15 @@ export async function upsertTranslation(name: string, abbreviation: string): Pro
 /** Returns the set of word IDs that are paragraph break start words for a chapter (all sources) */
 export async function getChapterParagraphBreaks(
   book: string,
-  chapter: number
+  chapter: number,
+  workspaceId: number
 ): Promise<string[]> {
-  const rows = await db
+  const rows = await userDb
     .select({ wordId: paragraphBreaks.wordId })
     .from(paragraphBreaks)
     .where(
       and(
+        eq(paragraphBreaks.workspaceId, workspaceId),
         eq(paragraphBreaks.book, book),
         eq(paragraphBreaks.chapter, chapter)
       )
@@ -193,19 +204,22 @@ export async function toggleParagraphBreak(
   wordId: string,
   book: string,
   chapter: number,
-  textSource: string
+  textSource: string,
+  workspaceId: number
 ): Promise<{ added: boolean }> {
-  const existing = await db
+  const existing = await userDb
     .select({ id: paragraphBreaks.id })
     .from(paragraphBreaks)
-    .where(eq(paragraphBreaks.wordId, wordId))
+    .where(and(eq(paragraphBreaks.workspaceId, workspaceId), eq(paragraphBreaks.wordId, wordId)))
     .limit(1);
 
   if (existing.length > 0) {
-    await db.delete(paragraphBreaks).where(eq(paragraphBreaks.wordId, wordId));
+    await userDb.delete(paragraphBreaks).where(
+      and(eq(paragraphBreaks.workspaceId, workspaceId), eq(paragraphBreaks.wordId, wordId))
+    );
     return { added: false };
   } else {
-    await db.insert(paragraphBreaks).values({ wordId, book, chapter, textSource });
+    await userDb.insert(paragraphBreaks).values({ wordId, book, chapter, textSource, workspaceId });
     return { added: true };
   }
 }
@@ -218,9 +232,10 @@ export async function toggleParagraphBreak(
  */
 export async function getChapterSceneBreaks(
   book: string,
-  chapter: number
+  chapter: number,
+  workspaceId: number
 ): Promise<{ wordId: string; heading: string | null; level: number; verse: number; outOfSequence: boolean; extendedThrough: number | null }[]> {
-  const rows = await db
+  const rows = await userDb
     .select({
       wordId:          sceneBreaks.wordId,
       heading:         sceneBreaks.heading,
@@ -230,7 +245,7 @@ export async function getChapterSceneBreaks(
       extendedThrough: sceneBreaks.extendedThrough,
     })
     .from(sceneBreaks)
-    .where(and(eq(sceneBreaks.book, book), eq(sceneBreaks.chapter, chapter)))
+    .where(and(eq(sceneBreaks.workspaceId, workspaceId), eq(sceneBreaks.book, book), eq(sceneBreaks.chapter, chapter)))
     .orderBy(asc(sceneBreaks.verse), asc(sceneBreaks.level));
   return rows;
 }
@@ -241,9 +256,10 @@ export async function getChapterSceneBreaks(
  */
 export async function getBookSceneBreaks(
   book: string,
-  textSource: string
+  textSource: string,
+  workspaceId: number
 ): Promise<{ wordId: string; heading: string | null; level: number; chapter: number; verse: number; outOfSequence: boolean; extendedThrough: number | null }[]> {
-  const rows = await db
+  const rows = await userDb
     .select({
       wordId:          sceneBreaks.wordId,
       heading:         sceneBreaks.heading,
@@ -254,7 +270,7 @@ export async function getBookSceneBreaks(
       extendedThrough: sceneBreaks.extendedThrough,
     })
     .from(sceneBreaks)
-    .where(and(eq(sceneBreaks.book, book), eq(sceneBreaks.textSource, textSource)))
+    .where(and(eq(sceneBreaks.workspaceId, workspaceId), eq(sceneBreaks.book, book), eq(sceneBreaks.textSource, textSource)))
     .orderBy(asc(sceneBreaks.chapter), asc(sceneBreaks.verse), asc(sceneBreaks.level));
   return rows;
 }
@@ -269,7 +285,7 @@ export async function getBookChapterMaxVerses(
 ): Promise<Map<number, number>> {
   const bookRow = await getBook(osisBook);
   if (!bookRow) return new Map();
-  const rows = await db
+  const rows = await sourceDb
     .select({
       chapter:  words.chapter,
       maxVerse: sql<number>`max(${words.verse})`,
@@ -293,58 +309,63 @@ export async function toggleSceneBreak(
   chapter: number,
   verse: number,
   textSource: string,
-  level = 1
+  level = 1,
+  workspaceId: number
 ): Promise<{ added: boolean }> {
   // Check if this specific (wordId, level) already exists
-  const existing = await db
+  const existing = await userDb
     .select({ id: sceneBreaks.id })
     .from(sceneBreaks)
-    .where(and(eq(sceneBreaks.wordId, wordId), eq(sceneBreaks.level, level)))
+    .where(and(eq(sceneBreaks.workspaceId, workspaceId), eq(sceneBreaks.wordId, wordId), eq(sceneBreaks.level, level)))
     .limit(1);
 
   if (existing.length > 0) {
     // Remove this specific (wordId, level) section break
-    await db.delete(sceneBreaks).where(
-      and(eq(sceneBreaks.wordId, wordId), eq(sceneBreaks.level, level))
+    await userDb.delete(sceneBreaks).where(
+      and(eq(sceneBreaks.workspaceId, workspaceId), eq(sceneBreaks.wordId, wordId), eq(sceneBreaks.level, level))
     );
     // Only remove paragraph break if no other section breaks remain at this wordId
-    const remaining = await db
+    const remaining = await userDb
       .select({ id: sceneBreaks.id })
       .from(sceneBreaks)
-      .where(eq(sceneBreaks.wordId, wordId))
+      .where(and(eq(sceneBreaks.workspaceId, workspaceId), eq(sceneBreaks.wordId, wordId)))
       .limit(1);
     if (remaining.length === 0) {
-      await db.delete(paragraphBreaks).where(eq(paragraphBreaks.wordId, wordId));
+      await userDb.delete(paragraphBreaks).where(
+        and(eq(paragraphBreaks.workspaceId, workspaceId), eq(paragraphBreaks.wordId, wordId))
+      );
     }
     return { added: false };
   } else {
     // Add this (wordId, level) section break with verse
-    await db.insert(sceneBreaks).values({ wordId, book, chapter, verse, textSource, level });
+    await userDb.insert(sceneBreaks).values({ wordId, book, chapter, verse, textSource, level, workspaceId });
     // Ensure a paragraph break exists (only if not already present)
-    const pbExists = await db
+    const pbExists = await userDb
       .select({ id: paragraphBreaks.id })
       .from(paragraphBreaks)
-      .where(eq(paragraphBreaks.wordId, wordId))
+      .where(and(eq(paragraphBreaks.workspaceId, workspaceId), eq(paragraphBreaks.wordId, wordId)))
       .limit(1);
     if (pbExists.length === 0) {
-      await db.insert(paragraphBreaks).values({ wordId, book, chapter, textSource });
+      await userDb.insert(paragraphBreaks).values({ wordId, book, chapter, textSource, workspaceId });
     }
     return { added: true };
   }
 }
 
 /** Deletes a specific (wordId, level) section break. Removes paragraph break if no others remain. */
-export async function deleteSceneBreak(wordId: string, level: number): Promise<void> {
-  await db.delete(sceneBreaks).where(
-    and(eq(sceneBreaks.wordId, wordId), eq(sceneBreaks.level, level))
+export async function deleteSceneBreak(wordId: string, level: number, workspaceId: number): Promise<void> {
+  await userDb.delete(sceneBreaks).where(
+    and(eq(sceneBreaks.workspaceId, workspaceId), eq(sceneBreaks.wordId, wordId), eq(sceneBreaks.level, level))
   );
-  const remaining = await db
+  const remaining = await userDb
     .select({ id: sceneBreaks.id })
     .from(sceneBreaks)
-    .where(eq(sceneBreaks.wordId, wordId))
+    .where(and(eq(sceneBreaks.workspaceId, workspaceId), eq(sceneBreaks.wordId, wordId)))
     .limit(1);
   if (remaining.length === 0) {
-    await db.delete(paragraphBreaks).where(eq(paragraphBreaks.wordId, wordId));
+    await userDb.delete(paragraphBreaks).where(
+      and(eq(paragraphBreaks.workspaceId, workspaceId), eq(paragraphBreaks.wordId, wordId))
+    );
   }
 }
 
@@ -352,24 +373,26 @@ export async function deleteSceneBreak(wordId: string, level: number): Promise<v
 export async function updateSceneBreakHeading(
   wordId: string,
   level: number,
-  heading: string | null
+  heading: string | null,
+  workspaceId: number
 ): Promise<void> {
-  await db
+  await userDb
     .update(sceneBreaks)
     .set({ heading: heading && heading.trim() ? heading.trim() : null })
-    .where(and(eq(sceneBreaks.wordId, wordId), eq(sceneBreaks.level, level)));
+    .where(and(eq(sceneBreaks.workspaceId, workspaceId), eq(sceneBreaks.wordId, wordId), eq(sceneBreaks.level, level)));
 }
 
 /** Marks or unmarks a specific (wordId, level) section break as out of chronological sequence. */
 export async function updateSceneBreakOutOfSequence(
   wordId: string,
   level: number,
-  outOfSequence: boolean
+  outOfSequence: boolean,
+  workspaceId: number
 ): Promise<void> {
-  await db
+  await userDb
     .update(sceneBreaks)
     .set({ outOfSequence })
-    .where(and(eq(sceneBreaks.wordId, wordId), eq(sceneBreaks.level, level)));
+    .where(and(eq(sceneBreaks.workspaceId, workspaceId), eq(sceneBreaks.wordId, wordId), eq(sceneBreaks.level, level)));
 }
 
 /**
@@ -379,24 +402,25 @@ export async function updateSceneBreakOutOfSequence(
 export async function updateSceneBreakExtendedThrough(
   wordId: string,
   level: number,
-  extendedThrough: number | null
+  extendedThrough: number | null,
+  workspaceId: number
 ): Promise<void> {
-  await db
+  await userDb
     .update(sceneBreaks)
     .set({ extendedThrough })
-    .where(and(eq(sceneBreaks.wordId, wordId), eq(sceneBreaks.level, level)));
+    .where(and(eq(sceneBreaks.workspaceId, workspaceId), eq(sceneBreaks.wordId, wordId), eq(sceneBreaks.level, level)));
 }
 
 /**
  * One-time migration: copies passage labels → level-2 section breaks.
  * Idempotent — uses onConflictDoNothing so re-running is safe.
  */
-export async function migratePassageLabelsToSectionBreaks(): Promise<void> {
+export async function migratePassageLabelsToSectionBreaks(workspaceId: number): Promise<void> {
   // Fetch all passages that have a non-empty label
-  const labelledPassages = await db
+  const labelledPassages = await userDb
     .select()
     .from(passages)
-    .where(sql`trim(${passages.label}) != ''`);
+    .where(and(eq(passages.workspaceId, workspaceId), sql`trim(${passages.label}) != ''`));
 
   if (labelledPassages.length === 0) return;
 
@@ -405,7 +429,7 @@ export async function migratePassageLabelsToSectionBreaks(): Promise<void> {
     const bookRow = await getBook(passage.book);
     if (!bookRow) continue;
 
-    const firstWords = await db
+    const firstWords = await sourceDb
       .select({ wordId: words.wordId, verse: words.verse })
       .from(words)
       .where(
@@ -424,7 +448,7 @@ export async function migratePassageLabelsToSectionBreaks(): Promise<void> {
     const { wordId, verse } = firstWords[0];
 
     // Insert level-2 section break for this passage label (ignore if already exists)
-    await db
+    await userDb
       .insert(sceneBreaks)
       .values({
         wordId,
@@ -434,17 +458,19 @@ export async function migratePassageLabelsToSectionBreaks(): Promise<void> {
         textSource: passage.textSource,
         book: passage.book,
         chapter: passage.startChapter,
+        workspaceId,
       })
       .onConflictDoNothing();
 
     // Ensure a paragraph break exists at this position
-    await db
+    await userDb
       .insert(paragraphBreaks)
       .values({
         wordId,
         textSource: passage.textSource,
         book: passage.book,
         chapter: passage.startChapter,
+        workspaceId,
       })
       .onConflictDoNothing();
   }
@@ -463,28 +489,28 @@ export function groupWordsByVerse(wordList: Word[]): Map<number, Word[]> {
 
 // ── Characters (book-scoped) ──────────────────────────────────────────────────
 
-export async function getCharacters(book: string): Promise<Character[]> {
-  return db
+export async function getCharacters(book: string, workspaceId: number): Promise<Character[]> {
+  return userDb
     .select()
     .from(characters)
-    .where(eq(characters.book, book))
+    .where(and(eq(characters.workspaceId, workspaceId), eq(characters.book, book)))
     .orderBy(asc(characters.id));
 }
 
-export async function createCharacter(name: string, color: string, book: string): Promise<Character> {
-  const result = await db
+export async function createCharacter(name: string, color: string, book: string, workspaceId: number): Promise<Character> {
+  const result = await userDb
     .insert(characters)
-    .values({ name, color, book })
+    .values({ name, color, book, workspaceId })
     .returning();
   return result[0];
 }
 
 export async function deleteCharacter(id: number): Promise<void> {
-  await db.delete(characters).where(eq(characters.id, id));
+  await userDb.delete(characters).where(eq(characters.id, id));
 }
 
 export async function updateCharacter(id: number, name: string, color: string): Promise<Character> {
-  const result = await db
+  const result = await userDb
     .update(characters)
     .set({ name, color })
     .where(eq(characters.id, id))
@@ -496,13 +522,15 @@ export async function updateCharacter(id: number, name: string, color: string): 
 
 export async function getChapterCharacterRefs(
   book: string,
-  chapter: number
+  chapter: number,
+  workspaceId: number
 ): Promise<CharacterRef[]> {
-  return db
+  return userDb
     .select()
     .from(characterRefs)
     .where(
       and(
+        eq(characterRefs.workspaceId, workspaceId),
         eq(characterRefs.book, book),
         eq(characterRefs.chapter, chapter)
       )
@@ -515,19 +543,22 @@ export async function upsertCharacterRef(
   character2Id: number | null,
   book: string,
   chapter: number,
-  textSource: string
+  textSource: string,
+  workspaceId: number
 ): Promise<void> {
-  await db
+  await userDb
     .insert(characterRefs)
-    .values({ wordId, character1Id, character2Id, book, chapter, textSource })
+    .values({ wordId, character1Id, character2Id, book, chapter, textSource, workspaceId })
     .onConflictDoUpdate({
-      target: characterRefs.wordId,
+      target: [characterRefs.workspaceId, characterRefs.wordId],
       set: { character1Id, character2Id },
     });
 }
 
-export async function removeCharacterRef(wordId: string): Promise<void> {
-  await db.delete(characterRefs).where(eq(characterRefs.wordId, wordId));
+export async function removeCharacterRef(wordId: string, workspaceId: number): Promise<void> {
+  await userDb.delete(characterRefs).where(
+    and(eq(characterRefs.workspaceId, workspaceId), eq(characterRefs.wordId, wordId))
+  );
 }
 
 // ── Speech Sections (chapter-scoped) ─────────────────────────────────────────
@@ -535,13 +566,15 @@ export async function removeCharacterRef(wordId: string): Promise<void> {
 export async function getChapterSpeechSections(
   book: string,
   chapter: number,
-  textSource: string
+  textSource: string,
+  workspaceId: number
 ): Promise<SpeechSection[]> {
-  return db
+  return userDb
     .select()
     .from(speechSections)
     .where(
       and(
+        eq(speechSections.workspaceId, workspaceId),
         eq(speechSections.book, book),
         eq(speechSections.chapter, chapter),
         eq(speechSections.textSource, textSource)
@@ -561,14 +594,15 @@ export async function upsertSpeechSection(
   book: string,
   chapter: number,
   textSource: string,
-  chapterWords: { wordId: string }[]
+  chapterWords: { wordId: string }[],
+  workspaceId: number
 ): Promise<SpeechSection[]> {
   // Build a position index
   const posMap = new Map(chapterWords.map((w, i) => [w.wordId, i]));
   const startPos = posMap.get(startWordId) ?? -1;
   const endPos   = posMap.get(endWordId)   ?? -1;
   if (startPos < 0 || endPos < 0) {
-    return getChapterSpeechSections(book, chapter, textSource);
+    return getChapterSpeechSections(book, chapter, textSource, workspaceId);
   }
   // Ensure start <= end
   const lo = Math.min(startPos, endPos);
@@ -577,7 +611,7 @@ export async function upsertSpeechSection(
   const hiWordId = chapterWords[hi].wordId;
 
   // Load all existing sections for this chapter
-  const existing = await getChapterSpeechSections(book, chapter, textSource);
+  const existing = await getChapterSpeechSections(book, chapter, textSource, workspaceId);
 
   // Find sections that overlap [lo..hi]
   const overlapping = existing.filter((s) => {
@@ -588,7 +622,7 @@ export async function upsertSpeechSection(
 
   // Delete overlapping sections
   for (const s of overlapping) {
-    await db.delete(speechSections).where(eq(speechSections.id, s.id));
+    await userDb.delete(speechSections).where(eq(speechSections.id, s.id));
   }
 
   // Determine expanded range (absorb any overlapping sections)
@@ -609,22 +643,23 @@ export async function upsertSpeechSection(
     const ei = posMap.get(s.endWordId)   ?? -1;
     if (ei + 1 === finalLo || si - 1 === finalHi) {
       // Adjacent and same character — merge
-      await db.delete(speechSections).where(eq(speechSections.id, s.id));
+      await userDb.delete(speechSections).where(eq(speechSections.id, s.id));
       finalLo = Math.min(finalLo, si);
       finalHi = Math.max(finalHi, ei);
     }
   }
 
-  await db.insert(speechSections).values({
+  await userDb.insert(speechSections).values({
     characterId,
     startWordId: chapterWords[finalLo].wordId,
     endWordId:   chapterWords[finalHi].wordId,
     book,
     chapter,
     textSource,
+    workspaceId,
   });
 
-  return getChapterSpeechSections(book, chapter, textSource);
+  return getChapterSpeechSections(book, chapter, textSource, workspaceId);
 }
 
 /**
@@ -635,17 +670,19 @@ export async function replaceChapterSpeechSections(
   book: string,
   chapter: number,
   textSource: string,
-  sections: SpeechSection[]
+  sections: SpeechSection[],
+  workspaceId: number
 ): Promise<void> {
-  await db.delete(speechSections).where(
+  await userDb.delete(speechSections).where(
     and(
+      eq(speechSections.workspaceId, workspaceId),
       eq(speechSections.book, book),
       eq(speechSections.chapter, chapter),
       eq(speechSections.textSource, textSource)
     )
   );
   if (sections.length > 0) {
-    await db.insert(speechSections).values(
+    await userDb.insert(speechSections).values(
       sections.map((s) => ({
         characterId: s.characterId,
         startWordId: s.startWordId,
@@ -653,6 +690,7 @@ export async function replaceChapterSpeechSections(
         book: s.book,
         chapter: s.chapter,
         textSource: s.textSource,
+        workspaceId,
       }))
     );
   }
@@ -667,13 +705,14 @@ export async function removeSpeechSectionContaining(
   book: string,
   chapter: number,
   textSource: string,
-  chapterWords: { wordId: string }[]
+  chapterWords: { wordId: string }[],
+  workspaceId: number
 ): Promise<SpeechSection[]> {
   const posMap = new Map(chapterWords.map((w, i) => [w.wordId, i]));
   const wordPos = posMap.get(wordId) ?? -1;
-  if (wordPos < 0) return getChapterSpeechSections(book, chapter, textSource);
+  if (wordPos < 0) return getChapterSpeechSections(book, chapter, textSource, workspaceId);
 
-  const existing = await getChapterSpeechSections(book, chapter, textSource);
+  const existing = await getChapterSpeechSections(book, chapter, textSource, workspaceId);
   const containing = existing.find((s) => {
     const si = posMap.get(s.startWordId) ?? -1;
     const ei = posMap.get(s.endWordId)   ?? -1;
@@ -681,10 +720,10 @@ export async function removeSpeechSectionContaining(
   });
 
   if (containing) {
-    await db.delete(speechSections).where(eq(speechSections.id, containing.id));
+    await userDb.delete(speechSections).where(eq(speechSections.id, containing.id));
   }
 
-  return getChapterSpeechSections(book, chapter, textSource);
+  return getChapterSpeechSections(book, chapter, textSource, workspaceId);
 }
 
 export async function updateSpeechSectionCharacter(
@@ -692,33 +731,39 @@ export async function updateSpeechSectionCharacter(
   newCharacterId: number,
   book: string,
   chapter: number,
-  textSource: string
+  textSource: string,
+  workspaceId: number
 ): Promise<SpeechSection[]> {
-  await db
+  await userDb
     .update(speechSections)
     .set({ characterId: newCharacterId })
     .where(eq(speechSections.id, sectionId));
-  return getChapterSpeechSections(book, chapter, textSource);
+  return getChapterSpeechSections(book, chapter, textSource, workspaceId);
 }
 
 // ── Word / Concept Tags (book-scoped) ─────────────────────────────────────────
 
-export async function getWordTags(book: string): Promise<WordTag[]> {
-  return db.select().from(wordTags).where(eq(wordTags.book, book)).orderBy(asc(wordTags.id));
+export async function getWordTags(book: string, workspaceId: number): Promise<WordTag[]> {
+  return userDb
+    .select()
+    .from(wordTags)
+    .where(and(eq(wordTags.workspaceId, workspaceId), eq(wordTags.book, book)))
+    .orderBy(asc(wordTags.id));
 }
 
 export async function createWordTag(
   name: string,
   color: string,
   type: string,
-  book: string
+  book: string,
+  workspaceId: number
 ): Promise<WordTag> {
-  const result = await db.insert(wordTags).values({ name, color, type, book }).returning();
+  const result = await userDb.insert(wordTags).values({ name, color, type, book, workspaceId }).returning();
   return result[0];
 }
 
 export async function updateWordTag(id: number, name: string, color: string): Promise<WordTag> {
-  const result = await db
+  const result = await userDb
     .update(wordTags)
     .set({ name, color })
     .where(eq(wordTags.id, id))
@@ -727,16 +772,16 @@ export async function updateWordTag(id: number, name: string, color: string): Pr
 }
 
 export async function deleteWordTag(id: number): Promise<void> {
-  await db.delete(wordTags).where(eq(wordTags.id, id));
+  await userDb.delete(wordTags).where(eq(wordTags.id, id));
 }
 
 // ── Word Tag Refs (chapter-scoped) ────────────────────────────────────────────
 
-export async function getChapterWordTagRefs(book: string, chapter: number): Promise<WordTagRef[]> {
-  return db
+export async function getChapterWordTagRefs(book: string, chapter: number, workspaceId: number): Promise<WordTagRef[]> {
+  return userDb
     .select()
     .from(wordTagRefs)
-    .where(and(eq(wordTagRefs.book, book), eq(wordTagRefs.chapter, chapter)));
+    .where(and(eq(wordTagRefs.workspaceId, workspaceId), eq(wordTagRefs.book, book), eq(wordTagRefs.chapter, chapter)));
 }
 
 /** Upsert a word tag ref — wordId is unique so conflict updates tagId. */
@@ -745,16 +790,19 @@ export async function upsertWordTagRef(
   tagId: number,
   textSource: string,
   book: string,
-  chapter: number
+  chapter: number,
+  workspaceId: number
 ): Promise<void> {
-  await db
+  await userDb
     .insert(wordTagRefs)
-    .values({ wordId, tagId, textSource, book, chapter })
-    .onConflictDoUpdate({ target: wordTagRefs.wordId, set: { tagId, textSource, book, chapter } });
+    .values({ wordId, tagId, textSource, book, chapter, workspaceId })
+    .onConflictDoUpdate({ target: [wordTagRefs.workspaceId, wordTagRefs.wordId], set: { tagId, textSource, book, chapter } });
 }
 
-export async function removeWordTagRef(wordId: string): Promise<void> {
-  await db.delete(wordTagRefs).where(eq(wordTagRefs.wordId, wordId));
+export async function removeWordTagRef(wordId: string, workspaceId: number): Promise<void> {
+  await userDb.delete(wordTagRefs).where(
+    and(eq(wordTagRefs.workspaceId, workspaceId), eq(wordTagRefs.wordId, wordId))
+  );
 }
 
 // ── Line Indents (chapter-scoped) ─────────────────────────────────────────────
@@ -762,12 +810,13 @@ export async function removeWordTagRef(wordId: string): Promise<void> {
 /** Returns all paragraph indent levels for a chapter. */
 export async function getChapterLineIndents(
   book: string,
-  chapter: number
+  chapter: number,
+  workspaceId: number
 ): Promise<{ wordId: string; indentLevel: number }[]> {
-  return db
+  return userDb
     .select({ wordId: lineIndents.wordId, indentLevel: lineIndents.indentLevel })
     .from(lineIndents)
-    .where(and(eq(lineIndents.book, book), eq(lineIndents.chapter, chapter)));
+    .where(and(eq(lineIndents.workspaceId, workspaceId), eq(lineIndents.book, book), eq(lineIndents.chapter, chapter)));
 }
 
 /**
@@ -779,15 +828,18 @@ export async function setLineIndent(
   indentLevel: number,
   textSource: string,
   book: string,
-  chapter: number
+  chapter: number,
+  workspaceId: number
 ): Promise<void> {
   if (indentLevel <= 0) {
-    await db.delete(lineIndents).where(eq(lineIndents.wordId, wordId));
+    await userDb.delete(lineIndents).where(
+      and(eq(lineIndents.workspaceId, workspaceId), eq(lineIndents.wordId, wordId))
+    );
   } else {
-    await db
+    await userDb
       .insert(lineIndents)
-      .values({ wordId, indentLevel, textSource, book, chapter })
-      .onConflictDoUpdate({ target: lineIndents.wordId, set: { indentLevel } });
+      .values({ wordId, indentLevel, textSource, book, chapter, workspaceId })
+      .onConflictDoUpdate({ target: [lineIndents.workspaceId, lineIndents.wordId], set: { indentLevel } });
   }
 }
 
@@ -795,17 +847,18 @@ export async function setLineIndent(
 
 export async function getPassagesForBook(
   book: string,
-  textSource: string
+  textSource: string,
+  workspaceId: number
 ): Promise<Passage[]> {
-  return db
+  return userDb
     .select()
     .from(passages)
-    .where(and(eq(passages.book, book), eq(passages.textSource, textSource)))
+    .where(and(eq(passages.workspaceId, workspaceId), eq(passages.book, book), eq(passages.textSource, textSource)))
     .orderBy(asc(passages.startChapter), asc(passages.startVerse));
 }
 
 export async function getPassage(id: number): Promise<Passage | undefined> {
-  const results = await db
+  const results = await userDb
     .select()
     .from(passages)
     .where(eq(passages.id, id))
@@ -820,11 +873,12 @@ export async function createPassage(
   startChapter: number,
   startVerse: number,
   endChapter: number,
-  endVerse: number
+  endVerse: number,
+  workspaceId: number
 ): Promise<Passage> {
-  const result = await db
+  const result = await userDb
     .insert(passages)
-    .values({ book, textSource, label, startChapter, startVerse, endChapter, endVerse })
+    .values({ book, textSource, label, startChapter, startVerse, endChapter, endVerse, workspaceId })
     .returning();
   return result[0];
 }
@@ -833,7 +887,7 @@ export async function updatePassage(
   id: number,
   updates: Partial<Pick<Passage, "label" | "startChapter" | "startVerse" | "endChapter" | "endVerse">>
 ): Promise<Passage> {
-  const result = await db
+  const result = await userDb
     .update(passages)
     .set(updates)
     .where(eq(passages.id, id))
@@ -842,7 +896,7 @@ export async function updatePassage(
 }
 
 export async function deletePassage(id: number): Promise<void> {
-  await db.delete(passages).where(eq(passages.id, id));
+  await userDb.delete(passages).where(eq(passages.id, id));
 }
 
 /**
@@ -878,7 +932,7 @@ export async function getPassageWords(
           and(eq(words.chapter, endChapter), lte(words.verse, endVerse))
         );
 
-  return db
+  return sourceDb
     .select()
     .from(words)
     .where(and(baseFilter, rangeFilter))
@@ -890,13 +944,15 @@ export async function getPassageWords(
 export async function getChapterClauseRelationships(
   book: string,
   chapter: number,
-  textSource: string
+  textSource: string,
+  workspaceId: number
 ): Promise<ClauseRelationship[]> {
-  return db
+  return userDb
     .select()
     .from(clauseRelationships)
     .where(
       and(
+        eq(clauseRelationships.workspaceId, workspaceId),
         eq(clauseRelationships.book, book),
         eq(clauseRelationships.chapter, chapter),
         eq(clauseRelationships.textSource, textSource)
@@ -910,17 +966,18 @@ export async function createClauseRelationship(
   relType: string,
   book: string,
   chapter: number,
-  textSource: string
+  textSource: string,
+  workspaceId: number
 ): Promise<ClauseRelationship> {
-  const [row] = await db
+  const [row] = await userDb
     .insert(clauseRelationships)
-    .values({ fromSegWordId, toSegWordId, relType, book, chapter, textSource })
+    .values({ fromSegWordId, toSegWordId, relType, book, chapter, textSource, workspaceId })
     .returning();
   return row;
 }
 
 export async function deleteClauseRelationship(id: number): Promise<void> {
-  await db.delete(clauseRelationships).where(eq(clauseRelationships.id, id));
+  await userDb.delete(clauseRelationships).where(eq(clauseRelationships.id, id));
 }
 
 // ── RST Relations ─────────────────────────────────────────────────────────────
@@ -928,13 +985,15 @@ export async function deleteClauseRelationship(id: number): Promise<void> {
 export async function getChapterRstRelations(
   book: string,
   chapter: number,
-  textSource: string
+  textSource: string,
+  workspaceId: number
 ): Promise<RstRelation[]> {
-  return db
+  return userDb
     .select()
     .from(rstRelations)
     .where(
       and(
+        eq(rstRelations.workspaceId, workspaceId),
         eq(rstRelations.book, book),
         eq(rstRelations.chapter, chapter),
         eq(rstRelations.textSource, textSource)
@@ -949,9 +1008,10 @@ export async function createRstRelationGroup(
   relType: string,
   book: string,
   chapter: number,
-  textSource: string
+  textSource: string,
+  workspaceId: number
 ): Promise<RstRelation[]> {
-  const rows = await db
+  const rows = await userDb
     .insert(rstRelations)
     .values(
       members.map((m) => ({
@@ -963,28 +1023,32 @@ export async function createRstRelationGroup(
         book,
         chapter,
         textSource,
+        workspaceId,
       }))
     )
     .returning();
   return rows;
 }
 
-export async function deleteRstRelationGroup(groupId: string): Promise<void> {
-  await db.delete(rstRelations).where(eq(rstRelations.groupId, groupId));
+export async function deleteRstRelationGroup(groupId: string, workspaceId: number): Promise<void> {
+  await userDb.delete(rstRelations).where(
+    and(eq(rstRelations.workspaceId, workspaceId), eq(rstRelations.groupId, groupId))
+  );
 }
 
 export async function deleteRstRelation(id: number): Promise<void> {
-  await db.delete(rstRelations).where(eq(rstRelations.id, id));
+  await userDb.delete(rstRelations).where(eq(rstRelations.id, id));
 }
 
 export async function updateRstRelationGroupType(
   groupId: string,
-  newRelType: string
+  newRelType: string,
+  workspaceId: number
 ): Promise<void> {
-  await db
+  await userDb
     .update(rstRelations)
     .set({ relType: newRelType })
-    .where(eq(rstRelations.groupId, groupId));
+    .where(and(eq(rstRelations.workspaceId, workspaceId), eq(rstRelations.groupId, groupId)));
 }
 
 // ── Word Arrows ───────────────────────────────────────────────────────────────
@@ -992,13 +1056,15 @@ export async function updateRstRelationGroupType(
 export async function getChapterWordArrows(
   book: string,
   chapter: number,
-  textSource: string
+  textSource: string,
+  workspaceId: number
 ): Promise<WordArrow[]> {
-  return db
+  return userDb
     .select()
     .from(wordArrows)
     .where(
       and(
+        eq(wordArrows.workspaceId, workspaceId),
         eq(wordArrows.book, book),
         eq(wordArrows.chapter, chapter),
         eq(wordArrows.textSource, textSource)
@@ -1012,17 +1078,18 @@ export async function createWordArrow(
   book: string,
   chapter: number,
   textSource: string,
+  workspaceId: number,
   label?: string
 ): Promise<WordArrow> {
-  const [row] = await db
+  const [row] = await userDb
     .insert(wordArrows)
-    .values({ fromWordId, toWordId, book, chapter, textSource, label: label ?? null })
+    .values({ fromWordId, toWordId, book, chapter, textSource, workspaceId, label: label ?? null })
     .returning();
   return row;
 }
 
 export async function deleteWordArrow(id: number): Promise<void> {
-  await db.delete(wordArrows).where(eq(wordArrows.id, id));
+  await userDb.delete(wordArrows).where(eq(wordArrows.id, id));
 }
 
 // ── Word Formatting (chapter-scoped) ──────────────────────────────────────────
@@ -1030,12 +1097,13 @@ export async function deleteWordArrow(id: number): Promise<void> {
 /** Returns all bold/italic formatting entries for a chapter. */
 export async function getChapterWordFormatting(
   book: string,
-  chapter: number
+  chapter: number,
+  workspaceId: number
 ): Promise<{ wordId: string; isBold: boolean; isItalic: boolean }[]> {
-  return db
+  return userDb
     .select({ wordId: wordFormatting.wordId, isBold: wordFormatting.isBold, isItalic: wordFormatting.isItalic })
     .from(wordFormatting)
-    .where(and(eq(wordFormatting.book, book), eq(wordFormatting.chapter, chapter)));
+    .where(and(eq(wordFormatting.workspaceId, workspaceId), eq(wordFormatting.book, book), eq(wordFormatting.chapter, chapter)));
 }
 
 /**
@@ -1048,15 +1116,18 @@ export async function setWordFormatting(
   isItalic: boolean,
   textSource: string,
   book: string,
-  chapter: number
+  chapter: number,
+  workspaceId: number
 ): Promise<void> {
   if (!isBold && !isItalic) {
-    await db.delete(wordFormatting).where(eq(wordFormatting.wordId, wordId));
+    await userDb.delete(wordFormatting).where(
+      and(eq(wordFormatting.workspaceId, workspaceId), eq(wordFormatting.wordId, wordId))
+    );
   } else {
-    await db
+    await userDb
       .insert(wordFormatting)
-      .values({ wordId, isBold, isItalic, textSource, book, chapter })
-      .onConflictDoUpdate({ target: wordFormatting.wordId, set: { isBold, isItalic } });
+      .values({ wordId, isBold, isItalic, textSource, book, chapter, workspaceId })
+      .onConflictDoUpdate({ target: [wordFormatting.workspaceId, wordFormatting.wordId], set: { isBold, isItalic } });
   }
 }
 
@@ -1069,7 +1140,7 @@ export async function getChapterMaxVerse(
   const book = await getBook(osisBook);
   if (!book) return 0;
 
-  const result = await db
+  const result = await sourceDb
     .select({ maxVerse: sql<number>`max(${words.verse})` })
     .from(words)
     .where(
@@ -1088,13 +1159,15 @@ export async function getChapterMaxVerse(
 export async function getChapterLineAnnotations(
   book: string,
   chapter: number,
-  textSource: string
+  textSource: string,
+  workspaceId: number
 ): Promise<LineAnnotation[]> {
-  return db
+  return userDb
     .select()
     .from(lineAnnotations)
     .where(
       and(
+        eq(lineAnnotations.workspaceId, workspaceId),
         eq(lineAnnotations.book, book),
         eq(lineAnnotations.chapter, chapter),
         eq(lineAnnotations.textSource, textSource)
@@ -1114,11 +1187,12 @@ export async function createLineAnnotation(
   endWordId: string,
   textSource: string,
   book: string,
-  chapter: number
+  chapter: number,
+  workspaceId: number
 ): Promise<LineAnnotation> {
-  const [row] = await db
+  const [row] = await userDb
     .insert(lineAnnotations)
-    .values({ annotType, label, color, description, outOfSequence, startWordId, endWordId, textSource, book, chapter })
+    .values({ annotType, label, color, description, outOfSequence, startWordId, endWordId, textSource, book, chapter, workspaceId })
     .returning();
   return row;
 }
@@ -1128,7 +1202,7 @@ export async function updateLineAnnotation(
   id: number,
   updates: Partial<Pick<LineAnnotation, "label" | "color" | "description" | "outOfSequence" | "startWordId" | "endWordId">>
 ): Promise<LineAnnotation> {
-  const [row] = await db
+  const [row] = await userDb
     .update(lineAnnotations)
     .set(updates)
     .where(eq(lineAnnotations.id, id))
@@ -1138,5 +1212,5 @@ export async function updateLineAnnotation(
 
 /** Delete an annotation by id. */
 export async function deleteLineAnnotation(id: number): Promise<void> {
-  await db.delete(lineAnnotations).where(eq(lineAnnotations.id, id));
+  await userDb.delete(lineAnnotations).where(eq(lineAnnotations.id, id));
 }

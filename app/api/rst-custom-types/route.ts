@@ -1,13 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
-import { db } from "@/lib/db";
+import { userDb } from "@/lib/db";
 import { rstCustomTypes } from "@/lib/db/schema";
-import { eq, asc } from "drizzle-orm";
+import { and, eq, asc } from "drizzle-orm";
+import { getActiveWorkspaceId } from "@/lib/workspace";
 
 // GET /api/rst-custom-types → all custom types ordered by sortOrder
 export async function GET() {
-  const rows = await db
+  const workspaceId = await getActiveWorkspaceId();
+  const rows = await userDb
     .select()
     .from(rstCustomTypes)
+    .where(eq(rstCustomTypes.workspaceId, workspaceId))
     .orderBy(asc(rstCustomTypes.sortOrder), asc(rstCustomTypes.id));
   return NextResponse.json(rows);
 }
@@ -15,6 +18,7 @@ export async function GET() {
 // POST /api/rst-custom-types
 // Body: { label, abbr, color, category }
 export async function POST(request: NextRequest) {
+  const workspaceId = await getActiveWorkspaceId();
   const { label, abbr, color, category } = await request.json();
   if (!label || !abbr || !color || !category) {
     return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
@@ -25,12 +29,12 @@ export async function POST(request: NextRequest) {
   const key = `custom_${randomPart}`;
 
   // sortOrder = count of existing custom rows
-  const existing = await db.select().from(rstCustomTypes);
+  const existing = await userDb.select().from(rstCustomTypes).where(eq(rstCustomTypes.workspaceId, workspaceId));
   const sortOrder = existing.length;
 
-  const [row] = await db
+  const [row] = await userDb
     .insert(rstCustomTypes)
-    .values({ key, label, abbr: abbr.slice(0, 4), color, category, sortOrder })
+    .values({ key, label, abbr: abbr.slice(0, 4), color, category, sortOrder, workspaceId })
     .returning();
 
   return NextResponse.json(row, { status: 201 });
@@ -39,6 +43,7 @@ export async function POST(request: NextRequest) {
 // PATCH /api/rst-custom-types
 // Body: { id, label?, abbr?, color?, category? }
 export async function PATCH(request: NextRequest) {
+  const workspaceId = await getActiveWorkspaceId();
   const { id, label, abbr, color, category } = await request.json();
   if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 });
 
@@ -52,10 +57,10 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ error: "No fields to update" }, { status: 400 });
   }
 
-  const [row] = await db
+  const [row] = await userDb
     .update(rstCustomTypes)
     .set(updates)
-    .where(eq(rstCustomTypes.id, id))
+    .where(and(eq(rstCustomTypes.id, id), eq(rstCustomTypes.workspaceId, workspaceId)))
     .returning();
 
   return NextResponse.json(row);
@@ -63,10 +68,11 @@ export async function PATCH(request: NextRequest) {
 
 // DELETE /api/rst-custom-types?id=<id>
 export async function DELETE(request: NextRequest) {
+  const workspaceId = await getActiveWorkspaceId();
   const { searchParams } = new URL(request.url);
   const id = parseInt(searchParams.get("id") ?? "", 10);
   if (isNaN(id)) return NextResponse.json({ error: "Missing id" }, { status: 400 });
 
-  await db.delete(rstCustomTypes).where(eq(rstCustomTypes.id, id));
+  await userDb.delete(rstCustomTypes).where(and(eq(rstCustomTypes.id, id), eq(rstCustomTypes.workspaceId, workspaceId)));
   return new NextResponse(null, { status: 204 });
 }

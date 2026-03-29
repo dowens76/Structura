@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { db } from "@/lib/db";
+import { userDb } from "@/lib/db";
 import { notes } from "@/lib/db/schema";
-import { inArray } from "drizzle-orm";
+import { and, inArray, eq } from "drizzle-orm";
+import { getActiveWorkspaceId } from "@/lib/workspace";
 import { buildDocxBuffer } from "@/lib/export/generate-docx";
 import { buildOdtBuffer }  from "@/lib/export/generate-odt";
 import type { NoteSection } from "@/lib/export/generate-docx";
@@ -26,11 +27,13 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "format must be 'docx' or 'odt'" }, { status: 400 });
   }
 
+  const workspaceId = await getActiveWorkspaceId();
+
   // Fetch notes from DB.
-  const rows = await db
+  const rows = await userDb
     .select({ key: notes.key, content: notes.content })
     .from(notes)
-    .where(inArray(notes.key, keys));
+    .where(and(inArray(notes.key, keys), eq(notes.workspaceId, workspaceId)));
 
   const contentByKey = new Map(rows.map((r) => [r.key, r.content]));
 

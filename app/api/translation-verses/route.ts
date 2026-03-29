@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
-import { db } from "@/lib/db";
+import { userDb } from "@/lib/db";
 import { translationVerses } from "@/lib/db/schema";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
+import { getActiveWorkspaceId } from "@/lib/workspace";
 
 // PATCH /api/translation-verses
 // Body: { id: number, text: string }
 // Updates the text of a single translation verse record.
 export async function PATCH(request: NextRequest) {
+  const workspaceId = await getActiveWorkspaceId();
   let body: { id?: number; text?: string };
   try {
     body = await request.json();
@@ -19,10 +21,10 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ error: "Missing fields: id, text" }, { status: 400 });
   }
 
-  await db
+  await userDb
     .update(translationVerses)
     .set({ text })
-    .where(eq(translationVerses.id, id));
+    .where(and(eq(translationVerses.id, id), eq(translationVerses.workspaceId, workspaceId)));
 
   return NextResponse.json({ ok: true });
 }

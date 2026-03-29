@@ -19,7 +19,7 @@ import path from "path";
 import * as schema from "../lib/db/schema";
 import { OSIS_BOOK_NAMES } from "../lib/utils/osis";
 
-const DB_PATH = path.join(process.cwd(), "data", "structura.db");
+const DB_PATH = path.join(process.cwd(), "data", "source.db");
 const SOURCES_PATH = path.join(process.cwd(), "data", "sources", "lxx");
 const BASE_URL = "https://raw.githubusercontent.com/eliranwong/LXX-Rahlfs-1935/master";
 

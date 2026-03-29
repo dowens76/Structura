@@ -18,7 +18,9 @@ import PassageNavButtons from "@/components/passage/PassageNavButtons";
 import ChapterDropdown from "@/components/navigation/ChapterDropdown";
 import BookDropdown from "@/components/navigation/BookDropdown";
 import ThemeToggle from "@/components/ThemeToggle";
+import WorkspaceSwitcher from "@/components/WorkspaceSwitcher";
 import { OSIS_BOOK_NAMES, OSHB_LXX_PARALLEL_BOOKS } from "@/lib/utils/osis";
+import { getActiveWorkspaceId } from "@/lib/workspace";
 
 const LXX_SOURCE = "STEPBIBLE_LXX" as TextSource;
 
@@ -36,6 +38,8 @@ export default async function ChapterPage({ params, searchParams }: PageProps) {
 
   const osisBook = decodeURIComponent(book);
   const textSource = source as TextSource;
+
+  const workspaceId = await getActiveWorkspaceId();
 
   // Parallel mode: show OSHB + LXX side by side.
   // Triggered by ?par=1 when viewing an OSHB book that has LXX data.
@@ -108,25 +112,25 @@ export default async function ChapterPage({ params, searchParams }: PageProps) {
      initialRstRelations, initialWordArrows, initialWordFormatting,
      initialSceneBreaks, initialLineAnnotations,
      bookSceneBreaks, bookMaxVerses] = await Promise.all([
-      getAvailableTranslationsForChapter(osisBook, chapter),
-      getChapterParagraphBreaks(osisBook, chapter),
-      getCharacters(osisBook),
-      getChapterCharacterRefs(osisBook, chapter),
-      getChapterSpeechSections(osisBook, chapter, textSource),
-      getWordTags(osisBook),
-      getChapterWordTagRefs(osisBook, chapter),
-      getChapterLineIndents(osisBook, chapter),
-      getChapterRstRelations(osisBook, chapter, textSource),
-      getChapterWordArrows(osisBook, chapter, textSource),
-      getChapterWordFormatting(osisBook, chapter),
-      getChapterSceneBreaks(osisBook, chapter),
-      getChapterLineAnnotations(osisBook, chapter, textSource),
-      getBookSceneBreaks(osisBook, textSource),
+      getAvailableTranslationsForChapter(osisBook, chapter, workspaceId),
+      getChapterParagraphBreaks(osisBook, chapter, workspaceId),
+      getCharacters(osisBook, workspaceId),
+      getChapterCharacterRefs(osisBook, chapter, workspaceId),
+      getChapterSpeechSections(osisBook, chapter, textSource, workspaceId),
+      getWordTags(osisBook, workspaceId),
+      getChapterWordTagRefs(osisBook, chapter, workspaceId),
+      getChapterLineIndents(osisBook, chapter, workspaceId),
+      getChapterRstRelations(osisBook, chapter, textSource, workspaceId),
+      getChapterWordArrows(osisBook, chapter, textSource, workspaceId),
+      getChapterWordFormatting(osisBook, chapter, workspaceId),
+      getChapterSceneBreaks(osisBook, chapter, workspaceId),
+      getChapterLineAnnotations(osisBook, chapter, textSource, workspaceId),
+      getBookSceneBreaks(osisBook, textSource, workspaceId),
       getBookChapterMaxVerses(osisBook, textSource),
     ]);
     await Promise.all(
       availableTranslations.map(async (t) => {
-        translationVerseData[t.id] = await getTranslationVerses(t.id, osisBook, chapter);
+        translationVerseData[t.id] = await getTranslationVerses(t.id, osisBook, chapter, workspaceId);
       })
     );
   }
@@ -269,6 +273,18 @@ export default async function ChapterPage({ params, searchParams }: PageProps) {
             chapterCount={chapterCount}
           />
         )}
+
+        {/* Workspace switcher */}
+        <WorkspaceSwitcher activeWorkspaceId={workspaceId} />
+
+        {/* Account link */}
+        <Link
+          href="/account"
+          className="text-xs px-2 py-1 rounded transition-colors"
+          style={{ color: "var(--nav-fg)" }}
+        >
+          Account
+        </Link>
 
         {/* Theme toggle */}
         <ThemeToggle />

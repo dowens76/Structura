@@ -2,7 +2,7 @@
 
 import { parseBibleComText } from "@/lib/utils/translation-parser";
 import { upsertTranslation, getBook } from "@/lib/db/queries";
-import { db } from "@/lib/db";
+import { userDb } from "@/lib/db";
 import { translations, translationVerses } from "@/lib/db/schema";
 import { and, eq } from "drizzle-orm";
 import { formatOsisRef } from "@/lib/utils/osis";
@@ -76,7 +76,7 @@ export async function importTranslationAction(
   const translationId = await upsertTranslation(name, abbreviation);
 
   // Delete existing verses for this translation+chapter (clean re-import)
-  await db
+  await userDb
     .delete(translationVerses)
     .where(
       and(
@@ -95,7 +95,7 @@ export async function importTranslationAction(
     text: v.text,
   }));
 
-  await db.insert(translationVerses).values(rows);
+  await userDb.insert(translationVerses).values(rows);
 
   return {
     success: true,
@@ -113,7 +113,7 @@ export async function checkExistingVersesAction(
 ): Promise<{ count: number }> {
   if (!abbreviation || !osisBook || !chapter) return { count: 0 };
 
-  const trans = await db
+  const trans = await userDb
     .select({ id: translations.id })
     .from(translations)
     .where(eq(translations.abbreviation, abbreviation.toUpperCase()))
@@ -124,7 +124,7 @@ export async function checkExistingVersesAction(
   const book = await getBook(osisBook);
   if (!book) return { count: 0 };
 
-  const rows = await db
+  const rows = await userDb
     .select({ id: translationVerses.id })
     .from(translationVerses)
     .where(

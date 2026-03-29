@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
-import { db } from "@/lib/db";
+import { userDb } from "@/lib/db";
 import { notes } from "@/lib/db/schema";
 import { eq, and, inArray } from "drizzle-orm";
+import { getActiveWorkspaceId } from "@/lib/workspace";
 
 // GET /api/notes?keys=verse:Gen.1.1,chapter:Gen.1,...
 // Returns: { [key]: { content: string; updatedAt: string } }
 export async function GET(request: NextRequest) {
+  const workspaceId = await getActiveWorkspaceId();
   const { searchParams } = new URL(request.url);
   const keysParam = searchParams.get("keys");
   if (!keysParam) {
@@ -14,10 +16,10 @@ export async function GET(request: NextRequest) {
   const keys = keysParam.split(",").filter(Boolean);
   if (keys.length === 0) return NextResponse.json({});
 
-  const rows = await db
+  const rows = await userDb
     .select()
     .from(notes)
-    .where(inArray(notes.key, keys));
+    .where(and(eq(notes.workspaceId, workspaceId), inArray(notes.key, keys)));
 
   const result: Record<string, { content: string; updatedAt: string | null }> = {};
   for (const row of rows) {
@@ -29,6 +31,7 @@ export async function GET(request: NextRequest) {
 // PUT /api/notes
 // Body: { key: string; noteType: string; content: string; book?: string; chapter?: number }
 export async function PUT(request: NextRequest) {
+  const workspaceId = await getActiveWorkspaceId();
   let body: { key?: string; noteType?: string; content?: string; book?: string; chapter?: number };
   try {
     body = await request.json();
@@ -41,7 +44,7 @@ export async function PUT(request: NextRequest) {
     return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
   }
 
-  await db
+  await userDb
     .insert(notes)
     .values({
       key,
@@ -50,9 +53,10 @@ export async function PUT(request: NextRequest) {
       book: book ?? null,
       chapter: chapter ?? null,
       updatedAt: new Date().toISOString(),
+      workspaceId,
     })
     .onConflictDoUpdate({
-      target: notes.key,
+      target: [notes.workspaceId, notes.key],
       set: {
         content,
         updatedAt: new Date().toISOString(),
