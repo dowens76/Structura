@@ -10,7 +10,7 @@ import { migratePassageLabelsToSectionBreaks } from "../lib/db/queries";
 
 async function main() {
   console.log("Migrating passage labels to section breaks (level 2)…");
-  await migratePassageLabelsToSectionBreaks();
+  await migratePassageLabelsToSectionBreaks(1); // default workspaceId
   console.log("Done.");
   process.exit(0);
 }

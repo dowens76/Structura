@@ -14,19 +14,119 @@
 import Database from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import { eq, count } from "drizzle-orm";
-import { mkdirSync, existsSync, writeFileSync, readFileSync } from "fs";
+import { mkdirSync, existsSync, unlinkSync, writeFileSync, readFileSync } from "fs";
 import path from "path";
 import * as schema from "../lib/db/schema";
 import { OSIS_BOOK_NAMES } from "../lib/utils/osis";
 
-const DB_PATH = path.join(process.cwd(), "data", "source.db");
+const SOURCE_DB_PATH = path.join(process.cwd(), "data", "source.db");
+const LXX_DB_PATH    = path.join(process.cwd(), "data", "lxx.db");
 const SOURCES_PATH = path.join(process.cwd(), "data", "sources", "lxx");
 const BASE_URL = "https://raw.githubusercontent.com/eliranwong/LXX-Rahlfs-1935/master";
 
-const sqlite = new Database(DB_PATH);
+// LXX words are stored in a separate lxx.db (optimized archive)
+if (existsSync(LXX_DB_PATH)) unlinkSync(LXX_DB_PATH);
+const sqlite = new Database(LXX_DB_PATH);
+sqlite.pragma("page_size = 16384");
 sqlite.pragma("journal_mode = WAL");
-sqlite.pragma("foreign_keys = ON");
+sqlite.pragma("foreign_keys = OFF"); // off during bulk load
+
+// Create the same schema as source.db
+sqlite.exec(`
+  CREATE TABLE IF NOT EXISTS text_sources  (id INTEGER PRIMARY KEY, value TEXT NOT NULL);
+  CREATE TABLE IF NOT EXISTS languages     (id INTEGER PRIMARY KEY, value TEXT NOT NULL);
+  CREATE TABLE IF NOT EXISTS parts_of_speech (id INTEGER PRIMARY KEY, value TEXT NOT NULL);
+  CREATE TABLE IF NOT EXISTS persons       (id INTEGER PRIMARY KEY, value TEXT NOT NULL);
+  CREATE TABLE IF NOT EXISTS genders       (id INTEGER PRIMARY KEY, value TEXT NOT NULL);
+  CREATE TABLE IF NOT EXISTS word_numbers  (id INTEGER PRIMARY KEY, value TEXT NOT NULL);
+  CREATE TABLE IF NOT EXISTS tenses        (id INTEGER PRIMARY KEY, value TEXT NOT NULL);
+  CREATE TABLE IF NOT EXISTS voices        (id INTEGER PRIMARY KEY, value TEXT NOT NULL);
+  CREATE TABLE IF NOT EXISTS moods         (id INTEGER PRIMARY KEY, value TEXT NOT NULL);
+  CREATE TABLE IF NOT EXISTS stems         (id INTEGER PRIMARY KEY, value TEXT NOT NULL);
+  CREATE TABLE IF NOT EXISTS states        (id INTEGER PRIMARY KEY, value TEXT NOT NULL);
+  CREATE TABLE IF NOT EXISTS verb_cases    (id INTEGER PRIMARY KEY, value TEXT NOT NULL);
+
+  CREATE TABLE IF NOT EXISTS books (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    osis_code     TEXT NOT NULL UNIQUE,
+    name          TEXT NOT NULL,
+    testament     TEXT NOT NULL,
+    language      TEXT NOT NULL,
+    book_number   INTEGER NOT NULL,
+    chapter_count INTEGER NOT NULL,
+    text_source   TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS words (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    word_id             TEXT NOT NULL UNIQUE,
+    book_id             INTEGER NOT NULL,
+    chapter             INTEGER NOT NULL,
+    verse               INTEGER NOT NULL,
+    position_in_verse   INTEGER NOT NULL,
+    surface_text        TEXT NOT NULL,
+    surface_norm        TEXT,
+    lemma               TEXT,
+    strong_number       TEXT,
+    morph_code          TEXT,
+    text_source_id      INTEGER NOT NULL,
+    language_id         INTEGER NOT NULL,
+    part_of_speech_id   INTEGER,
+    person_id           INTEGER,
+    gender_id           INTEGER,
+    word_number_id      INTEGER,
+    tense_id            INTEGER,
+    voice_id            INTEGER,
+    mood_id             INTEGER,
+    stem_id             INTEGER,
+    state_id            INTEGER,
+    verb_case_id        INTEGER
+  );
+
+  CREATE INDEX IF NOT EXISTS words_book_ch_verse_idx ON words (book_id, chapter, verse);
+  CREATE INDEX IF NOT EXISTS words_source_idx ON words (text_source_id);
+
+  CREATE TABLE IF NOT EXISTS verses (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    osis_ref    TEXT NOT NULL UNIQUE,
+    book_id     INTEGER NOT NULL,
+    chapter     INTEGER NOT NULL,
+    verse       INTEGER NOT NULL,
+    text_source TEXT NOT NULL
+  );
+`);
+
+// Copy ALL books from source.db into lxx.db (preserving IDs so cross-db bookId lookups work)
+const sourceDb = new Database(SOURCE_DB_PATH, { readonly: true });
+const allBooks = sourceDb.prepare(
+  "SELECT id, osis_code, name, testament, language, book_number, chapter_count, text_source FROM books"
+).all() as Record<string, unknown>[];
+const insBook = sqlite.prepare(
+  "INSERT OR IGNORE INTO books (id, osis_code, name, testament, language, book_number, chapter_count, text_source) VALUES (@id, @osis_code, @name, @testament, @language, @book_number, @chapter_count, @text_source)"
+);
+sqlite.transaction(() => { for (const b of allBooks) insBook.run(b); })();
+console.log(`Copied ${allBooks.length} books from source.db (preserving IDs)`);
+sourceDb.close();
+
 const db = drizzle(sqlite, { schema });
+
+// ── Lookup table helpers ──────────────────────────────────────────────────────
+const lookupCache = new Map<string, number>();
+
+function getLookupId(table: string, value: string | null | undefined): number | null {
+  if (value === null || value === undefined) return null;
+  const key = `${table}:${value}`;
+  if (lookupCache.has(key)) return lookupCache.get(key)!;
+  sqlite.prepare(`INSERT OR IGNORE INTO ${table} (value) VALUES (?)`).run(value);
+  const row = sqlite.prepare(`SELECT id FROM ${table} WHERE value = ?`).get(value) as { id: number } | undefined;
+  if (!row) throw new Error(`Failed to upsert lookup ${table}=${value}`);
+  lookupCache.set(key, row.id);
+  return row.id;
+}
+
+function reqLookupId(table: string, value: string): number {
+  return getLookupId(table, value)!;
+}
 
 mkdirSync(SOURCES_PATH, { recursive: true });
 
@@ -177,11 +277,7 @@ async function main() {
   }
   console.log(`  ${morphMap.size.toLocaleString()} morphology entries loaded`);
 
-  // Clear old data
-  db.delete(schema.words).where(eq(schema.words.textSource, "STEPBIBLE_LXX")).run();
-  db.delete(schema.verses).where(eq(schema.verses.textSource, "STEPBIBLE_LXX")).run();
-  db.delete(schema.books).where(eq(schema.books.textSource, "STEPBIBLE_LXX")).run();
-  console.log("Cleared existing LXX data.\n");
+  // lxx.db is freshly created — no need to clear old data
 
   const bookIdMap = new Map<string, number>();
   const seenVerses = new Set<string>();
@@ -250,7 +346,6 @@ async function main() {
 
     wordBatch.push({
       wordId: `LXX.${wordId}`,
-      osisRef,
       bookId,
       chapter,
       verse,
@@ -260,18 +355,18 @@ async function main() {
       lemma: null,
       strongNumber: null,
       morphCode: morphCode || null,
-      partOfSpeech: morph.partOfSpeech,
-      person: morph.person,
-      gender: morph.gender,
-      wordNumber: morph.wordNumber,
-      tense: morph.tense,
-      voice: morph.voice,
-      mood: morph.mood,
-      stem: null,
-      state: null,
-      verbCase: morph.verbCase,
-      language: "greek",
-      textSource: "STEPBIBLE_LXX",
+      textSourceId:   reqLookupId("text_sources", "STEPBIBLE_LXX"),
+      languageId:     reqLookupId("languages", "greek"),
+      partOfSpeechId: getLookupId("parts_of_speech", morph.partOfSpeech),
+      personId:       getLookupId("persons", morph.person),
+      genderId:       getLookupId("genders", morph.gender),
+      wordNumberId:   getLookupId("word_numbers", morph.wordNumber),
+      tenseId:        getLookupId("tenses", morph.tense),
+      voiceId:        getLookupId("voices", morph.voice),
+      moodId:         getLookupId("moods", morph.mood),
+      stemId:         null,
+      stateId:        null,
+      verbCaseId:     getLookupId("verb_cases", morph.verbCase),
     });
 
     totalWords++;
@@ -282,8 +377,7 @@ async function main() {
   }
   flush();
 
-  const [result] = db.select({ total: count() }).from(schema.words)
-    .where(eq(schema.words.textSource, "STEPBIBLE_LXX")).all();
+  const [result] = db.select({ total: count() }).from(schema.words).all();
   console.log(`\nDone! Total LXX words: ${result.total.toLocaleString()}`);
 }
 

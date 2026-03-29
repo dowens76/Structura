@@ -25,6 +25,24 @@ sqlite.pragma("journal_mode = WAL");
 sqlite.pragma("foreign_keys = ON");
 const db = drizzle(sqlite, { schema });
 
+// ── Lookup table helpers ──────────────────────────────────────────────────────
+const lookupCache = new Map<string, number>();
+
+function getLookupId(table: string, value: string | null | undefined): number | null {
+  if (value === null || value === undefined) return null;
+  const key = `${table}:${value}`;
+  if (lookupCache.has(key)) return lookupCache.get(key)!;
+  sqlite.prepare(`INSERT OR IGNORE INTO ${table} (value) VALUES (?)`).run(value);
+  const row = sqlite.prepare(`SELECT id FROM ${table} WHERE value = ?`).get(value) as { id: number } | undefined;
+  if (!row) throw new Error(`Failed to upsert lookup ${table}=${value}`);
+  lookupCache.set(key, row.id);
+  return row.id;
+}
+
+function reqLookupId(table: string, value: string): number {
+  return getLookupId(table, value)!;
+}
+
 mkdirSync(SOURCES_PATH, { recursive: true });
 
 async function downloadFile(filename: string): Promise<void> {
@@ -112,7 +130,6 @@ function importBook(
 
     wordBatch.push({
       wordId,
-      osisRef,
       bookId,
       chapter,
       verse,
@@ -122,18 +139,18 @@ function importBook(
       lemma: lemma || null,
       strongNumber: null,
       morphCode: `${posCode} ${parseCode}`,
-      partOfSpeech: morph.partOfSpeech,
-      person: morph.person,
-      gender: morph.gender,
-      wordNumber: morph.wordNumber,
-      tense: morph.tense,
-      voice: morph.voice,
-      mood: morph.mood,
-      stem: null,
-      state: null,
-      verbCase: morph.verbCase,
-      language: "greek",
-      textSource: "SBLGNT",
+      textSourceId:   reqLookupId("text_sources", "SBLGNT"),
+      languageId:     reqLookupId("languages", "greek"),
+      partOfSpeechId: getLookupId("parts_of_speech", morph.partOfSpeech),
+      personId:       getLookupId("persons", morph.person),
+      genderId:       getLookupId("genders", morph.gender),
+      wordNumberId:   getLookupId("word_numbers", morph.wordNumber),
+      tenseId:        getLookupId("tenses", morph.tense),
+      voiceId:        getLookupId("voices", morph.voice),
+      moodId:         getLookupId("moods", morph.mood),
+      stemId:         null,
+      stateId:        null,
+      verbCaseId:     getLookupId("verb_cases", morph.verbCase),
     });
 
     position++;
@@ -158,7 +175,7 @@ function importBook(
 async function main() {
   console.log("Importing MorphGNT SBLGNT (Greek New Testament)...\n");
 
-  db.delete(schema.words).where(eq(schema.words.textSource, "SBLGNT")).run();
+  db.delete(schema.words).where(eq(schema.words.textSourceId, reqLookupId("text_sources", "SBLGNT"))).run();
   db.delete(schema.verses).where(eq(schema.verses.textSource, "SBLGNT")).run();
   db.delete(schema.books).where(eq(schema.books.textSource, "SBLGNT")).run();
   console.log("Cleared existing SBLGNT data.\n");
@@ -184,7 +201,7 @@ async function main() {
   const [result] = db
     .select({ total: count() })
     .from(schema.words)
-    .where(eq(schema.words.textSource, "SBLGNT"))
+    .where(eq(schema.words.textSourceId, reqLookupId("text_sources", "SBLGNT")))
     .all();
 
   console.log(`\nDone! Total SBLGNT words: ${result.total.toLocaleString()}`);

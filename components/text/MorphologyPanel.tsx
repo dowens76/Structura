@@ -3,7 +3,6 @@
 import type { Word } from "@/lib/db/schema";
 import { POS_COLORS, POS_LABELS, formatTense } from "@/lib/morphology/types";
 import { getMorphology } from "@/lib/morphology/decode";
-import { OSIS_BOOK_NAMES } from "@/lib/utils/osis";
 import LexiconPane from "./LexiconPane";
 
 interface MorphologyPanelProps {
@@ -37,8 +36,7 @@ export default function MorphologyPanel({ word, useLinguisticTerms = false }: Mo
   const posColor = posKey ? (POS_COLORS[posKey] ?? "#6b7280") : "#6b7280";
   const posLabel = posKey ? (POS_LABELS[posKey] ?? posKey) : null;
 
-  const [bookCode, ch, v] = word.osisRef.split(".");
-  const refLabel = `${OSIS_BOOK_NAMES[bookCode] ?? bookCode} ${ch}:${v}`;
+  const refLabel = `${word.chapter}:${word.verse}`;
 
   const displaySurface = (word.surfaceText ?? "").replace(/\//g, "");
 

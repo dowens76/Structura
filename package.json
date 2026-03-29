@@ -20,7 +20,8 @@
     "build:hebrew-lemmas": "tsx scripts/build-hebrew-lemmas.ts",
     "import:hebrew-lexicon": "tsx scripts/import-hebrew-lexicon.ts",
     "import:greek-lexicon": "tsx scripts/import-greek-lexicon.ts",
-    "import:lexicon": "tsx scripts/import-hebrew-lexicon.ts && tsx scripts/import-greek-lexicon.ts"
+    "import:lexicon": "tsx scripts/import-hebrew-lexicon.ts && tsx scripts/import-greek-lexicon.ts",
+    "db:rebuild": "tsx scripts/rebuild-source-db.ts"
   },
   "dependencies": {
     "@fontsource/gentium-plus": "^5.2.7",

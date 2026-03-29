@@ -23,6 +23,7 @@ import {
   getBookSceneBreaks,
   getBookChapterMaxVerses,
 } from "@/lib/db/queries";
+import { getActiveWorkspaceId } from "@/lib/workspace";
 import { OSIS_BOOK_NAMES } from "@/lib/utils/osis";
 import type { TextSource } from "@/lib/morphology/types";
 import type { TranslationVerse } from "@/lib/db/schema";
@@ -39,8 +40,9 @@ export default async function PassagePage({ params }: PageProps) {
 
   if (isNaN(id)) notFound();
 
-  const osisBook   = decodeURIComponent(bookParam);
-  const textSource = source as TextSource;
+  const osisBook    = decodeURIComponent(bookParam);
+  const textSource  = source as TextSource;
+  const workspaceId = await getActiveWorkspaceId();
 
   const [passage, bookRecord] = await Promise.all([
     getPassage(id),
@@ -80,23 +82,23 @@ export default async function PassagePage({ params }: PageProps) {
     passage.endChapter > 1
       ? getChapterMaxVerse(osisBook, passage.endChapter - 1, textSource)
       : Promise.resolve(0),
-    getCharacters(osisBook),
-    getWordTags(osisBook),
-    getBookSceneBreaks(osisBook, textSource),
+    getCharacters(osisBook, workspaceId),
+    getWordTags(osisBook, workspaceId),
+    getBookSceneBreaks(osisBook, textSource, workspaceId),
     getBookChapterMaxVerses(osisBook, textSource),
     Promise.all(
       chapterRange.map((ch) =>
         Promise.all([
-          getChapterParagraphBreaks(osisBook, ch),
-          getChapterCharacterRefs(osisBook, ch),
-          getChapterSpeechSections(osisBook, ch, textSource),
-          getChapterWordTagRefs(osisBook, ch),
-          getChapterLineIndents(osisBook, ch),
-          getChapterRstRelations(osisBook, ch, textSource),
-          getChapterWordArrows(osisBook, ch, textSource),
-          getChapterWordFormatting(osisBook, ch),
-          getChapterSceneBreaks(osisBook, ch),
-          getChapterLineAnnotations(osisBook, ch, textSource),
+          getChapterParagraphBreaks(osisBook, ch, workspaceId),
+          getChapterCharacterRefs(osisBook, ch, workspaceId),
+          getChapterSpeechSections(osisBook, ch, textSource, workspaceId),
+          getChapterWordTagRefs(osisBook, ch, workspaceId),
+          getChapterLineIndents(osisBook, ch, workspaceId),
+          getChapterRstRelations(osisBook, ch, textSource, workspaceId),
+          getChapterWordArrows(osisBook, ch, textSource, workspaceId),
+          getChapterWordFormatting(osisBook, ch, workspaceId),
+          getChapterSceneBreaks(osisBook, ch, workspaceId),
+          getChapterLineAnnotations(osisBook, ch, textSource, workspaceId),
         ])
       )
     ),
@@ -115,12 +117,12 @@ export default async function PassagePage({ params }: PageProps) {
   const initialLineAnnotations       = perChapterResults.flatMap(([,,,,,,,,, la]) => la);
 
   // Translations — available from the first chapter (book-wide); fetch verses for all chapters
-  const availableTranslations = await getAvailableTranslationsForChapter(osisBook, passage.startChapter);
+  const availableTranslations = await getAvailableTranslationsForChapter(osisBook, passage.startChapter, workspaceId);
   const translationVerseData: Record<number, TranslationVerse[]> = {};
   await Promise.all(
     availableTranslations.map(async (t) => {
       const versesPerChapter = await Promise.all(
-        chapterRange.map((ch) => getTranslationVerses(t.id, osisBook, ch))
+        chapterRange.map((ch) => getTranslationVerses(t.id, osisBook, ch, workspaceId))
       );
       translationVerseData[t.id] = versesPerChapter.flat();
     })

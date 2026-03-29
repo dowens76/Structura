@@ -25,6 +25,24 @@ sqlite.pragma("journal_mode = WAL");
 sqlite.pragma("foreign_keys = ON");
 const db = drizzle(sqlite, { schema });
 
+// ── Lookup table helpers ──────────────────────────────────────────────────────
+const lookupCache = new Map<string, number>();
+
+function getLookupId(table: string, value: string | null | undefined): number | null {
+  if (value === null || value === undefined) return null;
+  const key = `${table}:${value}`;
+  if (lookupCache.has(key)) return lookupCache.get(key)!;
+  sqlite.prepare(`INSERT OR IGNORE INTO ${table} (value) VALUES (?)`).run(value);
+  const row = sqlite.prepare(`SELECT id FROM ${table} WHERE value = ?`).get(value) as { id: number } | undefined;
+  if (!row) throw new Error(`Failed to upsert lookup ${table}=${value}`);
+  lookupCache.set(key, row.id);
+  return row.id;
+}
+
+function reqLookupId(table: string, value: string): number {
+  return getLookupId(table, value)!;
+}
+
 const xmlParser = new XMLParser({
   ignoreAttributes: false,
   attributeNamePrefix: "@_",
@@ -75,7 +93,6 @@ function processWordElement(
 
   return {
     wordId,
-    osisRef,
     bookId,
     chapter,
     verse,
@@ -85,18 +102,18 @@ function processWordElement(
     lemma: lemmaText,
     strongNumber,
     morphCode: morphCode || null,
-    partOfSpeech: morph.partOfSpeech,
-    person: morph.person,
-    gender: morph.gender,
-    wordNumber: morph.wordNumber,
-    tense: morph.tense,
-    voice: morph.voice,
-    mood: morph.mood,
-    stem: morph.stem,
-    state: morph.state,
-    verbCase: morph.verbCase,
-    language: "hebrew",
-    textSource: "OSHB",
+    textSourceId:   reqLookupId("text_sources", "OSHB"),
+    languageId:     reqLookupId("languages", "hebrew"),
+    partOfSpeechId: getLookupId("parts_of_speech", morph.partOfSpeech),
+    personId:       getLookupId("persons", morph.person),
+    genderId:       getLookupId("genders", morph.gender),
+    wordNumberId:   getLookupId("word_numbers", morph.wordNumber),
+    tenseId:        getLookupId("tenses", morph.tense),
+    voiceId:        getLookupId("voices", morph.voice),
+    moodId:         getLookupId("moods", morph.mood),
+    stemId:         getLookupId("stems", morph.stem),
+    stateId:        getLookupId("states", morph.state),
+    verbCaseId:     getLookupId("verb_cases", morph.verbCase),
   };
 }
 
@@ -212,7 +229,7 @@ function importBook(xmlFile: string): void {
 function main() {
   console.log("Importing OSHB (Open Scriptures Hebrew Bible)...\n");
 
-  db.delete(schema.words).where(eq(schema.words.textSource, "OSHB")).run();
+  db.delete(schema.words).where(eq(schema.words.textSourceId, reqLookupId("text_sources", "OSHB"))).run();
   db.delete(schema.verses).where(eq(schema.verses.textSource, "OSHB")).run();
   db.delete(schema.books).where(eq(schema.books.textSource, "OSHB")).run();
   console.log("Cleared existing OSHB data.\n");
@@ -225,7 +242,7 @@ function main() {
   const [result] = db
     .select({ total: count() })
     .from(schema.words)
-    .where(eq(schema.words.textSource, "OSHB"))
+    .where(eq(schema.words.textSourceId, reqLookupId("text_sources", "OSHB")))
     .all();
 
   console.log(`\nDone! Total OSHB words: ${result.total.toLocaleString()}`);

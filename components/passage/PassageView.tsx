@@ -715,7 +715,7 @@ export default function PassageView({
     let shouldRemove = false;
 
     if (!existing) {
-      nextRef = { id: -1, wordId, character1Id: activeCharId, character2Id: null, textSource: source, book: osisBook, chapter: wordChapter };
+      nextRef = { id: -1, wordId, character1Id: activeCharId, character2Id: null, textSource: source, book: osisBook, chapter: wordChapter, workspaceId: 0 };
     } else if (existing.character1Id === activeCharId) {
       if (existing.character2Id !== null) {
         nextRef = { ...existing, character1Id: existing.character2Id, character2Id: null };
@@ -789,7 +789,7 @@ export default function PassageView({
     setWordTagRefMap((prev) => {
       const next = new Map(prev);
       if (isRemove) next.delete(wordId);
-      else next.set(wordId, { id: -1, wordId, tagId: activeWordTagId!, textSource: source, book: osisBook, chapter: wordChapter });
+      else next.set(wordId, { id: -1, wordId, tagId: activeWordTagId!, textSource: source, book: osisBook, chapter: wordChapter, workspaceId: 0 });
       return next;
     });
 
@@ -837,7 +837,7 @@ export default function PassageView({
   ) {
     const tempTag: WordTag = {
       id: -(Date.now()), book: osisBook, name, color, type,
-      createdAt: new Date().toISOString(),
+      createdAt: new Date().toISOString(), workspaceId: 0,
     };
     setWordTags((prev) => [...prev, tempTag]);
     setActiveWordTagId(tempTag.id);
@@ -857,7 +857,7 @@ export default function PassageView({
         const chap = firstWordChapter ?? passage.startChapter;
         const ref: WordTagRef = {
           id: -1, wordId: firstWordId, tagId: realTag.id,
-          textSource: firstWordSource, book: osisBook, chapter: chap,
+          textSource: firstWordSource, book: osisBook, chapter: chap, workspaceId: 0,
         };
         setWordTagRefMap((prev) => new Map(prev).set(firstWordId, ref));
         await fetch("/api/word-tag-refs", {
@@ -1055,7 +1055,7 @@ export default function PassageView({
     const tempSection: SpeechSection = {
       id: Date.now(), characterId: activeCharId,
       startWordId: orderedStart, endWordId: orderedEnd,
-      textSource, book: osisBook, chapter: sectionChapter,
+      textSource, book: osisBook, chapter: sectionChapter, workspaceId: 0,
     };
     setSpeechSections((prev) => [...prev, tempSection]);
 
@@ -1081,7 +1081,7 @@ export default function PassageView({
   async function handleCreateCharacter(name: string, color: string) {
     const tempChar: Character = {
       id: -(Date.now()), book: osisBook, name, color,
-      createdAt: new Date().toISOString(),
+      createdAt: new Date().toISOString(), workspaceId: 0,
     };
     setCharacters((prev) => [...prev, tempChar]);
     setActiveCharId(tempChar.id);

@@ -24,6 +24,7 @@ import type { TextSource } from "@/lib/morphology/types";
 import { OSIS_BOOK_NAMES } from "@/lib/utils/osis";
 import ExportLayout from "@/components/export/ExportLayout";
 import ExportTextView from "@/components/export/ExportTextView";
+import { getActiveWorkspaceId } from "@/lib/workspace";
 
 interface PageProps {
   params: Promise<{ id: string }>;
@@ -37,6 +38,8 @@ export default async function ExportPassagePage({ params }: PageProps) {
 
   const passage = await getPassage(id);
   if (!passage) notFound();
+
+  const workspaceId = await getActiveWorkspaceId();
 
   const osisBook   = passage.book;
   const textSource = passage.textSource as TextSource;
@@ -58,26 +61,26 @@ export default async function ExportPassagePage({ params }: PageProps) {
   for (let ch = passage.startChapter; ch <= passage.endChapter; ch++) chapterRange.push(ch);
 
   const [characters, wordTags, perChapterResults, availableTranslations] = await Promise.all([
-    getCharacters(osisBook),
-    getWordTags(osisBook),
+    getCharacters(osisBook, workspaceId),
+    getWordTags(osisBook, workspaceId),
     Promise.all(
       chapterRange.map((ch) =>
         Promise.all([
-          getChapterParagraphBreaks(osisBook, ch),
-          getChapterCharacterRefs(osisBook, ch),
-          getChapterSpeechSections(osisBook, ch, textSource),
-          getChapterWordTagRefs(osisBook, ch),
-          getChapterLineIndents(osisBook, ch),
-          getChapterWordFormatting(osisBook, ch),
-          getChapterSceneBreaks(osisBook, ch),
-          getChapterClauseRelationships(osisBook, ch, textSource),
-          getChapterWordArrows(osisBook, ch, textSource),
-          getChapterLineAnnotations(osisBook, ch, textSource),
-          getChapterRstRelations(osisBook, ch, textSource),
+          getChapterParagraphBreaks(osisBook, ch, workspaceId),
+          getChapterCharacterRefs(osisBook, ch, workspaceId),
+          getChapterSpeechSections(osisBook, ch, textSource, workspaceId),
+          getChapterWordTagRefs(osisBook, ch, workspaceId),
+          getChapterLineIndents(osisBook, ch, workspaceId),
+          getChapterWordFormatting(osisBook, ch, workspaceId),
+          getChapterSceneBreaks(osisBook, ch, workspaceId),
+          getChapterClauseRelationships(osisBook, ch, textSource, workspaceId),
+          getChapterWordArrows(osisBook, ch, textSource, workspaceId),
+          getChapterLineAnnotations(osisBook, ch, textSource, workspaceId),
+          getChapterRstRelations(osisBook, ch, textSource, workspaceId),
         ])
       )
     ),
-    getAvailableTranslationsForChapter(osisBook, passage.startChapter),
+    getAvailableTranslationsForChapter(osisBook, passage.startChapter, workspaceId),
   ]);
 
   // Flatten per-chapter data
@@ -98,7 +101,7 @@ export default async function ExportPassagePage({ params }: PageProps) {
   await Promise.all(
     availableTranslations.map(async (t) => {
       const versesPerChapter = await Promise.all(
-        chapterRange.map((ch) => getTranslationVerses(t.id, osisBook, ch))
+        chapterRange.map((ch) => getTranslationVerses(t.id, osisBook, ch, workspaceId))
       );
       translationVerseData[t.id] = versesPerChapter.flat();
     })

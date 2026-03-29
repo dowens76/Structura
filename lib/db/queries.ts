@@ -1,9 +1,41 @@
 import { eq, and, asc, inArray, or, gte, lte, gt, lt, sql, max } from "drizzle-orm";
-import { sourceDb, userDb } from "./index";
+import { sourceDb, userDb, sourceLookups, lxxLookups, getLxxDb } from "./index";
+import type { LookupMaps } from "./index";
 import { books, words } from "./source-schema";
+import type { Word, WordRow } from "./source-schema";
 import { translations, translationVerses, paragraphBreaks, characters, characterRefs, speechSections, wordTags, wordTagRefs, lineIndents, sceneBreaks, passages, clauseRelationships, rstRelations, wordArrows, wordFormatting, lineAnnotations } from "./user-schema";
-import type { Book, Word, Translation, TranslationVerse, Character, CharacterRef, SpeechSection, WordTag, WordTagRef, Passage, ClauseRelationship, RstRelation, WordArrow, LineAnnotation } from "./schema";
+import type { Book, Translation, TranslationVerse, Character, CharacterRef, SpeechSection, WordTag, WordTagRef, Passage, ClauseRelationship, RstRelation, WordArrow, LineAnnotation } from "./schema";
 import type { TextSource, Testament } from "@/lib/morphology/types";
+
+// ── Decode helpers ────────────────────────────────────────────────────────────
+
+function decodeWord(row: WordRow, maps: LookupMaps): Word {
+  return {
+    id:              row.id,
+    wordId:          row.wordId,
+    bookId:          row.bookId,
+    chapter:         row.chapter,
+    verse:           row.verse,
+    positionInVerse: row.positionInVerse,
+    surfaceText:     row.surfaceText,
+    surfaceNorm:     row.surfaceNorm,
+    lemma:           row.lemma,
+    strongNumber:    row.strongNumber,
+    morphCode:       row.morphCode,
+    language:        maps.languageById[row.languageId] ?? "",
+    textSource:      maps.textSourceById[row.textSourceId] ?? "",
+    partOfSpeech:    row.partOfSpeechId != null ? (maps.partOfSpeechById[row.partOfSpeechId] ?? null) : null,
+    person:          row.personId != null      ? (maps.personById[row.personId] ?? null) : null,
+    gender:          row.genderId != null      ? (maps.genderById[row.genderId] ?? null) : null,
+    wordNumber:      row.wordNumberId != null  ? (maps.wordNumberById[row.wordNumberId] ?? null) : null,
+    tense:           row.tenseId != null       ? (maps.tenseById[row.tenseId] ?? null) : null,
+    voice:           row.voiceId != null       ? (maps.voiceById[row.voiceId] ?? null) : null,
+    mood:            row.moodId != null        ? (maps.moodById[row.moodId] ?? null) : null,
+    stem:            row.stemId != null        ? (maps.stemById[row.stemId] ?? null) : null,
+    state:           row.stateId != null       ? (maps.stateById[row.stateId] ?? null) : null,
+    verbCase:        row.verbCaseId != null    ? (maps.verbCaseById[row.verbCaseId] ?? null) : null,
+  };
+}
 
 export async function getBooks(testament?: Testament): Promise<Book[]> {
   if (testament) {
@@ -32,11 +64,21 @@ export async function getBooksBySource(textSource: string): Promise<Book[]> {
  * Results are ordered by book_number for a consistent listing.
  */
 export async function getBooksWithWords(textSource: string): Promise<Book[]> {
+  if (textSource === "STEPBIBLE_LXX") {
+    const lxxDb = getLxxDb();
+    if (!lxxDb) return [];
+    const bookIdRows = await lxxDb.selectDistinct({ bookId: words.bookId }).from(words);
+    const ids = bookIdRows.map((r) => r.bookId);
+    if (ids.length === 0) return [];
+    return sourceDb.select().from(books).where(inArray(books.id, ids)).orderBy(asc(books.bookNumber));
+  }
+  const tsId = sourceLookups.textSourceByValue[textSource];
+  if (tsId == null) return [];
   const rows = await sourceDb
     .selectDistinct({ book: books })
     .from(books)
     .innerJoin(words, eq(words.bookId, books.id))
-    .where(eq(words.textSource, textSource))
+    .where(eq(words.textSourceId, tsId))
     .orderBy(asc(books.bookNumber));
   return rows.map((r) => r.book);
 }
@@ -53,10 +95,18 @@ export async function getMaxChapterForSource(
 ): Promise<number> {
   const book = await getBook(osisBook);
   if (!book) return 1;
+  if (textSource === "STEPBIBLE_LXX") {
+    const lxxDb = getLxxDb();
+    if (!lxxDb) return book.chapterCount;
+    const r = await lxxDb.select({ maxCh: max(words.chapter) }).from(words).where(eq(words.bookId, book.id));
+    return r[0]?.maxCh ?? book.chapterCount;
+  }
+  const tsId = sourceLookups.textSourceByValue[textSource];
+  if (tsId == null) return book.chapterCount;
   const result = await sourceDb
     .select({ maxCh: max(words.chapter) })
     .from(words)
-    .where(and(eq(words.bookId, book.id), eq(words.textSource, textSource)));
+    .where(and(eq(words.bookId, book.id), eq(words.textSourceId, tsId)));
   return result[0]?.maxCh ?? book.chapterCount;
 }
 
@@ -77,26 +127,35 @@ export async function getChapterWords(
   const book = await getBook(osisBook);
   if (!book) return [];
 
-  return sourceDb
+  if (textSource === "STEPBIBLE_LXX") {
+    const lxxDb = getLxxDb();
+    if (!lxxDb) return [];
+    const rows = await lxxDb
+      .select()
+      .from(words)
+      .where(and(eq(words.bookId, book.id), eq(words.chapter, chapter)))
+      .orderBy(asc(words.verse), asc(words.positionInVerse));
+    return rows.map((r) => decodeWord(r, lxxLookups));
+  }
+  const tsId = sourceLookups.textSourceByValue[textSource];
+  if (tsId == null) return [];
+  const rows = await sourceDb
     .select()
     .from(words)
-    .where(
-      and(
-        eq(words.bookId, book.id),
-        eq(words.chapter, chapter),
-        eq(words.textSource, textSource)
-      )
-    )
+    .where(and(eq(words.bookId, book.id), eq(words.chapter, chapter), eq(words.textSourceId, tsId)))
     .orderBy(asc(words.verse), asc(words.positionInVerse));
+  return rows.map((r) => decodeWord(r, sourceLookups));
 }
 
 export async function getWordById(wordId: string): Promise<Word | undefined> {
-  const results = await sourceDb
-    .select()
-    .from(words)
-    .where(eq(words.wordId, wordId))
-    .limit(1);
-  return results[0];
+  if (wordId.startsWith("LXX.")) {
+    const lxxDb = getLxxDb();
+    if (!lxxDb) return undefined;
+    const results = await lxxDb.select().from(words).where(eq(words.wordId, wordId)).limit(1);
+    return results[0] ? decodeWord(results[0], lxxLookups) : undefined;
+  }
+  const results = await sourceDb.select().from(words).where(eq(words.wordId, wordId)).limit(1);
+  return results[0] ? decodeWord(results[0], sourceLookups) : undefined;
 }
 
 export async function getChapterCount(osisBook: string): Promise<number> {
@@ -285,13 +344,18 @@ export async function getBookChapterMaxVerses(
 ): Promise<Map<number, number>> {
   const bookRow = await getBook(osisBook);
   if (!bookRow) return new Map();
-  const rows = await sourceDb
+  const db = textSource === "STEPBIBLE_LXX" ? (getLxxDb() ?? sourceDb) : sourceDb;
+  const tsId = textSource === "STEPBIBLE_LXX" ? null : (sourceLookups.textSourceByValue[textSource] ?? null);
+  const whereClause = tsId != null
+    ? and(eq(words.bookId, bookRow.id), eq(words.textSourceId, tsId))
+    : eq(words.bookId, bookRow.id);
+  const rows = await db
     .select({
       chapter:  words.chapter,
       maxVerse: sql<number>`max(${words.verse})`,
     })
     .from(words)
-    .where(and(eq(words.bookId, bookRow.id), eq(words.textSource, textSource)))
+    .where(whereClause)
     .groupBy(words.chapter)
     .orderBy(asc(words.chapter));
   return new Map(rows.map((r) => [r.chapter, r.maxVerse]));
@@ -429,13 +493,16 @@ export async function migratePassageLabelsToSectionBreaks(workspaceId: number): 
     const bookRow = await getBook(passage.book);
     if (!bookRow) continue;
 
-    const firstWords = await sourceDb
+    const isLxx = passage.textSource === "STEPBIBLE_LXX";
+    const db = isLxx ? (getLxxDb() ?? sourceDb) : sourceDb;
+    const tsId = isLxx ? null : (sourceLookups.textSourceByValue[passage.textSource] ?? null);
+    const firstWords = await db
       .select({ wordId: words.wordId, verse: words.verse })
       .from(words)
       .where(
         and(
           eq(words.bookId, bookRow.id),
-          eq(words.textSource, passage.textSource),
+          ...(tsId != null ? [eq(words.textSourceId, tsId)] : []),
           eq(words.chapter, passage.startChapter),
           eq(words.verse, passage.startVerse)
         )
@@ -914,10 +981,13 @@ export async function getPassageWords(
   const book = await getBook(osisBook);
   if (!book) return [];
 
-  const baseFilter = and(
-    eq(words.bookId, book.id),
-    eq(words.textSource, textSource)
-  );
+  const isLxx = textSource === "STEPBIBLE_LXX";
+  const db = isLxx ? (getLxxDb() ?? sourceDb) : sourceDb;
+  const maps = isLxx ? lxxLookups : sourceLookups;
+  const tsId = isLxx ? null : (sourceLookups.textSourceByValue[textSource] ?? null);
+  const baseFilter = tsId != null
+    ? and(eq(words.bookId, book.id), eq(words.textSourceId, tsId))
+    : eq(words.bookId, book.id);
 
   const rangeFilter =
     startChapter === endChapter
@@ -932,11 +1002,12 @@ export async function getPassageWords(
           and(eq(words.chapter, endChapter), lte(words.verse, endVerse))
         );
 
-  return sourceDb
+  const rows = await db
     .select()
     .from(words)
     .where(and(baseFilter, rangeFilter))
     .orderBy(asc(words.chapter), asc(words.verse), asc(words.positionInVerse));
+  return rows.map((r) => decodeWord(r, maps));
 }
 
 // ── Clause Relationships ──────────────────────────────────────────────────────
@@ -1140,14 +1211,17 @@ export async function getChapterMaxVerse(
   const book = await getBook(osisBook);
   if (!book) return 0;
 
-  const result = await sourceDb
+  const isLxx = textSource === "STEPBIBLE_LXX";
+  const db = isLxx ? (getLxxDb() ?? sourceDb) : sourceDb;
+  const tsId = isLxx ? null : (sourceLookups.textSourceByValue[textSource] ?? null);
+  const result = await db
     .select({ maxVerse: sql<number>`max(${words.verse})` })
     .from(words)
     .where(
       and(
         eq(words.bookId, book.id),
         eq(words.chapter, chapter),
-        eq(words.textSource, textSource)
+        ...(tsId != null ? [eq(words.textSourceId, tsId)] : [])
       )
     );
   return result[0]?.maxVerse ?? 0;

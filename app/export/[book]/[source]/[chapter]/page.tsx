@@ -23,6 +23,7 @@ import type { TextSource } from "@/lib/morphology/types";
 import { OSIS_BOOK_NAMES } from "@/lib/utils/osis";
 import ExportLayout from "@/components/export/ExportLayout";
 import ExportTextView from "@/components/export/ExportTextView";
+import { getActiveWorkspaceId } from "@/lib/workspace";
 
 interface PageProps {
   params: Promise<{ book: string; source: string; chapter: string }>;
@@ -36,6 +37,7 @@ export default async function ExportChapterPage({ params }: PageProps) {
 
   const osisBook   = decodeURIComponent(book);
   const textSource = source as TextSource;
+  const workspaceId = await getActiveWorkspaceId();
 
   let words;
   let bookRecord;
@@ -66,26 +68,26 @@ export default async function ExportChapterPage({ params }: PageProps) {
     lineAnnotations,
     rstRelations,
   ] = await Promise.all([
-    getChapterParagraphBreaks(osisBook, chapter),
-    getCharacters(osisBook),
-    getChapterCharacterRefs(osisBook, chapter),
-    getChapterSpeechSections(osisBook, chapter, textSource),
-    getWordTags(osisBook),
-    getChapterWordTagRefs(osisBook, chapter),
-    getChapterLineIndents(osisBook, chapter),
-    getChapterWordFormatting(osisBook, chapter),
-    getChapterSceneBreaks(osisBook, chapter),
-    getAvailableTranslationsForChapter(osisBook, chapter),
-    getChapterClauseRelationships(osisBook, chapter, textSource),
-    getChapterWordArrows(osisBook, chapter, textSource),
-    getChapterLineAnnotations(osisBook, chapter, textSource),
-    getChapterRstRelations(osisBook, chapter, textSource),
+    getChapterParagraphBreaks(osisBook, chapter, workspaceId),
+    getCharacters(osisBook, workspaceId),
+    getChapterCharacterRefs(osisBook, chapter, workspaceId),
+    getChapterSpeechSections(osisBook, chapter, textSource, workspaceId),
+    getWordTags(osisBook, workspaceId),
+    getChapterWordTagRefs(osisBook, chapter, workspaceId),
+    getChapterLineIndents(osisBook, chapter, workspaceId),
+    getChapterWordFormatting(osisBook, chapter, workspaceId),
+    getChapterSceneBreaks(osisBook, chapter, workspaceId),
+    getAvailableTranslationsForChapter(osisBook, chapter, workspaceId),
+    getChapterClauseRelationships(osisBook, chapter, textSource, workspaceId),
+    getChapterWordArrows(osisBook, chapter, textSource, workspaceId),
+    getChapterLineAnnotations(osisBook, chapter, textSource, workspaceId),
+    getChapterRstRelations(osisBook, chapter, textSource, workspaceId),
   ]);
 
   const translationVerseData: Record<number, TranslationVerse[]> = {};
   await Promise.all(
     availableTranslations.map(async (t) => {
-      translationVerseData[t.id] = await getTranslationVerses(t.id, osisBook, chapter);
+      translationVerseData[t.id] = await getTranslationVerses(t.id, osisBook, chapter, workspaceId);
     })
   );
 

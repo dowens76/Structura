@@ -991,7 +991,7 @@ export default function ChapterDisplay({
       // No ref → add with character1
       nextRef = {
         id: -1, wordId, character1Id: activeCharId,
-        character2Id: null, textSource: source, book, chapter,
+        character2Id: null, textSource: source, book, chapter, workspaceId: 0,
       };
     } else if (existing.character1Id === activeCharId) {
       if (existing.character2Id !== null) {
@@ -1076,7 +1076,7 @@ export default function ChapterDisplay({
     setWordTagRefMap((prev) => {
       const next = new Map(prev);
       if (isRemove) next.delete(wordId);
-      else next.set(wordId, { id: -1, wordId, tagId: activeWordTagId!, textSource: source, book, chapter });
+      else next.set(wordId, { id: -1, wordId, tagId: activeWordTagId!, textSource: source, book, chapter, workspaceId: 0 });
       return next;
     });
 
@@ -1126,7 +1126,7 @@ export default function ChapterDisplay({
   ) {
     const tempTag: WordTag = {
       id: -(Date.now()), book, name, color, type,
-      createdAt: new Date().toISOString(),
+      createdAt: new Date().toISOString(), workspaceId: 0,
     };
     setWordTags((prev) => [...prev, tempTag]);
     setActiveWordTagId(tempTag.id);
@@ -1146,7 +1146,7 @@ export default function ChapterDisplay({
       if (firstWordId && firstWordSource) {
         const ref: WordTagRef = {
           id: -1, wordId: firstWordId, tagId: realTag.id,
-          textSource: firstWordSource, book, chapter,
+          textSource: firstWordSource, book, chapter, workspaceId: 0,
         };
         setWordTagRefMap((prev) => new Map(prev).set(firstWordId, ref));
         await fetch("/api/word-tag-refs", {
@@ -1349,7 +1349,7 @@ export default function ChapterDisplay({
     const tempSection: SpeechSection = {
       id: Date.now(), characterId: activeCharId,
       startWordId: orderedStart, endWordId: orderedEnd,
-      textSource, book, chapter,
+      textSource, book, chapter, workspaceId: 0,
     };
     setSpeechSections((prev) => [...prev, tempSection]);
 
@@ -1375,7 +1375,7 @@ export default function ChapterDisplay({
     // Optimistic: add placeholder
     const tempChar: Character = {
       id: -(Date.now()), book, name, color,
-      createdAt: new Date().toISOString(),
+      createdAt: new Date().toISOString(), workspaceId: 0,
     };
     setCharacters((prev) => [...prev, tempChar]);
     setActiveCharId(tempChar.id);

@@ -87,13 +87,12 @@ async function resolveScope(scope: Scope, src: number): Promise<Chapter[]> {
  * Build a Drizzle WHERE condition for rows that match any of the given chapters.
  * The table must have .workspaceId, .book, and .chapter columns.
  */
-function chapterCondition<
-  T extends {
-    workspaceId: (typeof paragraphBreaks)["workspaceId"];
-    book: (typeof paragraphBreaks)["book"];
-    chapter: (typeof paragraphBreaks)["chapter"];
-  }
->(table: T, workspaceId: number, chapters: Chapter[]) {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function chapterCondition<T extends { workspaceId: any; book: any; chapter: any }>(
+  table: T,
+  workspaceId: number,
+  chapters: Chapter[]
+) {
   if (chapters.length === 0) return null;
 
   if (chapters.length === 1) {
@@ -512,11 +511,17 @@ async function importTranslationVerses(
 ): Promise<number> {
   if (chapters.length === 0) return 0;
 
-  // 1. Find distinct translationIds for scoped chapters in source
-  const cond = chapterCondition(translationVerses, src, chapters);
-  if (!cond) return 0;
-  let srcVerses = await userDb.select().from(translationVerses).where(cond);
-  srcVerses = filterByChapters(srcVerses, chapters);
+  // 1. Find translation verses for scoped chapters in source workspace
+  const chapterNums = [...new Set(chapters.map((c) => c.chapter))];
+  const srcVerses = await userDb
+    .select()
+    .from(translationVerses)
+    .where(
+      and(
+        eq(translationVerses.workspaceId, src),
+        inArray(translationVerses.chapter, chapterNums)
+      )
+    );
 
   if (srcVerses.length === 0) return 0;
 
