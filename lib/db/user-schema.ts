@@ -350,6 +350,25 @@ export const wordFormatting = sqliteTable(
   ]
 );
 
+// ─── Auto-backup settings (single-row, id always 1) ────────────────────────
+
+export const autoBackupSettings = sqliteTable("auto_backup_settings", {
+  id:             integer("id").primaryKey(),  // always 1
+  enabled:        integer("enabled", { mode: "boolean" }).notNull().default(false),
+  folderPath:     text("folder_path"),         // absolute path on disk, null = not configured
+  intervalType:   text("interval_type").notNull().default("daily"),
+                  // 'daily' | 'weekly' | 'custom'
+  intervalHours:  integer("interval_hours").notNull().default(24),
+                  // used only when intervalType = 'custom'
+  retentionType:  text("retention_type").notNull().default("smart"),
+                  // 'keep_all' | 'keep_n' | 'smart'
+  retentionCount: integer("retention_count").notNull().default(10),
+                  // used only when retentionType = 'keep_n'
+  lastBackupAt:   text("last_backup_at"),      // ISO 8601, null = never backed up
+  lastError:      text("last_error"),          // last failure message, null = no error
+  updatedAt:      text("updated_at").notNull().$defaultFn(() => new Date().toISOString()),
+});
+
 // ─── Types ─────────────────────────────────────────────────────────────────
 
 export type User = typeof users.$inferSelect;
@@ -374,3 +393,4 @@ export type WordFormatting = typeof wordFormatting.$inferSelect;
 export type LineAnnotation = typeof lineAnnotations.$inferSelect;
 export type Note = typeof notes.$inferSelect;
 export type RstCustomType = typeof rstCustomTypes.$inferSelect;
+export type AutoBackupSettings = typeof autoBackupSettings.$inferSelect;

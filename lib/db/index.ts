@@ -96,9 +96,12 @@ function loadLookupMaps(dbPath: string): LookupMaps {
 
 // ── DB singletons ─────────────────────────────────────────────────────────────
 
-let _sourceDb: ReturnType<typeof drizzle<typeof sourceSchema>> | null = null;
-let _lxxDb:    ReturnType<typeof drizzle<typeof sourceSchema>> | null = null;
-let _userDb:   ReturnType<typeof drizzle<typeof userSchema>>   | null = null;
+export { USER_DB_PATH };
+
+let _sourceDb:    ReturnType<typeof drizzle<typeof sourceSchema>> | null = null;
+let _lxxDb:       ReturnType<typeof drizzle<typeof sourceSchema>> | null = null;
+let _userDb:      ReturnType<typeof drizzle<typeof userSchema>>   | null = null;
+let _userSqlite:  Database.Database | null = null;
 
 export function getSourceDb() {
   if (!_sourceDb) {
@@ -124,16 +127,23 @@ export function getLxxDb(): ReturnType<typeof drizzle<typeof sourceSchema>> | nu
 
 export function getUserDb() {
   if (!_userDb) {
-    const sqlite = new Database(USER_DB_PATH);
-    sqlite.pragma("journal_mode = WAL");
-    sqlite.pragma("synchronous = NORMAL");
-    sqlite.pragma("foreign_keys = ON");
-    _userDb = drizzle(sqlite, { schema: userSchema });
+    _userSqlite = new Database(USER_DB_PATH);
+    _userSqlite.pragma("journal_mode = WAL");
+    _userSqlite.pragma("synchronous = NORMAL");
+    _userSqlite.pragma("foreign_keys = ON");
+    _userDb = drizzle(_userSqlite, { schema: userSchema });
   }
   return _userDb;
 }
 
+/** Raw better-sqlite3 instance for user.db — used by backup/restore. */
+export function getUserSqlite(): Database.Database {
+  if (!_userSqlite) getUserDb(); // ensure initialized
+  return _userSqlite!;
+}
+
 export const sourceDb     = getSourceDb();
 export const userDb       = getUserDb();
+export const userSqlite   = getUserSqlite();
 export const sourceLookups = loadLookupMaps(SOURCE_DB_PATH);
 export const lxxLookups    = loadLookupMaps(LXX_DB_PATH);

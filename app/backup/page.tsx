@@ -19,8 +19,8 @@ export default function BackupPage() {
           </Link>
           <h1 className="text-3xl font-bold mt-2">Backup & Restore</h1>
           <p className="mt-2 text-sm text-stone-500 dark:text-stone-400">
-            Export all your annotations and translation data to a JSON file, or restore from
-            a previous backup.
+            Download a complete backup of all your workspaces and data, or restore from
+            a previous backup file.
           </p>
         </header>
 
