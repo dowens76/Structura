@@ -117,11 +117,12 @@ function getLookupId(table: string, value: string | null | undefined): number | 
   if (value === null || value === undefined) return null;
   const key = `${table}:${value}`;
   if (lookupCache.has(key)) return lookupCache.get(key)!;
-  sqlite.prepare(`INSERT OR IGNORE INTO ${table} (value) VALUES (?)`).run(value);
-  const row = sqlite.prepare(`SELECT id FROM ${table} WHERE value = ?`).get(value) as { id: number } | undefined;
-  if (!row) throw new Error(`Failed to upsert lookup ${table}=${value}`);
-  lookupCache.set(key, row.id);
-  return row.id;
+  const existing = sqlite.prepare(`SELECT id FROM ${table} WHERE value = ? LIMIT 1`).get(value) as { id: number } | undefined;
+  if (existing) { lookupCache.set(key, existing.id); return existing.id; }
+  sqlite.prepare(`INSERT INTO ${table} (value) VALUES (?)`).run(value);
+  const id = (sqlite.prepare("SELECT last_insert_rowid() as id").get() as { id: number }).id;
+  lookupCache.set(key, id);
+  return id;
 }
 
 function reqLookupId(table: string, value: string): number {

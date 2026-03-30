@@ -38,9 +38,11 @@ interface WordTokenProps {
 /** Split surface text into leading punctuation, core word, and trailing punctuation.
  *  Punctuation placed outside the styled/clickable span so it is never visually
  *  included in character or word-tag selection indicators. */
-const PUNCT_RE = /["""''\u2018\u2019\u201C\u201D.,:;?·\u00B7\u2014]/;
-const LEADING_PUNCT = /^["""''\u2018\u2019\u201C\u201D.,:;?·\u00B7\u2014]+/;
-const TRAILING_PUNCT = /["""''\u2018\u2019\u201C\u201D.,:;?·\u00B7\u2014]+$/;
+// \u05C3 = Hebrew sof pasuq ׃  \u05C0 = Hebrew paseq ׀
+// \u0387 = Greek ano teleia ·   \u037E = Greek question mark ;
+const PUNCT_RE = /["""''\u2018\u2019\u201C\u201D.,:;?·\u00B7\u0387\u037E\u2014\u05C3\u05C0]/;
+const LEADING_PUNCT = /^["""''\u2018\u2019\u201C\u201D.,:;?·\u00B7\u0387\u037E\u2014\u05C3\u05C0]+/;
+const TRAILING_PUNCT = /["""''\u2018\u2019\u201C\u201D.,:;?·\u00B7\u0387\u037E\u2014\u05C3\u05C0]+$/;
 
 function splitPunctuation(text: string): { leading: string; core: string; trailing: string } {
   const leading = text.match(LEADING_PUNCT)?.[0] ?? "";

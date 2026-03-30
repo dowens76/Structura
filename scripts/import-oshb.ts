@@ -32,11 +32,13 @@ function getLookupId(table: string, value: string | null | undefined): number | 
   if (value === null || value === undefined) return null;
   const key = `${table}:${value}`;
   if (lookupCache.has(key)) return lookupCache.get(key)!;
-  sqlite.prepare(`INSERT OR IGNORE INTO ${table} (value) VALUES (?)`).run(value);
-  const row = sqlite.prepare(`SELECT id FROM ${table} WHERE value = ?`).get(value) as { id: number } | undefined;
-  if (!row) throw new Error(`Failed to upsert lookup ${table}=${value}`);
-  lookupCache.set(key, row.id);
-  return row.id;
+  // Check before inserting to avoid creating duplicates (no UNIQUE constraint on value).
+  const existing = sqlite.prepare(`SELECT id FROM ${table} WHERE value = ? LIMIT 1`).get(value) as { id: number } | undefined;
+  if (existing) { lookupCache.set(key, existing.id); return existing.id; }
+  sqlite.prepare(`INSERT INTO ${table} (value) VALUES (?)`).run(value);
+  const id = (sqlite.prepare("SELECT last_insert_rowid() as id").get() as { id: number }).id;
+  lookupCache.set(key, id);
+  return id;
 }
 
 function reqLookupId(table: string, value: string): number {
@@ -161,7 +163,17 @@ function importBook(xmlFile: string): void {
 
   const bookId = getOrCreateBook(osisCode);
 
-  const xml = readFileSync(path.join(WLC_PATH, xmlFile), "utf-8");
+  const rawXml = readFileSync(path.join(WLC_PATH, xmlFile), "utf-8");
+
+  // Merge <seg> punctuation elements into the text of the preceding <w> element.
+  // e.g. </w><seg type="x-sof-pasuq">׃</seg>  →  ׃</w>
+  //      </w><seg type="x-maqqef">־</seg>       →  ־</w>
+  //      </w><seg type="x-paseq">׀</seg>        →  ׀</w>
+  const xml = rawXml.replace(
+    /<\/w>(\s*)<seg type="x-(?:sof-pasuq|maqqef|paseq)">([^<]+)<\/seg>/g,
+    "$2</w>$1"
+  );
+
   const parsed = xmlParser.parse(xml);
 
   const osisText = parsed?.osis?.osisText;
@@ -231,8 +243,8 @@ function main() {
 
   db.delete(schema.words).where(eq(schema.words.textSourceId, reqLookupId("text_sources", "OSHB"))).run();
   db.delete(schema.verses).where(eq(schema.verses.textSource, "OSHB")).run();
-  db.delete(schema.books).where(eq(schema.books.textSource, "OSHB")).run();
-  console.log("Cleared existing OSHB data.\n");
+  // Do NOT delete books — preserve existing IDs so lxx.db and other references stay consistent.
+  console.log("Cleared existing OSHB words and verses.\n");
 
   for (const file of BOOK_FILES) {
     process.stdout.write(`  ${file.replace(".xml", "").padEnd(8)}`);

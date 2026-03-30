@@ -32,11 +32,12 @@ function getLookupId(table: string, value: string | null | undefined): number | 
   if (value === null || value === undefined) return null;
   const key = `${table}:${value}`;
   if (lookupCache.has(key)) return lookupCache.get(key)!;
-  sqlite.prepare(`INSERT OR IGNORE INTO ${table} (value) VALUES (?)`).run(value);
-  const row = sqlite.prepare(`SELECT id FROM ${table} WHERE value = ?`).get(value) as { id: number } | undefined;
-  if (!row) throw new Error(`Failed to upsert lookup ${table}=${value}`);
-  lookupCache.set(key, row.id);
-  return row.id;
+  const existing = sqlite.prepare(`SELECT id FROM ${table} WHERE value = ? LIMIT 1`).get(value) as { id: number } | undefined;
+  if (existing) { lookupCache.set(key, existing.id); return existing.id; }
+  sqlite.prepare(`INSERT INTO ${table} (value) VALUES (?)`).run(value);
+  const id = (sqlite.prepare("SELECT last_insert_rowid() as id").get() as { id: number }).id;
+  lookupCache.set(key, id);
+  return id;
 }
 
 function reqLookupId(table: string, value: string): number {
@@ -123,8 +124,8 @@ function importBook(
       }
     }
 
-    // Strip trailing punctuation for surface text
-    const surfaceText = textRaw.replace(/[.,;:·?!'"»«\u037E\u0387\u002C\u002E]+$/, "");
+    // Keep original text (including trailing punctuation) as surface text
+    const surfaceText = textRaw;
     const morph = parseMorphgntCode(posCode, parseCode);
     const wordId = `GNT.${fileInfo.prefix}.${chapter}.${verse}.${position}`;
 
@@ -177,8 +178,8 @@ async function main() {
 
   db.delete(schema.words).where(eq(schema.words.textSourceId, reqLookupId("text_sources", "SBLGNT"))).run();
   db.delete(schema.verses).where(eq(schema.verses.textSource, "SBLGNT")).run();
-  db.delete(schema.books).where(eq(schema.books.textSource, "SBLGNT")).run();
-  console.log("Cleared existing SBLGNT data.\n");
+  // Do NOT delete books — preserve existing IDs so lxx.db and other references stay consistent.
+  console.log("Cleared existing SBLGNT words and verses.\n");
 
   for (let i = 0; i < MORPHGNT_FILES.length; i++) {
     const fileInfo = MORPHGNT_FILES[i];
