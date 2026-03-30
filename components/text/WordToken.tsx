@@ -2,8 +2,8 @@
 
 import { useRef, useState } from "react";
 import type { Word, CharacterRef, Character, WordTag, WordTagRef } from "@/lib/db/schema";
-import type { DisplayMode, GrammarFilterState } from "@/lib/morphology/types";
-import { POS_COLORS } from "@/lib/morphology/types";
+import type { DisplayMode, GrammarFilterState, InterlinearSubMode } from "@/lib/morphology/types";
+import { POS_COLORS, CONSTITUENT_LABELS } from "@/lib/morphology/types";
 import { getPosKey, matchesColorRule, type ColorRule } from "@/lib/morphology/colorRules";
 import ParseTooltip from "./ParseTooltip";
 import hebrewLemmas from "@/lib/data/hebrew-lemmas.json";
@@ -33,6 +33,12 @@ interface WordTokenProps {
   // Bold / italic formatting
   wordFormatting?: { isBold: boolean; isItalic: boolean } | null;
   editingFormatting?: boolean;
+  // Interlinear sub-mode
+  interlinearSubMode?: InterlinearSubMode;
+  constituentLabel?: string | null;
+  datasetValue?: string | null;
+  onSaveConstituentLabel?: (wordId: string, label: string | null) => void;
+  onSaveDatasetEntry?: (wordId: string, value: string | null) => void;
 }
 
 /** Split surface text into leading punctuation, core word, and trailing punctuation.
@@ -66,6 +72,176 @@ function getInterlinearLabel(word: Word): string {
   return label.toLowerCase();
 }
 
+// ── InterlinearLabel ─────────────────────────────────────────────────────────
+
+interface InterlinearLabelProps {
+  word: Word;
+  isHebrew: boolean;
+  subMode: InterlinearSubMode;
+  constituentLabel: string | null;
+  datasetValue: string | null;
+  onSaveConstituentLabel?: (wordId: string, label: string | null) => void;
+  onSaveDatasetEntry?: (wordId: string, value: string | null) => void;
+}
+
+function InterlinearLabel({
+  word,
+  isHebrew,
+  subMode,
+  constituentLabel,
+  datasetValue,
+  onSaveConstituentLabel,
+  onSaveDatasetEntry,
+}: InterlinearLabelProps) {
+  const [popoverOpen, setPopoverOpen] = useState(false);
+  const [draftValue,  setDraftValue]  = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const labelStyle: React.CSSProperties = {
+    fontFamily: isHebrew
+      ? '"Ezra SIL", "SBL Hebrew", serif'
+      : '"Gentium Plus", "GFS Didot", serif',
+    fontSize: "0.72em",
+    color: "var(--interlinear-color)",
+  };
+
+  function getText(): string {
+    if (subMode === "lemma")       return getInterlinearLabel(word);
+    if (subMode === "strongs")     return word.strongNumber ?? "—";
+    if (subMode === "morph")       return word.morphCode ?? "—";
+    if (subMode === "constituent") return constituentLabel ?? "·";
+    // dataset
+    return datasetValue ?? "·";
+  }
+
+  const isEditable = subMode === "constituent" || (typeof subMode === "object" && subMode.type === "dataset");
+
+  function handleLabelClick(e: React.MouseEvent) {
+    if (!isEditable) return;
+    e.stopPropagation();
+    if (subMode === "constituent") {
+      setPopoverOpen((v) => !v);
+    } else {
+      // dataset — open text input popover
+      setDraftValue(datasetValue ?? "");
+      setPopoverOpen((v) => !v);
+    }
+  }
+
+  function handleConstituentSelect(key: string | null) {
+    onSaveConstituentLabel?.(word.wordId, key);
+    setPopoverOpen(false);
+  }
+
+  function handleDatasetSave() {
+    const val = draftValue.trim();
+    onSaveDatasetEntry?.(word.wordId, val || null);
+    setPopoverOpen(false);
+  }
+
+  return (
+    <span className="relative">
+      <span
+        className={[
+          "word-parse",
+          isEditable ? "cursor-pointer rounded px-0.5 hover:bg-stone-100 dark:hover:bg-stone-700" : "",
+        ].join(" ")}
+        style={labelStyle}
+        onClick={handleLabelClick}
+        title={isEditable ? "Click to edit" : undefined}
+      >
+        {getText()}
+      </span>
+
+      {/* ── Constituent label picker popover ──────────────────────────────── */}
+      {popoverOpen && subMode === "constituent" && (
+        <span
+          className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 z-50 rounded-lg border shadow-lg py-1.5 px-1.5 flex flex-wrap gap-1"
+          style={{
+            borderColor: "var(--border)",
+            backgroundColor: "var(--surface)",
+            minWidth: "160px",
+            maxWidth: "220px",
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {CONSTITUENT_LABELS.map(({ key, label }) => (
+            <button
+              key={key}
+              onClick={() => handleConstituentSelect(constituentLabel === key ? null : key)}
+              className={[
+                "text-[10px] px-1.5 py-0.5 rounded border transition-colors",
+                constituentLabel === key
+                  ? "bg-blue-600 border-blue-600 text-white"
+                  : "border-stone-200 dark:border-stone-700 hover:bg-stone-100 dark:hover:bg-stone-700",
+              ].join(" ")}
+              style={{ color: constituentLabel === key ? undefined : "var(--foreground)" }}
+              title={label}
+            >
+              {key}
+            </button>
+          ))}
+          {constituentLabel && (
+            <button
+              onClick={() => handleConstituentSelect(null)}
+              className="text-[10px] px-1.5 py-0.5 rounded border border-red-300 dark:border-red-800 text-red-500 hover:bg-red-50 dark:hover:bg-red-950 transition-colors w-full mt-0.5"
+            >
+              Clear
+            </button>
+          )}
+        </span>
+      )}
+
+      {/* ── Dataset value input popover ───────────────────────────────────── */}
+      {popoverOpen && typeof subMode === "object" && subMode.type === "dataset" && (
+        <span
+          className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 z-50 rounded-lg border shadow-lg p-2 flex flex-col gap-1.5"
+          style={{
+            borderColor: "var(--border)",
+            backgroundColor: "var(--surface)",
+            minWidth: "150px",
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <span className="text-[9px] font-mono" style={{ color: "var(--text-muted)" }}>{word.wordId}</span>
+          <input
+            ref={inputRef}
+            autoFocus
+            value={draftValue}
+            onChange={(e) => setDraftValue(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") handleDatasetSave();
+              if (e.key === "Escape") setPopoverOpen(false);
+            }}
+            placeholder="Enter value…"
+            className="rounded border px-1.5 py-0.5 text-xs outline-none w-full"
+            style={{
+              borderColor: "var(--border)",
+              backgroundColor: "var(--surface)",
+              color: "var(--foreground)",
+            }}
+          />
+          <span className="flex gap-1 justify-end">
+            <button
+              onClick={() => { onSaveDatasetEntry?.(word.wordId, null); setPopoverOpen(false); }}
+              className="text-[10px] px-1.5 py-0.5 rounded border border-stone-200 dark:border-stone-700 hover:bg-stone-100 dark:hover:bg-stone-700"
+              style={{ color: "var(--text-muted)" }}
+            >
+              Clear
+            </button>
+            <button
+              onClick={handleDatasetSave}
+              className="text-[10px] px-2 py-0.5 rounded bg-blue-600 text-white"
+            >
+              Save
+            </button>
+          </span>
+        </span>
+      )}
+    </span>
+  );
+}
+
 export default function WordToken({
   word,
   displayMode,
@@ -88,6 +264,11 @@ export default function WordToken({
   highlightWordTagIds,
   wordFormatting,
   editingFormatting,
+  interlinearSubMode = "lemma",
+  constituentLabel,
+  datasetValue,
+  onSaveConstituentLabel,
+  onSaveDatasetEntry,
 }: WordTokenProps) {
   const [hovering, setHovering] = useState(false);
   const [tooltipBelow, setTooltipBelow] = useState(false);
@@ -214,18 +395,15 @@ export default function WordToken({
           <span className="word-surface">{core}</span>
           {showTooltip && !isEditing && <ParseTooltip word={word} flipped={tooltipBelow} useLinguisticTerms={useLinguisticTerms} />}
         </span>
-        <span
-          className="word-parse"
-          style={{
-            fontFamily: isHebrew
-              ? '"Ezra SIL", "SBL Hebrew", serif'
-              : '"Gentium Plus", "GFS Didot", serif',
-            fontSize: "0.72em",
-            color: "var(--interlinear-color)",
-          }}
-        >
-          {getInterlinearLabel(word)}
-        </span>
+        <InterlinearLabel
+          word={word}
+          isHebrew={isHebrew}
+          subMode={interlinearSubMode}
+          constituentLabel={constituentLabel ?? null}
+          datasetValue={datasetValue ?? null}
+          onSaveConstituentLabel={onSaveConstituentLabel}
+          onSaveDatasetEntry={onSaveDatasetEntry}
+        />
       </span>
     );
   }

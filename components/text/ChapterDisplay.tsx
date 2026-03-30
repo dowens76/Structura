@@ -3,11 +3,12 @@
 import { useMemo, useState, useEffect, useRef } from "react";
 import type { Word, Character, CharacterRef, SpeechSection, WordTag, WordTagRef, RstRelation, WordArrow, LineAnnotation } from "@/lib/db/schema";
 import type { Translation, TranslationVerse } from "@/lib/db/schema";
-import type { DisplayMode, GrammarFilterState, TranslationTextEntry } from "@/lib/morphology/types";
+import type { DisplayMode, GrammarFilterState, TranslationTextEntry, InterlinearSubMode } from "@/lib/morphology/types";
 import VerseDisplay from "./VerseDisplay";
 import MorphologyPanel from "./MorphologyPanel";
 import GrammarFilter from "@/components/controls/GrammarFilter";
 import DisplayModeToggle from "@/components/controls/DisplayModeToggle";
+import InterlinearSubModePicker from "@/components/controls/InterlinearSubModePicker";
 import ColorRulePanel from "@/components/controls/ColorRulePanel";
 import CharacterPanel from "@/components/controls/CharacterPanel";
 import WordTagPanel from "@/components/controls/WordTagPanel";
@@ -105,6 +106,13 @@ export default function ChapterDisplay({
 }: ChapterDisplayProps) {
   // Use fallback defaults for SSR — localStorage values are loaded in useEffect after hydration
   const [displayMode, setDisplayMode] = useState<DisplayMode>("clean");
+  const [interlinearSubMode, setInterlinearSubMode] = useState<InterlinearSubMode>("lemma");
+  const [constituentLabelMap, setConstituentLabelMap] = useState<Map<string, string>>(new Map());
+  const [datasets, setDatasets] = useState<{ id: number; name: string }[]>([]);
+  const [datasetEntryMap, setDatasetEntryMap] = useState<Map<string, string>>(new Map());
+  // Upload dialog state
+  const [uploadDatasetId, setUploadDatasetId] = useState<number | null>(null);
+  const uploadInputRef = useRef<HTMLInputElement>(null);
   const [grammarFilter, setGrammarFilter] = useState<GrammarFilterState>(DEFAULT_FILTER);
   const [selectedWord, setSelectedWord] = useState<Word | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
@@ -346,6 +354,7 @@ export default function ChapterDisplay({
   // Write effects for font sizes were removed; adjustFontSize writes directly instead.
   useEffect(() => {
     setDisplayMode(readLocal<DisplayMode>("structura:displayMode", "clean"));
+    setInterlinearSubMode(readLocal<InterlinearSubMode>("structura:interlinearSubMode", "lemma"));
     setActiveTranslationAbbrs(new Set(readLocal<string[]>("structura:activeTranslations", [])));
     setUseLinguisticTerms(readLocal<boolean>("structura:useLinguisticTerms", false));
     setHebrewFontSize(readLocal<number>("structura:hebrewFontSize", 1.375));
@@ -364,8 +373,45 @@ export default function ChapterDisplay({
 
   // Persist sticky settings whenever they change
   useEffect(() => { writeLocal("structura:displayMode", displayMode); }, [displayMode]);
+  useEffect(() => { writeLocal("structura:interlinearSubMode", interlinearSubMode); }, [interlinearSubMode]);
   useEffect(() => { writeLocal("structura:useLinguisticTerms", useLinguisticTerms); }, [useLinguisticTerms]);
   useEffect(() => { writeLocal("structura:hideSourceText", hideSourceText); }, [hideSourceText]);
+
+  // ── Load datasets list on mount ───────────────────────────────────────────
+  useEffect(() => {
+    fetch("/api/interlinear/datasets?workspaceId=1")
+      .then((r) => r.json())
+      .then((rows: { id: number; name: string }[]) => setDatasets(rows))
+      .catch(() => {});
+  }, []);
+
+  // ── Load constituent labels for current chapter ───────────────────────────
+  useEffect(() => {
+    if (displayMode !== "interlinear" || interlinearSubMode !== "constituent") return;
+    fetch(
+      `/api/interlinear/constituent-labels?workspaceId=1&book=${encodeURIComponent(book)}&chapter=${chapter}&textSource=${encodeURIComponent(textSource)}`
+    )
+      .then((r) => r.json())
+      .then((rows: { wordId: string; label: string }[]) =>
+        setConstituentLabelMap(new Map(rows.map((r) => [r.wordId, r.label])))
+      )
+      .catch(() => {});
+  }, [displayMode, interlinearSubMode, book, chapter, textSource]);
+
+  // ── Load dataset entries for active dataset + current chapter ─────────────
+  useEffect(() => {
+    if (displayMode !== "interlinear") return;
+    if (typeof interlinearSubMode !== "object" || interlinearSubMode.type !== "dataset") return;
+    const dsId = interlinearSubMode.id;
+    fetch(
+      `/api/interlinear/datasets/${dsId}/entries?book=${encodeURIComponent(book)}&chapter=${chapter}&textSource=${encodeURIComponent(textSource)}`
+    )
+      .then((r) => r.json())
+      .then((rows: { wordId: string; value: string }[]) =>
+        setDatasetEntryMap(new Map(rows.map((r) => [r.wordId, r.value])))
+      )
+      .catch(() => {});
+  }, [displayMode, interlinearSubMode, book, chapter, textSource]);
 
   // Fetch custom RST types on mount
   useEffect(() => {
@@ -1731,6 +1777,126 @@ export default function ChapterDisplay({
 
   // ── Word formatting (bold / italic) handler ────────────────────────────────
 
+  // ── Interlinear annotation handlers ────────────────────────────────────────
+
+  async function handleSaveConstituentLabel(wordId: string, label: string | null) {
+    // Optimistic update
+    setConstituentLabelMap((prev) => {
+      const next = new Map(prev);
+      if (label === null) next.delete(wordId);
+      else next.set(wordId, label);
+      return next;
+    });
+    try {
+      if (label === null) {
+        await fetch("/api/interlinear/constituent-labels", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ workspaceId: 1, wordId }),
+        });
+      } else {
+        await fetch("/api/interlinear/constituent-labels", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ workspaceId: 1, wordId, label, textSource, book, chapter }),
+        });
+      }
+    } catch { /* ignore */ }
+  }
+
+  async function handleSaveDatasetEntry(wordId: string, value: string | null) {
+    if (typeof interlinearSubMode !== "object" || interlinearSubMode.type !== "dataset") return;
+    const dsId = interlinearSubMode.id;
+    // Optimistic update
+    setDatasetEntryMap((prev) => {
+      const next = new Map(prev);
+      if (value === null) next.delete(wordId);
+      else next.set(wordId, value);
+      return next;
+    });
+    try {
+      if (value === null) {
+        await fetch(`/api/interlinear/datasets/${dsId}/entries`, {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ wordId }),
+        });
+      } else {
+        await fetch(`/api/interlinear/datasets/${dsId}/entries`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ wordId, value, textSource, book, chapter }),
+        });
+      }
+    } catch { /* ignore */ }
+  }
+
+  async function handleCreateDataset(name: string): Promise<{ id: number; name: string } | null> {
+    try {
+      const res  = await fetch("/api/interlinear/datasets", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workspaceId: 1, name }),
+      });
+      const ds   = await res.json() as { id: number; name: string };
+      setDatasets((prev) => [...prev, ds]);
+      return ds;
+    } catch {
+      return null;
+    }
+  }
+
+  async function handleDeleteDataset(id: number) {
+    setDatasets((prev) => prev.filter((d) => d.id !== id));
+    try {
+      await fetch(`/api/interlinear/datasets/${id}`, { method: "DELETE" });
+    } catch { /* ignore */ }
+  }
+
+  async function handleRenameDataset(id: number, name: string) {
+    setDatasets((prev) => prev.map((d) => d.id === id ? { ...d, name } : d));
+    // If active dataset, update subMode name
+    if (typeof interlinearSubMode === "object" && interlinearSubMode.type === "dataset" && interlinearSubMode.id === id) {
+      setInterlinearSubMode({ type: "dataset", id, name });
+    }
+    try {
+      await fetch(`/api/interlinear/datasets/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      });
+    } catch { /* ignore */ }
+  }
+
+  async function handleUploadDatasetFile(datasetId: number, file: File) {
+    const text = await file.text();
+    const entries: { wordId: string; value: string; textSource: string; book: string; chapter: number }[] = [];
+    for (const line of text.split(/\r?\n/)) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith("#")) continue;
+      const sep = trimmed.indexOf("\t");
+      if (sep < 1) continue;
+      const wordId = trimmed.slice(0, sep).trim();
+      const value  = trimmed.slice(sep + 1).trim();
+      if (wordId && value) entries.push({ wordId, value, textSource, book, chapter });
+    }
+    if (entries.length === 0) return;
+    try {
+      await fetch(`/api/interlinear/datasets/${datasetId}/upload`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ entries }),
+      });
+      // Reload entries if this is the active dataset
+      if (typeof interlinearSubMode === "object" && interlinearSubMode.type === "dataset" && interlinearSubMode.id === datasetId) {
+        const res  = await fetch(`/api/interlinear/datasets/${datasetId}/entries?book=${encodeURIComponent(book)}&chapter=${chapter}&textSource=${encodeURIComponent(textSource)}`);
+        const rows = await res.json() as { wordId: string; value: string }[];
+        setDatasetEntryMap(new Map(rows.map((r) => [r.wordId, r.value])));
+      }
+    } catch { /* ignore */ }
+    setUploadDatasetId(null);
+  }
+
   // Core toggle — shared by source words (source = textSource) and translation
   // words (source = translation abbreviation, e.g. "ESV").
   async function handleToggleFormattingById(wordId: string, source: string) {
@@ -1903,6 +2069,21 @@ export default function ChapterDisplay({
                   <GrammarFilter filter={grammarFilter} onChange={setGrammarFilter} />
                   <ColorRulePanel rules={colorRules} onChange={setColorRules} isHebrew={isHebrew} />
                 </>
+              )}
+              {displayMode === "interlinear" && (
+                <InterlinearSubModePicker
+                  subMode={interlinearSubMode}
+                  onChange={setInterlinearSubMode}
+                  datasets={datasets}
+                  onCreateDataset={handleCreateDataset}
+                  onDeleteDataset={handleDeleteDataset}
+                  onRenameDataset={handleRenameDataset}
+                  onUploadDataset={(id) => {
+                    setUploadDatasetId(id);
+                    // Trigger hidden file input
+                    setTimeout(() => uploadInputRef.current?.click(), 0);
+                  }}
+                />
               )}
               <button
                 onClick={() => setShowTooltips((v) => !v)}
@@ -2638,6 +2819,11 @@ export default function ChapterDisplay({
                 onSetSegmentTvIndent={handleSetTvIndent}
                 wordFormattingMap={wordFormattingMap}
                 editingFormatting={editingBold || editingItalic}
+                interlinearSubMode={interlinearSubMode}
+                constituentLabelMap={constituentLabelMap}
+                datasetEntryMap={datasetEntryMap}
+                onSaveConstituentLabel={handleSaveConstituentLabel}
+                onSaveDatasetEntry={handleSaveDatasetEntry}
                 hideSourceText={hideSourceText}
                 editingTranslation={editingTranslation}
                 onUpdateTranslationVerse={handleUpdateTranslationVerse}
@@ -2726,6 +2912,22 @@ export default function ChapterDisplay({
           onCleared={handleAnnotationsCleared}
         />
       )}
+
+      {/* Hidden file input for dataset upload */}
+      <input
+        ref={uploadInputRef}
+        type="file"
+        accept=".txt,.tsv,.csv,text/plain,text/tab-separated-values"
+        className="hidden"
+        onChange={async (e) => {
+          const file = e.target.files?.[0];
+          if (file && uploadDatasetId != null) {
+            await handleUploadDatasetFile(uploadDatasetId, file);
+          }
+          // Reset so the same file can be re-uploaded if needed
+          e.target.value = "";
+        }}
+      />
     </div>
   );
 }

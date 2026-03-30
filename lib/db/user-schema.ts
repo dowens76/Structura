@@ -350,6 +350,59 @@ export const wordFormatting = sqliteTable(
   ]
 );
 
+// ─── Interlinear annotation tables ─────────────────────────────────────────
+
+/** User-assigned grammatical constituent labels, one per word per workspace. */
+export const constituentLabels = sqliteTable(
+  "constituent_labels",
+  {
+    id:          integer("id").primaryKey({ autoIncrement: true }),
+    workspaceId: integer("workspace_id").notNull().default(1)
+                   .references(() => workspaces.id, { onDelete: "cascade" }),
+    wordId:      text("word_id").notNull(),
+    label:       text("label").notNull(),
+    textSource:  text("text_source").notNull(),
+    book:        text("book").notNull(),
+    chapter:     integer("chapter").notNull(),
+  },
+  (t) => [
+    uniqueIndex("conlbl_ws_word_idx").on(t.workspaceId, t.wordId),
+    index("conlbl_book_ch_src_idx").on(t.book, t.chapter, t.textSource),
+  ]
+);
+
+/** Named user-created word datasets (workspace-scoped). */
+export const wordDatasets = sqliteTable(
+  "word_datasets",
+  {
+    id:          integer("id").primaryKey({ autoIncrement: true }),
+    workspaceId: integer("workspace_id").notNull().default(1)
+                   .references(() => workspaces.id, { onDelete: "cascade" }),
+    name:        text("name").notNull(),
+    createdAt:   text("created_at").$defaultFn(() => new Date().toISOString()),
+  },
+  (t) => [index("wds_ws_idx").on(t.workspaceId)]
+);
+
+/** Individual word entries within a dataset. */
+export const wordDatasetEntries = sqliteTable(
+  "word_dataset_entries",
+  {
+    id:         integer("id").primaryKey({ autoIncrement: true }),
+    datasetId:  integer("dataset_id").notNull()
+                  .references(() => wordDatasets.id, { onDelete: "cascade" }),
+    wordId:     text("word_id").notNull(),
+    value:      text("value").notNull(),
+    textSource: text("text_source").notNull(),
+    book:       text("book").notNull(),
+    chapter:    integer("chapter").notNull(),
+  },
+  (t) => [
+    uniqueIndex("wde_ds_word_idx").on(t.datasetId, t.wordId),
+    index("wde_ds_book_ch_idx").on(t.datasetId, t.book, t.chapter, t.textSource),
+  ]
+);
+
 // ─── Auto-backup settings (single-row, id always 1) ────────────────────────
 
 export const autoBackupSettings = sqliteTable("auto_backup_settings", {
@@ -394,3 +447,6 @@ export type LineAnnotation = typeof lineAnnotations.$inferSelect;
 export type Note = typeof notes.$inferSelect;
 export type RstCustomType = typeof rstCustomTypes.$inferSelect;
 export type AutoBackupSettings = typeof autoBackupSettings.$inferSelect;
+export type ConstituentLabel = typeof constituentLabels.$inferSelect;
+export type WordDataset = typeof wordDatasets.$inferSelect;
+export type WordDatasetEntry = typeof wordDatasetEntries.$inferSelect;

@@ -48,6 +48,35 @@ export type Testament = "OT" | "NT" | "LXX";
 
 export type DisplayMode = "clean" | "color" | "interlinear";
 
+// ── Interlinear sub-modes ─────────────────────────────────────────────────────
+
+/** What to display in the label row beneath each word in interlinear mode. */
+export type InterlinearSubMode =
+  | "lemma"         // dictionary form (default)
+  | "strongs"       // Strong's number, e.g. H1234 / G1234
+  | "morph"         // raw morphology code, e.g. HVqp3ms
+  | "constituent"   // user-assigned grammatical constituent label
+  | { type: "dataset"; id: number; name: string }; // user-created word dataset
+
+/** Predefined grammatical constituent labels. */
+export const CONSTITUENT_LABELS = [
+  { key: "S",   label: "Subject" },
+  { key: "P",   label: "Predicate" },
+  { key: "O",   label: "Object" },
+  { key: "IO",  label: "Indir. Object" },
+  { key: "VC",  label: "Verb Compl." },
+  { key: "Adj", label: "Adjunct" },
+  { key: "Voc", label: "Vocative" },
+  { key: "App", label: "Appositive" },
+  { key: "NP",  label: "Noun Phrase" },
+  { key: "VP",  label: "Verb Phrase" },
+  { key: "PP",  label: "Prep. Phrase" },
+  { key: "Cl",  label: "Clause" },
+  { key: "RC",  label: "Rel. Clause" },
+] as const;
+
+export type ConstituentLabelKey = typeof CONSTITUENT_LABELS[number]["key"];
+
 export interface TranslationTextEntry {
   abbr: string;
   text: string;

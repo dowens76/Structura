@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import type { Word, CharacterRef, Character, SpeechSection, WordTag, WordTagRef, LineAnnotation } from "@/lib/db/schema";
-import type { DisplayMode, GrammarFilterState, TranslationTextEntry } from "@/lib/morphology/types";
+import type { DisplayMode, GrammarFilterState, TranslationTextEntry, InterlinearSubMode } from "@/lib/morphology/types";
 import type { ColorRule } from "@/lib/morphology/colorRules";
 import { PLOT_ELEMENTS, ANNOTATION_PALETTE, getPlotElement, getAnnotationColor } from "@/lib/utils/annotations";
 
@@ -80,6 +80,12 @@ interface VerseDisplayProps {
   // Bold / italic formatting
   wordFormattingMap?: Map<string, { isBold: boolean; isItalic: boolean }>;
   editingFormatting?: boolean;
+  // Interlinear sub-mode
+  interlinearSubMode?: InterlinearSubMode;
+  constituentLabelMap?: Map<string, string>;
+  datasetEntryMap?: Map<string, string>;
+  onSaveConstituentLabel?: (wordId: string, label: string | null) => void;
+  onSaveDatasetEntry?: (wordId: string, value: string | null) => void;
   // Source text visibility
   hideSourceText?: boolean;
   // Translation text editing
@@ -719,6 +725,11 @@ export default function VerseDisplay({
   onSetSegmentTvIndent,
   wordFormattingMap = new Map() as Map<string, { isBold: boolean; isItalic: boolean }>,
   editingFormatting = false,
+  interlinearSubMode = "lemma" as InterlinearSubMode,
+  constituentLabelMap = new Map<string, string>(),
+  datasetEntryMap = new Map<string, string>(),
+  onSaveConstituentLabel,
+  onSaveDatasetEntry,
   hideSourceText = false,
   editingTranslation = false,
   onUpdateTranslationVerse,
@@ -1282,6 +1293,11 @@ export default function VerseDisplay({
             highlightWordTagIds={highlightWordTagIds}
             wordFormatting={wordFormattingMap.get(word.wordId) ?? null}
             editingFormatting={editingFormatting}
+            interlinearSubMode={interlinearSubMode}
+            constituentLabel={constituentLabelMap.get(word.wordId)}
+            datasetValue={datasetEntryMap.get(word.wordId)}
+            onSaveConstituentLabel={onSaveConstituentLabel}
+            onSaveDatasetEntry={onSaveDatasetEntry}
           />
           {wi < gWords.length - 1 && " "}
         </span>

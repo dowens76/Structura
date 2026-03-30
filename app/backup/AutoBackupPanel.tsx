@@ -10,9 +10,10 @@ interface StatusResponse {
   nextRunAt: string | null;
 }
 
-type SaveStatus = "idle" | "saving" | "saved" | "error";
-type RunStatus  = "idle" | "running" | "done" | "error";
-type PathStatus = "idle" | "checking" | "ok" | "error";
+type SaveStatus   = "idle" | "saving" | "saved" | "error";
+type RunStatus    = "idle" | "running" | "done" | "error";
+type PathStatus   = "idle" | "checking" | "ok" | "error";
+type BrowseStatus = "idle" | "picking";
 
 // ── Relative-time helper ──────────────────────────────────────────────────────
 
@@ -59,8 +60,9 @@ export default function AutoBackupPanel() {
   const [saveError,   setSaveError]   = useState("");
   const [runStatus,   setRunStatus]   = useState<RunStatus>("idle");
   const [runMsg,      setRunMsg]      = useState("");
-  const [pathStatus,  setPathStatus]  = useState<PathStatus>("idle");
-  const [pathError,   setPathError]   = useState("");
+  const [pathStatus,    setPathStatus]    = useState<PathStatus>("idle");
+  const [pathError,     setPathError]     = useState("");
+  const [browseStatus,  setBrowseStatus]  = useState<BrowseStatus>("idle");
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -94,6 +96,22 @@ export default function AutoBackupPanel() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // ── Pick folder via native OS dialog ────────────────────────────────────────
+
+  async function pickFolder() {
+    setBrowseStatus("picking");
+    try {
+      const res    = await fetch("/api/auto-backup/pick-folder");
+      const result = await res.json() as { path?: string; cancelled?: boolean; error?: string };
+      if (result.path) {
+        setFolderPath(result.path);
+        setPathStatus("idle");
+      }
+      // If cancelled or error, leave the field unchanged.
+    } catch { /* network error — ignore */ }
+    setBrowseStatus("idle");
+  }
 
   // ── Validate path ───────────────────────────────────────────────────────────
 
@@ -256,6 +274,15 @@ export default function AutoBackupPanel() {
                 }}
               />
               <button
+                onClick={pickFolder}
+                disabled={browseStatus === "picking"}
+                className="px-3 py-1.5 rounded-md border text-xs font-medium transition-opacity disabled:opacity-40"
+                style={{ borderColor: "var(--border)", color: "var(--foreground)" }}
+                title="Open folder picker"
+              >
+                {browseStatus === "picking" ? "…" : "Browse…"}
+              </button>
+              <button
                 onClick={validatePath}
                 disabled={!folderPath.trim() || pathStatus === "checking"}
                 className="px-3 py-1.5 rounded-md border text-xs font-medium transition-opacity disabled:opacity-40"
@@ -271,7 +298,8 @@ export default function AutoBackupPanel() {
               <p className="mt-1 text-xs text-red-600 dark:text-red-400">✗ {pathError}</p>
             )}
             <p className="mt-1 text-xs" style={mutedStyle}>
-              Enter an absolute path on this machine. The folder must already exist.
+              Type a path or click Browse… to use a folder picker.
+              The folder must already exist.
             </p>
           </div>
 

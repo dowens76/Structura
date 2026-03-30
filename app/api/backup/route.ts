@@ -38,6 +38,7 @@ const REQUIRED_TABLES = [
   "word_tags", "word_tag_refs", "line_indents", "scene_breaks",
   "passages", "clause_relationships", "rst_relations", "word_arrows",
   "line_annotations", "rst_custom_types", "notes", "word_formatting",
+  "constituent_labels", "word_datasets", "word_dataset_entries",
 ];
 
 // ── POST /api/backup ───────────────────────────────────────────────────────────
