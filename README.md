@@ -18,22 +18,34 @@ A biblical text analysis workbench for studying the Hebrew Old Testament, Septua
 
 ### Reading & Display
 
-- **Three display modes** 
-	— Clean (plain text): This is the basic mode.
-	- Color (morphology-based highlighting): Automatically identify words that fit certain grammatical criteria, such as part of speech or a more fine-grained set of criteria based on morphological conditions (stem, tense, voice, mood, person, gender, number, case, state, prefix).
-	- Interlinear (lemma/lexical form beneath each word in the source-language font)
-- **Morphology panel** — Click any word to see its full grammatical parsing, lemma, Strong's number, and Scripture reference.
-- **Adjustable font sizes** — Independent size controls for Hebrew, Greek, and translation text.
-- **Linguistic terminology toggle** — Switch between traditional labels (perfect/imperfect) and Hebrew-specific labels (Qatal/Yiqtol/Wayyiqtol/Weqatal).
-- **Tooltips** — When enabled, hover over any word for parsing information
+- **Three display modes**
+  - *Clean* — Plain source text
+  - *Color* — Morphology-based highlighting; configure rules by part of speech and fine-grained morphological conditions (stem, tense, voice, mood, person, gender, number, case, state, prefix)
+  - *Interlinear* — Source text with a sub-line showing lemma, Strong's number, morphological parsing code, grammatical constituent label, or a user dataset value
+- **Morphology panel** — Click any word to see its full grammatical parsing, lemma, Strong's number, and Scripture reference
+- **Adjustable font sizes** — Independent size controls for Hebrew, Greek, and translation text
+- **Linguistic terminology toggle** — Switch between traditional labels (perfect/imperfect) and Hebrew-specific labels (Qatal/Yiqtol/Wayyiqtol/Weqatal)
+- **Tooltips** — Hover over any word for parsing information
 - **Dark mode** — Full light/dark theme support
+- **Parallel view** — Side-by-side OSHB Hebrew and LXX Septuagint for books shared between the two
 
 ### Translation
 
-- **Import translations** — Paste any translation (KJV, NASB, ESV, etc.) from Bible.com
+- **Built-in ULT** — The UnfoldingWord Literal Text (31,102 verses, all 66 books) is bundled as a built-in translation and available in the translation picker immediately after running `npm run import:ult`
+- **Import translations** — Paste any translation (KJV, NASB, ESV, etc.) from Bible.com, or import via USFM
 - **Parallel display** — One or more translations shown alongside the source text
-- **In-place editing** — Edit translation text directly in the view
+- **In-place editing** — Edit translation text directly in the view; edits are saved per workspace and override the built-in base text
 - **Translation-specific formatting** — Independent paragraph breaks, indentation, and bold/italic per translation
+
+### Interlinear Sub-modes
+
+When display mode is set to Interlinear, a toolbar picker selects what appears beneath each source word:
+
+- **Lemma** — Lexical/dictionary form
+- **Strong's** — Strong's reference number
+- **Morph** — Full morphological parsing code
+- **Constituent** — User-assigned grammatical constituent label (Subject, Predicate, Object, Indirect Object, Verb Complement, Adjunct, Vocative, Appositive, Noun Phrase, Verb Phrase, Prepositional Phrase, Clause, Relative Clause)
+- **Datasets** — User-created datasets assigning a custom text value to individual words; datasets can be entered word-by-word or uploaded as a tab-separated file (`wordId TAB value`, one entry per line)
 
 ### Passage Management
 
@@ -69,12 +81,18 @@ A biblical text analysis workbench for studying the Hebrew Old Testament, Septua
 
 ### Export & Backup
 
-- **HTML export** — Export a passage or chapter to a self-contained HTML file (Reveal.js-compatible) preserving all visual annotations
-- **Database backup** — Export the entire annotation database to JSON and selectively restore individual annotation categories
+- **HTML export** — Export a passage or chapter to a self-contained HTML file preserving all visual annotations
+- **Manual backup** — Download a complete snapshot of `user.db` (all workspaces, annotations, translations, and settings) as a `.db` file
+- **Manual restore** — Upload a previously downloaded `.db` backup to replace the current database
+- **Automatic backups** — Schedule periodic backups to a local folder; configurable interval (daily / weekly / custom hours), retention policy (keep all / keep N / smart tiered), and a native OS folder picker; runs while the app is open
 
 ### Undo
 
 - **50-step undo** — Cmd/Ctrl+Z undoes any annotation operation across all editing modes
+
+### Workspaces
+
+- **Multiple workspaces** — All annotations, translations, and settings are scoped to a workspace; switch workspaces from the nav bar
 
 ---
 
@@ -82,8 +100,9 @@ A biblical text analysis workbench for studying the Hebrew Old Testament, Septua
 
 - **Next.js 16** (App Router) + TypeScript
 - **Tailwind CSS v4** (CSS-based config)
-- **Drizzle ORM** + **better-sqlite3** — SQLite database at `./data/structura.db`
+- **Drizzle ORM** + **better-sqlite3** — SQLite databases at `./data/`
 - Morphological data: `morphhb` (OSHB), MorphGNT/SBLGNT, LXX Rahlfs 1935
+- Built-in translation: UnfoldingWord Literal Text (CC BY-SA 4.0)
 
 ---
 
@@ -99,13 +118,21 @@ Open [http://localhost:3000](http://localhost:3000).
 ### Import text data
 
 ```bash
-npm run import:oshb      # Hebrew OT
-npm run import:morphgnt  # Greek NT
-npm run import:lxx       # Septuagint
+npm run import:oshb      # Hebrew OT (requires morphhb package)
+npm run import:morphgnt  # Greek NT (downloads from GitHub)
+npm run import:lxx       # Septuagint (downloads from GitHub)
+npm run import:ult       # UnfoldingWord Literal Text (downloads from git.door43.org)
+```
+
+### Import lexicons
+
+```bash
+npm run import:lexicon   # Hebrew + Greek lexicons
 ```
 
 ### Database
 
 ```bash
-npm run db:push   # apply schema migrations
+npm run db:push          # apply schema migrations to user.db
+npm run db:push:source   # apply schema migrations to source.db
 ```
