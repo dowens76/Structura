@@ -1,0 +1,52 @@
+{
+  "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
+  "productName": "Structura",
+  "version": "0.1.0",
+  "identifier": "com.structura.app",
+  "build": {
+    "frontendDist": "frontend",
+    "devUrl": "http://localhost:3000",
+    "beforeBuildCommand": "npm run build:next"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Structura",
+        "width": 1400,
+        "height": 900,
+        "minWidth": 900,
+        "minHeight": 600,
+        "resizable": true,
+        "fullscreen": false
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "resources": {
+      "resources/server/**/*": "server",
+      "resources/databases/source.db": "databases/source.db",
+      "resources/databases/lxx.db": "databases/lxx.db",
+      "resources/databases/ult.db": "databases/ult.db",
+      "resources/user.db.template": "user.db.template"
+    },
+    "externalBin": [
+      "binaries/node"
+    ],
+    "macOS": {
+      "entitlements": "entitlements.plist",
+      "minimumSystemVersion": "10.15"
+    }
+  }
+}

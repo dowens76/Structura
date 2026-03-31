@@ -3,6 +3,10 @@
 import { useEffect, useRef, useState } from "react";
 import type { AutoBackupSettings } from "@/lib/db/user-schema";
 
+// Use Tauri's native folder dialog when running as a packaged app,
+// fall back to the API route in dev/browser.
+const isTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 interface StatusResponse {
@@ -107,14 +111,25 @@ export default function AutoBackupPanel() {
   async function pickFolder() {
     setBrowseStatus("picking");
     try {
-      const res    = await fetch("/api/auto-backup/pick-folder");
-      const result = await res.json() as { path?: string; cancelled?: boolean; error?: string };
-      if (result.path) {
-        setFolderPath(result.path);
-        setPathStatus("idle");
+      if (isTauri) {
+        // Running as a Tauri desktop app — use native folder picker via Rust command
+        const { invoke } = await import("@tauri-apps/api/core");
+        const picked = await invoke<string | null>("pick_folder");
+        if (picked) {
+          setFolderPath(picked);
+          setPathStatus("idle");
+        }
+      } else {
+        // Running in dev/browser — use the API route (opens OS dialog server-side)
+        const res    = await fetch("/api/auto-backup/pick-folder");
+        const result = await res.json() as { path?: string; cancelled?: boolean; error?: string };
+        if (result.path) {
+          setFolderPath(result.path);
+          setPathStatus("idle");
+        }
       }
       // If cancelled or error, leave the field unchanged.
-    } catch { /* network error — ignore */ }
+    } catch { /* network or invoke error — ignore */ }
     setBrowseStatus("idle");
   }
 

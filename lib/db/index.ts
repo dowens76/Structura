@@ -5,10 +5,15 @@ import * as userSchema from "./user-schema";
 import path from "path";
 import fs from "fs";
 
-const SOURCE_DB_PATH = path.join(process.cwd(), "data", "source.db");
-const LXX_DB_PATH   = path.join(process.cwd(), "data", "lxx.db");
-const USER_DB_PATH  = path.join(process.cwd(), "data", "user.db");
-const ULT_DB_PATH   = path.join(process.cwd(), "data", "ult.db");
+const RESOURCES_DIR = process.env.STRUCTURA_RESOURCES_DIR
+  ?? path.join(process.cwd(), "data");
+const USER_DATA_DIR = process.env.STRUCTURA_USER_DATA_DIR
+  ?? path.join(process.cwd(), "data");
+
+const SOURCE_DB_PATH = path.join(RESOURCES_DIR, "source.db");
+const LXX_DB_PATH   = path.join(RESOURCES_DIR, "lxx.db");
+const ULT_DB_PATH   = path.join(RESOURCES_DIR, "ult.db");
+const USER_DB_PATH  = path.join(USER_DATA_DIR,  "user.db");
 
 // ── Lookup maps ───────────────────────────────────────────────────────────────
 
@@ -107,9 +112,7 @@ let _ultSqlite:   Database.Database | null = null;
 
 export function getSourceDb() {
   if (!_sourceDb) {
-    const sqlite = new Database(SOURCE_DB_PATH);
-    sqlite.pragma("journal_mode = WAL");
-    sqlite.pragma("synchronous = NORMAL");
+    const sqlite = new Database(SOURCE_DB_PATH, { readonly: true });
     sqlite.pragma("foreign_keys = ON");
     _sourceDb = drizzle(sqlite, { schema: sourceSchema });
   }
@@ -119,9 +122,7 @@ export function getSourceDb() {
 export function getLxxDb(): ReturnType<typeof drizzle<typeof sourceSchema>> | null {
   if (_lxxDb) return _lxxDb;
   if (!fs.existsSync(LXX_DB_PATH)) return null;
-  const sqlite = new Database(LXX_DB_PATH);
-  sqlite.pragma("journal_mode = WAL");
-  sqlite.pragma("synchronous = NORMAL");
+  const sqlite = new Database(LXX_DB_PATH, { readonly: true });
   sqlite.pragma("foreign_keys = ON");
   _lxxDb = drizzle(sqlite, { schema: sourceSchema });
   return _lxxDb;

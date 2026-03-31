@@ -23,10 +23,17 @@
     "import:greek-lexicon": "tsx scripts/import-greek-lexicon.ts",
     "import:lexicon": "tsx scripts/import-hebrew-lexicon.ts && tsx scripts/import-greek-lexicon.ts",
     "db:rebuild": "tsx scripts/rebuild-source-db.ts",
-    "import:ult": "tsx scripts/import-ult.ts"
+    "import:ult": "tsx scripts/import-ult.ts",
+    "build:next": "next build && node scripts/copy-standalone.mjs",
+    "build:template": "tsx scripts/create-user-db-template.ts",
+    "build:node-binary": "bash scripts/download-node-binary.sh",
+    "tauri:dev": "tauri dev",
+    "tauri:build": "npm run build:node-binary && npm run build:template && tauri build --bundles app && node scripts/fix-app-bundle.mjs",
+    "tauri:dmg": "node scripts/create-dmg.mjs"
   },
   "dependencies": {
     "@fontsource/gentium-plus": "^5.2.7",
+    "@tauri-apps/api": "^2.10.1",
     "@tiptap/extension-highlight": "^3.20.4",
     "@tiptap/extension-placeholder": "^3.20.4",
     "@tiptap/extension-subscript": "^3.20.4",
@@ -49,6 +56,7 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
+    "@tauri-apps/cli": "^2.10.1",
     "@types/better-sqlite3": "^7.6.13",
     "@types/d3-hierarchy": "^3.1.7",
     "@types/node": "^20",
