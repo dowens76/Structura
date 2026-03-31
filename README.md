@@ -33,9 +33,10 @@ A biblical text analysis workbench for studying the Hebrew Old Testament, Septua
 
 - **Built-in ULT** — The UnfoldingWord Literal Text (31,102 verses, all 66 books) is bundled as a built-in translation and available in the translation picker immediately after running `npm run import:ult`
 - **Import translations** — Paste any translation (KJV, NASB, ESV, etc.) from Bible.com, or import via USFM
-- **Parallel display** — One or more translations shown alongside the source text
-- **In-place editing** — Edit translation text directly in the view; edits are saved per workspace and override the built-in base text
+- **Parallel display** — One or more translations shown alongside the source text in both chapter and passage views
+- **In-place editing** — Edit translation text directly in the view; edits are saved and override the built-in base text
 - **Translation-specific formatting** — Independent paragraph breaks, indentation, and bold/italic per translation
+- **Workspace-independent** — Imported translations are shared across all workspaces; importing once makes a translation available everywhere
 
 ### Interlinear Sub-modes
 
@@ -92,7 +93,8 @@ When display mode is set to Interlinear, a toolbar picker selects what appears b
 
 ### Workspaces
 
-- **Multiple workspaces** — All annotations, translations, and settings are scoped to a workspace; switch workspaces from the nav bar
+- **Multiple workspaces** — Annotations and settings are scoped to a workspace; switch workspaces from the nav bar
+- **Shared translations** — Imported translation text is available across all workspaces; only annotations (character refs, word tags, paragraph breaks, etc.) are workspace-specific
 
 ---
 
@@ -101,12 +103,15 @@ When display mode is set to Interlinear, a toolbar picker selects what appears b
 - **Next.js 16** (App Router) + TypeScript
 - **Tailwind CSS v4** (CSS-based config)
 - **Drizzle ORM** + **better-sqlite3** — SQLite databases at `./data/`
+- **Tauri v2** — macOS desktop packaging (Node.js sidecar + WebView)
 - Morphological data: `morphhb` (OSHB), MorphGNT/SBLGNT, LXX Rahlfs 1935
 - Built-in translation: UnfoldingWord Literal Text (CC BY-SA 4.0)
 
 ---
 
 ## Getting Started
+
+### Development server
 
 ```bash
 npm install
@@ -136,3 +141,28 @@ npm run import:lexicon   # Hebrew + Greek lexicons
 npm run db:push          # apply schema migrations to user.db
 npm run db:push:source   # apply schema migrations to source.db
 ```
+
+---
+
+## macOS Desktop App
+
+Structura ships as a native macOS app (`.app` / `.dmg`) via Tauri v2. The bundled app includes the Next.js server, Node.js runtime, and all source databases — no external dependencies required at runtime.
+
+### Build
+
+```bash
+npm run tauri:build      # builds Structura.app
+npm run tauri:dmg        # wraps it in a distributable DMG
+```
+
+Output locations:
+- `src-tauri/target/release/bundle/macos/Structura.app`
+- `src-tauri/target/release/bundle/dmg/Structura_0.1.0_aarch64.dmg`
+
+### User data
+
+On first launch the app creates `~/Library/Application Support/com.structura.app/user.db`. Source databases (OSHB, LXX, SBLGNT, ULT) are bundled read-only inside the app.
+
+### Architecture
+
+The Rust shell finds a free port, spawns a bundled Node.js 24 binary running the Next.js standalone server, waits for the "Ready" signal, then navigates the WebView to the local server URL. In development (`npm run tauri:dev`) the WebView points directly to `http://localhost:3000`.
