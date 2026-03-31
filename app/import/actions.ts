@@ -2,7 +2,6 @@
 
 import { parseBibleComText } from "@/lib/utils/translation-parser";
 import { upsertTranslation, getBook } from "@/lib/db/queries";
-import { getActiveWorkspaceId } from "@/lib/workspace";
 import { userDb } from "@/lib/db";
 import { translations, translationVerses } from "@/lib/db/schema";
 import { and, eq } from "drizzle-orm";
@@ -74,10 +73,10 @@ export async function importTranslationAction(
     };
   }
 
-  const workspaceId = await getActiveWorkspaceId();
-  const translationId = await upsertTranslation(name, abbreviation, workspaceId);
+  // Translations are workspace-independent — always stored under workspaceId 1.
+  const translationId = await upsertTranslation(name, abbreviation);
 
-  // Delete existing verses for this translation+chapter (clean re-import)
+  // Delete existing verses for this translation+chapter (clean re-import, no workspace filter).
   await userDb
     .delete(translationVerses)
     .where(
@@ -89,6 +88,7 @@ export async function importTranslationAction(
     );
 
   const rows = verses.map((v) => ({
+    workspaceId: 1,
     translationId,
     osisRef: formatOsisRef(osisBook, chapter, v.verse),
     bookId: book.id,

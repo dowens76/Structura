@@ -1,4 +1,4 @@
-import { eq, and, asc, inArray, or, gte, lte, gt, lt, sql, max } from "drizzle-orm";
+import { eq, and, asc, inArray, or, gte, lte, gt, lt, sql, max, like } from "drizzle-orm";
 import { sourceDb, userDb, sourceLookups, lxxLookups, getLxxDb, getUltSqlite } from "./index";
 import type { LookupMaps } from "./index";
 import { books, words } from "./source-schema";
@@ -163,32 +163,30 @@ export async function getChapterCount(osisBook: string): Promise<number> {
   return book?.chapterCount ?? 0;
 }
 
-export async function getTranslations(workspaceId: number): Promise<Translation[]> {
+// Translations are workspace-independent — all imported translations are shared
+// across workspaces. The workspaceId parameter is accepted for API compatibility
+// but is no longer used as a filter.
+
+export async function getTranslations(_workspaceId?: number): Promise<Translation[]> {
   return userDb
     .select()
     .from(translations)
-    .where(eq(translations.workspaceId, workspaceId))
     .orderBy(asc(translations.abbreviation));
 }
 
 export async function getAvailableTranslationsForChapter(
   osisBook: string,
   chapter: number,
-  workspaceId: number
+  _workspaceId?: number
 ): Promise<Translation[]> {
-  const book = await getBook(osisBook);
-  if (!book) return [];
+  // Match by osis_ref prefix (e.g. "1Sam.1.") — avoids dependency on book_id
+  // which may differ across database versions.
+  const prefix = `${osisBook}.${chapter}.`;
 
   const rows = await userDb
     .selectDistinct({ translationId: translationVerses.translationId })
     .from(translationVerses)
-    .where(
-      and(
-        eq(translationVerses.workspaceId, workspaceId),
-        eq(translationVerses.bookId, book.id),
-        eq(translationVerses.chapter, chapter)
-      )
-    );
+    .where(like(translationVerses.osisRef, `${prefix}%`));
 
   const ids = rows.map((r) => r.translationId);
   if (ids.length === 0) return [];
@@ -196,7 +194,7 @@ export async function getAvailableTranslationsForChapter(
   return userDb
     .select()
     .from(translations)
-    .where(and(eq(translations.workspaceId, workspaceId), inArray(translations.id, ids)))
+    .where(inArray(translations.id, ids))
     .orderBy(asc(translations.abbreviation));
 }
 
@@ -204,37 +202,34 @@ export async function getTranslationVerses(
   translationId: number,
   osisBook: string,
   chapter: number,
-  workspaceId: number
+  _workspaceId?: number
 ): Promise<TranslationVerse[]> {
-  const book = await getBook(osisBook);
-  if (!book) return [];
+  const prefix = `${osisBook}.${chapter}.`;
 
   return userDb
     .select()
     .from(translationVerses)
     .where(
       and(
-        eq(translationVerses.workspaceId, workspaceId),
         eq(translationVerses.translationId, translationId),
-        eq(translationVerses.bookId, book.id),
-        eq(translationVerses.chapter, chapter)
+        like(translationVerses.osisRef, `${prefix}%`)
       )
     )
     .orderBy(asc(translationVerses.verse));
 }
 
-export async function upsertTranslation(name: string, abbreviation: string, workspaceId: number): Promise<number> {
+export async function upsertTranslation(name: string, abbreviation: string, _workspaceId?: number): Promise<number> {
   const upper = abbreviation.toUpperCase();
   const existing = await userDb
     .select()
     .from(translations)
-    .where(and(eq(translations.workspaceId, workspaceId), eq(translations.abbreviation, upper)))
+    .where(eq(translations.abbreviation, upper))
     .limit(1);
   if (existing[0]) return existing[0].id;
 
   const result = await userDb
     .insert(translations)
-    .values({ name, abbreviation: upper, workspaceId })
+    .values({ name, abbreviation: upper, workspaceId: 1 })
     .returning({ id: translations.id });
   return result[0].id;
 }
@@ -1311,14 +1306,14 @@ export function getUltVerses(
 }
 
 /**
- * Returns the ULT Translation record for the given workspace, or null if ULT
- * has not been imported (i.e. no translations row with abbreviation = 'ULT').
+ * Returns the ULT Translation record, or null if ULT has not been imported.
+ * ULT is workspace-independent so no workspace filter is applied.
  */
-export async function getUltTranslation(workspaceId: number): Promise<Translation | null> {
+export async function getUltTranslation(_workspaceId?: number): Promise<Translation | null> {
   const result = await userDb
     .select()
     .from(translations)
-    .where(and(eq(translations.workspaceId, workspaceId), eq(translations.abbreviation, "ULT")))
+    .where(eq(translations.abbreviation, "ULT"))
     .limit(1);
   return result[0] ?? null;
 }

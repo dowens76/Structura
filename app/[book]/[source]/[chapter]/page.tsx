@@ -366,6 +366,7 @@ export default async function ChapterPage({ params, searchParams }: PageProps) {
           </>
         ) : (
           <ChapterDisplay
+            key={workspaceId}
             words={words}
             book={osisBook}
             chapter={chapter}

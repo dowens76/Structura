@@ -83,6 +83,9 @@ interface Props {
   // Translation data
   availableTranslations: Translation[];
   translationVerseData: Record<number, TranslationVerse[]>;
+  // ULT (built-in) translation — base text from ult.db, edits in user.db
+  ultBaseVerses?: { chapter: number; verse: number; text: string }[];
+  ultTranslation?: Translation | null;
   // RST relations + word arrows
   initialRstRelations: RstRelation[];
   initialWordArrows: WordArrow[];
@@ -118,6 +121,8 @@ export default function PassageView({
   initialLineIndents,
   availableTranslations,
   translationVerseData,
+  ultBaseVerses = [],
+  ultTranslation = null,
   initialRstRelations,
   initialWordArrows,
   initialWordFormatting,
@@ -272,12 +277,48 @@ export default function PassageView({
   const [editingItalic, setEditingItalic] = useState(false);
 
   // ── Translation editing state ──────────────────────────────────────────────
+  // If ULT base verses are provided, merge them in: user edits take precedence;
+  // verses not yet edited fall back to the immutable base text from ult.db.
+  // Verses are keyed by "chapter:verse" since passages span multiple chapters.
+  const initialTranslationVerseData = useMemo(() => {
+    if (!ultTranslation || ultBaseVerses.length === 0) return translationVerseData;
+    const ultId = ultTranslation.id;
+    const editedMap = new Map(
+      (translationVerseData[ultId] ?? []).map((v) => [`${v.chapter}:${v.verse}`, v])
+    );
+    const merged: TranslationVerse[] = ultBaseVerses.map((base, i) => {
+      return editedMap.get(`${base.chapter}:${base.verse}`) ?? {
+        id: -(i + 1),
+        workspaceId: ultTranslation.workspaceId,
+        translationId: ultId,
+        osisRef: `${osisBook}.${base.chapter}.${base.verse}`,
+        bookId: 0,
+        chapter: base.chapter,
+        verse: base.verse,
+        text: base.text,
+      };
+    });
+    return { ...translationVerseData, [ultId]: merged };
+  // Only recalculate on passage identity / ULT change, not on every edit keystroke.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [passage.id, ultTranslation?.id]);
+
   const [editingTranslation, setEditingTranslation] = useState(false);
-  const [localTranslationVerseData, setLocalTranslationVerseData] = useState<Record<number, TranslationVerse[]>>(
-    () => translationVerseData
-  );
+  const [localTranslationVerseData, setLocalTranslationVerseData] = useState(initialTranslationVerseData);
   // Snapshot taken when translation editing mode is entered, used for Cancel
-  const translationEditSnapshotRef = useRef(translationVerseData);
+  const translationEditSnapshotRef = useRef(initialTranslationVerseData);
+
+  // Merge ULT into the available translations list and track which are "built-in"
+  const allAvailableTranslations = useMemo(() => {
+    if (!ultTranslation || ultBaseVerses.length === 0) return availableTranslations;
+    if (availableTranslations.some((t) => t.id === ultTranslation.id)) return availableTranslations;
+    return [ultTranslation, ...availableTranslations];
+  }, [availableTranslations, ultTranslation, ultBaseVerses.length]);
+
+  const systemTranslationIds = useMemo(
+    () => new Set(ultTranslation ? [ultTranslation.id] : []),
+    [ultTranslation]
+  );
 
   // ── Overlay ref ────────────────────────────────────────────────────────────
   const overlayContainerRef = useRef<HTMLDivElement>(null);
@@ -481,17 +522,17 @@ export default function PassageView({
   // ── Translation verse data ────────────────────────────────────────────────
   const activeTranslationIds = useMemo(
     () => new Set(
-      availableTranslations
+      allAvailableTranslations
         .filter((t) => activeTranslationAbbrs.has(t.abbreviation))
         .map((t) => t.id)
     ),
-    [activeTranslationAbbrs, availableTranslations]
+    [activeTranslationAbbrs, allAvailableTranslations]
   );
 
   // keyed by "chapter:verse" to avoid collisions in multi-chapter passages
   const activeTranslationVerseMap = useMemo(() => {
     const map = new Map<string, TranslationTextEntry[]>();
-    for (const t of availableTranslations) {
+    for (const t of allAvailableTranslations) {
       if (!activeTranslationIds.has(t.id)) continue;
       for (const tv of localTranslationVerseData[t.id] ?? []) {
         const key = `${tv.chapter}:${tv.verse}`;
@@ -501,12 +542,12 @@ export default function PassageView({
       }
     }
     return map;
-  }, [activeTranslationIds, availableTranslations, localTranslationVerseData]);
+  }, [activeTranslationIds, allAvailableTranslations, localTranslationVerseData]);
 
   const hasActiveTranslations = activeTranslationIds.size > 0;
 
   function toggleTranslation(id: number) {
-    const abbr = availableTranslations.find((t) => t.id === id)?.abbreviation;
+    const abbr = allAvailableTranslations.find((t) => t.id === id)?.abbreviation;
     if (!abbr) return;
     setActiveTranslationAbbrs((prev) => {
       const next = new Set(prev);
@@ -1732,7 +1773,7 @@ export default function PassageView({
 
   // ── Translation verse editing ──────────────────────────────────────────────
   async function handleUpdateTranslationVerse(abbr: string, verse: number, newText: string) {
-    const translation = availableTranslations.find((t) => t.abbreviation === abbr);
+    const translation = allAvailableTranslations.find((t) => t.abbreviation === abbr);
     if (!translation) return;
     const tvRecord = localTranslationVerseData[translation.id]?.find((tv) => tv.verse === verse);
     if (!tvRecord) return;
@@ -1761,7 +1802,7 @@ export default function PassageView({
 
   // Revert a verse back to the text it had when translation editing mode was entered
   async function handleCancelTranslationVerse(abbr: string, verse: number) {
-    const translation = availableTranslations.find((t) => t.abbreviation === abbr);
+    const translation = allAvailableTranslations.find((t) => t.abbreviation === abbr);
     if (!translation) return;
     const snapshot = translationEditSnapshotRef.current;
     const snapRecord = snapshot[translation.id]?.find((tv) => tv.verse === verse);
@@ -2261,7 +2302,7 @@ export default function PassageView({
           )}
 
           {/* Translation toggles */}
-          {availableTranslations.length > 0 && (
+          {allAvailableTranslations.length > 0 && (
             <div className="flex items-center gap-1 border-l border-[var(--border)] pl-4">
               <span className="text-xs text-stone-400 dark:text-stone-500 mr-1 select-none">Translations:</span>
               {/* Source text visibility — shown only when a translation is active */}
@@ -2286,13 +2327,19 @@ export default function PassageView({
                   ].join(" ")}
                 >✏</button>
               )}
-              {availableTranslations.map((t) => (
-                <button key={t.id} onClick={() => toggleTranslation(t.id)} title={t.name}
+              {allAvailableTranslations.map((t) => (
+                <button key={t.id} onClick={() => toggleTranslation(t.id)}
+                  title={systemTranslationIds.has(t.id) ? `${t.name} (built-in)` : t.name}
                   className={["px-2.5 py-1 rounded text-xs font-medium font-mono transition-colors",
                     activeTranslationIds.has(t.id) ? "bg-emerald-600 text-white"
                       : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
                   ].join(" ")}
-                >{t.abbreviation}</button>
+                >
+                  {t.abbreviation}
+                  {systemTranslationIds.has(t.id) && (
+                    <span className="ml-1 text-[10px] opacity-60">★</span>
+                  )}
+                </button>
               ))}
             </div>
           )}

@@ -15,6 +15,8 @@ import {
   getChapterLineIndents,
   getAvailableTranslationsForChapter,
   getTranslationVerses,
+  getUltVerses,
+  getUltTranslation,
   getChapterRstRelations,
   getChapterWordArrows,
   getChapterWordFormatting,
@@ -116,17 +118,34 @@ export default async function PassagePage({ params }: PageProps) {
   const initialSceneBreaks           = perChapterResults.flatMap(([,,,,,,,, sb]) => sb);
   const initialLineAnnotations       = perChapterResults.flatMap(([,,,,,,,,, la]) => la);
 
-  // Translations — available from the first chapter (book-wide); fetch verses for all chapters
-  const availableTranslations = await getAvailableTranslationsForChapter(osisBook, passage.startChapter, workspaceId);
+  // Translations — workspace-independent; fetch verses for all chapters in range
+  const availableTranslations = await getAvailableTranslationsForChapter(osisBook, passage.startChapter);
   const translationVerseData: Record<number, TranslationVerse[]> = {};
   await Promise.all(
     availableTranslations.map(async (t) => {
       const versesPerChapter = await Promise.all(
-        chapterRange.map((ch) => getTranslationVerses(t.id, osisBook, ch, workspaceId))
+        chapterRange.map((ch) => getTranslationVerses(t.id, osisBook, ch))
       );
       translationVerseData[t.id] = versesPerChapter.flat();
     })
   );
+
+  // ULT: synchronous base text from ult.db for all chapters in the passage
+  const ultBaseVerses: { chapter: number; verse: number; text: string }[] = [];
+  let ultTranslation: Awaited<ReturnType<typeof getUltTranslation>> = null;
+  for (const ch of chapterRange) {
+    const verses = getUltVerses(osisBook, ch);
+    for (const v of verses) ultBaseVerses.push({ ...v, chapter: ch });
+  }
+  if (ultBaseVerses.length > 0) {
+    ultTranslation = await getUltTranslation();
+    if (ultTranslation !== null) {
+      const ultEditsPerChapter = await Promise.all(
+        chapterRange.map((ch) => getTranslationVerses(ultTranslation!.id, osisBook, ch))
+      );
+      translationVerseData[ultTranslation.id] = ultEditsPerChapter.flat();
+    }
+  }
 
   const bookName = OSIS_BOOK_NAMES[osisBook] ?? osisBook;
   const isHebrew = bookRecord.language === "hebrew";
@@ -203,6 +222,7 @@ export default async function PassagePage({ params }: PageProps) {
       {/* Passage content — flex-1 min-h-0 lets PassageView manage its own scrolling */}
       <div className="flex-1 min-h-0">
         <PassageView
+          key={workspaceId}
           passage={passage}
           words={passageWords}
           bookName={bookName}
@@ -223,6 +243,8 @@ export default async function PassagePage({ params }: PageProps) {
           initialLineIndents={initialLineIndents}
           availableTranslations={availableTranslations}
           translationVerseData={translationVerseData}
+          ultBaseVerses={ultBaseVerses}
+          ultTranslation={ultTranslation}
           initialRstRelations={initialRstRelations}
           initialWordArrows={initialWordArrows}
           initialWordFormatting={initialWordFormatting}
