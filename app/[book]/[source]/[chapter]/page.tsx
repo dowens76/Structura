@@ -9,6 +9,7 @@ import {
   getChapterWordTagRefs, getChapterLineIndents, getChapterRstRelations,
   getChapterWordArrows, getChapterWordFormatting, getChapterSceneBreaks,
   getChapterLineAnnotations, getBookSceneBreaks, getBookChapterMaxVerses,
+  getUltVerses, getUltTranslation,
 } from "@/lib/db/queries";
 import type { TranslationVerse } from "@/lib/db/schema";
 import type { TextSource } from "@/lib/morphology/types";
@@ -104,6 +105,8 @@ export default async function ChapterPage({ params, searchParams }: PageProps) {
   let bookSceneBreaks: Awaited<ReturnType<typeof getBookSceneBreaks>> = [];
   let bookMaxVerses: Awaited<ReturnType<typeof getBookChapterMaxVerses>> = new Map();
   let translationVerseData: Record<number, TranslationVerse[]> = {};
+  let ultBaseVerses: { verse: number; text: string }[] = [];
+  let ultTranslation: Awaited<ReturnType<typeof getUltTranslation>> = null;
 
   if (!parallelMode) {
     [availableTranslations, initialParagraphBreakIds, initialCharacters,
@@ -133,6 +136,18 @@ export default async function ChapterPage({ params, searchParams }: PageProps) {
         translationVerseData[t.id] = await getTranslationVerses(t.id, osisBook, chapter, workspaceId);
       })
     );
+
+    // ULT: synchronous base text + async user overrides
+    ultBaseVerses = getUltVerses(osisBook, chapter);
+    if (ultBaseVerses.length > 0) {
+      ultTranslation = await getUltTranslation(workspaceId);
+      if (ultTranslation !== null) {
+        // Fetch any user edits stored in translation_verses for this chapter
+        translationVerseData[ultTranslation.id] = await getTranslationVerses(
+          ultTranslation.id, osisBook, chapter, workspaceId
+        );
+      }
+    }
   }
 
   const bookName = OSIS_BOOK_NAMES[osisBook] ?? osisBook;
@@ -357,6 +372,8 @@ export default async function ChapterPage({ params, searchParams }: PageProps) {
             textSource={textSource}
             availableTranslations={availableTranslations}
             translationVerseData={translationVerseData}
+            ultBaseVerses={ultBaseVerses}
+            ultTranslation={ultTranslation}
             initialParagraphBreakIds={initialParagraphBreakIds}
             initialCharacters={initialCharacters}
             initialCharacterRefs={initialCharacterRefs}

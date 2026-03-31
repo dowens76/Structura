@@ -9,8 +9,7 @@
  * hot-reload or any other scenario where this module is evaluated more than once.
  */
 
-import { userSqlite } from "@/lib/db";
-import { executeBackup, intervalMs } from "@/lib/backup/executor";
+import { executeBackup, intervalMs, readAutoBackupSettings } from "@/lib/backup/executor";
 import type { AutoBackupSettings } from "@/lib/db/user-schema";
 
 declare global {
@@ -20,25 +19,14 @@ declare global {
 
 let _timerId: NodeJS.Timeout | null = null;
 
-// ── Raw settings read (avoids Drizzle import — executor already imports userSqlite) ──
-
-function readSettings(): AutoBackupSettings | null {
-  try {
-    const row = userSqlite
-      .prepare("SELECT * FROM auto_backup_settings WHERE id = 1 LIMIT 1")
-      .get() as AutoBackupSettings | undefined;
-    return row ?? null;
-  } catch {
-    return null;
-  }
-}
+// readAutoBackupSettings() is imported from executor (aliased columns → camelCase).
 
 // ── Schedule next run ─────────────────────────────────────────────────────────
 
 function scheduleNext(ms: number, settings: AutoBackupSettings): void {
   _timerId = setTimeout(async () => {
     // Re-read settings at run time — they may have changed since scheduling
-    const current = readSettings();
+    const current = readAutoBackupSettings();
     if (!current?.enabled || !current.folderPath) {
       // Disabled or unconfigured — do nothing; reloadScheduler() will restart if re-enabled
       return;
@@ -53,7 +41,7 @@ function scheduleNext(ms: number, settings: AutoBackupSettings): void {
     }
 
     // Re-read again after execution (lastBackupAt is now updated)
-    const next = readSettings();
+    const next = readAutoBackupSettings();
     if (next?.enabled && next.folderPath) {
       scheduleNext(intervalMs(next), next);
     }
@@ -63,7 +51,7 @@ function scheduleNext(ms: number, settings: AutoBackupSettings): void {
 // ── Public API ────────────────────────────────────────────────────────────────
 
 export function startScheduler(): void {
-  const settings = readSettings();
+  const settings = readAutoBackupSettings();
   if (!settings?.enabled || !settings.folderPath) {
     console.log("[auto-backup] Scheduler idle (disabled or no folder configured).");
     return;

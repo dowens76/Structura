@@ -8,6 +8,7 @@ import fs from "fs";
 const SOURCE_DB_PATH = path.join(process.cwd(), "data", "source.db");
 const LXX_DB_PATH   = path.join(process.cwd(), "data", "lxx.db");
 const USER_DB_PATH  = path.join(process.cwd(), "data", "user.db");
+const ULT_DB_PATH   = path.join(process.cwd(), "data", "ult.db");
 
 // ── Lookup maps ───────────────────────────────────────────────────────────────
 
@@ -102,6 +103,7 @@ let _sourceDb:    ReturnType<typeof drizzle<typeof sourceSchema>> | null = null;
 let _lxxDb:       ReturnType<typeof drizzle<typeof sourceSchema>> | null = null;
 let _userDb:      ReturnType<typeof drizzle<typeof userSchema>>   | null = null;
 let _userSqlite:  Database.Database | null = null;
+let _ultSqlite:   Database.Database | null = null;
 
 export function getSourceDb() {
   if (!_sourceDb) {
@@ -140,6 +142,14 @@ export function getUserDb() {
 export function getUserSqlite(): Database.Database {
   if (!_userSqlite) getUserDb(); // ensure initialized
   return _userSqlite!;
+}
+
+/** Read-only better-sqlite3 instance for ult.db — null if not yet imported. */
+export function getUltSqlite(): Database.Database | null {
+  if (_ultSqlite) return _ultSqlite;
+  if (!fs.existsSync(ULT_DB_PATH)) return null;
+  _ultSqlite = new Database(ULT_DB_PATH, { readonly: true });
+  return _ultSqlite;
 }
 
 export const sourceDb     = getSourceDb();

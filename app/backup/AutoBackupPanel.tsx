@@ -64,7 +64,11 @@ export default function AutoBackupPanel() {
   const [pathError,     setPathError]     = useState("");
   const [browseStatus,  setBrowseStatus]  = useState<BrowseStatus>("idle");
 
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const pollRef            = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Tracks whether the editable form fields have been populated from the server.
+  // A ref (not state) so that the stale closure captured by setInterval always
+  // sees the up-to-date value and never re-initialises fields after first load.
+  const formInitializedRef = useRef(false);
 
   // ── Fetch status ────────────────────────────────────────────────────────────
 
@@ -75,8 +79,9 @@ export default function AutoBackupPanel() {
       setSettings(data.settings);
       setNextRunAt(data.nextRunAt);
 
-      if (!loaded && data.settings) {
-        // Populate form on first load
+      if (!formInitializedRef.current && data.settings) {
+        // Populate editable form fields exactly once (on first successful load).
+        formInitializedRef.current = true;
         setEnabled(data.settings.enabled);
         setFolderPath(data.settings.folderPath ?? "");
         setIntervalType((data.settings.intervalType as typeof intervalType) ?? "daily");
@@ -178,8 +183,29 @@ export default function AutoBackupPanel() {
     setRunStatus("running");
     setRunMsg("");
     try {
-      const res    = await fetch("/api/auto-backup/run", { method: "POST" });
-      const result = await res.json() as { ok?: boolean; filename?: string; error?: string };
+      // Send current form values so the run API uses the unsaved folder path
+      // and retention settings directly — no separate save step needed.
+      const res  = await fetch("/api/auto-backup/run", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          folderPath:     folderPath.trim() || null,
+          retentionType,
+          retentionCount,
+        }),
+      });
+      // Use text() first so a non-JSON error page doesn't hide the real problem.
+      const text = await res.text();
+      let result: { ok?: boolean; filename?: string; error?: string } = {};
+      try {
+        result = JSON.parse(text) as typeof result;
+      } catch {
+        // Server returned something that isn't JSON (e.g. an HTML crash page).
+        console.error("Backup run — unexpected response:", res.status, text.slice(0, 500));
+        setRunStatus("error");
+        setRunMsg(`Server error ${res.status} — check the terminal for details.`);
+        return;
+      }
       if (result.ok) {
         setRunStatus("done");
         setRunMsg(result.filename ?? "Backup complete.");
@@ -188,9 +214,9 @@ export default function AutoBackupPanel() {
         setRunStatus("error");
         setRunMsg(result.error ?? "Backup failed.");
       }
-    } catch {
+    } catch (err) {
       setRunStatus("error");
-      setRunMsg("Network error.");
+      setRunMsg(`Network error — ${err instanceof Error ? err.message : String(err)}`);
     }
     setTimeout(() => setRunStatus("idle"), 8000);
   }

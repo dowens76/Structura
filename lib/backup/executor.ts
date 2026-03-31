@@ -121,6 +121,33 @@ export function applyRetention(folderPath: string, settings: AutoBackupSettings)
   }
 }
 
+// ── Settings reader (aliased columns → camelCase to match AutoBackupSettings) ──
+// better-sqlite3 returns raw SQLite column names (snake_case). Aliasing here
+// avoids the runtime mismatch that would make folderPath, intervalType, etc.
+// always undefined despite being present in the DB.
+
+export function readAutoBackupSettings(): AutoBackupSettings | null {
+  try {
+    const row = userSqlite.prepare(`
+      SELECT
+        id,
+        enabled,
+        folder_path      AS folderPath,
+        interval_type    AS intervalType,
+        interval_hours   AS intervalHours,
+        retention_type   AS retentionType,
+        retention_count  AS retentionCount,
+        last_backup_at   AS lastBackupAt,
+        last_error       AS lastError,
+        updated_at       AS updatedAt
+      FROM auto_backup_settings WHERE id = 1 LIMIT 1
+    `).get() as AutoBackupSettings | undefined;
+    return row ?? null;
+  } catch {
+    return null;
+  }
+}
+
 // ── Settings persistence (raw SQL to avoid circular imports) ──────────────────
 
 function saveSettingsUpdate(update: Partial<Pick<AutoBackupSettings, "lastBackupAt" | "lastError">>) {
@@ -136,7 +163,6 @@ function saveSettingsUpdate(update: Partial<Pick<AutoBackupSettings, "lastBackup
     values.push(update.lastError ?? null);
   }
 
-  values.push(1); // WHERE id = 1
   userSqlite
     .prepare(`UPDATE auto_backup_settings SET ${fields.join(", ")} WHERE id = 1`)
     .run(...values);

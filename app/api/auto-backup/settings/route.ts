@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { userSqlite } from "@/lib/db";
 import { reloadScheduler } from "@/lib/backup/scheduler";
+import { readAutoBackupSettings } from "@/lib/backup/executor";
 import type { AutoBackupSettings } from "@/lib/db/user-schema";
 
 const DEFAULTS: Omit<AutoBackupSettings, "id"> = {
@@ -16,10 +17,7 @@ const DEFAULTS: Omit<AutoBackupSettings, "id"> = {
 };
 
 function readSettings(): AutoBackupSettings {
-  const row = userSqlite
-    .prepare("SELECT * FROM auto_backup_settings WHERE id = 1 LIMIT 1")
-    .get() as AutoBackupSettings | undefined;
-  return row ?? { id: 1, ...DEFAULTS };
+  return readAutoBackupSettings() ?? { id: 1, ...DEFAULTS };
 }
 
 // ── GET /api/auto-backup/settings ─────────────────────────────────────────────

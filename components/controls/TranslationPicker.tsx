@@ -19,12 +19,16 @@ const LANGUAGES = [
 interface TranslationPickerProps {
   availableTranslations: Translation[];
   activeTranslationIds: Set<number>;
+  /** IDs of built-in / system translations (e.g. ULT). Shown with a "built-in" badge
+   *  instead of the language selector. */
+  systemTranslationIds?: Set<number>;
   onToggle: (id: number) => void;
 }
 
 export default function TranslationPicker({
   availableTranslations,
   activeTranslationIds,
+  systemTranslationIds,
   onToggle,
 }: TranslationPickerProps) {
   const [open, setOpen] = useState(false);
@@ -192,27 +196,36 @@ export default function TranslationPicker({
                       </span>
                     </button>
 
-                    {/* Language selector — independent of toggle */}
-                    <select
-                      value={lang ?? ""}
-                      onClick={(e) => e.stopPropagation()}
-                      onChange={(e) => {
-                        e.stopPropagation();
-                        handleLanguageChange(t.id, e.target.value || null);
-                      }}
-                      className="flex-shrink-0 w-28 text-xs rounded px-1.5 py-0.5 border transition-colors"
-                      style={{
-                        backgroundColor: "var(--surface-muted)",
-                        borderColor: lang ? "var(--border-muted)" : "var(--border-muted)",
-                        color: lang ? "var(--foreground)" : "var(--text-muted)",
-                      }}
-                      title="Set translation language"
-                    >
-                      <option value="">— unset —</option>
-                      {LANGUAGES.map((l) => (
-                        <option key={l} value={l}>{l}</option>
-                      ))}
-                    </select>
+                    {/* Language selector (user translations) or built-in badge (system translations) */}
+                    {systemTranslationIds?.has(t.id) ? (
+                      <span
+                        className="flex-shrink-0 w-28 text-[10px] text-center rounded px-1.5 py-0.5"
+                        style={{ color: "var(--text-muted)", backgroundColor: "var(--surface-muted)" }}
+                      >
+                        built-in
+                      </span>
+                    ) : (
+                      <select
+                        value={lang ?? ""}
+                        onClick={(e) => e.stopPropagation()}
+                        onChange={(e) => {
+                          e.stopPropagation();
+                          handleLanguageChange(t.id, e.target.value || null);
+                        }}
+                        className="flex-shrink-0 w-28 text-xs rounded px-1.5 py-0.5 border transition-colors"
+                        style={{
+                          backgroundColor: "var(--surface-muted)",
+                          borderColor: lang ? "var(--border-muted)" : "var(--border-muted)",
+                          color: lang ? "var(--foreground)" : "var(--text-muted)",
+                        }}
+                        title="Set translation language"
+                      >
+                        <option value="">— unset —</option>
+                        {LANGUAGES.map((l) => (
+                          <option key={l} value={l}>{l}</option>
+                        ))}
+                      </select>
+                    )}
                   </div>
                 );
               })}

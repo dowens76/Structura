@@ -1,15 +1,11 @@
 import { NextResponse } from "next/server";
-import { userSqlite } from "@/lib/db";
-import { intervalMs } from "@/lib/backup/executor";
-import type { AutoBackupSettings } from "@/lib/db/user-schema";
+import { intervalMs, readAutoBackupSettings } from "@/lib/backup/executor";
 
 // ── GET /api/auto-backup/status ───────────────────────────────────────────────
 // Returns the current settings row plus a derived nextRunAt timestamp.
 
 export async function GET() {
-  const settings = userSqlite
-    .prepare("SELECT * FROM auto_backup_settings WHERE id = 1 LIMIT 1")
-    .get() as AutoBackupSettings | undefined;
+  const settings = readAutoBackupSettings();
 
   if (!settings) {
     return NextResponse.json({ settings: null, nextRunAt: null });

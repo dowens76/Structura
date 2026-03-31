@@ -56,6 +56,10 @@ interface ChapterDisplayProps {
   initialLineAnnotations: LineAnnotation[];
   bookSceneBreaks: { wordId: string; heading: string | null; level: number; chapter: number; verse: number; extendedThrough: number | null }[];
   bookMaxVerses: Map<number, number>;
+  /** Base verse text from data/ult.db (empty if not imported). */
+  ultBaseVerses?: { verse: number; text: string }[];
+  /** The Translation record for ULT in user.db (null if not imported). */
+  ultTranslation?: Translation | null;
   /** Optional heading strip (book title, chapter number, word count) rendered
    *  above the toolbar; hidden automatically in presentation mode. */
   headingSlot?: React.ReactNode;
@@ -102,6 +106,8 @@ export default function ChapterDisplay({
   initialLineAnnotations,
   bookSceneBreaks,
   bookMaxVerses,
+  ultBaseVerses = [],
+  ultTranslation = null,
   headingSlot,
 }: ChapterDisplayProps) {
   // Use fallback defaults for SSR — localStorage values are loaded in useEffect after hydration
@@ -242,7 +248,31 @@ export default function ChapterDisplay({
 
   // ── Translation text editing ───────────────────────────────────────────────
   // Local mutable copy of translationVerseData so edits can be reflected immediately.
-  const [localTranslationVerseData, setLocalTranslationVerseData] = useState(translationVerseData);
+  // If ULT base verses are provided, merge them in: user edits (from user.db) take precedence;
+  // verses not yet edited fall back to the immutable base text from ult.db.
+  const initialTranslationVerseData = useMemo(() => {
+    if (!ultTranslation || ultBaseVerses.length === 0) return translationVerseData;
+    const ultId = ultTranslation.id;
+    const editedMap = new Map(
+      (translationVerseData[ultId] ?? []).map((v) => [v.verse, v])
+    );
+    const merged: TranslationVerse[] = ultBaseVerses.map((base, i) => {
+      return editedMap.get(base.verse) ?? {
+        id: -(i + 1),                    // synthetic — not yet saved to user.db
+        workspaceId: ultTranslation.workspaceId,
+        translationId: ultId,
+        osisRef: `${book}.${chapter}.${base.verse}`,
+        bookId: 0, chapter,
+        verse: base.verse,
+        text: base.text,
+      };
+    });
+    return { ...translationVerseData, [ultId]: merged };
+  // Only recalculate when book/chapter/ultTranslation change (navigation); not on every keystroke.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [book, chapter, ultTranslation?.id]);
+
+  const [localTranslationVerseData, setLocalTranslationVerseData] = useState(initialTranslationVerseData);
   const [editingTranslation, setEditingTranslation] = useState(false);
   // Snapshot taken when translation editing mode is entered, used for Cancel
   const translationEditSnapshotRef = useRef(translationVerseData);
@@ -466,14 +496,28 @@ export default function ChapterDisplay({
     [characters]
   );
 
+  // Merge ULT into availableTranslations when it has base verses (it won't appear
+  // in the DB query result if no translation_verses edits exist for this chapter).
+  const allAvailableTranslations = useMemo(() => {
+    if (!ultTranslation || ultBaseVerses.length === 0) return availableTranslations;
+    if (availableTranslations.some((t) => t.id === ultTranslation.id)) return availableTranslations;
+    return [ultTranslation, ...availableTranslations];
+  }, [availableTranslations, ultTranslation, ultBaseVerses.length]);
+
+  // Set of system translation IDs — shown with a "built-in" badge in the picker
+  const systemTranslationIds = useMemo(
+    () => new Set(ultTranslation ? [ultTranslation.id] : []),
+    [ultTranslation]
+  );
+
   // Resolve stored abbreviations → numeric IDs for the current chapter's translations
   const activeTranslationIds = useMemo(
     () => new Set(
-      availableTranslations
+      allAvailableTranslations
         .filter((t) => activeTranslationAbbrs.has(t.abbreviation))
         .map((t) => t.id)
     ),
-    [activeTranslationAbbrs, availableTranslations]
+    [activeTranslationAbbrs, allAvailableTranslations]
   );
 
   // wordId → SpeechSection (derived from ordered word list + section bounds)
@@ -492,7 +536,7 @@ export default function ChapterDisplay({
   // Build verseNum → TranslationTextEntry[] for active translations
   const activeTranslationVerseMap = useMemo(() => {
     const map = new Map<number, TranslationTextEntry[]>();
-    for (const t of availableTranslations) {
+    for (const t of allAvailableTranslations) {
       if (!activeTranslationIds.has(t.id)) continue;
       const verses = localTranslationVerseData[t.id] ?? [];
       for (const tv of verses) {
@@ -502,12 +546,12 @@ export default function ChapterDisplay({
       }
     }
     return map;
-  }, [activeTranslationIds, availableTranslations, localTranslationVerseData]);
+  }, [activeTranslationIds, allAvailableTranslations, localTranslationVerseData]);
 
   const hasActiveTranslations = activeTranslationIds.size > 0;
 
   function toggleTranslation(id: number) {
-    const abbr = availableTranslations.find((t) => t.id === id)?.abbreviation;
+    const abbr = allAvailableTranslations.find((t) => t.id === id)?.abbreviation;
     if (!abbr) return;
     setActiveTranslationAbbrs((prev) => {
       const next = new Set(prev);
@@ -1934,7 +1978,7 @@ export default function ChapterDisplay({
 
   // ── Translation verse text edit handler ────────────────────────────────────
   async function handleUpdateTranslationVerse(abbr: string, verse: number, newText: string, record = true) {
-    const translation = availableTranslations.find((t) => t.abbreviation === abbr);
+    const translation = allAvailableTranslations.find((t) => t.abbreviation === abbr);
     if (!translation) return;
     const tvRecord = localTranslationVerseData[translation.id]?.find((tv) => tv.verse === verse);
     if (!tvRecord) return;
@@ -1974,7 +2018,7 @@ export default function ChapterDisplay({
 
   // Revert a verse back to the text it had when translation editing mode was entered
   async function handleCancelTranslationVerse(abbr: string, verse: number) {
-    const translation = availableTranslations.find((t) => t.abbreviation === abbr);
+    const translation = allAvailableTranslations.find((t) => t.abbreviation === abbr);
     if (!translation) return;
     const snapshot = translationEditSnapshotRef.current;
     const snapRecord = snapshot[translation.id]?.find((tv) => tv.verse === verse);
@@ -2466,14 +2510,15 @@ export default function ChapterDisplay({
               )}
 
               {/* Translation picker + source visibility toggle + translation edit */}
-              {availableTranslations.length > 0 && (
+              {allAvailableTranslations.length > 0 && (
                 <div className="flex items-center gap-1 border-l border-[var(--border)] pl-4">
                   <span className="text-xs text-stone-400 dark:text-stone-500 mr-1 select-none">
                     Tr:
                   </span>
                   <TranslationPicker
-                    availableTranslations={availableTranslations}
+                    availableTranslations={allAvailableTranslations}
                     activeTranslationIds={activeTranslationIds}
+                    systemTranslationIds={systemTranslationIds}
                     onToggle={toggleTranslation}
                   />
                   {hasActiveTranslations && (

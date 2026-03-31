@@ -1,5 +1,5 @@
 import { eq, and, asc, inArray, or, gte, lte, gt, lt, sql, max } from "drizzle-orm";
-import { sourceDb, userDb, sourceLookups, lxxLookups, getLxxDb } from "./index";
+import { sourceDb, userDb, sourceLookups, lxxLookups, getLxxDb, getUltSqlite } from "./index";
 import type { LookupMaps } from "./index";
 import { books, words } from "./source-schema";
 import type { Word, WordRow } from "./source-schema";
@@ -1287,4 +1287,38 @@ export async function updateLineAnnotation(
 /** Delete an annotation by id. */
 export async function deleteLineAnnotation(id: number): Promise<void> {
   await userDb.delete(lineAnnotations).where(eq(lineAnnotations.id, id));
+}
+
+// ── ULT (UnfoldingWord Literal Text) ─────────────────────────────────────────
+
+/**
+ * Synchronous — reads base verse text for a chapter from data/ult.db.
+ * Returns an empty array if ult.db has not been imported yet.
+ */
+export function getUltVerses(
+  book: string,
+  chapter: number
+): { verse: number; text: string }[] {
+  const db = getUltSqlite();
+  if (!db) return [];
+  try {
+    return db
+      .prepare("SELECT verse, text FROM ult_verses WHERE book = ? AND chapter = ? ORDER BY verse")
+      .all(book, chapter) as { verse: number; text: string }[];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Returns the ULT Translation record for the given workspace, or null if ULT
+ * has not been imported (i.e. no translations row with abbreviation = 'ULT').
+ */
+export async function getUltTranslation(workspaceId: number): Promise<Translation | null> {
+  const result = await userDb
+    .select()
+    .from(translations)
+    .where(and(eq(translations.workspaceId, workspaceId), eq(translations.abbreviation, "ULT")))
+    .limit(1);
+  return result[0] ?? null;
 }
