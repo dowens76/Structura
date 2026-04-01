@@ -37,6 +37,7 @@
     "resources": {
       "resources/server/**/*": "server",
       "resources/databases/source.db": "databases/source.db",
+      "resources/databases/lexica.db": "databases/lexica.db",
       "resources/databases/lxx.db": "databases/lxx.db",
       "resources/databases/ult.db": "databases/ult.db",
       "resources/user.db.template": "user.db.template"

@@ -81,7 +81,15 @@ export default async function Home() {
               width={540}
               height={252}
               priority
-              className="w-72 sm:w-96"
+              className="w-72 sm:w-96 dark:hidden"
+            />
+            <Image
+              src="/structura-full-logo-dark.svg"
+              alt="Structura — Visual Bible Analysis"
+              width={540}
+              height={252}
+              priority
+              className="w-72 sm:w-96 hidden dark:block"
             />
             <div className="flex items-center gap-1 mt-1">
               <SettingsButton />
