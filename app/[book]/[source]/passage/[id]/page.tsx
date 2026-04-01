@@ -31,6 +31,8 @@ import type { TextSource } from "@/lib/morphology/types";
 import type { TranslationVerse } from "@/lib/db/schema";
 import PassageView from "@/components/passage/PassageView";
 import PassageNavButtons from "@/components/passage/PassageNavButtons";
+import ThemeToggle from "@/components/ThemeToggle";
+import SettingsButton from "@/components/SettingsButton";
 
 interface PageProps {
   params: Promise<{ book: string; source: string; id: string }>;
@@ -207,8 +209,10 @@ export default async function PassagePage({ params }: PageProps) {
           currentPassageId={id}
         />
 
-        {/* Back to chapter */}
-        <div className="ml-auto">
+        {/* Settings + Theme + Back to chapter */}
+        <div className="ml-auto flex items-center gap-1">
+          <SettingsButton />
+          <ThemeToggle />
           <Link
             href={`/${encodeURIComponent(osisBook)}/${textSource}/${passage.startChapter}`}
             className="text-xs px-2 py-1 rounded transition-colors"

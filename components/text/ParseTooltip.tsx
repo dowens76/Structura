@@ -1,8 +1,13 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import type { Word } from "@/lib/db/schema";
 import { getMorphology } from "@/lib/morphology/decode";
 import { formatTense } from "@/lib/morphology/types";
+import { getGreekLexicon, getHebrewLexicon } from "@/components/SettingsButton";
+
+// Module-level cache: "G2316:AbbottSmith" → "a god, God"
+const glossCache = new Map<string, string | null>();
 
 interface ParseTooltipProps {
   word: Word;
@@ -24,6 +29,31 @@ export default function ParseTooltip({ word, flipped = false, useLinguisticTerms
   const isHebrew = word.language === "hebrew";
   const morph = getMorphology(word);
   const displaySurface = (word.surfaceText ?? "").replace(/\//g, "");
+
+  const [gloss, setGloss] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!word.strongNumber) return;
+    const primary = word.strongNumber.split(/[/,\s]/)[0].trim();
+    const source  = isHebrew ? getHebrewLexicon() : getGreekLexicon();
+    const cacheKey = `${primary}:${source}`;
+
+    if (glossCache.has(cacheKey)) {
+      setGloss(glossCache.get(cacheKey) ?? null);
+      return;
+    }
+
+    fetch(`/api/lexicon?strong=${encodeURIComponent(primary)}&source=${encodeURIComponent(source)}`)
+      .then((r) => r.json())
+      .then((data: { entry: { shortGloss?: string | null } | null }) => {
+        const g = data.entry?.shortGloss ?? null;
+        glossCache.set(cacheKey, g);
+        setGloss(g);
+      })
+      .catch(() => {
+        glossCache.set(cacheKey, null);
+      });
+  }, [word.strongNumber, isHebrew]);
 
   const arrowUp = (
     <div className="flex justify-center">
@@ -59,6 +89,12 @@ export default function ParseTooltip({ word, flipped = false, useLinguisticTerms
         )}
         {word.strongNumber && (
           <div className="text-stone-500 text-[10px] font-mono mt-0.5">{word.strongNumber}</div>
+        )}
+        {/* Lexicon gloss */}
+        {gloss && (
+          <div className="text-stone-300 text-xs mt-1 italic">
+            {gloss}
+          </div>
         )}
       </div>
 

@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { LexiconEntry } from "@/lib/db/schema";
+import { getGreekLexicon, getHebrewLexicon } from "@/components/SettingsButton";
 
 interface LexiconPaneProps {
   strongNumber: string; // e.g. "H7225" or "G2316"
@@ -9,26 +10,46 @@ interface LexiconPaneProps {
 }
 
 export default function LexiconPane({ strongNumber, isHebrew }: LexiconPaneProps) {
-  const [entry, setEntry] = useState<LexiconEntry | null | "loading">("loading");
-  const lastFetched = useRef<string>("");
+  const [entry, setEntry]           = useState<LexiconEntry | null | "loading">("loading");
+  const [lexiconSource, setSource]  = useState<string>(() =>
+    isHebrew ? getHebrewLexicon() : getGreekLexicon()
+  );
+  const fetchKey = useRef<string>("");
+
+  // Listen for settings changes and update the source state (which triggers re-fetch via useEffect deps)
+  useEffect(() => {
+    function onSettingsChange(e: Event) {
+      const detail = (e as CustomEvent<Record<string, string>>).detail;
+      if (isHebrew && detail.hebrewLexicon) {
+        setSource(detail.hebrewLexicon);
+      } else if (!isHebrew && detail.greekLexicon) {
+        setSource(detail.greekLexicon);
+      }
+    }
+    window.addEventListener("structura:settingsChange", onSettingsChange);
+    return () => window.removeEventListener("structura:settingsChange", onSettingsChange);
+  }, [isHebrew]);
 
   useEffect(() => {
-    if (!strongNumber || strongNumber === lastFetched.current) return;
-    lastFetched.current = strongNumber;
+    if (!strongNumber) return;
+
+    const key = `${strongNumber}:${lexiconSource}`;
+    if (key === fetchKey.current) return;
+    fetchKey.current = key;
     setEntry("loading");
 
-    // Some OSHB words have compound lemmas like "H430/H7225" — take the first.
+    // Compound lemmas like "H430/H7225" — take the first.
     const primary = strongNumber.split(/[/,\s]/)[0].trim();
 
-    fetch(`/api/lexicon?strong=${encodeURIComponent(primary)}`)
+    fetch(`/api/lexicon?strong=${encodeURIComponent(primary)}&source=${encodeURIComponent(lexiconSource)}`)
       .then((r) => r.json())
       .then((data: { entry: LexiconEntry | null }) => {
-        if (lastFetched.current === strongNumber) setEntry(data.entry);
+        if (fetchKey.current === key) setEntry(data.entry);
       })
       .catch(() => {
-        if (lastFetched.current === strongNumber) setEntry(null);
+        if (fetchKey.current === key) setEntry(null);
       });
-  }, [strongNumber]);
+  }, [strongNumber, isHebrew, lexiconSource]);
 
   if (entry === "loading") {
     return (
@@ -57,7 +78,6 @@ export default function LexiconPane({ strongNumber, isHebrew }: LexiconPaneProps
     (entry.source ?? "");
 
   // ── Full BDB HTML rendering ─────────────────────────────────────────────────
-  // The .bdb-entry CSS class handles <heb> → Ezra SIL and all other styling.
   if (entry.source === "BDB" && entry.definition) {
     return (
       <div className="mt-5 pt-4 border-t border-stone-100 dark:border-stone-800">
@@ -74,11 +94,7 @@ export default function LexiconPane({ strongNumber, isHebrew }: LexiconPaneProps
     );
   }
 
-  // ── Structured rendering (Dodson / HebrewStrong / Abbott-Smith) ────────────
-  //
-  // .lexicon-hebrew  sets font-family: Ezra SIL + rtl, no size/line-height side-effects
-  // .lexicon-greek   sets font-family: Gentium Plus,    no size/line-height side-effects
-  //
+  // ── Structured rendering (Dodson / HebrewStrong / Abbott-Smith) ─────────────
   const headwordFont = isHebrew ? "lexicon-hebrew" : "lexicon-greek";
   const headwordDir  = isHebrew ? "rtl" : "ltr";
   const headwordLang = isHebrew ? "he"  : "grc";
@@ -86,7 +102,7 @@ export default function LexiconPane({ strongNumber, isHebrew }: LexiconPaneProps
   return (
     <div className="mt-5 pt-4 border-t border-stone-100 dark:border-stone-800">
 
-      {/* Headword — large, script-appropriate font */}
+      {/* Headword */}
       <div
         className={`text-2xl leading-snug mb-1 ${headwordFont} ${isHebrew ? "text-right" : ""}`}
         dir={headwordDir}
@@ -95,13 +111,11 @@ export default function LexiconPane({ strongNumber, isHebrew }: LexiconPaneProps
         {entry.lemma}
       </div>
 
-      {/* Sub-headword line:
-          • Dodson  → full Greek form, e.g. "θεός, οῦ, ὁ"  (Gentium, muted)
-          • BDB/HebrewStrong → Latin transliteration / pronunciation (italic, muted) */}
+      {/* Sub-headword: full form with declension/gender */}
       {(entry.transliteration || entry.pronunciation) && (
         <div className="mb-2">
           {entry.transliteration && (
-            entry.source === "Dodson" ? (
+            (entry.source === "Dodson" || entry.source === "AbbottSmith") ? (
               <span
                 className="text-sm lexicon-greek text-stone-500 dark:text-stone-400"
                 lang="grc"

@@ -12,7 +12,7 @@ import path from "path";
 import * as schema from "../lib/db/schema";
 import { sql } from "drizzle-orm";
 
-const DB_PATH    = path.join(process.cwd(), "data", "source.db");
+const DB_PATH    = path.join(process.cwd(), "data", "lexica.db");
 const CACHE_DIR  = path.join(process.cwd(), "data", "sources", "lexicon");
 const CACHE_FILE = path.join(CACHE_DIR, "DictBDB.json");
 const SOURCE_URL =
@@ -91,7 +91,7 @@ async function main() {
     db.insert(schema.lexiconEntries)
       .values(rows)
       .onConflictDoUpdate({
-        target: schema.lexiconEntries.strongNumber,
+        target: [schema.lexiconEntries.strongNumber, schema.lexiconEntries.source],
         set: {
           lemma:           sql`excluded.lemma`,
           transliteration: sql`excluded.transliteration`,

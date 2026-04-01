@@ -19,6 +19,7 @@ import PassageNavButtons from "@/components/passage/PassageNavButtons";
 import ChapterDropdown from "@/components/navigation/ChapterDropdown";
 import BookDropdown from "@/components/navigation/BookDropdown";
 import ThemeToggle from "@/components/ThemeToggle";
+import SettingsButton from "@/components/SettingsButton";
 import WorkspaceSwitcher from "@/components/WorkspaceSwitcher";
 import { OSIS_BOOK_NAMES, OSHB_LXX_PARALLEL_BOOKS } from "@/lib/utils/osis";
 import { getActiveWorkspaceId } from "@/lib/workspace";
@@ -300,6 +301,9 @@ export default async function ChapterPage({ params, searchParams }: PageProps) {
         >
           Account
         </Link>
+
+        {/* Settings */}
+        <SettingsButton />
 
         {/* Theme toggle */}
         <ThemeToggle />

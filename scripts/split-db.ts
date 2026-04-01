@@ -19,7 +19,7 @@ const OLD_PATH  = path.join(DATA_DIR, "structura.db");
 const SRC_PATH  = path.join(DATA_DIR, "source.db");
 const USER_PATH = path.join(DATA_DIR, "user.db");
 
-const SOURCE_TABLES = ["books", "words", "verses", "lexicon_entries"];
+const SOURCE_TABLES = ["books", "words", "verses"];
 const USER_TABLES = [
   "translations", "translation_verses",
   "paragraph_breaks", "characters", "character_refs", "speech_sections",

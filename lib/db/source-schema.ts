@@ -123,23 +123,6 @@ export const verses = sqliteTable("verses", {
   textSource: text("text_source").notNull(),
 });
 
-export const lexiconEntries = sqliteTable(
-  "lexicon_entries",
-  {
-    id:              integer("id").primaryKey({ autoIncrement: true }),
-    strongNumber:    text("strong_number").notNull().unique(),
-    language:        text("language").notNull(),
-    lemma:           text("lemma"),
-    transliteration: text("transliteration"),
-    pronunciation:   text("pronunciation"),
-    shortGloss:      text("short_gloss"),
-    definition:      text("definition"),
-    usage:           text("usage"),
-    source:          text("source"),
-  },
-  (t) => [index("lex_strong_idx").on(t.strongNumber)]
-);
-
 // ── Public types ──────────────────────────────────────────────────────────────
 
 export type Book         = typeof books.$inferSelect;
@@ -148,7 +131,6 @@ export type Verse        = typeof verses.$inferSelect;
 export type NewBook      = typeof books.$inferInsert;
 export type NewWord      = typeof words.$inferInsert;
 export type NewVerse     = typeof verses.$inferInsert;
-export type LexiconEntry = typeof lexiconEntries.$inferSelect;
 
 /**
  * Public Word type used throughout the app — string fields for all morphology

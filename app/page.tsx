@@ -4,6 +4,8 @@ import { getBooks, getBooksWithWords } from "@/lib/db/queries";
 import type { Book } from "@/lib/db/schema";
 import type { Testament } from "@/lib/morphology/types";
 import { LXX_BOOK_DISPLAY_ORDER, OSIS_BOOK_NAMES } from "@/lib/utils/osis";
+import SettingsButton from "@/components/SettingsButton";
+import ThemeToggle from "@/components/ThemeToggle";
 
 function BookGrid({
   books,
@@ -72,14 +74,43 @@ export default async function Home() {
     <main className="min-h-screen" style={{ backgroundColor: "var(--background)" }}>
       <div className="max-w-5xl mx-auto px-6 py-12">
         <header className="mb-12">
-          <Image
-            src="/structura-full-logo.svg"
-            alt="Structura — Visual Bible Analysis"
-            width={540}
-            height={252}
-            priority
-            className="w-72 sm:w-96"
-          />
+          <div className="flex items-start justify-between gap-4 mb-6">
+            <Image
+              src="/structura-full-logo.svg"
+              alt="Structura — Visual Bible Analysis"
+              width={540}
+              height={252}
+              priority
+              className="w-72 sm:w-96"
+            />
+            <div className="flex items-center gap-1 mt-1">
+              <SettingsButton />
+              <ThemeToggle />
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Link
+              href="/import"
+              className="text-xs px-3 py-1.5 rounded border transition-colors"
+              style={{ borderColor: "var(--border)", backgroundColor: "var(--surface)", color: "var(--foreground)" }}
+            >
+              + Import translation
+            </Link>
+            <Link
+              href="/backup"
+              className="text-xs px-3 py-1.5 rounded border transition-colors"
+              style={{ borderColor: "var(--border)", backgroundColor: "var(--surface)", color: "var(--foreground)" }}
+            >
+              Backup &amp; Restore
+            </Link>
+            <Link
+              href="/account"
+              className="text-xs px-3 py-1.5 rounded border transition-colors"
+              style={{ borderColor: "var(--border)", backgroundColor: "var(--surface)", color: "var(--foreground)" }}
+            >
+              Account &amp; Workspaces
+            </Link>
+          </div>
         </header>
 
         {hasData ? (
@@ -98,30 +129,6 @@ export default async function Home() {
             </pre>
           </div>
         )}
-
-        <div className="mt-10 flex flex-col gap-2">
-          <Link
-            href="/import"
-            className="text-sm hover:underline"
-            style={{ color: "var(--accent)" }}
-          >
-            + Import translation →
-          </Link>
-          <Link
-            href="/backup"
-            className="text-sm hover:underline"
-            style={{ color: "var(--accent)" }}
-          >
-            Backup & Restore →
-          </Link>
-          <Link
-            href="/account"
-            className="text-sm hover:underline"
-            style={{ color: "var(--accent)" }}
-          >
-            Account & Workspaces →
-          </Link>
-        </div>
 
         <footer className="mt-8 pt-6 border-t text-xs space-y-1" style={{ borderColor: "var(--border)", color: "var(--text-muted)" }}>
           <p>Hebrew text: Open Scriptures Hebrew Bible (CC BY 4.0)</p>

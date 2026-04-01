@@ -2,6 +2,7 @@ import Database from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import * as sourceSchema from "./source-schema";
 import * as userSchema from "./user-schema";
+import * as lexicaSchema from "./lexica-schema";
 import path from "path";
 import fs from "fs";
 
@@ -10,10 +11,11 @@ const RESOURCES_DIR = process.env.STRUCTURA_RESOURCES_DIR
 const USER_DATA_DIR = process.env.STRUCTURA_USER_DATA_DIR
   ?? path.join(process.cwd(), "data");
 
-const SOURCE_DB_PATH = path.join(RESOURCES_DIR, "source.db");
-const LXX_DB_PATH   = path.join(RESOURCES_DIR, "lxx.db");
-const ULT_DB_PATH   = path.join(RESOURCES_DIR, "ult.db");
-const USER_DB_PATH  = path.join(USER_DATA_DIR,  "user.db");
+const SOURCE_DB_PATH  = path.join(RESOURCES_DIR, "source.db");
+const LEXICA_DB_PATH  = path.join(RESOURCES_DIR, "lexica.db");
+const LXX_DB_PATH     = path.join(RESOURCES_DIR, "lxx.db");
+const ULT_DB_PATH     = path.join(RESOURCES_DIR, "ult.db");
+const USER_DB_PATH    = path.join(USER_DATA_DIR,  "user.db");
 
 // ── Lookup maps ───────────────────────────────────────────────────────────────
 
@@ -105,6 +107,7 @@ function loadLookupMaps(dbPath: string): LookupMaps {
 export { USER_DB_PATH };
 
 let _sourceDb:    ReturnType<typeof drizzle<typeof sourceSchema>> | null = null;
+let _lexicaDb:    ReturnType<typeof drizzle<typeof lexicaSchema>> | null = null;
 let _lxxDb:       ReturnType<typeof drizzle<typeof sourceSchema>> | null = null;
 let _userDb:      ReturnType<typeof drizzle<typeof userSchema>>   | null = null;
 let _userSqlite:  Database.Database | null = null;
@@ -117,6 +120,14 @@ export function getSourceDb() {
     _sourceDb = drizzle(sqlite, { schema: sourceSchema });
   }
   return _sourceDb;
+}
+
+export function getLexicaDb() {
+  if (!_lexicaDb) {
+    const sqlite = new Database(LEXICA_DB_PATH, { readonly: true });
+    _lexicaDb = drizzle(sqlite, { schema: lexicaSchema });
+  }
+  return _lexicaDb;
 }
 
 export function getLxxDb(): ReturnType<typeof drizzle<typeof sourceSchema>> | null {
@@ -154,6 +165,7 @@ export function getUltSqlite(): Database.Database | null {
 }
 
 export const sourceDb     = getSourceDb();
+export const lexicaDb     = getLexicaDb();
 export const userDb       = getUserDb();
 export const userSqlite   = getUserSqlite();
 export const sourceLookups = loadLookupMaps(SOURCE_DB_PATH);

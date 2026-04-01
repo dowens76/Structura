@@ -15,7 +15,8 @@ import path from "path";
 import * as schema from "../lib/db/schema";
 import { sql } from "drizzle-orm";
 
-const DB_PATH    = path.join(process.cwd(), "data", "source.db");
+const LEXICA_DB_PATH = path.join(process.cwd(), "data", "lexica.db");
+const SOURCE_DB_PATH = path.join(process.cwd(), "data", "source.db");
 const CACHE_DIR  = path.join(process.cwd(), "data", "sources", "lexicon");
 const CACHE_FILE = path.join(CACHE_DIR, "dodson.xml");
 const SOURCE_URL =
@@ -67,7 +68,7 @@ async function main() {
 
   console.log(`  Found ${entries.length} entries`);
 
-  const sqlite = new Database(DB_PATH);
+  const sqlite = new Database(LEXICA_DB_PATH);
   sqlite.pragma("journal_mode = WAL");
   const db = drizzle(sqlite, { schema });
 
@@ -81,7 +82,7 @@ async function main() {
     db.insert(schema.lexiconEntries)
       .values(rows)
       .onConflictDoUpdate({
-        target: schema.lexiconEntries.strongNumber,
+        target: [schema.lexiconEntries.strongNumber, schema.lexiconEntries.source],
         set: {
           lemma:           sql`excluded.lemma`,
           transliteration: sql`excluded.transliteration`,
@@ -156,24 +157,33 @@ async function main() {
 
   // ── Back-fill strong_number on SBLGNT words via lemma → lexicon match ───────
   console.log("Back-filling strong_number on SBLGNT words …");
-  // Ensure an index on lemma exists so the correlated subquery is fast.
+  // Ensure an index on lemma exists in lexica.db so the correlated subquery is fast.
   sqlite.exec(
     `CREATE INDEX IF NOT EXISTS lex_lemma_idx ON lexicon_entries(lemma, language)`
   );
-  const updated = sqlite
+  // Open source.db for the words back-fill (separate database).
+  const sourceSqlite = new Database(SOURCE_DB_PATH);
+  sourceSqlite.pragma("journal_mode = WAL");
+  // Attach lexica.db so the correlated subquery can reference it.
+  sourceSqlite.exec(`ATTACH DATABASE '${LEXICA_DB_PATH.replace(/'/g, "''")}' AS lexica`);
+  const sblgntSourceId = (
+    sourceSqlite.prepare(`SELECT id FROM text_sources WHERE value = 'SBLGNT' LIMIT 1`).get() as { id: number } | undefined
+  )?.id;
+  const updated = sourceSqlite
     .prepare(
       `UPDATE words
        SET strong_number = (
          SELECT le.strong_number
-         FROM lexicon_entries le
+         FROM lexica.lexicon_entries le
          WHERE le.lemma = words.lemma
            AND le.language = 'greek'
          LIMIT 1
        )
-       WHERE text_source = 'SBLGNT'
+       WHERE text_source_id = ?
          AND lemma IS NOT NULL`
     )
-    .run();
+    .run(sblgntSourceId ?? 2);
+  sourceSqlite.close();
   console.log(`  Updated ${updated.changes} words.`);
 }
 
