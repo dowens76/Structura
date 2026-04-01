@@ -14,7 +14,7 @@ export async function GET(request: NextRequest) {
   const strong = searchParams.get("strong")?.trim();
   const source = searchParams.get("source")?.trim() ?? null;
 
-  if (!strong) {
+  if (!strong || !lexicaDb) {
     return NextResponse.json({ entry: null });
   }
 

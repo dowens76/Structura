@@ -124,6 +124,7 @@ export function getSourceDb() {
 
 export function getLexicaDb() {
   if (!_lexicaDb) {
+    if (!fs.existsSync(LEXICA_DB_PATH)) return null;
     const sqlite = new Database(LEXICA_DB_PATH, { readonly: true });
     _lexicaDb = drizzle(sqlite, { schema: lexicaSchema });
   }
@@ -165,7 +166,7 @@ export function getUltSqlite(): Database.Database | null {
 }
 
 export const sourceDb     = getSourceDb();
-export const lexicaDb     = getLexicaDb();
+export const lexicaDb     = getLexicaDb()!;
 export const userDb       = getUserDb();
 export const userSqlite   = getUserSqlite();
 export const sourceLookups = loadLookupMaps(SOURCE_DB_PATH);
