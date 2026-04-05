@@ -28,9 +28,9 @@
     "import:ult": "tsx scripts/import-ult.ts",
     "build:next": "next build && node scripts/copy-standalone.mjs",
     "build:template": "tsx scripts/create-user-db-template.ts",
-    "build:node-binary": "bash scripts/download-node-binary.sh",
+    "build:node-binary": "node scripts/download-node-binary.mjs",
     "tauri:dev": "tauri dev",
-    "tauri:build": "npm run build:node-binary && npm run build:template && tauri build --bundles app && node scripts/fix-app-bundle.mjs",
+    "tauri:build": "node scripts/tauri-build.mjs",
     "tauri:dmg": "node scripts/create-dmg.mjs"
   },
   "dependencies": {

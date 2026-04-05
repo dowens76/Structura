@@ -3,40 +3,55 @@ import { lexicaDb } from "@/lib/db";
 import { lexiconEntries } from "@/lib/db/schema";
 import { eq, and } from "drizzle-orm";
 
-// GET /api/lexicon?strong=H7225&source=BDB
-// GET /api/lexicon?strong=G2316&source=AbbottSmith
+// GET /api/lexicon?lemma=ἄβυσσος&source=AbbottSmith   (Greek — lemma-based)
+// GET /api/lexicon?strong=H7225&source=BDB             (Hebrew — strong-number-based)
 //
-// If `source` is provided, returns that source's entry for the strong number.
-// Falls back to any available entry if the preferred source has no entry.
-// If `source` is omitted, returns the first available entry.
+// Lemma lookup is preferred for Greek (SBLGNT / LXX have reliable lemmas).
+// Falls back to any entry for the lemma/strong when preferred source has none.
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
-  const strong = searchParams.get("strong")?.trim();
+  const lemma  = searchParams.get("lemma")?.trim()  ?? null;
+  const strong = searchParams.get("strong")?.trim() ?? null;
   const source = searchParams.get("source")?.trim() ?? null;
 
-  if (!strong || !lexicaDb) {
+  if ((!lemma && !strong) || !lexicaDb) {
     return NextResponse.json({ entry: null });
   }
 
-  // Try preferred source first
+  // ── Lemma-based lookup (Greek) ────────────────────────────────────────────
+  if (lemma) {
+    if (source) {
+      const preferred = await lexicaDb
+        .select()
+        .from(lexiconEntries)
+        .where(and(eq(lexiconEntries.lemma, lemma), eq(lexiconEntries.source, source)))
+        .limit(1);
+      if (preferred.length > 0) return NextResponse.json({ entry: preferred[0] });
+    }
+    const fallback = await lexicaDb
+      .select()
+      .from(lexiconEntries)
+      .where(eq(lexiconEntries.lemma, lemma))
+      .limit(1);
+    return NextResponse.json({ entry: fallback[0] ?? null });
+  }
+
+  // ── Strong-number-based lookup (Hebrew) ───────────────────────────────────
+  const primary = strong!.split(/[/,\s]/)[0].trim();
+
   if (source) {
     const preferred = await lexicaDb
       .select()
       .from(lexiconEntries)
-      .where(and(eq(lexiconEntries.strongNumber, strong), eq(lexiconEntries.source, source)))
+      .where(and(eq(lexiconEntries.strongNumber, primary), eq(lexiconEntries.source, source)))
       .limit(1);
-
-    if (preferred.length > 0) {
-      return NextResponse.json({ entry: preferred[0] });
-    }
+    if (preferred.length > 0) return NextResponse.json({ entry: preferred[0] });
   }
 
-  // Fallback: any entry for this strong number
   const results = await lexicaDb
     .select()
     .from(lexiconEntries)
-    .where(eq(lexiconEntries.strongNumber, strong))
+    .where(eq(lexiconEntries.strongNumber, primary))
     .limit(1);
-
   return NextResponse.json({ entry: results[0] ?? null });
 }

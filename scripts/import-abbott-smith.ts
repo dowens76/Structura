@@ -1,83 +1,41 @@
 /**
  * Import script: Abbott-Smith Manual Greek Lexicon (TEI XML)
  * Source: https://github.com/translatable-exegetical-tools/Abbott-Smith
- * Populates the lexicon_entries table with AbbottSmith source entries.
+ * Uses abbott-smith.tei_lemma.xml which provides a @lemma attribute on each entry.
+ * Stores the raw entry XML in the definition column for client-side rendering.
  *
  * Run: npm run import:abbott-smith
  */
 
 import Database from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
-import { readFileSync, writeFileSync, mkdirSync } from "fs";
+import { writeFileSync, mkdirSync } from "fs";
 import path from "path";
 import * as schema from "../lib/db/schema";
 import { sql } from "drizzle-orm";
 
 const DB_PATH    = path.join(process.cwd(), "data", "lexica.db");
 const CACHE_DIR  = path.join(process.cwd(), "data", "sources", "lexicon");
-const XML_FILE   = path.join(CACHE_DIR, "abbott-smith.tei.xml");
-const SOURCE_URL = "https://raw.githubusercontent.com/translatable-exegetical-tools/Abbott-Smith/master/abbott-smith.tei.xml";
+const XML_FILE   = path.join(CACHE_DIR, "abbott-smith.tei_lemma.xml");
+const SOURCE_URL = "https://raw.githubusercontent.com/translatable-exegetical-tools/Abbott-Smith/master/abbott-smith.tei_lemma.xml";
 
-// Strip XML tags and normalize whitespace, preserving meaningful text content.
-// Footnote <note> elements are removed entirely.
-function stripTags(xml: string): string {
-  return xml
-    .replace(/<note\b[^>]*>[\s\S]*?<\/note>/gi, "")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
+// TEI namespace used in the source XML — stored on each entry for standalone parsing.
+const TEI_NS = "http://www.crosswire.org/2013/TEIOSIS/namespace";
 
-// Return the stripped text of the first matching element, or "".
+// Return the text content of the first matching simple element (no deep nesting needed).
 function extractFirst(xml: string, tag: string): string {
   const re = new RegExp(`<${tag}\\b[^>]*>([\\s\\S]*?)<\\/${tag}>`, "i");
   const m = xml.match(re);
-  return m ? stripTags(m[1]) : "";
+  if (!m) return "";
+  // Strip tags from the content for plain-text gloss.
+  return m[1].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
 }
 
-// Remove a balanced XML element (and all its content) from the string.
-// Handles elements with attributes and nested children of the same tag.
-function removeElement(xml: string, tag: string): string {
-  const open  = new RegExp(`<${tag}\\b[^>]*>`, "g");
-  const close = `</${tag}>`;
-  let result = xml;
-  let match: RegExpExecArray | null;
-  // eslint-disable-next-line no-constant-condition
-  while (true) {
-    open.lastIndex = 0;
-    match = open.exec(result);
-    if (!match) break;
-    const start = match.index;
-    let depth = 1;
-    let i = start + match[0].length;
-    while (i < result.length && depth > 0) {
-      if (result.startsWith(close, i)) {
-        depth--;
-        if (depth === 0) {
-          result = result.slice(0, start) + " " + result.slice(i + close.length);
-          break;
-        }
-        i += close.length;
-      } else if (new RegExp(`^<${tag}\\b`).test(result.slice(i))) {
-        depth++;
-        i++;
-      } else {
-        i++;
-      }
-    }
-    if (depth > 0) break; // safety: unterminated element
-  }
-  return result;
-}
-
-// Extract the full definition text from an entry by removing structural metadata
-// (form, note, etym) and returning all remaining text content (all sense elements).
-function extractDefinition(entryXml: string): string {
-  let xml = entryXml;
-  xml = removeElement(xml, "form");
-  xml = removeElement(xml, "note");
-  xml = removeElement(xml, "etym");
-  return stripTags(xml);
+// Extract a named attribute value from an attribute string.
+function attr(attrsStr: string, name: string): string {
+  const re = new RegExp(`\\b${name}="([^"]*)"`, "i");
+  const m = attrsStr.match(re);
+  return m ? m[1] : "";
 }
 
 async function main() {
@@ -89,13 +47,13 @@ async function main() {
   if (!res.ok) throw new Error(`HTTP ${res.status} fetching ${SOURCE_URL}`);
   const xmlContent = await res.text();
   writeFileSync(XML_FILE, xmlContent, "utf-8");
-  console.log(`  Downloaded ${(xmlContent.length / 1024).toFixed(0)} KB → ${XML_FILE}`);
+  console.log(`  Downloaded ${(xmlContent.length / 1024 / 1024).toFixed(1)} MB → ${XML_FILE}`);
 
   const sqlite = new Database(DB_PATH);
   sqlite.pragma("journal_mode = WAL");
   const db = drizzle(sqlite, { schema });
 
-  // First, remove all existing AbbottSmith entries so we get a clean re-import.
+  // Remove existing AbbottSmith entries for a clean re-import.
   const deleted = sqlite.prepare(`DELETE FROM lexicon_entries WHERE source = 'AbbottSmith'`).run();
   console.log(`  Cleared ${deleted.changes} existing AbbottSmith entries.`);
 
@@ -124,45 +82,43 @@ async function main() {
     process.stdout.write(`\r  ${inserted} entries…`);
   }
 
-  // Match each <entry n="...">...</entry> block.
-  // The regex is non-greedy and uses a lookahead to handle end-of-text correctly.
-  const entryRe = /<entry\s+n="([^"]+)">([\s\S]*?)<\/entry>/g;
+  // Match each <entry ...>...</entry> block (non-greedy, handles attributes).
+  const entryRe = /<entry\b([^>]*?)>([\s\S]*?)<\/entry>/g;
   let match: RegExpExecArray | null;
 
   while ((match = entryRe.exec(xmlContent)) !== null) {
-    const nAttr    = match[1];
-    const entryXml = match[2];
+    const attrsStr  = match[1];
+    const entryBody = match[2];
 
-    // n attribute format: "lemma|GN" — skip entries without a Strong's number.
-    const pipeIdx = nAttr.indexOf("|");
-    if (pipeIdx < 0) { skipped++; continue; }
-
-    const lemma  = nAttr.slice(0, pipeIdx).trim();
-    const rawNum = nAttr.slice(pipeIdx + 1).trim();
-
-    // Must be a valid Gxxx token.
-    if (!/^G\d+$/.test(rawNum)) { skipped++; continue; }
+    // @lemma attribute — the normalised Greek lemma form.
+    const lemma = attr(attrsStr, "lemma").trim();
     if (!lemma) { skipped++; continue; }
 
-    const strongNumber = rawNum; // e.g. "G1", "G2316"
+    // @strong attribute: "G1234" format for the Strong's number.
+    const strongAttr = attr(attrsStr, "strong").trim();
+    if (!strongAttr || !/^G\d+$/.test(strongAttr)) { skipped++; continue; }
 
-    // <orth> — full headword with declension/gender suffix, e.g. "ἄβυσσος, ου, ἡ"
-    const orth = extractFirst(entryXml, "orth");
+    const strongNumber = strongAttr;   // e.g. "G2316"
+    const headLemma    = lemma;
 
-    // First <gloss> is the short English translation
-    const shortGloss = extractFirst(entryXml, "gloss");
+    // Short gloss — first <gloss> element, tags stripped.
+    const shortGloss = extractFirst(entryBody, "gloss");
 
-    // Full definition: all sense content, stripped of metadata elements
-    const definition = extractDefinition(entryXml);
+    // Full headword form (e.g. "ἄβυσσος, ου, ἡ") from <orth>.
+    const orth = extractFirst(entryBody, "orth");
+
+    // Raw XML of this entry, with explicit namespace so it can be parsed
+    // standalone by DOMParser in the browser for XSL/CSS rendering.
+    const rawXml = `<entry xmlns="${TEI_NS}" ${attrsStr}>${entryBody}</entry>`;
 
     rows.push({
       strongNumber,
       language:        "greek",
-      lemma,
+      lemma:           headLemma,
       transliteration: orth || null,
       pronunciation:   null,
       shortGloss:      shortGloss || null,
-      definition:      definition || null,
+      definition:      rawXml,
       usage:           null,
       source:          "AbbottSmith",
     });
@@ -171,9 +127,9 @@ async function main() {
   }
   flush();
 
-  console.log(`\nDone: ${inserted} inserted, ${skipped} skipped.`);
+  console.log(`\nDone: ${inserted} inserted, ${skipped} skipped (no Strong's number).`);
 
-  // Verify a sample entry
+  // Verify a sample entry.
   const sample = sqlite
     .prepare(`SELECT strong_number, lemma, short_gloss FROM lexicon_entries WHERE source='AbbottSmith' LIMIT 3`)
     .all() as { strong_number: string; lemma: string; short_gloss: string }[];

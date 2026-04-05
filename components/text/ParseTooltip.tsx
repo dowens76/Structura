@@ -33,27 +33,35 @@ export default function ParseTooltip({ word, flipped = false, useLinguisticTerms
   const [gloss, setGloss] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!word.strongNumber) return;
-    const primary = word.strongNumber.split(/[/,\s]/)[0].trim();
-    const source  = isHebrew ? getHebrewLexicon() : getGreekLexicon();
-    const cacheKey = `${primary}:${source}`;
+    // Greek: look up by lemma. Hebrew: look up by Strong's number.
+    const useGreekLemma   = !isHebrew && !!word.lemma;
+    const useHebrewStrong = isHebrew  && !!word.strongNumber;
+    if (!useGreekLemma && !useHebrewStrong) return;
+
+    const source   = isHebrew ? getHebrewLexicon() : getGreekLexicon();
+    const lookupId = isHebrew
+      ? word.strongNumber!.split(/[/,\s]/)[0].trim()
+      : word.lemma!;
+    const cacheKey = `${lookupId}:${source}`;
 
     if (glossCache.has(cacheKey)) {
       setGloss(glossCache.get(cacheKey) ?? null);
       return;
     }
 
-    fetch(`/api/lexicon?strong=${encodeURIComponent(primary)}&source=${encodeURIComponent(source)}`)
+    const url = isHebrew
+      ? `/api/lexicon?strong=${encodeURIComponent(lookupId)}&source=${encodeURIComponent(source)}`
+      : `/api/lexicon?lemma=${encodeURIComponent(lookupId)}&source=${encodeURIComponent(source)}`;
+
+    fetch(url)
       .then((r) => r.json())
       .then((data: { entry: { shortGloss?: string | null } | null }) => {
         const g = data.entry?.shortGloss ?? null;
         glossCache.set(cacheKey, g);
         setGloss(g);
       })
-      .catch(() => {
-        glossCache.set(cacheKey, null);
-      });
-  }, [word.strongNumber, isHebrew]);
+      .catch(() => { glossCache.set(cacheKey, null); });
+  }, [word.lemma, word.strongNumber, isHebrew]);
 
   const arrowUp = (
     <div className="flex justify-center">

@@ -117,9 +117,12 @@ export default function MorphologyPanel({ word, useLinguisticTerms = false }: Mo
         </div>
       )}
 
-      {/* Lexicon entry (Hebrew + Greek only; LXX has no strong numbers) */}
-      {word.strongNumber && word.textSource !== "STEPBIBLE_LXX" && (
-        <LexiconPane strongNumber={word.strongNumber} isHebrew={isHebrew} />
+      {/* Lexicon entry: Hebrew uses Strong's number; Greek uses lemma (covers SBLGNT + LXX) */}
+      {isHebrew && word.strongNumber && (
+        <LexiconPane strongNumber={word.strongNumber} isHebrew={true} />
+      )}
+      {!isHebrew && word.lemma && (
+        <LexiconPane wordLemma={word.lemma} isHebrew={false} />
       )}
 
       {/* Word ID */}

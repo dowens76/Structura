@@ -17,6 +17,7 @@ export const lexiconEntries = sqliteTable(
   (t) => [
     index("lex_strong_idx").on(t.strongNumber),
     uniqueIndex("lex_strong_source_idx").on(t.strongNumber, t.source),
+    index("lex_lemma_src_idx").on(t.lemma, t.source),
   ]
 );
 

@@ -3,7 +3,11 @@
  *
  * Tauri's resources glob flattens all files into a single directory level,
  * dropping subdirectories. This script replaces the flattened server/ tree
- * inside Structura.app with the correctly-structured copy from resources/server/.
+ * inside the macOS Structura.app bundle with the correctly-structured copy
+ * from resources/server/.
+ *
+ * macOS only — Windows/Linux bundles use different packaging mechanisms
+ * where Tauri writes resources directly into the install tree.
  *
  * Run automatically as part of: npm run tauri:build
  */
@@ -11,7 +15,13 @@ import { cpSync, rmSync, existsSync, mkdirSync } from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 
-const ROOT    = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
+const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
+
+if (process.platform !== "darwin") {
+  console.log(`fix-app-bundle: skipping on ${process.platform} (macOS only).`);
+  process.exit(0);
+}
+
 const APP     = path.join(ROOT, "src-tauri/target/release/bundle/macos/Structura.app");
 const CONTENT = path.join(APP, "Contents/Resources");
 
