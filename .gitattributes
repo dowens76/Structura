@@ -1,2 +1,4 @@
 # Git LFS for large committed binary files
 src-tauri/resources/user.db.template filter=lfs diff=lfs merge=lfs -text
+data/lxx.db                           filter=lfs diff=lfs merge=lfs -text
+data/ult.db                           filter=lfs diff=lfs merge=lfs -text

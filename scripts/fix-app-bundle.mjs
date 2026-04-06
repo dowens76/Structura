@@ -22,8 +22,13 @@ if (process.platform !== "darwin") {
   process.exit(0);
 }
 
-const APP     = path.join(ROOT, "src-tauri/target/release/bundle/macos/Structura.app");
+const buildTarget = process.env.TAURI_BUILD_TARGET;
+const bundleBase  = buildTarget
+  ? path.join(ROOT, `src-tauri/target/${buildTarget}/release/bundle`)
+  : path.join(ROOT, "src-tauri/target/release/bundle");
+const APP     = path.join(bundleBase, "macos/Structura.app");
 const CONTENT = path.join(APP, "Contents/Resources");
+
 
 if (!existsSync(APP)) {
   console.error(`ERROR: ${APP} not found. Run 'tauri build --bundles app' first.`);

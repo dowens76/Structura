@@ -25,17 +25,20 @@ const BINARIES_DIR = join(ROOT, "src-tauri", "binaries");
 mkdirSync(BINARIES_DIR, { recursive: true });
 
 // ── Detect Rust target triple ─────────────────────────────────────────────────
-let triple;
-try {
-  const out = execSync("rustc -vV", { encoding: "utf-8" });
-  triple = out.split("\n").find(l => l.startsWith("host:"))?.split(": ")[1]?.trim();
-} catch {
-  console.error("Error: rustc not found. Install Rust from https://rustup.rs");
-  process.exit(1);
-}
+// TAURI_BUILD_TARGET takes precedence (set by CI for cross-compilation).
+let triple = process.env.TAURI_BUILD_TARGET;
 if (!triple) {
-  console.error("Error: could not detect Rust target triple from rustc -vV");
-  process.exit(1);
+  try {
+    const out = execSync("rustc -vV", { encoding: "utf-8" });
+    triple = out.split("\n").find(l => l.startsWith("host:"))?.split(": ")[1]?.trim();
+  } catch {
+    console.error("Error: rustc not found. Install Rust from https://rustup.rs");
+    process.exit(1);
+  }
+  if (!triple) {
+    console.error("Error: could not detect Rust target triple from rustc -vV");
+    process.exit(1);
+  }
 }
 
 // ── Map Rust triple → Node.js platform / arch / archive ext ──────────────────

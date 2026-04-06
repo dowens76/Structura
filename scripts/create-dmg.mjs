@@ -12,9 +12,13 @@ import { existsSync, mkdirSync, readFileSync } from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 
-const ROOT    = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
-const APP     = path.join(ROOT, "src-tauri/target/release/bundle/macos/Structura.app");
-const DMG_DIR = path.join(ROOT, "src-tauri/target/release/bundle/dmg");
+const ROOT        = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
+const buildTarget = process.env.TAURI_BUILD_TARGET;
+const bundleBase  = buildTarget
+  ? path.join(ROOT, `src-tauri/target/${buildTarget}/release/bundle`)
+  : path.join(ROOT, "src-tauri/target/release/bundle");
+const APP     = path.join(bundleBase, "macos/Structura.app");
+const DMG_DIR = path.join(bundleBase, "dmg");
 
 if (process.platform !== "darwin") {
   console.log("create-dmg: skipping on non-macOS platform.");
@@ -37,7 +41,9 @@ try {
   triple = out.split("\n").find(l => l.startsWith("host:"))?.split(": ")[1]?.trim() ?? "";
 } catch { /* rustc not available — fall back to process.arch */ }
 
-const archSuffix = triple.startsWith("aarch64") ? "aarch64"
+const archSuffix = buildTarget
+  ? (buildTarget.startsWith("aarch64") ? "aarch64" : "x86_64")
+  : triple.startsWith("aarch64") ? "aarch64"
   : triple.startsWith("x86_64")  ? "x86_64"
   : process.arch === "arm64"     ? "aarch64"
   : "x86_64";

@@ -41,7 +41,10 @@ const bundleFlag =
   process.platform === "win32"   ? "--bundles nsis" :
   /* linux */                      "--bundles appimage,deb";
 
-run(`npx tauri build ${bundleFlag}`, `tauri build ${bundleFlag}`);
+const target     = process.env.TAURI_BUILD_TARGET;
+const targetFlag = target ? `--target ${target}` : "";
+
+run(`npx tauri build ${targetFlag} ${bundleFlag}`.replace(/\s+/g, " ").trim(), `tauri build ${targetFlag} ${bundleFlag}`.trim());
 
 // 5. macOS: fix flattened server/ directory inside .app bundle
 if (process.platform === "darwin") {
