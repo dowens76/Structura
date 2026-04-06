@@ -99,6 +99,7 @@ fn spawn_server(app: &AppHandle, port: u16) -> Result<(), String> {
         .args(["server.js"])
         .current_dir(&server_dir)
         .env("PORT", port.to_string())
+        .env("HOSTNAME", "127.0.0.1")
         .env("NODE_ENV", "production")
         .env("STRUCTURA_RESOURCES_DIR", databases_dir.to_string_lossy().to_string())
         .env("STRUCTURA_USER_DATA_DIR", app_data_dir.to_string_lossy().to_string())
