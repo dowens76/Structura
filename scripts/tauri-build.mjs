@@ -13,6 +13,7 @@
  * Run: npm run tauri:build
  */
 import { execSync } from "child_process";
+import { writeFileSync, unlinkSync } from "fs";
 import { fileURLToPath } from "url";
 import path from "path";
 
@@ -61,11 +62,12 @@ run(
 // 7. Tauri build — platform-specific bundle targets
 //    macOS:   build .app only (we create the DMG manually to fix server/ first)
 //    Windows: NSIS installer
-//    Linux:   AppImage + deb
+//    Linux:   deb only (AppImage requires linuxdeploy which fails in CI due to
+//             FUSE/sandbox restrictions even with APPIMAGE_EXTRACT_AND_RUN=1)
 const bundleFlag =
   process.platform === "darwin"  ? "--bundles app" :
   process.platform === "win32"   ? "--bundles nsis" :
-  /* linux */                      "--bundles appimage,deb";
+  /* linux */                      "--bundles deb";
 
 const targetFlag = target ? `--target ${target}` : "";
 
@@ -75,21 +77,22 @@ const tauriBuildEnv = { ...process.env };
 for (const key of ["APPLE_CERTIFICATE", "APPLE_CERTIFICATE_PASSWORD", "APPLE_SIGNING_IDENTITY", "APPLE_ID", "APPLE_PASSWORD", "APPLE_TEAM_ID"]) {
   if (!tauriBuildEnv[key]) delete tauriBuildEnv[key];
 }
-// linuxdeploy (used by Tauri's AppImage bundler) is itself an AppImage and
-// requires FUSE, which is unavailable in most CI environments. This flag
-// tells it to extract and run without FUSE instead.
-if (process.platform === "linux") {
-  tauriBuildEnv.APPIMAGE_EXTRACT_AND_RUN = "1";
-}
 
 // Skip beforeBuildCommand — we already ran Next.js in step 5 (before the
 // target-arch better-sqlite3 rebuild), so Tauri must not run it again.
-const noBeforeBuild = `--config '{"build":{"beforeBuildCommand":""}}'`;
-run(
-  `npx tauri build ${targetFlag} ${bundleFlag} ${noBeforeBuild}`.replace(/\s+/g, " ").trim(),
-  `tauri build ${targetFlag} ${bundleFlag}`.trim(),
-  tauriBuildEnv
-);
+// Write config to a file to avoid shell-quoting issues on Windows (PowerShell
+// strips double quotes from inside single-quoted strings).
+const overrideCfgPath = path.join(ROOT, ".tauri-build-override.json");
+writeFileSync(overrideCfgPath, JSON.stringify({ build: { beforeBuildCommand: "" } }));
+try {
+  run(
+    `npx tauri build ${targetFlag} ${bundleFlag} --config .tauri-build-override.json`.replace(/\s+/g, " ").trim(),
+    `tauri build ${targetFlag} ${bundleFlag}`.trim(),
+    tauriBuildEnv
+  );
+} finally {
+  unlinkSync(overrideCfgPath);
+}
 
 // 8. macOS: fix flattened server/ directory inside .app bundle
 if (process.platform === "darwin") {

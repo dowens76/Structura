@@ -118,7 +118,7 @@ jobs:
         with:
           name: Structura-linux-x64-appimage
           path: src-tauri/target/${{ matrix.target }}/release/bundle/appimage/*.AppImage
-          if-no-files-found: error
+          if-no-files-found: warn
 
       - name: Upload Linux deb
         if: runner.os == 'Linux'
