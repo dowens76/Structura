@@ -13,7 +13,7 @@
  * Run: npm run tauri:build
  */
 import { execSync } from "child_process";
-import { writeFileSync, unlinkSync } from "fs";
+import { writeFileSync, unlinkSync, copyFileSync } from "fs";
 import { fileURLToPath } from "url";
 import path from "path";
 
@@ -59,7 +59,16 @@ run(
   { ...process.env, npm_config_arch: npmArch }
 );
 
-// 7. Tauri build — platform-specific bundle targets
+// 7. Sync the rebuilt better-sqlite3 native module into the server bundle.
+//    copy-standalone.mjs (step 5) captured the host-arch binary; overwrite it
+//    with the target-arch binary so the sidecar Node process can load it.
+copyFileSync(
+  path.join(ROOT, "node_modules/better-sqlite3/build/Release/better_sqlite3.node"),
+  path.join(ROOT, "src-tauri/resources/server/node_modules/better-sqlite3/build/Release/better_sqlite3.node")
+);
+console.log(`\n▶ Synced better-sqlite3 (${npmArch}) → server bundle`);
+
+// 8. Tauri build — platform-specific bundle targets
 //    macOS:   build .app only (we create the DMG manually to fix server/ first)
 //    Windows: NSIS installer
 //    Linux:   deb only (AppImage requires linuxdeploy which fails in CI due to
@@ -94,7 +103,7 @@ try {
   unlinkSync(overrideCfgPath);
 }
 
-// 8. macOS: fix flattened server/ directory inside .app bundle
+// 9. macOS: fix flattened server/ directory inside .app bundle
 if (process.platform === "darwin") {
   run("node scripts/fix-app-bundle.mjs", "Fixing .app bundle server/ structure");
 }
