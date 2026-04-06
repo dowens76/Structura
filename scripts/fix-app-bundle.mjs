@@ -1,13 +1,9 @@
 /**
  * fix-app-bundle.mjs
  *
- * Tauri's resources glob flattens all files into a single directory level,
- * dropping subdirectories. This script replaces the flattened server/ tree
- * inside the macOS Structura.app bundle with the correctly-structured copy
- * from resources/server/.
- *
- * macOS only — Windows/Linux bundles use different packaging mechanisms
- * where Tauri writes resources directly into the install tree.
+ * Safety-net script: replaces the server/ tree inside the macOS Structura.app
+ * bundle with the correctly-structured copy from resources/server/, in case
+ * Tauri's resource bundling produces a flat layout.
  *
  * Run automatically as part of: npm run tauri:build
  */
