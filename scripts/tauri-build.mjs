@@ -29,7 +29,10 @@ run("node scripts/download-node-binary.mjs", "Downloading sidecar Node binary");
 // 2. Build user.db template
 run("npx tsx scripts/create-user-db-template.ts", "Building user.db template");
 
-// 3. Tauri build — platform-specific bundle targets
+// 3. Copy source databases into the Tauri resource bundle
+run("node scripts/copy-databases.mjs", "Copying source databases to Tauri resources");
+
+// 4. Tauri build — platform-specific bundle targets
 //    macOS:   build .app only (we create the DMG manually to fix server/ first)
 //    Windows: NSIS installer
 //    Linux:   AppImage + deb
@@ -40,7 +43,7 @@ const bundleFlag =
 
 run(`npx tauri build ${bundleFlag}`, `tauri build ${bundleFlag}`);
 
-// 4. macOS: fix flattened server/ directory inside .app bundle
+// 5. macOS: fix flattened server/ directory inside .app bundle
 if (process.platform === "darwin") {
   run("node scripts/fix-app-bundle.mjs", "Fixing .app bundle server/ structure");
 }
