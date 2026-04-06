@@ -2684,11 +2684,10 @@ export default function PassageView({
         </ResizablePane>
       )}
 
-      {/* ── Morphology side panel — absolutely positioned, does not affect main width ── */}
+      {/* ── Morphology side panel — flex sibling so it pushes content left instead of overlaying ── */}
       {panelOpen && (
-        <div className="absolute right-0 top-0 bottom-0 z-30 flex pointer-events-none">
           <ResizablePane storageKey="pane-morphology-width" defaultWidth={288} minWidth={200} maxWidth={700}>
-            <div className="flex flex-col h-full pointer-events-auto bg-[var(--background)] border-l border-[var(--border)] shadow-[-4px_0_16px_rgba(0,0,0,0.1)]">
+            <div className="flex flex-col h-full bg-[var(--background)] border-l border-[var(--border)] shadow-[-4px_0_16px_rgba(0,0,0,0.1)]">
               <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border)] shrink-0">
                 <h2 className="text-sm font-semibold text-stone-700 dark:text-stone-300">Word Analysis</h2>
                 <button
@@ -2702,7 +2701,6 @@ export default function PassageView({
               </div>
             </div>
           </ResizablePane>
-        </div>
       )}
 
       {/* Clear annotations dialog */}
