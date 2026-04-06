@@ -23,16 +23,26 @@ function run(cmd, label, env) {
   execSync(cmd, { stdio: "inherit", cwd: ROOT, env: env ?? process.env });
 }
 
-// 1. Download sidecar Node binary
+// 1. Ensure better-sqlite3 is compiled for the HOST arch.
+//    npm ci may restore a stale cross-compiled binary from a previous run's
+//    cache, so we always rebuild here before any build script loads it.
+const hostArch = process.arch === "arm64" ? "arm64" : "x64";
+run(
+  "npm rebuild better-sqlite3 --build-from-source",
+  `Rebuilding better-sqlite3 for host (${hostArch})`,
+  { ...process.env, npm_config_arch: hostArch }
+);
+
+// 2. Download sidecar Node binary
 run("node scripts/download-node-binary.mjs", "Downloading sidecar Node binary");
 
-// 2. Build user.db template
+// 3. Build user.db template
 run("npx tsx scripts/create-user-db-template.ts", "Building user.db template");
 
-// 3. Copy source databases into the Tauri resource bundle
+// 4. Copy source databases into the Tauri resource bundle
 run("node scripts/copy-databases.mjs", "Copying source databases to Tauri resources");
 
-// 4. Rebuild better-sqlite3 for the bundle target arch.
+// 5. Rebuild better-sqlite3 for the bundle TARGET arch.
 //    This must happen AFTER the build scripts above (which need the host-arch
 //    native module) and BEFORE tauri build (which bundles it into the app).
 const target = process.env.TAURI_BUILD_TARGET;
@@ -43,7 +53,7 @@ run(
   { ...process.env, npm_config_arch: npmArch }
 );
 
-// 5. Tauri build — platform-specific bundle targets
+// 6. Tauri build — platform-specific bundle targets
 //    macOS:   build .app only (we create the DMG manually to fix server/ first)
 //    Windows: NSIS installer
 //    Linux:   AppImage + deb
@@ -69,7 +79,7 @@ if (process.platform === "linux") {
 
 run(`npx tauri build ${targetFlag} ${bundleFlag}`.replace(/\s+/g, " ").trim(), `tauri build ${targetFlag} ${bundleFlag}`.trim(), tauriBuildEnv);
 
-// 6. macOS: fix flattened server/ directory inside .app bundle
+// 7. macOS: fix flattened server/ directory inside .app bundle
 if (process.platform === "darwin") {
   run("node scripts/fix-app-bundle.mjs", "Fixing .app bundle server/ structure");
 }
