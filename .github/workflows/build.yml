@@ -70,12 +70,6 @@ jobs:
             libsoup-3.0-dev \
             libjavascriptcoregtk-4.1-dev
 
-      # ── Rebuild better-sqlite3 from source for this platform/arch ───────────
-      - name: Rebuild better-sqlite3 native module
-        run: npm rebuild better-sqlite3 --build-from-source
-        env:
-          npm_config_arch: ${{ contains(matrix.target, 'aarch64') && 'arm64' || 'x64' }}
-
       # ── Build ─────────────────────────────────────────────────────────────────
       - name: Build Tauri app
         run: npm run tauri:build
