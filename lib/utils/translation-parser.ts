@@ -211,9 +211,12 @@ function injectVerseMarkers(body: string): string {
   // Pass 3: inject \v before inline verse numbers (mid-paragraph).
   //   Lookahead accepts any non-digit, non-whitespace character so Unicode
   //   letters and opening punctuation all qualify.
+  //   The space between the number and the text is optional so both
+  //   "…void 2 Now…" and "…void 2Now…" are handled.
   //   "…void 2 Now…"  →  "…void \v 2 Now…"
+  //   "…void 2Now…"   →  "…void \v 2 Now…"
   const withInline = withLineStart.replace(
-    /([^\S\r\n])(\d{1,3}) (?=[^\d\s])/g,
+    /([^\S\r\n])(\d{1,3}) ?(?=[^\d\s])/g,
     "$1\\v $2 "
   );
 
