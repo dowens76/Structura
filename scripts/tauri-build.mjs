@@ -42,7 +42,12 @@ run("npx tsx scripts/create-user-db-template.ts", "Building user.db template");
 // 4. Copy source databases into the Tauri resource bundle
 run("node scripts/copy-databases.mjs", "Copying source databases to Tauri resources");
 
-// 5. Rebuild better-sqlite3 for the bundle TARGET arch.
+// 5. Build Next.js (beforeBuildCommand).
+//    Must run BEFORE the target-arch rebuild (step 6) because Next.js page-data
+//    collection loads better-sqlite3 in the host Node process (arm64 on macOS CI).
+run("npm run build:next", "Building Next.js");
+
+// 6. Rebuild better-sqlite3 for the bundle TARGET arch.
 //    This must happen AFTER the build scripts above (which need the host-arch
 //    native module) and BEFORE tauri build (which bundles it into the app).
 const target = process.env.TAURI_BUILD_TARGET;
@@ -53,7 +58,7 @@ run(
   { ...process.env, npm_config_arch: npmArch }
 );
 
-// 6. Tauri build — platform-specific bundle targets
+// 7. Tauri build — platform-specific bundle targets
 //    macOS:   build .app only (we create the DMG manually to fix server/ first)
 //    Windows: NSIS installer
 //    Linux:   AppImage + deb
@@ -77,9 +82,16 @@ if (process.platform === "linux") {
   tauriBuildEnv.APPIMAGE_EXTRACT_AND_RUN = "1";
 }
 
-run(`npx tauri build ${targetFlag} ${bundleFlag}`.replace(/\s+/g, " ").trim(), `tauri build ${targetFlag} ${bundleFlag}`.trim(), tauriBuildEnv);
+// Skip beforeBuildCommand — we already ran Next.js in step 5 (before the
+// target-arch better-sqlite3 rebuild), so Tauri must not run it again.
+const noBeforeBuild = `--config '{"build":{"beforeBuildCommand":""}}'`;
+run(
+  `npx tauri build ${targetFlag} ${bundleFlag} ${noBeforeBuild}`.replace(/\s+/g, " ").trim(),
+  `tauri build ${targetFlag} ${bundleFlag}`.trim(),
+  tauriBuildEnv
+);
 
-// 7. macOS: fix flattened server/ directory inside .app bundle
+// 8. macOS: fix flattened server/ directory inside .app bundle
 if (process.platform === "darwin") {
   run("node scripts/fix-app-bundle.mjs", "Fixing .app bundle server/ structure");
 }
