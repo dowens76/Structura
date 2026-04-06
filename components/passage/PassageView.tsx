@@ -1853,8 +1853,8 @@ export default function PassageView({
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
-    <div className="relative h-full min-h-0 flex flex-col">
-      {/* Main content + toolbar — takes full width; morphology panel overlays on top */}
+    <div className="relative h-full min-h-0 flex flex-row">
+      {/* Main content + toolbar — takes remaining width; notes pane sits to the right */}
       <div className="flex-1 overflow-y-auto flex flex-col min-h-0" ref={overlayContainerRef} style={{ position: "relative" }}>
         {/* Overlay: RST relation lines */}
         <RstRelationOverlay

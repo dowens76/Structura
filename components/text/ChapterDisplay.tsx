@@ -2027,8 +2027,8 @@ export default function ChapterDisplay({
   }
 
   return (
-    <div className="relative h-full min-h-0 flex flex-col">
-      {/* Main text area — takes full width; morphology panel overlays on top */}
+    <div className="relative h-full min-h-0 flex flex-row">
+      {/* Main text area — takes remaining width; notes pane sits to the right */}
       <div className="flex-1 min-w-0 relative min-h-0 flex flex-col" ref={outerRef}>
         {/* Scrollable text container — both overlays live INSIDE so they scroll
             with the content and use stable scroll-canvas coordinates. */}
