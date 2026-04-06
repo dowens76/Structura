@@ -3,8 +3,8 @@
   "configurations": [
     {
       "name": "structura-dev",
-      "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev"],
+      "runtimeExecutable": "/bin/sh",
+      "runtimeArgs": ["-c", "PATH=/usr/local/bin:$PATH npm run dev"],
       "port": 3000,
       "autoPort": true
     }
