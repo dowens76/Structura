@@ -39,6 +39,9 @@ interface SegPos {
   /** Right edge of the source grid-cell div (3-col layout only). Used to anchor
    *  the source tree from the column boundary rather than from the inline text span. */
   srcCellRightX?: number;
+  /** Left edge of the verse-label element.  Used in Hebrew 2-col to prevent the
+   *  RST tree from extending into the verse-number column. */
+  labelLeftX?: number;
 }
 
 interface LayoutNode {
@@ -121,6 +124,14 @@ function measureSegments(
       ? srcBlockEl.getBoundingClientRect().right - cRect.left
       : undefined;
 
+    // Hebrew 2-col: measure the verse-label left edge so the tree stays clear of it.
+    const labelEl = container.querySelector<HTMLElement>(
+      `[data-seg-label="${CSS.escape(id)}"]`,
+    );
+    const labelLeftX = labelEl
+      ? labelEl.getBoundingClientRect().left - cRect.left
+      : undefined;
+
     result.set(id, {
       top:       textR.top    - cRect.top + scrollTop,
       bottom:    textR.bottom - cRect.top + scrollTop,
@@ -128,6 +139,7 @@ function measureSegments(
       rightX:    textR.right  - cRect.left,
       transLeftX,
       srcCellRightX,
+      labelLeftX,
     });
   }
   return result;
@@ -266,6 +278,16 @@ function layoutTree(
   // LTR Greek uses the same left-gutter positioning as 2-col regardless of translation.
   const use3Col = hasTranslationProp && isFinite(refSrcCellRightX) && isHebrew;
 
+  // Hebrew 2-col: the minimum left-edge of any verse-label element.
+  // The source tree must stay at or left of this boundary so it doesn't
+  // overlap the verse number.
+  let hebrewLabelBound = Infinity;
+  for (const pos of posMap.values()) {
+    if (pos.labelLeftX !== undefined)
+      hebrewLabelBound = Math.min(hebrewLabelBound, pos.labelLeftX);
+  }
+  const hasLabelBound = !use3Col && isHebrew && isFinite(hebrewLabelBound);
+
   // Pre-compute max hierarchy depth.
   const maxDepth = hierForLeaves.height; // 0 if only root; typically 2–4
 
@@ -287,7 +309,10 @@ function layoutTree(
   const srcXFn = use3Col
     ? (d: number) => (refSrcCellRightX + LEAF_MARGIN) + (maxDepth - d) * LEVEL_WIDTH
     : isHebrew
-      ? (d: number) => (refRightX + LEAF_MARGIN) + (maxDepth - d) * LEVEL_WIDTH
+      ? (d: number) => {
+          const x = (refRightX + LEAF_MARGIN) + (maxDepth - d) * LEVEL_WIDTH;
+          return hasLabelBound ? Math.min(x, hebrewLabelBound - 4) : x;
+        }
       : (d: number) => (refLeftX - LEAF_MARGIN) - (maxDepth - d) * LEVEL_WIDTH;
 
   const transXFn = (d: number) =>
@@ -311,10 +336,14 @@ function layoutTree(
   } else if (isHebrew) {
     // 2-col Hebrew: override leaf x to each segment's own text-right position so
     // indented paragraphs (with narrower right edge) get a proportionally shorter arm.
+    // Also cap at hebrewLabelBound so leaves don't overlap the verse-number column.
     for (const node of src.nodes) {
       if (node.type === "segment") {
         const pos = posMap.get(node.id);
-        if (pos) node.x = pos.rightX + LEAF_MARGIN;
+        if (pos) {
+          const raw = pos.rightX + LEAF_MARGIN;
+          node.x = hasLabelBound ? Math.min(raw, hebrewLabelBound - 4) : raw;
+        }
       }
     }
     for (const link of src.links) {
@@ -462,27 +491,49 @@ export default function RstRelationOverlay({
       aria-hidden="true"
     >
       {/* ── Tree edges ────────────────────────────────────────────────────── */}
-      {layoutLinks.map((lk, i) => {
-        const meta  = relMap[lk.relType];
-        const color = meta?.color ?? "#6B7280";
-        const isSat = lk.role === "satellite";
-        // Elbow: horizontal to midpoint, vertical to child Y, horizontal to child X.
-        // Direction (left or right) is determined automatically by the sign of (x2−x1).
-        const midX  = lk.x1 + (lk.x2 - lk.x1) / 2;
-        const pathD = `M ${lk.x1},${lk.y1} H ${midX} V ${lk.y2} H ${lk.x2}`;
-        return (
-          <path
-            key={i}
-            d={pathD}
-            fill="none"
-            stroke={color}
-            strokeWidth={editing ? 2 : 1.5}
-            strokeDasharray={isSat ? "4 3" : undefined}
-            opacity={0.85}
-            style={{ pointerEvents: "none" }}
-          />
-        );
-      })}
+      {(() => {
+        // For every parent, compute a single shared spine X so that all siblings
+        // bend their elbows at the same column.  This makes the vertical segments of
+        // multiple satellites from the same nucleus overlap rather than fan out to
+        // separate x positions (which would happen when paragraphs are differently indented).
+        //
+        // The spine is placed at the parent chip's centre:
+        //   LTR  →  x_parent + LEVEL_WIDTH  (chip sits to the right of the node anchor)
+        //   RTL  →  x_parent − LEVEL_WIDTH  (chip sits to the left of the node anchor)
+        // Key includes isTrans flag so source and translation trees don't share spine values
+        // even when they have group nodes with the same id (same groupId in both trees).
+        const spineXByParent = new Map<string, number>();
+        for (const lk of layoutLinks) {
+          const key = `${lk.parentId}:${lk.isTrans ? 1 : 0}`;
+          if (!spineXByParent.has(key)) {
+            const dir = lk.x2 - lk.x1 >= 0 ? 1 : -1;
+            spineXByParent.set(key, lk.x1 + dir * LEVEL_WIDTH);
+          }
+        }
+
+        return layoutLinks.map((lk, i) => {
+          const meta   = relMap[lk.relType];
+          const color  = meta?.color ?? "#6B7280";
+          const isSat  = lk.role === "satellite";
+          const key    = `${lk.parentId}:${lk.isTrans ? 1 : 0}`;
+          const spineX = spineXByParent.get(key) ?? lk.x1 + (lk.x2 - lk.x1) / 2;
+          // Elbow: horizontal from parent to shared spine, vertical to child Y,
+          // horizontal from spine to child X.
+          const pathD  = `M ${lk.x1},${lk.y1} H ${spineX} V ${lk.y2} H ${lk.x2}`;
+          return (
+            <path
+              key={i}
+              d={pathD}
+              fill="none"
+              stroke={color}
+              strokeWidth={editing ? 2 : 1.5}
+              strokeDasharray={isSat ? "4 3" : undefined}
+              opacity={0.85}
+              style={{ pointerEvents: "none" }}
+            />
+          );
+        });
+      })()}
 
       {/* ── Group nodes (relation-type chips) ─────────────────────────────── */}
       {groupNodes.map((n, i) => {
@@ -505,6 +556,12 @@ export default function RstRelationOverlay({
         const connDotX = isHebrew
           ? chipX + CHIP_W / 2 + 7
           : chipX - CHIP_W / 2 - 7;
+        // Position the chip at the satellite arm's Y (within 2px of the horizontal
+        // line connecting to the satellite), falling back to the group's centre Y.
+        const satLink = layoutLinks.find(
+          lk => lk.parentId === n.id && lk.role === "satellite" && !!lk.isTrans === !!n.isTrans
+        );
+        const chipY = satLink?.y2 ?? n.y;
 
         return (
           <g
@@ -516,7 +573,7 @@ export default function RstRelationOverlay({
             {/* Purple ring when this group is the currently-selected RST endpoint */}
             {isSelectedEndpoint && (
               <rect
-                x={chipX - CHIP_W / 2 - 3} y={n.y - CHIP_H / 2 - 3}
+                x={chipX - CHIP_W / 2 - 3} y={chipY - CHIP_H / 2 - 3}
                 width={CHIP_W + 6}          height={CHIP_H + 6}
                 rx={5} fill="none" stroke="#7C3AED" strokeWidth={2}
                 style={{ pointerEvents: "none" }}
@@ -525,14 +582,14 @@ export default function RstRelationOverlay({
             {/* White ring when this group's type is being edited */}
             {isEditingThis && !n.isTrans && (
               <rect
-                x={chipX - CHIP_W / 2 - 3} y={n.y - CHIP_H / 2 - 3}
+                x={chipX - CHIP_W / 2 - 3} y={chipY - CHIP_H / 2 - 3}
                 width={CHIP_W + 6}          height={CHIP_H + 6}
                 rx={5} fill="none" stroke="white" strokeWidth={2}
                 style={{ pointerEvents: "none" }}
               />
             )}
             <rect
-              x={chipX - CHIP_W / 2} y={n.y - CHIP_H / 2}
+              x={chipX - CHIP_W / 2} y={chipY - CHIP_H / 2}
               width={CHIP_W}          height={CHIP_H}
               rx={3}
               fill={color}
@@ -543,7 +600,7 @@ export default function RstRelationOverlay({
               }}
             />
             <text
-              x={chipX} y={n.y + 4}
+              x={chipX} y={chipY + 4}
               textAnchor="middle" fill="white"
               fontSize={9} fontFamily="monospace" fontWeight="bold"
               style={{ pointerEvents: "none", userSelect: "none" }}
@@ -554,9 +611,9 @@ export default function RstRelationOverlay({
                 style={{ cursor: "pointer", pointerEvents: "all" }}
                 onClick={e => { e.stopPropagation(); onDeleteGroup(n.id); }}
               >
-                <circle cx={chipX + CHIP_W / 2} cy={n.y - CHIP_H / 2} r={6} fill="#DC2626" />
+                <circle cx={chipX + CHIP_W / 2} cy={chipY - CHIP_H / 2} r={6} fill="#DC2626" />
                 <text
-                  x={chipX + CHIP_W / 2} y={n.y - CHIP_H / 2 + 4}
+                  x={chipX + CHIP_W / 2} y={chipY - CHIP_H / 2 + 4}
                   textAnchor="middle" fill="white" fontSize={9} fontFamily="sans-serif"
                   style={{ pointerEvents: "none", userSelect: "none" }}
                 >×</text>
@@ -566,7 +623,7 @@ export default function RstRelationOverlay({
             {/* Connector dot: selects this group as an RST endpoint */}
             {editing && !n.isTrans && onSelectGroup && (
               <circle
-                cx={connDotX} cy={n.y} r={SEG_R}
+                cx={connDotX} cy={chipY} r={SEG_R}
                 fill={isSelectedEndpoint ? "#7C3AED" : "transparent"}
                 stroke={isSelectedEndpoint ? "#7C3AED" : "#94A3B8"}
                 strokeWidth={1.5}
