@@ -2,11 +2,97 @@
 
 import { useEffect, useRef, useCallback } from "react";
 import { useEditor, EditorContent } from "@tiptap/react";
+import { Extension } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
 import Highlight from "@tiptap/extension-highlight";
 import Superscript from "@tiptap/extension-superscript";
 import Subscript from "@tiptap/extension-subscript";
 import Placeholder from "@tiptap/extension-placeholder";
+import { Plugin, PluginKey } from "@tiptap/pm/state";
+import { Decoration, DecorationSet } from "@tiptap/pm/view";
+import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
+
+// ─── Search-highlight ProseMirror extension ───────────────────────────────────
+
+const SearchHighlightKey = new PluginKey<{ decorations: DecorationSet; query: string }>(
+  "searchHighlight"
+);
+
+function buildDecorations(doc: ProseMirrorNode, query: string): DecorationSet {
+  if (!query) return DecorationSet.empty;
+  const decorations: Decoration[] = [];
+  const q = query.toLowerCase();
+  doc.descendants((node, pos) => {
+    if (!node.isText || !node.text) return;
+    const text = node.text.toLowerCase();
+    let idx = text.indexOf(q);
+    while (idx !== -1) {
+      decorations.push(
+        Decoration.inline(pos + idx, pos + idx + query.length, {
+          class: "search-highlight-match",
+        })
+      );
+      idx = text.indexOf(q, idx + 1);
+    }
+  });
+  return DecorationSet.create(doc, decorations);
+}
+
+// Augment TipTap command types
+declare module "@tiptap/core" {
+  interface Commands<ReturnType> {
+    searchHighlight: {
+      setSearchQuery: (query: string) => ReturnType;
+    };
+  }
+}
+
+const SearchHighlightExtension = Extension.create({
+  name: "searchHighlight",
+
+  addCommands() {
+    return {
+      setSearchQuery:
+        (query: string) =>
+        ({ tr, dispatch }) => {
+          if (dispatch) {
+            tr.setMeta(SearchHighlightKey, query);
+            dispatch(tr);
+          }
+          return true;
+        },
+    };
+  },
+
+  addProseMirrorPlugins() {
+    return [
+      new Plugin({
+        key: SearchHighlightKey,
+        state: {
+          init(_, { doc }) {
+            return { decorations: DecorationSet.empty, query: "" };
+          },
+          apply(tr, old) {
+            const newQuery = tr.getMeta(SearchHighlightKey) as string | undefined;
+            const query = newQuery !== undefined ? newQuery : old.query;
+            const decorations =
+              newQuery !== undefined || tr.docChanged
+                ? buildDecorations(tr.doc, query)
+                : old.decorations.map(tr.mapping, tr.doc);
+            return { decorations, query };
+          },
+        },
+        props: {
+          decorations(state) {
+            return SearchHighlightKey.getState(state)?.decorations ?? DecorationSet.empty;
+          },
+        },
+      }),
+    ];
+  },
+});
+
+// ─── Component ────────────────────────────────────────────────────────────────
 
 interface NoteEditorProps {
   /** Unique DB key for this note (e.g. "verse:Gen.1.1") */
@@ -16,6 +102,8 @@ interface NoteEditorProps {
   initialContent: string;
   book?: string;
   chapter?: number;
+  /** Current search query — highlights all occurrences inline */
+  searchQuery?: string;
 }
 
 /** Debounce helper */
@@ -77,6 +165,7 @@ export default function NoteEditor({
   initialContent,
   book,
   chapter,
+  searchQuery,
 }: NoteEditorProps) {
   // Parse stored JSON; fall back to empty doc
   let parsedContent: object | undefined;
@@ -111,13 +200,13 @@ export default function NoteEditor({
     immediatelyRender: false,
     extensions: [
       StarterKit.configure({
-        // heading: h1–h3
         heading: { levels: [1, 2, 3] },
       }),
       Highlight.configure({ multicolor: false }),
       Superscript,
       Subscript,
       Placeholder.configure({ placeholder: "Add notes…" }),
+      SearchHighlightExtension,
     ],
     content: parsedContent ?? { type: "doc", content: [{ type: "paragraph" }] },
     onUpdate: ({ editor }) => {
@@ -142,13 +231,18 @@ export default function NoteEditor({
     } catch {
       /* ignore */
     }
-    // Only replace if the doc actually changed
     const current = JSON.stringify(editor.getJSON());
     if (current !== JSON.stringify(content)) {
       editor.commands.setContent(content);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [noteKey]);
+
+  // Update search highlights whenever query changes
+  useEffect(() => {
+    if (!editor) return;
+    editor.commands.setSearchQuery(searchQuery ?? "");
+  }, [editor, searchQuery]);
 
   if (!editor) return null;
 
@@ -226,7 +320,6 @@ export default function NoteEditor({
           active={editor.isActive("bulletList")}
           title="Bullet list"
         >
-          {/* Simple SVG bullet-list icon */}
           <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
             <circle cx="1.5" cy="2.5" r="1"/>
             <rect x="3.5" y="2" width="8" height="1" rx="0.5"/>
