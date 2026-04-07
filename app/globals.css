@@ -290,6 +290,28 @@ body {
   font-style: italic;
 }
 
+/* Strong's Hebrew Dictionary entry */
+.strong-hebrew-entry .she-list {
+  list-style-type: decimal;
+  padding-left: 1.4em;
+  margin: 0 0 0.5em;
+  font-size: 0.78rem;
+  line-height: 1.55;
+  color: var(--foreground);
+}
+.strong-hebrew-entry .she-list li { margin: 0.1em 0; }
+.strong-hebrew-entry .she-etym {
+  font-size: 0.72rem;
+  font-style: italic;
+  color: var(--text-muted);
+  margin: 0.4em 0 0.2em;
+}
+.strong-hebrew-entry .she-kjv {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  margin: 0.2em 0 0;
+}
+
 /* Search-within-notes inline highlight (ProseMirror decoration) */
 .search-highlight-match {
   background-color: rgba(250, 204, 21, 0.55);
