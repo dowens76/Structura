@@ -89,8 +89,11 @@ export function buildRstTree(
 
     const children: RstNode[] = sorted.map(m => {
       // Is this member's segWordId the nucleus of a nested group?
+      // Only treat it as nested when it is a SATELLITE of the current group.
+      // If it is the NUCLEUS of the current group, the two groups share the same
+      // nucleus and are peers — do not nest one inside the other.
       const childGroupId = nucleusToGroup.get(m.segWordId);
-      if (childGroupId && childGroupId !== groupId) {
+      if (childGroupId && childGroupId !== groupId && m.role !== "nucleus") {
         // Return a placeholder — we'll swap in the real child node after all
         // group nodes are built.  For now, store the childGroupId.
         return {

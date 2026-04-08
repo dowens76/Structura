@@ -109,6 +109,26 @@ function measureSegments(
     ) ?? outerEl;
     const textR = textEl.getBoundingClientRect();
 
+    // For multi-line block segments, use the first text line's bounding rect
+    // so the anchor lands on the first line rather than the vertical midpoint
+    // of the entire block.
+    let anchorTop    = textR.top;
+    let anchorBottom = textR.bottom;
+    try {
+      const tw = document.createTreeWalker(textEl, NodeFilter.SHOW_TEXT);
+      let tn: Node | null;
+      while ((tn = tw.nextNode())) {
+        if ((tn as Text).textContent?.trim()) {
+          const r = document.createRange();
+          r.setStart(tn as Text, 0);
+          r.setEnd(tn as Text, Math.min(1, (tn as Text).length));
+          const rr = r.getBoundingClientRect();
+          if (rr.height > 0) { anchorTop = rr.top; anchorBottom = rr.bottom; }
+          break;
+        }
+      }
+    } catch { /* ignore */ }
+
     const transEl    = container.querySelector<HTMLElement>(
       `[data-seg-translation="${CSS.escape(id)}"]`,
     );
@@ -133,8 +153,8 @@ function measureSegments(
       : undefined;
 
     result.set(id, {
-      top:       textR.top    - cRect.top + scrollTop,
-      bottom:    textR.bottom - cRect.top + scrollTop,
+      top:       anchorTop    - cRect.top + scrollTop,
+      bottom:    anchorBottom - cRect.top + scrollTop,
       leftX:     textR.left   - cRect.left,
       rightX:    textR.right  - cRect.left,
       transLeftX,
@@ -202,10 +222,15 @@ function flattenHierarchy(
     if (parent && parent.data.type !== "root") {
       const parentY = yMap.get(parent.data.id);
       if (parentY !== undefined) {
+        // Use the nucleus child's Y as the link's y1 so that all links from
+        // this group share a common spine top at the nucleus position rather
+        // than floating at the group's averaged Y.
+        const nucleusChild = parent.data.children?.find(c => c.role === "nucleus");
+        const nucleusY = nucleusChild ? (yMap.get(nucleusChild.id) ?? parentY) : parentY;
         links.push({
           parentId: parent.data.id,
           childId:  d.id,
-          x1: xFn(parent.depth), y1: parentY,
+          x1: xFn(parent.depth), y1: nucleusY,
           x2: x,                 y2: y,
           relType: parent.data.relType ?? "",
           role:    d.role ?? "nucleus",
@@ -223,7 +248,16 @@ function flattenHierarchy(
     if (!seenIds.has(n.id)) { seenIds.add(n.id); nodes.push(n); }
   }
 
-  return { nodes, links };
+  // Deduplicate links by parentId:childId:isTrans to remove copies that arise
+  // when the same group node is visited multiple times during tree traversal.
+  const linkKeys = new Set<string>();
+  const dedupLinks: LayoutLink[] = [];
+  for (const lk of links) {
+    const key = `${lk.parentId}:${lk.childId}:${lk.isTrans ? 1 : 0}`;
+    if (!linkKeys.has(key)) { linkKeys.add(key); dedupLinks.push(lk); }
+  }
+
+  return { nodes, links: dedupLinks };
 }
 
 function layoutTree(
@@ -373,7 +407,13 @@ function layoutTree(
     for (const node of trans.nodes) {
       if (node.type === "segment") {
         const pos = posMap.get(node.id);
-        if (pos?.transLeftX !== undefined) node.x = pos.transLeftX - LEAF_MARGIN;
+        if (pos?.transLeftX !== undefined) {
+          // Mirror source indentation: segments that are indented further right
+          // in the source column get a proportionally longer translation arm,
+          // matching the visual arm lengths on the source side.
+          const srcIndent = (pos.leftX - LEAF_MARGIN) - (refLeftX - LEAF_MARGIN);
+          node.x = (pos.transLeftX - LEAF_MARGIN) + srcIndent;
+        }
       }
     }
     for (const link of trans.links) {
@@ -500,26 +540,16 @@ export default function RstRelationOverlay({
         // The spine is placed at the parent chip's centre:
         //   LTR  →  x_parent + LEVEL_WIDTH  (chip sits to the right of the node anchor)
         //   RTL  →  x_parent − LEVEL_WIDTH  (chip sits to the left of the node anchor)
-        // Key includes isTrans flag so source and translation trees don't share spine values
-        // even when they have group nodes with the same id (same groupId in both trees).
-        const spineXByParent = new Map<string, number>();
-        for (const lk of layoutLinks) {
-          const key = `${lk.parentId}:${lk.isTrans ? 1 : 0}`;
-          if (!spineXByParent.has(key)) {
-            const dir = lk.x2 - lk.x1 >= 0 ? 1 : -1;
-            spineXByParent.set(key, lk.x1 + dir * LEVEL_WIDTH);
-          }
-        }
-
         return layoutLinks.map((lk, i) => {
           const meta   = relMap[lk.relType];
           const color  = meta?.color ?? "#6B7280";
           const isSat  = lk.role === "satellite";
-          const key    = `${lk.parentId}:${lk.isTrans ? 1 : 0}`;
-          const spineX = spineXByParent.get(key) ?? lk.x1 + (lk.x2 - lk.x1) / 2;
-          // Elbow: horizontal from parent to shared spine, vertical to child Y,
-          // horizontal from spine to child X.
-          const pathD  = `M ${lk.x1},${lk.y1} H ${spineX} V ${lk.y2} H ${lk.x2}`;
+          // Spine is at the parent group's x position.
+          // All siblings from the same parent share this x automatically.
+          // Path: vertical from parent x at nucleus-Y to child Y, then
+          // horizontal arm to child x (leaf position).
+          const spineX = lk.x1;
+          const pathD  = `M ${spineX},${lk.y1} V ${lk.y2} H ${lk.x2}`;
           return (
             <path
               key={i}
