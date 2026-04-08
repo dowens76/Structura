@@ -1,6 +1,6 @@
 [package]
 name = "structura"
-version = "0.2.3"
+version = "0.3.1"
 description = "Biblical text analysis workbench"
 authors = []
 license = ""

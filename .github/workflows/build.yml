@@ -72,13 +72,17 @@ jobs:
             libssl-dev \
             libsoup-3.0-dev \
             libjavascriptcoregtk-4.1-dev \
-            libfuse2
+            libfuse2 \
+            squashfs-tools
 
       # ── Build ─────────────────────────────────────────────────────────────────
       - name: Build Tauri app
         run: npm run tauri:build
         env:
           TAURI_BUILD_TARGET: ${{ matrix.target }}
+          # appimagetool is itself an AppImage; CI runners lack kernel FUSE support,
+          # so instruct it to extract-and-run instead of mounting via FUSE.
+          APPIMAGE_EXTRACT_AND_RUN: ${{ runner.os == 'Linux' && '1' || '' }}
           # Tauri/macOS code signing — set these secrets in your repo settings.
           # Leave unset for unsigned builds.
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
@@ -121,7 +125,7 @@ jobs:
         with:
           name: Structura-linux-x64-appimage
           path: src-tauri/target/${{ matrix.target }}/release/bundle/appimage/*.AppImage
-          if-no-files-found: warn
+          if-no-files-found: error
 
       - name: Upload Linux deb
         if: runner.os == 'Linux'
