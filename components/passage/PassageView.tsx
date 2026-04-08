@@ -151,6 +151,7 @@ export default function PassageView({
   const [selectedWord, setSelectedWord] = useState<Word | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
   const [notesOpen, setNotesOpen] = useState(false);
+  const [presentationMode, setPresentationMode] = useState(false);
   const [notesScrollVerse, setNotesScrollVerse] = useState<{ ch: number; v: number } | null>(null);
   const [showTooltips, setShowTooltips] = useState(false);
   const [activeTranslationAbbrs, setActiveTranslationAbbrs] = useState<Set<string>>(new Set());
@@ -2004,6 +2005,44 @@ export default function PassageView({
 
         {/* Toolbar */}
         <div className="border-b border-[var(--border)] px-6 py-3 flex items-center gap-4 flex-wrap">
+
+          {/* Presentation mode toggle — always visible */}
+          <button
+            onClick={() => {
+              const entering = !presentationMode;
+              setPresentationMode(entering);
+              if (entering) {
+                setEditingParagraphs(false);
+                setEditingScenes(false);
+                setEditingAnnotations(false);
+                setEditingRefs(false);
+                setEditingSpeech(false);
+                setEditingWordTags(false);
+                setEditingIndents(false);
+                setEditingRst(false);
+                setEditingArrows(false);
+                setEditingBold(false);
+                setEditingItalic(false);
+                setEditingTranslation(false);
+                setSpeechRangeStart(null);
+                setRstSegA(null);
+                setRstSegB(null);
+                setShowRstPicker(false);
+                setArrowFromWordId(null);
+                setNotesOpen(false);
+                setPanelOpen(false);
+              }
+            }}
+            title={presentationMode ? "Exit presentation mode" : "Enter presentation mode — larger text, minimal toolbar"}
+            className={[
+              "px-2.5 py-1 rounded text-xs font-medium transition-colors",
+              presentationMode
+                ? "bg-sky-600 text-white"
+                : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
+            ].join(" ")}
+          >⊞</button>
+
+          {!presentationMode && (<>
           <DisplayModeToggle mode={displayMode} onChange={setDisplayMode} />
           {displayMode === "color" && (
             <>
@@ -2362,6 +2401,7 @@ export default function PassageView({
               </div>
             );
           })()}
+          </>)}
         </div>
 
         {/* Character palette bar */}
@@ -2568,8 +2608,8 @@ export default function PassageView({
               const next = orderedVerses[idx + 1];
               return (
                 <div key={`${verse.ch}:${verse.v}`}>
-                  {/* Chapter heading — only shown for multi-chapter passages */}
-                  {isMultiChapter && isFirstOfChapter && (
+                  {/* Chapter heading — only shown for multi-chapter passages, not in presentation mode */}
+                  {isMultiChapter && isFirstOfChapter && !presentationMode && (
                     <h2
                       className="text-xs font-semibold uppercase tracking-widest mb-3 pb-1 border-b"
                       style={{
@@ -2591,6 +2631,7 @@ export default function PassageView({
                     selectedWordId={selectedWord?.wordId ?? null}
                     isHebrew={isHebrew}
                     showTooltips={showTooltips}
+                    presentationMode={presentationMode}
                     translationTexts={activeTranslationVerseMap.get(`${verse.ch}:${verse.v}`) ?? []}
                     useLinguisticTerms={useLinguisticTerms}
                     paragraphBreakIds={paragraphBreakIds}

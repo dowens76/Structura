@@ -17,6 +17,25 @@ import { writeFileSync, unlinkSync, copyFileSync } from "fs";
 import { fileURLToPath } from "url";
 import path from "path";
 
+/**
+ * Rebuild better-sqlite3 from source for a specific arch.
+ *
+ * Older code passed `--build-from-source` as a CLI flag and set
+ * `npm_config_arch` as an env var — both trigger "Unknown config" warnings in
+ * npm ≥ 10.  Writing the settings to a temporary local .npmrc is the
+ * recommended alternative; npm always reads the project .npmrc before running
+ * any lifecycle script or rebuild.
+ */
+function rebuildSqlite(arch, label) {
+  const npmrcPath = path.join(ROOT, ".npmrc");
+  writeFileSync(npmrcPath, `build_from_source=true\narch=${arch}\n`);
+  try {
+    run("npm rebuild better-sqlite3", label);
+  } finally {
+    unlinkSync(npmrcPath);
+  }
+}
+
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 
 function run(cmd, label, env) {
@@ -28,11 +47,7 @@ function run(cmd, label, env) {
 //    npm ci may restore a stale cross-compiled binary from a previous run's
 //    cache, so we always rebuild here before any build script loads it.
 const hostArch = process.arch === "arm64" ? "arm64" : "x64";
-run(
-  "npm rebuild better-sqlite3 --build-from-source",
-  `Rebuilding better-sqlite3 for host (${hostArch})`,
-  { ...process.env, npm_config_arch: hostArch }
-);
+rebuildSqlite(hostArch, `Rebuilding better-sqlite3 for host (${hostArch})`);
 
 // 2. Download sidecar Node binary
 run("node scripts/download-node-binary.mjs", "Downloading sidecar Node binary");
@@ -53,11 +68,7 @@ run("npm run build:next", "Building Next.js");
 //    native module) and BEFORE tauri build (which bundles it into the app).
 const target = process.env.TAURI_BUILD_TARGET;
 const npmArch = target?.startsWith("aarch64") ? "arm64" : "x64";
-run(
-  "npm rebuild better-sqlite3 --build-from-source",
-  `Rebuilding better-sqlite3 for ${npmArch}`,
-  { ...process.env, npm_config_arch: npmArch }
-);
+rebuildSqlite(npmArch, `Rebuilding better-sqlite3 for ${npmArch}`);
 
 // 7. Sync the rebuilt better-sqlite3 native module into the server bundle.
 //    copy-standalone.mjs (step 5) captured the host-arch binary; overwrite it
@@ -71,12 +82,13 @@ console.log(`\n▶ Synced better-sqlite3 (${npmArch}) → server bundle`);
 // 8. Tauri build — platform-specific bundle targets
 //    macOS:   build .app only (we create the DMG manually to fix server/ first)
 //    Windows: NSIS installer
-//    Linux:   deb only (AppImage requires linuxdeploy which fails in CI due to
-//             FUSE/sandbox restrictions even with APPIMAGE_EXTRACT_AND_RUN=1)
+//    Linux:   AppImage + deb.  appimagetool is itself an AppImage; CI runners
+//             lack kernel FUSE support, so the workflow sets
+//             APPIMAGE_EXTRACT_AND_RUN=1 to use extract-and-run mode instead.
 const bundleFlag =
   process.platform === "darwin"  ? "--bundles app" :
   process.platform === "win32"   ? "--bundles nsis" :
-  /* linux */                      "--bundles deb";
+  /* linux */                      "--bundles appimage,deb";
 
 const targetFlag = target ? `--target ${target}` : "";
 

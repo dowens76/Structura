@@ -1,6 +1,6 @@
 "use client";
 
-import { useLayoutEffect, useRef, useState, useCallback, RefObject } from "react";
+import { useLayoutEffect, useMemo, useRef, useState, useCallback, RefObject } from "react";
 import { hierarchy } from "d3-hierarchy";
 import type { RstRelation } from "@/lib/db/schema";
 import {
@@ -15,10 +15,11 @@ const HANG_PX      = 32;  // must match VerseDisplay HANG_PX
 const LEVEL_WIDTH  = 18;  // px per nesting depth level
 
 /**
- * LTR texts: extra left padding added to the container so the tree has room.
- * The padding is applied imperatively to containerRef when !isHebrew.
+ * LTR texts: minimum left padding added to the container so the tree has room.
+ * The actual padding grows automatically when the tree is deeply nested.
+ * See `useRequiredGutter` below.
  */
-const LTR_GUTTER   = 72;  // px left padding for LTR view
+const LTR_GUTTER_MIN = 72;  // px — minimum left padding for LTR view
 
 /**
  * LTR/translation leaf nodes sit this many px to the left of each segment's
@@ -313,14 +314,15 @@ function layoutTree(
   const use3Col = hasTranslationProp && isFinite(refSrcCellRightX) && isHebrew;
 
   // Hebrew 2-col: the minimum left-edge of any verse-label element.
-  // The source tree must stay at or left of this boundary so it doesn't
-  // overlap the verse number.
+  // In 2-col mode the container gets extra paddingRight so the tree always has
+  // room — the label bound is therefore not needed there.  We keep it only for
+  // 3-col Hebrew (where the centre label column has a fixed width) as a fallback.
   let hebrewLabelBound = Infinity;
   for (const pos of posMap.values()) {
     if (pos.labelLeftX !== undefined)
       hebrewLabelBound = Math.min(hebrewLabelBound, pos.labelLeftX);
   }
-  const hasLabelBound = !use3Col && isHebrew && isFinite(hebrewLabelBound);
+  const hasLabelBound = use3Col && isHebrew && isFinite(hebrewLabelBound);
 
   // Pre-compute max hierarchy depth.
   const maxDepth = hierForLeaves.height; // 0 if only root; typically 2–4
@@ -458,15 +460,46 @@ export default function RstRelationOverlay({
   const [posMap,      setPosMap]      = useState<Map<string, SegPos>>(new Map());
   const [hoveredGroup, setHoveredGroup] = useState<string | null>(null);
 
+  // ── Compute required gutters from tree depth ─────────────────────────────────
+  // Computed via useMemo (no DOM) so padding effects have the right value before
+  // the first layout measurement runs.
+  // LTR: left padding grows with depth so deep trees never clip off the left edge.
+  // Hebrew 2-col: right padding grows with depth so the tree never overlaps verse labels.
+  // (Hebrew 3-col uses the centre column and is already wide enough in practice.)
+  const [requiredLtrGutter, requiredHebGutter] = useMemo(() => {
+    const treeRoot = buildRstTree(relations, paragraphFirstWordIds);
+    const h = hierarchy(treeRoot, (n: ReturnType<typeof buildRstTree>) => n.children);
+    const depth = Math.max(h.height, 1);
+    const needed = LEAF_MARGIN + depth * LEVEL_WIDTH + 16;
+    return [
+      Math.max(LTR_GUTTER_MIN, needed), // LTR left gutter
+      needed,                            // Hebrew right gutter (no hard minimum)
+    ];
+  // paragraphFirstWordIds changes identity each render; join() gives a stable key.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [relations, paragraphFirstWordIds.join(",")]);
+
   // ── LTR: add left padding so the source tree has gutter room ─────────────────
   // Applied for all LTR layouts (2-col and 3-col with translation).
+  // Uses a fixed minimum even when there are no relations, so the page layout
+  // doesn't shift when the first relation is added in editing mode.
   useLayoutEffect(() => {
     const container = containerRef.current;
     if (!container || isHebrew) return;
     const prev = container.style.paddingLeft;
-    container.style.paddingLeft = `${LTR_GUTTER}px`;
+    container.style.paddingLeft = `${requiredLtrGutter}px`;
     return () => { container.style.paddingLeft = prev; };
-  }, [containerRef, isHebrew, hasTranslation]);
+  }, [containerRef, isHebrew, hasTranslation, requiredLtrGutter]);
+
+  // ── Hebrew 2-col: add right padding so the tree doesn't overlap verse labels ──
+  // Only applies when there are actual RST relations to draw.
+  useLayoutEffect(() => {
+    const container = containerRef.current;
+    if (!container || !isHebrew || hasTranslation || relations.length === 0) return;
+    const prev = container.style.paddingRight;
+    container.style.paddingRight = `${requiredHebGutter}px`;
+    return () => { container.style.paddingRight = prev; };
+  }, [containerRef, isHebrew, hasTranslation, relations.length, requiredHebGutter]);
 
   const allSegIds = [
     ...new Set([
@@ -532,23 +565,43 @@ export default function RstRelationOverlay({
     >
       {/* ── Tree edges ────────────────────────────────────────────────────── */}
       {(() => {
-        // For every parent, compute a single shared spine X so that all siblings
-        // bend their elbows at the same column.  This makes the vertical segments of
-        // multiple satellites from the same nucleus overlap rather than fan out to
-        // separate x positions (which would happen when paragraphs are differently indented).
+        // Build a per-group spine X.
         //
-        // The spine is placed at the parent chip's centre:
-        //   LTR  →  x_parent + LEVEL_WIDTH  (chip sits to the right of the node anchor)
-        //   RTL  →  x_parent − LEVEL_WIDTH  (chip sits to the left of the node anchor)
+        // The spine is placed LEVEL_WIDTH beyond the *innermost* leaf in the group
+        // (innermost = closest to the margin, i.e. furthest from the text):
+        //   LTR / translation  →  smallest  x2  across all children → spine to the left
+        //   Hebrew source (RTL) →  largest   x2  across all children → spine to the right
+        //
+        // Using the innermost leaf (rather than the nucleus leaf alone) guarantees two things:
+        //   1. All horizontal arms run in the correct direction (toward the text, never backward).
+        //   2. When the nucleus is the least-indented member, its arm equals exactly LEVEL_WIDTH.
+        //
+        // Key: `${parentId}:${isTrans}` to avoid source/translation key collisions.
+        const spineXByParent = new Map<string, number>();
+        for (const lk of layoutLinks) {
+          const key      = `${lk.parentId}:${lk.isTrans ? 1 : 0}`;
+          const isRtlSrc = isHebrew && !lk.isTrans;
+          const cur      = spineXByParent.get(key);
+          if (isRtlSrc) {
+            // RTL: take the maximum (rightmost) leaf x2
+            spineXByParent.set(key, cur === undefined ? lk.x2 : Math.max(cur, lk.x2));
+          } else {
+            // LTR: take the minimum (leftmost) leaf x2
+            spineXByParent.set(key, cur === undefined ? lk.x2 : Math.min(cur, lk.x2));
+          }
+        }
+        // Offset each group's innermost-leaf position by LEVEL_WIDTH in the outward direction.
+        for (const [key, innerX] of spineXByParent) {
+          const isRtlSrc = key.endsWith(":0") && isHebrew;
+          spineXByParent.set(key, isRtlSrc ? innerX + LEVEL_WIDTH : innerX - LEVEL_WIDTH);
+        }
+
         return layoutLinks.map((lk, i) => {
           const meta   = relMap[lk.relType];
           const color  = meta?.color ?? "#6B7280";
           const isSat  = lk.role === "satellite";
-          // Spine is at the parent group's x position.
-          // All siblings from the same parent share this x automatically.
-          // Path: vertical from parent x at nucleus-Y to child Y, then
-          // horizontal arm to child x (leaf position).
-          const spineX = lk.x1;
+          const key    = `${lk.parentId}:${lk.isTrans ? 1 : 0}`;
+          const spineX = spineXByParent.get(key) ?? lk.x1;
           const pathD  = `M ${spineX},${lk.y1} V ${lk.y2} H ${lk.x2}`;
           return (
             <path
