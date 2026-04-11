@@ -13,7 +13,7 @@
  * Run: npm run tauri:build
  */
 import { execSync } from "child_process";
-import { writeFileSync, unlinkSync, copyFileSync } from "fs";
+import { writeFileSync, unlinkSync, copyFileSync, existsSync, readdirSync, rmSync } from "fs";
 import { fileURLToPath } from "url";
 import path from "path";
 
@@ -79,7 +79,26 @@ copyFileSync(
 );
 console.log(`\n▶ Synced better-sqlite3 (${npmArch}) → server bundle`);
 
-// 8. Tauri build — platform-specific bundle targets
+// 8. Remove musl-libc Sharp variants on Linux.
+//    sharp ships separate native binaries for glibc (Ubuntu/Debian) and musl libc
+//    (Alpine). Both land in the Next.js standalone bundle. On a glibc runner the
+//    musl binaries have an unsatisfied dependency on libc.musl-x86_64.so.1, which
+//    makes linuxdeploy abort with "Could not find dependency". Strip them out before
+//    Tauri packages the AppDir.
+if (process.platform === "linux") {
+  const imgDir = path.join(ROOT, "src-tauri/resources/server/node_modules/@img");
+  if (existsSync(imgDir)) {
+    console.log("\n▶ Removing musl Sharp variants from server bundle");
+    for (const pkg of readdirSync(imgDir)) {
+      if (pkg.includes("musl")) {
+        rmSync(path.join(imgDir, pkg), { recursive: true });
+        console.log(`  removed: @img/${pkg}`);
+      }
+    }
+  }
+}
+
+// 9. Tauri build — platform-specific bundle targets
 //    macOS:   build .app only (we create the DMG manually to fix server/ first)
 //    Windows: NSIS installer
 //    Linux:   AppImage + deb.  appimagetool is itself an AppImage; CI runners
@@ -119,7 +138,7 @@ try {
   unlinkSync(overrideCfgPath);
 }
 
-// 9. macOS: fix flattened server/ directory inside .app bundle
+// 10. macOS: fix flattened server/ directory inside .app bundle
 if (process.platform === "darwin") {
   run("node scripts/fix-app-bundle.mjs", "Fixing .app bundle server/ structure");
 }
