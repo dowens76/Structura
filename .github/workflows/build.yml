@@ -79,6 +79,10 @@ jobs:
             libfuse2 \
             squashfs-tools
 
+      - name: Allow unprivileged user namespaces (required for AppImage)
+        if: runner.os == 'Linux'
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+
       # ── Build ─────────────────────────────────────────────────────────────────
       - name: Build Tauri app
         run: npm run tauri:build
