@@ -85,10 +85,14 @@ console.log(`\n▶ Synced better-sqlite3 (${npmArch}) → server bundle`);
 //    Linux:   AppImage + deb.  appimagetool is itself an AppImage; CI runners
 //             lack kernel FUSE support, so the workflow sets
 //             APPIMAGE_EXTRACT_AND_RUN=1 to use extract-and-run mode instead.
+//             --verbose is added on Linux so Tauri surfaces linuxdeploy's
+//             captured output in the CI log when bundling fails.
 const bundleFlag =
   process.platform === "darwin"  ? "--bundles app" :
   process.platform === "win32"   ? "--bundles nsis" :
   /* linux */                      "--bundles appimage,deb";
+
+const verboseFlag = process.platform === "linux" ? "--verbose" : "";
 
 const targetFlag = target ? `--target ${target}` : "";
 
@@ -107,7 +111,7 @@ const overrideCfgPath = path.join(ROOT, ".tauri-build-override.json");
 writeFileSync(overrideCfgPath, JSON.stringify({ build: { beforeBuildCommand: "" } }));
 try {
   run(
-    `npx tauri build ${targetFlag} ${bundleFlag} --config .tauri-build-override.json`.replace(/\s+/g, " ").trim(),
+    `npx tauri build ${targetFlag} ${bundleFlag} ${verboseFlag} --config .tauri-build-override.json`.replace(/\s+/g, " ").trim(),
     `tauri build ${targetFlag} ${bundleFlag}`.trim(),
     tauriBuildEnv
   );

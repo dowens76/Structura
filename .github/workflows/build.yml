@@ -81,7 +81,20 @@ jobs:
 
       - name: Allow unprivileged user namespaces (required for AppImage)
         if: runner.os == 'Linux'
-        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+        run: |
+          # Both sysctls exist on some kernel versions but not all — ignore errors.
+          sudo sysctl -w kernel.unprivileged_userns_clone=1 2>/dev/null || true
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 2>/dev/null || true
+
+      - name: Test linuxdeploy execution
+        if: runner.os == 'Linux'
+        run: |
+          mkdir -p /tmp/ld-preflight
+          wget -q https://github.com/tauri-apps/binary-releases/releases/download/linuxdeploy/linuxdeploy-x86_64.AppImage \
+            -O /tmp/ld-preflight/linuxdeploy
+          chmod +x /tmp/ld-preflight/linuxdeploy
+          echo "--- linuxdeploy self-test ---"
+          APPIMAGE_EXTRACT_AND_RUN=1 /tmp/ld-preflight/linuxdeploy --version 2>&1 || echo "Exit code: $?"
 
       # ── Build ─────────────────────────────────────────────────────────────────
       - name: Build Tauri app
