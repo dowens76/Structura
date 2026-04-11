@@ -6,8 +6,6 @@ on:
       - "v*"
   workflow_dispatch:
 
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   build:
@@ -39,13 +37,13 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           lfs: true
 
       # ── Node.js ──────────────────────────────────────────────────────────────
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: "24"
           cache: "npm"
@@ -184,7 +182,7 @@ jobs:
 
       - name: Archive macOS DMG (manual run)
         if: runner.os == 'macOS' && !startsWith(github.ref, 'refs/tags/v')
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: Structura_${{ matrix.friendly }}
           path: src-tauri/target/${{ matrix.target }}/release/bundle/dmg/Structura_${{ matrix.friendly }}.dmg
@@ -192,7 +190,7 @@ jobs:
 
       - name: Archive Windows installer (manual run)
         if: runner.os == 'Windows' && !startsWith(github.ref, 'refs/tags/v')
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: Structura_${{ matrix.friendly }}
           path: src-tauri/target/${{ matrix.target }}/release/bundle/nsis/Structura_${{ matrix.friendly }}.exe
@@ -200,7 +198,7 @@ jobs:
 
       - name: Archive Linux AppImage (manual run)
         if: runner.os == 'Linux' && !startsWith(github.ref, 'refs/tags/v')
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: Structura_${{ matrix.friendly }}_AppImage
           path: src-tauri/target/${{ matrix.target }}/release/bundle/appimage/Structura_${{ matrix.friendly }}.AppImage
@@ -208,7 +206,7 @@ jobs:
 
       - name: Archive Linux deb (manual run)
         if: runner.os == 'Linux' && !startsWith(github.ref, 'refs/tags/v')
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: Structura_${{ matrix.friendly }}_deb
           path: src-tauri/target/${{ matrix.target }}/release/bundle/deb/Structura_${{ matrix.friendly }}.deb
