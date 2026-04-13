@@ -26,6 +26,7 @@ import type { RstCustomType } from "@/lib/db/schema";
 import hebrewLemmas from "@/lib/data/hebrew-lemmas.json";
 import { computeSectionRanges } from "@/lib/utils/sectionRanges";
 import { generateOutline } from "@/lib/utils/outlineExport";
+import { useTranslation } from "@/lib/i18n/LocaleContext";
 
 /** Returns true if the word's surface text is entirely punctuation and should
  *  be skipped during character / word-tag selection. */
@@ -110,6 +111,7 @@ export default function ChapterDisplay({
   ultTranslation = null,
   headingSlot,
 }: ChapterDisplayProps) {
+  const { t } = useTranslation();
   // Use fallback defaults for SSR — localStorage values are loaded in useEffect after hydration
   const [displayMode, setDisplayMode] = useState<DisplayMode>("clean");
   const [interlinearSubMode, setInterlinearSubMode] = useState<InterlinearSubMode>("lemma");
@@ -2145,7 +2147,7 @@ export default function ChapterDisplay({
                 setPanelOpen(false);
               }
             }}
-            title={presentationMode ? "Exit presentation mode" : "Enter presentation mode — larger text, minimal toolbar"}
+            title={presentationMode ? t("toolbar.titlePresentationOn") : t("toolbar.titlePresentationOff")}
             className={[
               "px-2.5 py-1 rounded text-xs font-medium transition-colors",
               presentationMode
@@ -2182,7 +2184,7 @@ export default function ChapterDisplay({
               )}
               <button
                 onClick={() => setShowTooltips((v) => !v)}
-                title={showTooltips ? "Disable hover tooltips" : "Enable hover tooltips"}
+                title={showTooltips ? t("toolbar.titleTooltipsOn") : t("toolbar.titleTooltipsOff")}
                 className={[
                   "px-2.5 py-1 rounded text-xs font-medium transition-colors",
                   showTooltips
@@ -2190,7 +2192,7 @@ export default function ChapterDisplay({
                     : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
                 ].join(" ")}
               >
-                Tooltips
+                {t("toolbar.tooltips")}
               </button>
 
               {isHebrew && (
@@ -2223,8 +2225,8 @@ export default function ChapterDisplay({
               <button
                 onClick={() => setEditingParagraphs((v) => !v)}
                 title={editingParagraphs
-                  ? "Exit paragraph edit mode"
-                  : "Enter paragraph edit mode — click any word to start/remove a paragraph there"}
+                  ? t("toolbar.titleParagraphOn")
+                  : t("toolbar.titleParagraphOff")}
                 className={[
                   "px-2.5 py-1 rounded text-xs font-medium transition-colors",
                   editingParagraphs
@@ -2239,8 +2241,8 @@ export default function ChapterDisplay({
               <button
                 onClick={() => editingScenes ? handleExitSceneEditing() : setEditingScenes(true)}
                 title={editingScenes
-                  ? "Exit section break mode"
-                  : "Enter section break mode — click any word to start/remove a section break there"}
+                  ? t("toolbar.titleSectionOn")
+                  : t("toolbar.titleSectionOff")}
                 className={[
                   "px-2.5 py-1 rounded text-xs font-medium transition-colors",
                   editingScenes
@@ -2259,8 +2261,8 @@ export default function ChapterDisplay({
                   setAnnotRangeEnd(null);
                 }}
                 title={editingAnnotations
-                  ? "Exit annotation mode"
-                  : "Add plot/theme annotations to paragraph segments"}
+                  ? t("toolbar.titleAnnotationOn")
+                  : t("toolbar.titleAnnotationOff")}
                 className={[
                   "px-2.5 py-1 rounded text-xs font-medium transition-colors",
                   editingAnnotations
@@ -2282,7 +2284,7 @@ export default function ChapterDisplay({
               setPendingWordTag(false);
               setSpeechRangeStart(null);
             }}
-            title={editingRefs ? "Exit reference tagging" : "Tag words as referring to a character"}
+            title={editingRefs ? t("toolbar.titleRefsOn") : t("toolbar.titleRefsOff")}
             className={[
               "px-2.5 py-1 rounded text-xs font-medium transition-colors",
               editingRefs
@@ -2304,8 +2306,8 @@ export default function ChapterDisplay({
                 setSpeechRangeStart(null);
               }}
               title={editingSpeech
-                ? "Exit speech tagging"
-                : "Mark word ranges as spoken by a character (two clicks: start then end)"}
+                ? t("toolbar.titleSpeechOn")
+                : t("toolbar.titleSpeechOff")}
               className={[
                 "px-2.5 py-1 rounded text-xs font-medium transition-colors",
                 editingSpeech
@@ -2328,8 +2330,8 @@ export default function ChapterDisplay({
               setPendingWordTag(false);
             }}
             title={editingWordTags
-              ? "Exit word/concept tag mode"
-              : "Tag words or concepts with colour highlights"}
+              ? t("toolbar.titleWordTagOn")
+              : t("toolbar.titleWordTagOff")}
             className={[
               "px-2.5 py-1 rounded text-xs font-medium transition-colors",
               editingWordTags
@@ -2353,8 +2355,8 @@ export default function ChapterDisplay({
                   setPendingWordTag(false);
                 }}
                 title={editingIndents
-                  ? "Exit indent mode"
-                  : "Indent paragraphs to indicate subordinate clauses (use − / + next to the paragraph label)"}
+                  ? t("toolbar.titleIndentOn")
+                  : t("toolbar.titleIndentOff")}
                 className={[
                   "px-2.5 py-1 rounded text-xs font-medium transition-colors",
                   editingIndents
@@ -2370,8 +2372,8 @@ export default function ChapterDisplay({
                 <label
                   className="flex items-center gap-1 text-[11px] text-stone-500 dark:text-stone-400 cursor-pointer select-none"
                   title={indentsLinked
-                    ? "Source and translation indent are linked — uncheck to set them independently"
-                    : "Source and translation indent are independent — check to link them"}
+                    ? t("toolbar.titleIndentLinked")
+                    : t("toolbar.titleIndentUnlinked")}
                 >
                   <input
                     type="checkbox"
@@ -2391,7 +2393,7 @@ export default function ChapterDisplay({
                     }}
                     className="w-3 h-3 accent-teal-600 cursor-pointer"
                   />
-                  S↔T
+                  {t("toolbar.indentLinkLabel")}
                 </label>
               )}
 
@@ -2409,8 +2411,8 @@ export default function ChapterDisplay({
                   if (!entering) setShowRstTypeManager(false);
                 }}
                 title={editingRst
-                  ? "Exit RST relation mode"
-                  : "Mark RST (Rhetorical Structure Theory) relations between paragraph segments"}
+                  ? t("toolbar.titleRstOn")
+                  : t("toolbar.titleRstOff")}
                 className={[
                   "px-2.5 py-1 rounded text-xs font-medium transition-colors",
                   editingRst
@@ -2423,7 +2425,7 @@ export default function ChapterDisplay({
               {editingRst && (
                 <button
                   onClick={() => setShowRstTypeManager((v) => !v)}
-                  title="Manage RST label types"
+                  title={t("toolbar.titleRstLabels")}
                   className={[
                     "px-2.5 py-1 rounded text-xs font-medium transition-colors",
                     showRstTypeManager
@@ -2431,7 +2433,7 @@ export default function ChapterDisplay({
                       : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
                   ].join(" ")}
                 >
-                  Labels
+                  {t("toolbar.rstLabels")}
                 </button>
               )}
 
@@ -2446,8 +2448,8 @@ export default function ChapterDisplay({
                   setArrowFromWordId(null);
                 }}
                 title={editingArrows
-                  ? "Exit word arrow mode"
-                  : "Draw free-form arrows between words"}
+                  ? t("toolbar.titleArrowOn")
+                  : t("toolbar.titleArrowOff")}
                 className={[
                   "px-2.5 py-1 rounded text-xs font-medium transition-colors",
                   editingArrows
@@ -2469,7 +2471,7 @@ export default function ChapterDisplay({
                       return prev.slice(0, -1);
                     });
                   }}
-                  title={`Undo: ${undoStack[undoStack.length - 1].label} (Ctrl/Cmd+Z)`}
+                  title={t("toolbar.titleUndo", { label: undoStack[undoStack.length - 1].label })}
                   className="px-2.5 py-1 rounded text-xs font-medium bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700 transition-colors"
                 >
                   ↩ {undoStack[undoStack.length - 1].label}
@@ -2491,7 +2493,7 @@ export default function ChapterDisplay({
                   setRstSegA(null);
                   setArrowFromWordId(null);
                 }}
-                title={editingBold ? "Exit bold mode" : "Click words to toggle bold"}
+                title={editingBold ? t("toolbar.titleBoldOn") : t("toolbar.titleBoldOff")}
                 className={[
                   "px-2.5 py-1 rounded text-xs font-bold transition-colors",
                   editingBold
@@ -2517,7 +2519,7 @@ export default function ChapterDisplay({
                   setRstSegA(null);
                   setArrowFromWordId(null);
                 }}
-                title={editingItalic ? "Exit italic mode" : "Click words to toggle italic"}
+                title={editingItalic ? t("toolbar.titleItalicOn") : t("toolbar.titleItalicOff")}
                 className={[
                   "px-2.5 py-1 rounded text-xs italic transition-colors",
                   editingItalic
@@ -2532,7 +2534,7 @@ export default function ChapterDisplay({
               <div className="border-l border-[var(--border)] pl-3 ml-1">
                 <button
                   onClick={() => setShowClearDialog(true)}
-                  title="Clear annotations by category"
+                  title={t("toolbar.titleClear")}
                   className="px-2.5 py-1 rounded text-xs font-medium transition-colors bg-stone-100 dark:bg-stone-800 text-stone-500 dark:text-stone-400 hover:bg-red-100 hover:text-red-600 dark:hover:bg-red-950 dark:hover:text-red-400"
                 >
                   🗑
@@ -2543,7 +2545,7 @@ export default function ChapterDisplay({
               <div className="border-l border-[var(--border)] pl-3 ml-1">
                 <button
                   onClick={() => setNotesOpen((v) => !v)}
-                  title={notesOpen ? "Hide notes pane" : "Show notes pane"}
+                  title={notesOpen ? t("toolbar.titleNotesOn") : t("toolbar.titleNotesOff")}
                   className={[
                     "px-2.5 py-1 rounded text-xs font-medium transition-colors",
                     notesOpen
@@ -2562,9 +2564,9 @@ export default function ChapterDisplay({
                   onClick={handleExportOutline}
                   className="shrink-0 text-xs px-2 py-1 rounded hover:bg-stone-200 dark:hover:bg-stone-700 transition-colors bg-stone-100 dark:bg-stone-800"
                   style={{ color: "var(--text-muted)" }}
-                  title="Copy section break outline to clipboard"
+                  title={t("toolbar.titleCopyOutline")}
                 >
-                  {outlineCopied ? "✓ Copied" : "📋 Outline"}
+                  {outlineCopied ? t("toolbar.outlineCopied") : t("toolbar.outline")}
                 </button>
               )}
 
@@ -2573,8 +2575,8 @@ export default function ChapterDisplay({
                 <button
                   onClick={() => setUseLinguisticTerms((v) => !v)}
                   title={useLinguisticTerms
-                    ? "Show descriptive aspect names (Perfect, Imperfect…)"
-                    : "Show linguistic terms (Qatal, Yiqtol, Wayyiqtol, Weqatal)"}
+                    ? t("toolbar.titleLinguisticOn")
+                    : t("toolbar.titleLinguisticOff")}
                   className={[
                     "px-2.5 py-1 rounded text-xs font-medium transition-colors",
                     useLinguisticTerms
@@ -2590,7 +2592,7 @@ export default function ChapterDisplay({
               {allAvailableTranslations.length > 0 && (
                 <div className="flex items-center gap-1 border-l border-[var(--border)] pl-4">
                   <span className="text-xs text-stone-400 dark:text-stone-500 mr-1 select-none">
-                    Tr:
+                    {t("toolbar.trLabel")}
                   </span>
                   <TranslationPicker
                     availableTranslations={allAvailableTranslations}
@@ -2601,7 +2603,7 @@ export default function ChapterDisplay({
                   {hasActiveTranslations && (
                     <button
                       onClick={() => setHideSourceText((v) => !v)}
-                      title={hideSourceText ? `Show ${textSource} text` : `Hide ${textSource} text`}
+                      title={hideSourceText ? t("toolbar.titleShowSource", { source: textSource }) : t("toolbar.titleHideSource", { source: textSource })}
                       className={[
                         "px-2.5 py-1 rounded text-xs font-medium font-mono transition-colors",
                         !hideSourceText
@@ -2615,7 +2617,7 @@ export default function ChapterDisplay({
                   {hasActiveTranslations && (
                     <button
                       onClick={() => setEditingTranslation((v) => !v)}
-                      title={editingTranslation ? "Exit translation edit mode" : "Edit translation text"}
+                      title={editingTranslation ? t("toolbar.titleEditTranslationOn") : t("toolbar.titleEditTranslationOff")}
                       className={[
                         "px-2.5 py-1 rounded text-xs font-medium transition-colors",
                         editingTranslation
@@ -2635,15 +2637,15 @@ export default function ChapterDisplay({
                 return (
                   <div className="flex items-center gap-2 border-l border-[var(--border)] pl-4">
                     <span className="text-xs text-stone-400 dark:text-stone-500 select-none">
-                      {isHebrew ? "Heb" : "Grk"}
+                      {isHebrew ? t("toolbar.sourceLabel") : t("toolbar.sourceLabelGk")}
                     </span>
-                    <button className={sizeBtn} onClick={() => adjustFontSize("source", -0.125)} title="Decrease source text size">A−</button>
-                    <button className={sizeBtn} onClick={() => adjustFontSize("source", +0.125)} title="Increase source text size">A+</button>
+                    <button className={sizeBtn} onClick={() => adjustFontSize("source", -0.125)} title={t("toolbar.titleDecreaseSource")}>A−</button>
+                    <button className={sizeBtn} onClick={() => adjustFontSize("source", +0.125)} title={t("toolbar.titleIncreaseSource")}>A+</button>
                     {hasActiveTranslations && (
                       <>
-                        <span className="text-xs text-stone-400 dark:text-stone-500 select-none ml-1">Tr</span>
-                        <button className={sizeBtn} onClick={() => adjustFontSize("translation", -0.0625)} title="Decrease translation text size">A−</button>
-                        <button className={sizeBtn} onClick={() => adjustFontSize("translation", +0.0625)} title="Increase translation text size">A+</button>
+                        <span className="text-xs text-stone-400 dark:text-stone-500 select-none ml-1">{t("toolbar.trSizeLabel")}</span>
+                        <button className={sizeBtn} onClick={() => adjustFontSize("translation", -0.0625)} title={t("toolbar.titleDecreaseTr")}>A−</button>
+                        <button className={sizeBtn} onClick={() => adjustFontSize("translation", +0.0625)} title={t("toolbar.titleIncreaseTr")}>A+</button>
                       </>
                     )}
                   </div>
@@ -2671,7 +2673,7 @@ export default function ChapterDisplay({
         {/* Speech range start hint */}
         {editingSpeech && speechRangeStart && (
           <div className="px-6 py-1 text-xs bg-violet-50 dark:bg-violet-950 border-b border-violet-200 dark:border-violet-800 text-violet-700 dark:text-violet-300">
-            Start paragraph set — now click any word in the end paragraph to complete the speech section
+            {t("toolbar.hintSpeechRange")}
           </div>
         )}
 
@@ -2697,7 +2699,7 @@ export default function ChapterDisplay({
         {/* Pending word tag hint */}
         {editingWordTags && pendingWordTag && (
           <div className="px-6 py-1 text-xs bg-yellow-50 dark:bg-yellow-950 border-b border-yellow-200 dark:border-yellow-800 text-yellow-700 dark:text-yellow-300">
-            Click a source word to name this tag by its lemma
+            {t("toolbar.hintPendingTag")}
           </div>
         )}
 
@@ -2706,8 +2708,8 @@ export default function ChapterDisplay({
           <div className="px-6 py-1 text-xs border-b border-[var(--border)] text-stone-500 dark:text-stone-400"
                style={{ backgroundColor: "var(--nav-bg)" }}>
             {rstSegA
-              ? "First endpoint selected — click a segment dot or group connector dot to complete the relation"
-              : "Click a segment dot (◉) or group connector dot to start an RST relation. Click a label chip to change its type."}
+              ? t("toolbar.hintRstA")
+              : t("toolbar.hintRstStart")}
           </div>
         )}
 
@@ -2720,9 +2722,9 @@ export default function ChapterDisplay({
             {/* Relation type buttons */}
             <div className="flex flex-wrap gap-1.5 items-center">
               <span className="text-xs font-medium mr-1" style={{ color: "var(--nav-fg-muted)" }}>
-                RST Relation:
+                {t("toolbar.rstRelation")}
               </span>
-              <span className="text-xs opacity-50 mr-0.5 select-none">Coord.</span>
+              <span className="text-xs opacity-50 mr-0.5 select-none">{t("toolbar.rstCoord")}</span>
               {allRstTypes.filter((r) => r.category === "coordinate").map((r) => (
                 <button
                   key={r.key}
@@ -2734,7 +2736,7 @@ export default function ChapterDisplay({
                 </button>
               ))}
               <span className="text-xs opacity-30 mx-1 select-none">|</span>
-              <span className="text-xs opacity-50 mr-0.5 select-none">Sub.</span>
+              <span className="text-xs opacity-50 mr-0.5 select-none">{t("toolbar.rstSub")}</span>
               {allRstTypes.filter((r) => r.category === "subordinate").map((r) => (
                 <button
                   key={r.key}
@@ -2749,25 +2751,25 @@ export default function ChapterDisplay({
                 onClick={handleCancelRstPicker}
                 className="ml-auto text-xs px-2 py-0.5 rounded bg-stone-200 dark:bg-stone-700 text-stone-600 dark:text-stone-300"
               >
-                Cancel
+                {t("toolbar.cancel")}
               </button>
             </div>
             {/* Nucleus/satellite swap row (only relevant for subordinate) */}
             <div className="flex items-center gap-2 text-xs text-stone-500 dark:text-stone-400">
-              <span>Roles:</span>
+              <span>{t("toolbar.rstRoles")}</span>
               <span className={`px-1.5 py-0.5 rounded font-medium ${!rstRolesSwapped ? "bg-violet-100 dark:bg-violet-900 text-violet-700 dark:text-violet-300" : "bg-stone-100 dark:bg-stone-800"}`}>
-                Seg A = {rstRolesSwapped ? "satellite" : "nucleus"}
+                {t("toolbar.rstSegA")} {rstRolesSwapped ? t("toolbar.rstSatellite") : t("toolbar.rstNucleus")}
               </span>
               <span>→</span>
               <span className={`px-1.5 py-0.5 rounded font-medium ${rstRolesSwapped ? "bg-violet-100 dark:bg-violet-900 text-violet-700 dark:text-violet-300" : "bg-stone-100 dark:bg-stone-800"}`}>
-                Seg B = {rstRolesSwapped ? "nucleus" : "satellite"}
+                {t("toolbar.rstSegB")} {rstRolesSwapped ? t("toolbar.rstNucleus") : t("toolbar.rstSatellite")}
               </span>
               <button
                 onClick={() => setRstRolesSwapped((v) => !v)}
                 className="text-[10px] px-1.5 py-0.5 rounded bg-stone-200 dark:bg-stone-700 hover:bg-stone-300 dark:hover:bg-stone-600 transition-colors"
-                title="Swap nucleus and satellite roles"
-              >⇄ swap</button>
-              <span className="text-[10px] opacity-50">(applies to subordinate relations only)</span>
+                title={t("toolbar.titleRstSwap")}
+              >{t("toolbar.rstSwap")}</button>
+              <span className="text-[10px] opacity-50">{t("toolbar.rstSubOnly")}</span>
             </div>
           </div>
         )}
@@ -2780,9 +2782,9 @@ export default function ChapterDisplay({
           >
             <div className="flex flex-wrap gap-1.5 items-center">
               <span className="text-xs font-medium mr-1" style={{ color: "var(--nav-fg-muted)" }}>
-                Change type:
+                {t("toolbar.rstChangeType")}
               </span>
-              <span className="text-xs opacity-50 mr-0.5 select-none">Coord.</span>
+              <span className="text-xs opacity-50 mr-0.5 select-none">{t("toolbar.rstCoord")}</span>
               {allRstTypes.filter((r) => r.category === "coordinate").map((r) => (
                 <button
                   key={r.key}
@@ -2794,7 +2796,7 @@ export default function ChapterDisplay({
                 </button>
               ))}
               <span className="text-xs opacity-30 mx-1 select-none">|</span>
-              <span className="text-xs opacity-50 mr-0.5 select-none">Sub.</span>
+              <span className="text-xs opacity-50 mr-0.5 select-none">{t("toolbar.rstSub")}</span>
               {allRstTypes.filter((r) => r.category === "subordinate").map((r) => (
                 <button
                   key={r.key}
@@ -2809,7 +2811,7 @@ export default function ChapterDisplay({
                 onClick={() => setRstEditGroupId(null)}
                 className="ml-auto text-xs px-2 py-0.5 rounded bg-stone-200 dark:bg-stone-700 text-stone-600 dark:text-stone-300"
               >
-                Cancel
+                {t("toolbar.cancel")}
               </button>
             </div>
           </div>
@@ -2819,11 +2821,11 @@ export default function ChapterDisplay({
         {editingRst && showRstTypeManager && (
           <RstTypeManager
             customTypes={customRstTypes}
-            onAdd={async (t) => {
+            onAdd={async (entry) => {
               const res = await fetch("/api/rst-custom-types", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(t),
+                body: JSON.stringify(entry),
               });
               if (res.ok) {
                 const row: RstCustomType = await res.json();
@@ -2838,12 +2840,12 @@ export default function ChapterDisplay({
               });
               if (res.ok) {
                 const row: RstCustomType = await res.json();
-                setCustomRstTypes((prev) => prev.map((t) => t.id === id ? row : t));
+                setCustomRstTypes((prev) => prev.map((entry) => entry.id === id ? row : entry));
               }
             }}
             onDelete={async (id) => {
               await fetch(`/api/rst-custom-types?id=${id}`, { method: "DELETE" });
-              setCustomRstTypes((prev) => prev.filter((t) => t.id !== id));
+              setCustomRstTypes((prev) => prev.filter((entry) => entry.id !== id));
             }}
           />
         )}
@@ -2853,8 +2855,8 @@ export default function ChapterDisplay({
           <div className="px-6 py-1 text-xs border-b border-[var(--border)] text-stone-500 dark:text-stone-400"
                style={{ backgroundColor: "var(--nav-bg)" }}>
             {arrowFromWordId
-              ? "Click a target word to complete the arrow"
-              : "Click a source word to start an arrow"}
+              ? t("toolbar.hintArrowTarget")
+              : t("toolbar.hintArrowSource")}
           </div>
         )}
 
@@ -2862,7 +2864,7 @@ export default function ChapterDisplay({
         {editingScenes && (
           <div className="px-6 py-1 text-xs border-b border-[var(--border)] text-stone-500 dark:text-stone-400"
                style={{ backgroundColor: "var(--nav-bg)" }}>
-            Click any word to mark/unmark a section break there
+            {t("toolbar.hintSectionBreak")}
           </div>
         )}
 
@@ -2871,10 +2873,10 @@ export default function ChapterDisplay({
           <div className="px-6 py-1 text-xs border-b border-[var(--border)] text-stone-500 dark:text-stone-400"
                style={{ backgroundColor: "var(--nav-bg)" }}>
             {annotRangeStart && !annotRangeEnd
-              ? "Click the end segment to complete the range (or the same segment for a single-line annotation)"
+              ? t("toolbar.hintAnnotRange")
               : annotRangeStart && annotRangeEnd
-              ? "Fill in the annotation form in the right column, then save"
-              : "Click any word to start annotating that paragraph segment"}
+              ? t("toolbar.hintAnnotFill")
+              : t("toolbar.hintAnnotStart")}
           </div>
         )}
 
@@ -3006,12 +3008,12 @@ export default function ChapterDisplay({
             <div className="flex flex-col h-full bg-[var(--background)] border-l border-[var(--border)] shadow-[-4px_0_16px_rgba(0,0,0,0.1)]">
               <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border)] shrink-0">
                 <h2 className="text-sm font-semibold text-stone-700 dark:text-stone-300">
-                  Word Analysis
+                  {t("toolbar.wordAnalysis")}
                 </h2>
                 <button
                   onClick={() => setPanelOpen(false)}
                   className="text-stone-400 hover:text-stone-600 dark:hover:text-stone-200 text-lg leading-none"
-                  aria-label="Close"
+                  aria-label={t("toolbar.close")}
                 >
                   ×
                 </button>

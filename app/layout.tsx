@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import FirstRunGuard from "@/components/FirstRunGuard";
+import { LocaleProvider } from "@/lib/i18n/LocaleContext";
 import "@fontsource/gentium-plus/greek-400.css";
 import "@fontsource/gentium-plus/greek-ext-400.css";
 import "@fontsource/gentium-plus/latin-400.css";
@@ -26,7 +27,9 @@ export default function RootLayout({
         />
       </head>
       <body className="antialiased">
-        <FirstRunGuard>{children}</FirstRunGuard>
+        <LocaleProvider>
+          <FirstRunGuard>{children}</FirstRunGuard>
+        </LocaleProvider>
       </body>
     </html>
   );

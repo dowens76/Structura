@@ -18,6 +18,7 @@ import ParallelChapterView from "@/components/text/ParallelChapterView";
 import PassageNavButtons from "@/components/passage/PassageNavButtons";
 import ChapterDropdown from "@/components/navigation/ChapterDropdown";
 import BookDropdown from "@/components/navigation/BookDropdown";
+import NavLinks from "@/components/navigation/NavLinks";
 import ThemeToggle from "@/components/ThemeToggle";
 import SettingsButton from "@/components/SettingsButton";
 import WorkspaceSwitcher from "@/components/WorkspaceSwitcher";
@@ -180,10 +181,7 @@ export default async function ChapterPage({ params, searchParams }: PageProps) {
 
         <span style={{ color: "var(--nav-border)" }} className="text-lg select-none">|</span>
 
-        {/* Book name + source badge */}
-        <span className="text-sm font-semibold" style={{ color: "var(--nav-fg-muted)" }}>
-          {bookName}
-        </span>
+        {/* Source badge */}
         <span
           className="text-xs px-1.5 py-0.5 rounded font-mono"
           style={{ backgroundColor: "rgba(200,155,60,0.18)", color: "var(--accent)" }}
@@ -191,84 +189,26 @@ export default async function ChapterPage({ params, searchParams }: PageProps) {
           {parallelMode ? "OSHB ‖ LXX" : textSource}
         </span>
 
-        {/* Source-switch links */}
-        {isLXX && OSHB_LXX_PARALLEL_BOOKS.has(osisBook) && (
-          <Link
-            href={oshbHref}
-            className="text-xs px-2 py-1 rounded transition-colors"
-            style={{ color: "var(--nav-fg)" }}
-            title="Switch to Hebrew (OSHB)"
-          >
-            ↔ OSHB
-          </Link>
-        )}
-        {textSource === "OSHB" && OSHB_LXX_PARALLEL_BOOKS.has(osisBook) && !parallelMode && (
-          <>
-            <Link
-              href={parallelHref}
-              className="text-xs px-2 py-1 rounded transition-colors"
-              style={{ color: "var(--nav-fg)" }}
-              title="View OSHB and LXX side by side"
-            >
-              ‖ Parallel LXX
-            </Link>
-            <Link
-              href={lxxHref}
-              className="text-xs px-2 py-1 rounded transition-colors"
-              style={{ color: "var(--nav-fg)" }}
-              title="Switch to Septuagint (LXX)"
-            >
-              ↔ LXX
-            </Link>
-          </>
-        )}
-        {parallelMode && (
-          <Link
-            href={`/${encodeURIComponent(osisBook)}/OSHB/${chapter}`}
-            className="text-xs px-2 py-1 rounded transition-colors"
-            style={{ color: "var(--nav-fg)" }}
-            title="Exit parallel view"
-          >
-            ✕ Exit Parallel
-          </Link>
-        )}
-
-        {/* Import link */}
-        <Link
-          href="/import"
-          className="text-xs px-2 py-1 rounded transition-colors"
-          style={{ color: "var(--nav-fg)" }}
-        >
-          + Import
-        </Link>
-
-        {/* Backup link */}
-        <Link
-          href="/backup"
-          className="text-xs px-2 py-1 rounded transition-colors"
-          style={{ color: "var(--nav-fg)" }}
-        >
-          Backup
-        </Link>
-
-        {/* Export link (only in non-parallel mode) */}
-        {!parallelMode && (
-          <Link
-            href={`/export/${encodeURIComponent(osisBook)}/${textSource}/${chapter}`}
-            target="_blank"
-            className="text-xs px-2 py-1 rounded transition-colors"
-            style={{ color: "var(--nav-fg)" }}
-          >
-            Export →
-          </Link>
-        )}
+        {/* Translatable nav links, source-switch links, and chapter navigation */}
+        <NavLinks
+          osisBook={osisBook}
+          textSource={textSource}
+          chapter={chapter}
+          chapterCount={chapterCount}
+          isLXX={isLXX}
+          canParallel={canParallel}
+          parallelMode={parallelMode}
+          oshbHref={oshbHref}
+          lxxHref={lxxHref}
+          parallelHref={parallelHref}
+          exportHref={`/export/${encodeURIComponent(osisBook)}/${textSource}/${chapter}`}
+        />
 
         {/* Book selector dropdown */}
         <BookDropdown
           books={sourceBooks ?? []}
           currentOsisBook={osisBook}
           textSource={textSource}
-          bookName={bookName}
         />
 
         {/* Chapter selector dropdown */}
@@ -293,48 +233,11 @@ export default async function ChapterPage({ params, searchParams }: PageProps) {
         {/* Workspace switcher */}
         <WorkspaceSwitcher activeWorkspaceId={workspaceId} />
 
-        {/* Account link */}
-        <Link
-          href="/account"
-          className="text-xs px-2 py-1 rounded transition-colors"
-          style={{ color: "var(--nav-fg)" }}
-        >
-          Account
-        </Link>
-
         {/* Settings */}
         <SettingsButton />
 
         {/* Theme toggle */}
         <ThemeToggle />
-
-        {/* Chapter navigation */}
-        <div className="ml-auto flex items-center gap-1">
-          {chapter > 1 && (
-            <Link
-              href={`/${encodeURIComponent(osisBook)}/${textSource}/${chapter - 1}${parallelMode ? "?par=1" : ""}`}
-              className="px-2 py-1 rounded text-sm transition-colors"
-              style={{ color: "var(--nav-fg)" }}
-            >
-              ← {chapter - 1}
-            </Link>
-          )}
-          <span
-            className="text-sm font-medium px-2"
-            style={{ color: "var(--nav-fg)" }}
-          >
-            Ch. {chapter}
-          </span>
-          {chapter < chapterCount && (
-            <Link
-              href={`/${encodeURIComponent(osisBook)}/${textSource}/${chapter + 1}${parallelMode ? "?par=1" : ""}`}
-              className="px-2 py-1 rounded text-sm transition-colors"
-              style={{ color: "var(--nav-fg)" }}
-            >
-              {chapter + 1} →
-            </Link>
-          )}
-        </div>
       </nav>
 
       {/* Text content */}

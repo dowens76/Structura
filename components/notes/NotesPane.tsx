@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import NoteEditor from "./NoteEditor";
-import { OSIS_BOOK_NAMES } from "@/lib/utils/osis";
+import { useTranslation } from "@/lib/i18n/LocaleContext";
 import { extractTextFromTipTap } from "@/lib/utils/tiptap-text";
 
 
@@ -33,7 +33,8 @@ export default function NotesPane({
   onScrollHandled,
   onClose,
 }: NotesPaneProps) {
-  const bookName = OSIS_BOOK_NAMES[book] ?? book;
+  const { bookName: getBookName } = useTranslation();
+  const bookName = getBookName(book);
   const paneRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState("");

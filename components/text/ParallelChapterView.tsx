@@ -3,7 +3,7 @@
 import { useState } from "react";
 import type { Word } from "@/lib/db/schema";
 import MorphologyPanel from "./MorphologyPanel";
-import { OSIS_BOOK_NAMES } from "@/lib/utils/osis";
+import { useTranslation } from "@/lib/i18n/LocaleContext";
 
 interface ParallelChapterViewProps {
   osisBook: string;
@@ -40,7 +40,8 @@ export default function ParallelChapterView({
     (a, b) => a - b
   );
 
-  const bookName = OSIS_BOOK_NAMES[osisBook] ?? osisBook;
+  const { bookName: getBookName } = useTranslation();
+  const bookName = getBookName(osisBook);
 
   function handleSelectWord(word: Word) {
     setSelectedWord(word);

@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import Link from "next/link";
 import type { Passage } from "@/lib/db/schema";
 import DefinePassageDialog from "./DefinePassageDialog";
+import { useTranslation } from "@/lib/i18n/LocaleContext";
 
 interface Props {
   book: string;         // OSIS book code
@@ -23,6 +24,7 @@ export default function PassageNavButtons({
   chapterCount,
   currentPassageId,
 }: Props) {
+  const { t } = useTranslation();
   const [dropdownOpen, setDropdownOpen]   = useState(false);
   const [dialogOpen,   setDialogOpen]     = useState(false);
   const [passages,     setPassages]       = useState<Passage[]>([]);
@@ -71,10 +73,10 @@ export default function PassageNavButtons({
           onClick={() => setDropdownOpen((v) => !v)}
           className="flex items-center gap-1 text-xs px-2 py-1 rounded transition-colors"
           style={{ color: "var(--nav-fg)" }}
-          title="Passages defined for this book"
+          title={t("passages.titleButton")}
         >
           <span>📖</span>
-          <span>Passages</span>
+          <span>{t("passages.button")}</span>
           <span className="text-[10px] opacity-60">{dropdownOpen ? "▲" : "▼"}</span>
         </button>
 
@@ -90,11 +92,11 @@ export default function PassageNavButtons({
             <div className="max-h-56 overflow-y-auto">
               {loading ? (
                 <p className="px-4 py-3 text-xs" style={{ color: "var(--text-muted)" }}>
-                  Loading…
+                  {t("passages.loading")}
                 </p>
               ) : passages.length === 0 ? (
                 <p className="px-4 py-3 text-xs" style={{ color: "var(--text-muted)" }}>
-                  No passages defined yet.
+                  {t("passages.noPassages")}
                 </p>
               ) : (
                 passages.map((p) => {
@@ -114,7 +116,7 @@ export default function PassageNavButtons({
                         <span className="text-[9px] shrink-0" style={{ color: "var(--accent)" }}>▶</span>
                       )}
                       <span className="flex-1 text-sm truncate" style={{ color: isActive ? "var(--accent)" : "var(--foreground)" }}>
-                        {p.label || <em style={{ color: "var(--text-muted)" }}>Untitled</em>}
+                        {p.label || <em style={{ color: "var(--text-muted)" }}>{t("passages.untitled")}</em>}
                       </span>
                       <span className="text-[11px] font-mono shrink-0" style={{ color: "var(--text-muted)" }}>
                         {formatRef(p)}
@@ -136,7 +138,7 @@ export default function PassageNavButtons({
                 className="w-full text-xs text-left font-medium transition-colors hover:opacity-80"
                 style={{ color: "var(--accent)" }}
               >
-                + Define new passage…
+                {t("passages.defineNew")}
               </button>
             </div>
           </div>

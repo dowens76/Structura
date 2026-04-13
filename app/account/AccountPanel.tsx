@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { useTranslation } from "@/lib/i18n/LocaleContext";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -180,25 +181,25 @@ const defaultImportForm: ImportForm = {
   },
 };
 
-const DATA_TYPE_LABELS: { key: keyof ImportForm["dataTypes"]; label: string }[] =
-  [
-    { key: "translationVerses", label: "Translation text" },
-    { key: "sectionBreaks", label: "Section breaks" },
-    { key: "lineAnnotations", label: "Line annotations" },
-    { key: "wordTags", label: "Word tags & refs" },
-    { key: "wordFormatting", label: "Word formatting" },
-    { key: "characters", label: "Characters & speech" },
-    { key: "lineIndents", label: "Line indents" },
-    { key: "wordArrows", label: "Word arrows" },
-    { key: "clauseRelationships", label: "Clause relationships" },
-    { key: "rstRelations", label: "RST relations" },
-    { key: "notes", label: "Notes" },
-    { key: "passages", label: "Passages" },
-  ];
+const DATA_TYPE_KEYS: { key: keyof ImportForm["dataTypes"]; tKey: string }[] = [
+  { key: "translationVerses", tKey: "account.dataTypeTranslationVerses" },
+  { key: "sectionBreaks", tKey: "account.dataTypeSectionBreaks" },
+  { key: "lineAnnotations", tKey: "account.dataTypeLineAnnotations" },
+  { key: "wordTags", tKey: "account.dataTypeWordTags" },
+  { key: "wordFormatting", tKey: "account.dataTypeWordFormatting" },
+  { key: "characters", tKey: "account.dataTypeCharacters" },
+  { key: "lineIndents", tKey: "account.dataTypeLineIndents" },
+  { key: "wordArrows", tKey: "account.dataTypeWordArrows" },
+  { key: "clauseRelationships", tKey: "account.dataTypeClauseRelationships" },
+  { key: "rstRelations", tKey: "account.dataTypeRstRelations" },
+  { key: "notes", tKey: "account.dataTypeNotes" },
+  { key: "passages", tKey: "account.dataTypePassages" },
+];
 
 // ── Main component ───────────────────────────────────────────────────────────
 
 export default function AccountPanel({ activeWorkspaceId: initialActiveId }: Props) {
+  const { t } = useTranslation();
   const router = useRouter();
 
   // ── Core state ─────────────────────────────────────────────────────────────
@@ -390,7 +391,7 @@ export default function AccountPanel({ activeWorkspaceId: initialActiveId }: Pro
         className="max-w-2xl mx-auto px-6 py-10 text-sm"
         style={mutedStyle}
       >
-        Loading…
+        {t("account.loading")}
       </div>
     );
   }
@@ -414,13 +415,13 @@ export default function AccountPanel({ activeWorkspaceId: initialActiveId }: Pro
               "var(--text-muted)")
           }
         >
-          ← Back to Structura
+          {t("account.backLink")}
         </Link>
         <h1 className="text-3xl font-bold mt-2" style={fgStyle}>
-          Account &amp; Workspaces
+          {t("account.title")}
         </h1>
         <p className="mt-2 text-sm" style={mutedStyle}>
-          Manage your profile and workspaces, or import data between workspaces.
+          {t("account.description")}
         </p>
       </header>
 
@@ -434,18 +435,18 @@ export default function AccountPanel({ activeWorkspaceId: initialActiveId }: Pro
       {/* ── Section 1: Your Account ─────────────────────────────────────────── */}
       <section className="rounded-xl p-6 mb-6" style={sectionStyle}>
         <h2 className="text-base font-semibold mb-4" style={fgStyle}>
-          Your Account
+          {t("account.yourAccount")}
         </h2>
 
         {!user ? (
           <p className="text-sm" style={mutedStyle}>
-            No user account found.
+            {t("account.noUser")}
           </p>
         ) : editingUser ? (
           <div className="space-y-3">
             <div>
               <label className="block text-xs font-medium mb-1" style={mutedStyle}>
-                Name
+                {t("account.name")}
               </label>
               <input
                 type="text"
@@ -457,7 +458,7 @@ export default function AccountPanel({ activeWorkspaceId: initialActiveId }: Pro
             </div>
             <div>
               <label className="block text-xs font-medium mb-1" style={mutedStyle}>
-                Email
+                {t("account.email")}
               </label>
               <input
                 type="email"
@@ -468,7 +469,7 @@ export default function AccountPanel({ activeWorkspaceId: initialActiveId }: Pro
               />
             </div>
             <div className="flex gap-2 pt-1">
-              <BtnPrimary onClick={saveUser}>Save</BtnPrimary>
+              <BtnPrimary onClick={saveUser}>{t("account.save")}</BtnPrimary>
               <BtnNeutral
                 onClick={() => {
                   setEditingUser(false);
@@ -477,7 +478,7 @@ export default function AccountPanel({ activeWorkspaceId: initialActiveId }: Pro
                   setError("");
                 }}
               >
-                Cancel
+                {t("account.cancel")}
               </BtnNeutral>
             </div>
           </div>
@@ -491,7 +492,7 @@ export default function AccountPanel({ activeWorkspaceId: initialActiveId }: Pro
                 {user.email}
               </p>
             </div>
-            <BtnNeutral onClick={() => setEditingUser(true)}>Edit</BtnNeutral>
+            <BtnNeutral onClick={() => setEditingUser(true)}>{t("account.edit")}</BtnNeutral>
           </div>
         )}
       </section>
@@ -499,7 +500,7 @@ export default function AccountPanel({ activeWorkspaceId: initialActiveId }: Pro
       {/* ── Section 2: Workspaces ───────────────────────────────────────────── */}
       <section className="rounded-xl p-6 mb-6" style={sectionStyle}>
         <h2 className="text-base font-semibold mb-4" style={fgStyle}>
-          Workspaces
+          {t("account.workspaces")}
         </h2>
 
         <div className="space-y-2">
@@ -540,7 +541,7 @@ export default function AccountPanel({ activeWorkspaceId: initialActiveId }: Pro
                         style={inputStyle}
                       />
                       <BtnPrimary onClick={() => renameWorkspace(ws.id)}>
-                        Save
+                        {t("account.save")}
                       </BtnPrimary>
                       <BtnNeutral
                         onClick={() => {
@@ -548,7 +549,7 @@ export default function AccountPanel({ activeWorkspaceId: initialActiveId }: Pro
                           setRenameValue("");
                         }}
                       >
-                        Cancel
+                        {t("account.cancel")}
                       </BtnNeutral>
                     </div>
                   ) : (
@@ -572,13 +573,13 @@ export default function AccountPanel({ activeWorkspaceId: initialActiveId }: Pro
                           color: "#fff",
                         }}
                       >
-                        Active
+                        {t("account.active")}
                       </span>
                     )}
 
                     {!isActive && (
                       <BtnNeutral onClick={() => switchToWorkspace(ws.id)}>
-                        Switch
+                        {t("account.switch")}
                       </BtnNeutral>
                     )}
 
@@ -589,19 +590,19 @@ export default function AccountPanel({ activeWorkspaceId: initialActiveId }: Pro
                         setDeletingId(null);
                       }}
                     >
-                      Rename
+                      {t("account.rename")}
                     </BtnNeutral>
 
                     {isDeleting ? (
                       <div className="flex items-center gap-1.5">
                         <span className="text-xs font-medium text-red-600 dark:text-red-400">
-                          Delete?
+                          {t("account.deleteConfirm")}
                         </span>
                         <BtnDanger onClick={() => deleteWorkspace(ws.id)}>
-                          Confirm
+                          {t("account.confirm")}
                         </BtnDanger>
                         <BtnNeutral onClick={() => setDeletingId(null)}>
-                          Cancel
+                          {t("account.cancel")}
                         </BtnNeutral>
                       </div>
                     ) : (
@@ -615,11 +616,11 @@ export default function AccountPanel({ activeWorkspaceId: initialActiveId }: Pro
                         disabled={isOnlyOne}
                         title={
                           isOnlyOne
-                            ? "Cannot delete the last workspace"
+                            ? t("account.cannotDeleteLast")
                             : undefined
                         }
                       >
-                        Delete
+                        {t("account.delete")}
                       </BtnNeutral>
                     )}
                   </div>
@@ -635,7 +636,7 @@ export default function AccountPanel({ activeWorkspaceId: initialActiveId }: Pro
             <div className="flex items-center gap-2">
               <input
                 type="text"
-                placeholder="Workspace name"
+                placeholder={t("account.workspacePlaceholder")}
                 value={newWorkspaceName}
                 onChange={(e) => setNewWorkspaceName(e.target.value)}
                 onKeyDown={(e) => {
@@ -649,19 +650,19 @@ export default function AccountPanel({ activeWorkspaceId: initialActiveId }: Pro
                 className="px-3 py-1.5 rounded-lg text-sm flex-1"
                 style={inputStyle}
               />
-              <BtnPrimary onClick={createWorkspace}>Create</BtnPrimary>
+              <BtnPrimary onClick={createWorkspace}>{t("account.create")}</BtnPrimary>
               <BtnNeutral
                 onClick={() => {
                   setShowNewWorkspaceForm(false);
                   setNewWorkspaceName("");
                 }}
               >
-                Cancel
+                {t("account.cancel")}
               </BtnNeutral>
             </div>
           ) : (
             <BtnNeutral onClick={() => setShowNewWorkspaceForm(true)}>
-              + New Workspace
+              {t("account.newWorkspace")}
             </BtnNeutral>
           )}
         </div>
@@ -671,18 +672,17 @@ export default function AccountPanel({ activeWorkspaceId: initialActiveId }: Pro
       {workspaces.length >= 2 && (
         <section className="rounded-xl p-6 mb-6" style={sectionStyle}>
           <h2 className="text-base font-semibold mb-1" style={fgStyle}>
-            Import Data from Another Workspace
+            {t("account.importTitle")}
           </h2>
           <p className="text-sm mb-5" style={mutedStyle}>
-            Copy annotations and data from a source workspace into the active
-            workspace for a specific chapter or passage.
+            {t("account.importDesc")}
           </p>
 
           <div className="space-y-4">
             {/* Source workspace */}
             <div>
               <label className="block text-xs font-medium mb-1.5" style={mutedStyle}>
-                Source workspace
+                {t("account.sourceWorkspace")}
               </label>
               <select
                 value={importForm.sourceWorkspaceId}
@@ -696,7 +696,7 @@ export default function AccountPanel({ activeWorkspaceId: initialActiveId }: Pro
                 className="px-3 py-1.5 rounded-lg text-sm"
                 style={inputStyle}
               >
-                <option value={0}>— select a workspace —</option>
+                <option value={0}>{t("account.selectWorkspace")}</option>
                 {otherWorkspaces.map((ws) => (
                   <option key={ws.id} value={ws.id}>
                     {ws.name}
@@ -708,7 +708,7 @@ export default function AccountPanel({ activeWorkspaceId: initialActiveId }: Pro
             {/* Scope type */}
             <div>
               <label className="block text-xs font-medium mb-1.5" style={mutedStyle}>
-                Scope
+                {t("account.scope")}
               </label>
               <div className="flex gap-4">
                 {(["chapter", "passage"] as const).map((type) => (
@@ -726,7 +726,7 @@ export default function AccountPanel({ activeWorkspaceId: initialActiveId }: Pro
                         setImportForm((f) => ({ ...f, scopeType: type }))
                       }
                     />
-                    {type === "chapter" ? "Chapter" : "Passage"}
+                    {type === "chapter" ? t("account.scopeChapter") : t("account.scopePassage")}
                   </label>
                 ))}
               </div>
@@ -740,11 +740,11 @@ export default function AccountPanel({ activeWorkspaceId: initialActiveId }: Pro
                     className="block text-xs font-medium mb-1.5"
                     style={mutedStyle}
                   >
-                    Book (e.g. Gen, Matt)
+                    {t("account.bookLabel")}
                   </label>
                   <input
                     type="text"
-                    placeholder="Gen"
+                    placeholder={t("account.bookPlaceholder")}
                     value={importForm.book}
                     onChange={(e) =>
                       setImportForm((f) => ({ ...f, book: e.target.value }))
@@ -758,7 +758,7 @@ export default function AccountPanel({ activeWorkspaceId: initialActiveId }: Pro
                     className="block text-xs font-medium mb-1.5"
                     style={mutedStyle}
                   >
-                    Chapter
+                    {t("account.chapterLabel")}
                   </label>
                   <input
                     type="number"
@@ -781,12 +781,12 @@ export default function AccountPanel({ activeWorkspaceId: initialActiveId }: Pro
                   className="block text-xs font-medium mb-1.5"
                   style={mutedStyle}
                 >
-                  Passage ID
+                  {t("account.passageIdLabel")}
                 </label>
                 <input
                   type="number"
                   min={1}
-                  placeholder="e.g. 42"
+                  placeholder={t("account.passageIdPlaceholder")}
                   value={importForm.passageId || ""}
                   onChange={(e) =>
                     setImportForm((f) => ({
@@ -798,7 +798,7 @@ export default function AccountPanel({ activeWorkspaceId: initialActiveId }: Pro
                   style={inputStyle}
                 />
                 <p className="text-xs mt-1.5" style={mutedStyle}>
-                  Find the passage ID from the source workspace&apos;s passages panel.
+                  {t("account.passageIdHelp")}
                 </p>
               </div>
             )}
@@ -806,10 +806,10 @@ export default function AccountPanel({ activeWorkspaceId: initialActiveId }: Pro
             {/* Data types */}
             <div>
               <label className="block text-xs font-medium mb-2" style={mutedStyle}>
-                Data to import
+                {t("account.dataToImport")}
               </label>
               <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
-                {DATA_TYPE_LABELS.map(({ key, label }) => (
+                {DATA_TYPE_KEYS.map(({ key, tKey }) => (
                   <label
                     key={key}
                     className="flex items-center gap-2 text-sm cursor-pointer"
@@ -829,7 +829,7 @@ export default function AccountPanel({ activeWorkspaceId: initialActiveId }: Pro
                       }
                       className="w-3.5 h-3.5 shrink-0"
                     />
-                    {label}
+                    {t(tKey)}
                   </label>
                 ))}
               </div>
@@ -841,12 +841,12 @@ export default function AccountPanel({ activeWorkspaceId: initialActiveId }: Pro
                     setImportForm((f) => ({
                       ...f,
                       dataTypes: Object.fromEntries(
-                        DATA_TYPE_LABELS.map(({ key }) => [key, true])
+                        DATA_TYPE_KEYS.map(({ key }) => [key, true])
                       ) as ImportForm["dataTypes"],
                     }))
                   }
                 >
-                  Select all
+                  {t("account.selectAll")}
                 </button>
                 <button
                   className="text-xs underline-offset-2 hover:underline"
@@ -855,12 +855,12 @@ export default function AccountPanel({ activeWorkspaceId: initialActiveId }: Pro
                     setImportForm((f) => ({
                       ...f,
                       dataTypes: Object.fromEntries(
-                        DATA_TYPE_LABELS.map(({ key }) => [key, false])
+                        DATA_TYPE_KEYS.map(({ key }) => [key, false])
                       ) as ImportForm["dataTypes"],
                     }))
                   }
                 >
-                  Deselect all
+                  {t("account.deselectAll")}
                 </button>
               </div>
             </div>
@@ -872,11 +872,11 @@ export default function AccountPanel({ activeWorkspaceId: initialActiveId }: Pro
                 disabled={importLoading}
                 className="px-4 py-2"
               >
-                {importLoading ? "Importing…" : "Import"}
+                {importLoading ? t("account.importing") : t("account.import")}
               </BtnPrimary>
               {importLoading && (
                 <span className="text-xs" style={mutedStyle}>
-                  This may take a moment…
+                  {t("account.importingMoment")}
                 </span>
               )}
             </div>
@@ -891,7 +891,7 @@ export default function AccountPanel({ activeWorkspaceId: initialActiveId }: Pro
             {/* Import result */}
             {importResult && (
               <div className="rounded-lg border border-emerald-300 dark:border-emerald-700 bg-emerald-50 dark:bg-emerald-950 px-4 py-3 text-sm text-emerald-800 dark:text-emerald-200">
-                <p className="font-medium mb-2">Import complete.</p>
+                <p className="font-medium mb-2">{t("account.importComplete")}</p>
                 <ul className="space-y-0.5 text-xs font-mono opacity-80">
                   {Object.entries(importResult)
                     .filter(([, v]) => v.imported > 0)
@@ -901,7 +901,7 @@ export default function AccountPanel({ activeWorkspaceId: initialActiveId }: Pro
                       </li>
                     ))}
                   {Object.values(importResult).every((v) => v.imported === 0) && (
-                    <li>Nothing to import for the given scope and selection.</li>
+                    <li>{t("account.nothingToImport")}</li>
                   )}
                 </ul>
               </div>

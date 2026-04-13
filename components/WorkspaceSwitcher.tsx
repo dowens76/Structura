@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { useTranslation } from "@/lib/i18n/LocaleContext";
 
 interface Workspace {
   id: number;
@@ -14,6 +15,7 @@ interface Props {
 }
 
 export default function WorkspaceSwitcher({ activeWorkspaceId }: Props) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const ref = useRef<HTMLDivElement>(null);
@@ -50,7 +52,7 @@ export default function WorkspaceSwitcher({ activeWorkspaceId }: Props) {
   }
 
   const active = workspaces.find((w) => w.id === activeWorkspaceId);
-  const label = active?.name ?? "Workspace";
+  const label = active?.name ?? t("nav.workspace");
 
   if (workspaces.length === 0) return null;
 
@@ -61,7 +63,7 @@ export default function WorkspaceSwitcher({ activeWorkspaceId }: Props) {
         onClick={() => setOpen((v) => !v)}
         className="flex items-center gap-1 text-xs px-2 py-1 rounded transition-colors"
         style={{ color: "var(--nav-fg)", backgroundColor: open ? "var(--surface)" : "transparent" }}
-        title="Switch workspace"
+        title={t("nav.titleSwitchWorkspace")}
       >
         <span className="max-w-[100px] truncate">{label}</span>
         <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor">
@@ -75,7 +77,7 @@ export default function WorkspaceSwitcher({ activeWorkspaceId }: Props) {
           style={{ backgroundColor: "var(--surface)", border: "1px solid var(--border)" }}
         >
           <div className="px-3 py-1 text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>
-            Workspaces
+            {t("nav.workspacesHeading")}
           </div>
           {workspaces.map((ws) => (
             <button
@@ -101,7 +103,7 @@ export default function WorkspaceSwitcher({ activeWorkspaceId }: Props) {
               style={{ color: "var(--text-muted)" }}
               onClick={() => setOpen(false)}
             >
-              Manage workspaces →
+              {t("nav.manageWorkspaces")}
             </Link>
           </div>
         </div>

@@ -2,9 +2,11 @@
 
 import { startTransition, useActionState, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { importTranslationAction, checkExistingVersesAction } from "./actions";
 import type { Book, Translation } from "@/lib/db/schema";
-import { OSIS_BOOKS_OT, OSIS_BOOKS_NT, OSIS_BOOK_NAMES } from "@/lib/utils/osis";
+import { OSIS_BOOKS_OT, OSIS_BOOKS_NT } from "@/lib/utils/osis";
+import { useTranslation } from "@/lib/i18n/LocaleContext";
 
 interface ImportFormProps {
   books: Book[];
@@ -22,6 +24,7 @@ const inputClass =
   "w-full px-3 py-2 rounded-lg border text-sm bg-[var(--surface)] text-[var(--foreground)] border-[var(--border)] focus:outline-none focus:ring-2 focus:ring-blue-500";
 
 export default function ImportForm({ books, existingTranslations }: ImportFormProps) {
+  const { t, bookName } = useTranslation();
   const router = useRouter();
   const [state, formAction, pending] = useActionState(importTranslationAction, INITIAL_STATE);
   const [selectedId, setSelectedId] = useState<number | null>(null);
@@ -29,7 +32,6 @@ export default function ImportForm({ books, existingTranslations }: ImportFormPr
   const [abbreviation, setAbbreviation] = useState("");
   const [checking, setChecking] = useState(false);
 
-  // Pending confirmation: holds the FormData and the count of verses to be overwritten
   const [confirmData, setConfirmData] = useState<{
     formData: FormData;
     existingCount: number;
@@ -38,7 +40,6 @@ export default function ImportForm({ books, existingTranslations }: ImportFormPr
     chapter: number;
   } | null>(null);
 
-  // Navigate to the imported chapter once the action succeeds
   useEffect(() => {
     if (state.redirectTo) {
       router.push(state.redirectTo);
@@ -48,15 +49,15 @@ export default function ImportForm({ books, existingTranslations }: ImportFormPr
   const otCodes = OSIS_BOOKS_OT.filter((c) => books.some((b) => b.osisCode === c));
   const ntCodes = OSIS_BOOKS_NT.filter((c) => books.some((b) => b.osisCode === c));
 
-  function selectTranslation(t: Translation) {
-    if (selectedId === t.id) {
+  function selectTranslation(tr: Translation) {
+    if (selectedId === tr.id) {
       setSelectedId(null);
       setName("");
       setAbbreviation("");
     } else {
-      setSelectedId(t.id);
-      setName(t.name);
-      setAbbreviation(t.abbreviation);
+      setSelectedId(tr.id);
+      setName(tr.name);
+      setAbbreviation(tr.abbreviation);
     }
   }
 
@@ -76,14 +77,13 @@ export default function ImportForm({ books, existingTranslations }: ImportFormPr
           formData,
           existingCount: count,
           abbr,
-          bookName: OSIS_BOOK_NAMES[osisBook] ?? osisBook,
+          bookName: bookName(osisBook),
           chapter,
         });
       } else {
         startTransition(() => formAction(formData));
       }
     } catch {
-      // If the check itself fails, just try the import
       startTransition(() => formAction(formData));
     } finally {
       setChecking(false);
@@ -102,33 +102,45 @@ export default function ImportForm({ books, existingTranslations }: ImportFormPr
   }
 
   return (
+    <>
+      <header className="mb-8">
+        <Link
+          href="/"
+          className="text-sm text-stone-400 hover:text-stone-600 dark:hover:text-stone-300 mb-4 inline-block transition-colors"
+        >
+          {t("importPage.backLink")}
+        </Link>
+        <h1 className="text-3xl font-bold mt-2">{t("importPage.title")}</h1>
+        <p className="mt-2 text-sm text-stone-500 dark:text-stone-400">
+          {t("importPage.description")}
+        </p>
+      </header>
     <form onSubmit={handleSubmit} className="space-y-6">
       {/* Translation identity */}
       <div>
         <h2 className="text-sm font-semibold text-stone-700 dark:text-stone-300 mb-3">
-          Translation
+          {t("importPage.translationHeading")}
         </h2>
         {existingTranslations.length > 0 && (
           <div className="mb-3">
             <p className="text-xs text-stone-500 dark:text-stone-400 mb-2">
-              Select an existing translation or enter a new one below.
-              Re-importing a chapter overwrites existing verses for that chapter.
+              {t("importPage.existingHint")}
             </p>
             <div className="flex flex-wrap gap-2">
-              {existingTranslations.map((t) => (
+              {existingTranslations.map((tr) => (
                 <button
-                  key={t.id}
+                  key={tr.id}
                   type="button"
-                  onClick={() => selectTranslation(t)}
-                  title={t.name}
+                  onClick={() => selectTranslation(tr)}
+                  title={tr.name}
                   className={[
                     "px-3 py-1.5 rounded-lg text-xs font-mono font-semibold transition-colors border",
-                    selectedId === t.id
+                    selectedId === tr.id
                       ? "bg-blue-600 text-white border-blue-600"
                       : "bg-[var(--surface)] text-stone-600 dark:text-stone-300 border-[var(--border)] hover:border-blue-400",
                   ].join(" ")}
                 >
-                  {t.abbreviation}
+                  {tr.abbreviation}
                 </button>
               ))}
             </div>
@@ -137,14 +149,14 @@ export default function ImportForm({ books, existingTranslations }: ImportFormPr
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium mb-1 text-stone-700 dark:text-stone-300" htmlFor="name">
-              Full name
+              {t("importPage.fullName")}
             </label>
             <input
               id="name"
               name="name"
               type="text"
               required
-              placeholder="New International Version"
+              placeholder={t("importPage.fullNamePlaceholder")}
               value={name}
               onChange={(e) => { setName(e.target.value); setSelectedId(null); }}
               className={inputClass}
@@ -152,14 +164,14 @@ export default function ImportForm({ books, existingTranslations }: ImportFormPr
           </div>
           <div>
             <label className="block text-sm font-medium mb-1 text-stone-700 dark:text-stone-300" htmlFor="abbreviation">
-              Abbreviation
+              {t("importPage.abbreviation")}
             </label>
             <input
               id="abbreviation"
               name="abbreviation"
               type="text"
               required
-              placeholder="NIV"
+              placeholder={t("importPage.abbreviationPlaceholder")}
               maxLength={12}
               value={abbreviation}
               onChange={(e) => { setAbbreviation(e.target.value); setSelectedId(null); }}
@@ -172,29 +184,29 @@ export default function ImportForm({ books, existingTranslations }: ImportFormPr
       {/* Location */}
       <div>
         <h2 className="text-sm font-semibold text-stone-700 dark:text-stone-300 mb-3">
-          Location
+          {t("importPage.locationHeading")}
         </h2>
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium mb-1 text-stone-700 dark:text-stone-300" htmlFor="osisBook">
-              Book
+              {t("importPage.book")}
             </label>
             <select id="osisBook" name="osisBook" required className={inputClass}>
-              <option value="">Select book…</option>
+              <option value="">{t("importPage.selectBook")}</option>
               {otCodes.length > 0 && (
-                <optgroup label="Old Testament">
+                <optgroup label={t("importPage.oldTestament")}>
                   {otCodes.map((c) => (
                     <option key={c} value={c}>
-                      {OSIS_BOOK_NAMES[c] ?? c}
+                      {bookName(c)}
                     </option>
                   ))}
                 </optgroup>
               )}
               {ntCodes.length > 0 && (
-                <optgroup label="New Testament">
+                <optgroup label={t("importPage.newTestament")}>
                   {ntCodes.map((c) => (
                     <option key={c} value={c}>
-                      {OSIS_BOOK_NAMES[c] ?? c}
+                      {bookName(c)}
                     </option>
                   ))}
                 </optgroup>
@@ -203,7 +215,7 @@ export default function ImportForm({ books, existingTranslations }: ImportFormPr
           </div>
           <div>
             <label className="block text-sm font-medium mb-1 text-stone-700 dark:text-stone-300" htmlFor="chapter">
-              Chapter
+              {t("importPage.chapter")}
             </label>
             <input
               id="chapter"
@@ -221,11 +233,10 @@ export default function ImportForm({ books, existingTranslations }: ImportFormPr
       {/* Paste area */}
       <div>
         <label className="block text-sm font-medium mb-1 text-stone-700 dark:text-stone-300" htmlFor="pastedText">
-          Paste from Bible.com
+          {t("importPage.pasteLabel")}
         </label>
         <p className="text-xs text-stone-500 dark:text-stone-400 mb-2">
-          Navigate to the chapter on Bible.com, select all text, copy, and paste here.
-          The header line (e.g. "Genesis 1 (NIV)") is optional but helps catch mismatches.
+          {t("importPage.pasteHint")}
         </p>
         <textarea
           id="pastedText"
@@ -241,12 +252,16 @@ export default function ImportForm({ books, existingTranslations }: ImportFormPr
       {confirmData && (
         <div className="px-4 py-3 rounded-lg bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800">
           <p className="text-sm font-semibold text-amber-800 dark:text-amber-200 mb-1">
-            Replace existing data?
+            {t("importPage.replaceTitle")}
           </p>
           <p className="text-sm text-amber-700 dark:text-amber-300 mb-3">
-            <span className="font-mono font-semibold">{confirmData.abbr}</span> already has{" "}
-            {confirmData.existingCount} verse{confirmData.existingCount !== 1 ? "s" : ""} for{" "}
-            {confirmData.bookName} {confirmData.chapter}. Importing will permanently replace them.
+            {t("importPage.replaceDesc", {
+              abbr: confirmData.abbr,
+              count: confirmData.existingCount,
+              plural: confirmData.existingCount !== 1 ? "s" : "",
+              book: confirmData.bookName,
+              chapter: confirmData.chapter,
+            })}
           </p>
           <div className="flex gap-2">
             <button
@@ -254,14 +269,14 @@ export default function ImportForm({ books, existingTranslations }: ImportFormPr
               onClick={handleCancelReplace}
               className="px-4 py-1.5 rounded-lg text-sm font-medium border border-[var(--border)] bg-[var(--surface)] text-stone-700 dark:text-stone-300 hover:bg-stone-50 dark:hover:bg-stone-800 transition-colors"
             >
-              Cancel
+              {t("importPage.cancel")}
             </button>
             <button
               type="button"
               onClick={handleConfirmReplace}
               className="px-4 py-1.5 rounded-lg text-sm font-semibold bg-red-600 text-white hover:bg-red-700 transition-colors"
             >
-              Yes, replace
+              {t("importPage.yesReplace")}
             </button>
           </div>
         </div>
@@ -275,7 +290,7 @@ export default function ImportForm({ books, existingTranslations }: ImportFormPr
       )}
       {state.success && !state.redirectTo && (
         <div className="px-4 py-3 rounded-lg bg-green-50 dark:bg-green-950 border border-green-200 dark:border-green-800 text-green-700 dark:text-green-300 text-sm">
-          Successfully imported {state.count} verse{state.count !== 1 ? "s" : ""}.
+          {t("importPage.importedVerses", { count: state.count, plural: state.count !== 1 ? "s" : "" })}
         </div>
       )}
 
@@ -284,8 +299,9 @@ export default function ImportForm({ books, existingTranslations }: ImportFormPr
         disabled={pending || checking || !!confirmData}
         className="px-5 py-2.5 rounded-lg text-sm font-semibold bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-60 transition-colors"
       >
-        {pending ? "Importing…" : checking ? "Checking…" : "Import Chapter"}
+        {pending ? t("importPage.importing") : checking ? t("importPage.checking") : t("importPage.importChapter")}
       </button>
     </form>
+    </>
   );
 }

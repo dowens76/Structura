@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { AutoBackupSettings } from "@/lib/db/user-schema";
+import { useTranslation } from "@/lib/i18n/LocaleContext";
 
 // Use Tauri's native folder dialog when running as a packaged app,
 // fall back to the API route in dev/browser.
@@ -48,6 +49,7 @@ const EMPTY: Omit<AutoBackupSettings, "id" | "lastBackupAt" | "lastError" | "upd
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function AutoBackupPanel() {
+  const { t } = useTranslation();
   const [loaded,   setLoaded]   = useState(false);
   const [settings, setSettings] = useState<AutoBackupSettings | null>(null);
   const [nextRunAt, setNextRunAt] = useState<string | null>(null);
@@ -69,9 +71,6 @@ export default function AutoBackupPanel() {
   const [browseStatus,  setBrowseStatus]  = useState<BrowseStatus>("idle");
 
   const pollRef            = useRef<ReturnType<typeof setInterval> | null>(null);
-  // Tracks whether the editable form fields have been populated from the server.
-  // A ref (not state) so that the stale closure captured by setInterval always
-  // sees the up-to-date value and never re-initialises fields after first load.
   const formInitializedRef = useRef(false);
 
   // ── Fetch status ────────────────────────────────────────────────────────────
@@ -84,7 +83,6 @@ export default function AutoBackupPanel() {
       setNextRunAt(data.nextRunAt);
 
       if (!formInitializedRef.current && data.settings) {
-        // Populate editable form fields exactly once (on first successful load).
         formInitializedRef.current = true;
         setEnabled(data.settings.enabled);
         setFolderPath(data.settings.folderPath ?? "");
@@ -112,7 +110,6 @@ export default function AutoBackupPanel() {
     setBrowseStatus("picking");
     try {
       if (isTauri) {
-        // Running as a Tauri desktop app — use native folder picker via Rust command
         const { invoke } = await import("@tauri-apps/api/core");
         const picked = await invoke<string | null>("pick_folder");
         if (picked) {
@@ -120,7 +117,6 @@ export default function AutoBackupPanel() {
           setPathStatus("idle");
         }
       } else {
-        // Running in dev/browser — use the API route (opens OS dialog server-side)
         const res    = await fetch("/api/auto-backup/pick-folder");
         const result = await res.json() as { path?: string; cancelled?: boolean; error?: string };
         if (result.path) {
@@ -128,7 +124,6 @@ export default function AutoBackupPanel() {
           setPathStatus("idle");
         }
       }
-      // If cancelled or error, leave the field unchanged.
     } catch { /* network or invoke error — ignore */ }
     setBrowseStatus("idle");
   }
@@ -198,8 +193,6 @@ export default function AutoBackupPanel() {
     setRunStatus("running");
     setRunMsg("");
     try {
-      // Send current form values so the run API uses the unsaved folder path
-      // and retention settings directly — no separate save step needed.
       const res  = await fetch("/api/auto-backup/run", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -209,13 +202,11 @@ export default function AutoBackupPanel() {
           retentionCount,
         }),
       });
-      // Use text() first so a non-JSON error page doesn't hide the real problem.
       const text = await res.text();
       let result: { ok?: boolean; filename?: string; error?: string } = {};
       try {
         result = JSON.parse(text) as typeof result;
       } catch {
-        // Server returned something that isn't JSON (e.g. an HTML crash page).
         console.error("Backup run — unexpected response:", res.status, text.slice(0, 500));
         setRunStatus("error");
         setRunMsg(`Server error ${res.status} — check the terminal for details.`);
@@ -245,7 +236,7 @@ export default function AutoBackupPanel() {
 
   const mutedStyle = { color: "var(--text-muted)" } as React.CSSProperties;
 
-  if (!loaded) return null; // avoid layout shift while fetching
+  if (!loaded) return null;
 
   const lastError = settings?.lastError;
   const lastBackupAt = settings?.lastBackupAt;
@@ -254,26 +245,25 @@ export default function AutoBackupPanel() {
   return (
     <section className="rounded-xl border p-6" style={surface}>
       <h2 className="text-base font-semibold mb-0.5" style={{ color: "var(--foreground)" }}>
-        Automatic Backups
+        {t("backup.autoTitle")}
       </h2>
       <p className="text-sm mb-5" style={mutedStyle}>
-        Saves a copy of your database to a local folder on a schedule.
-        Backups only run while the app is open.
+        {t("backup.autoDesc")}
       </p>
 
       {/* ── Error banner ─────────────────────────────────────────────────── */}
       {lastError && (
         <div className="mb-4 rounded-lg border border-red-300 dark:border-red-700 bg-red-50 dark:bg-red-950 px-4 py-3 text-sm text-red-800 dark:text-red-200">
-          <span className="font-semibold">Last backup failed:</span> {lastError}
+          <span className="font-semibold">{t("backup.lastBackupFailed")}</span> {lastError}
         </div>
       )}
 
       {/* ── Status row ───────────────────────────────────────────────────── */}
       {enabled && lastBackupAt && !lastError && (
         <div className="mb-4 text-xs flex gap-4" style={mutedStyle}>
-          <span>Last backup: <strong>{relativeTime(lastBackupAt)}</strong></span>
+          <span>{t("backup.lastBackup")} <strong>{relativeTime(lastBackupAt)}</strong></span>
           {nextRunAt && (
-            <span>Next backup: <strong>{relativeTime(nextRunAt)}</strong></span>
+            <span>{t("backup.nextBackup")} <strong>{relativeTime(nextRunAt)}</strong></span>
           )}
         </div>
       )}
@@ -288,7 +278,7 @@ export default function AutoBackupPanel() {
           style={{ accentColor: "var(--accent)" }}
         />
         <span className="text-sm font-medium" style={{ color: "var(--foreground)" }}>
-          Enable automatic backups
+          {t("backup.enableAuto")}
         </span>
       </label>
 
@@ -299,14 +289,14 @@ export default function AutoBackupPanel() {
           {/* Folder path */}
           <div>
             <label className="block text-xs font-medium mb-1.5" style={mutedStyle}>
-              Backup folder
+              {t("backup.backupFolder")}
             </label>
             <div className="flex gap-2 items-center">
               <input
                 type="text"
                 value={folderPath}
                 onChange={(e) => { setFolderPath(e.target.value); setPathStatus("idle"); }}
-                placeholder="/Users/you/Backups/Structura"
+                placeholder={t("backup.folderPlaceholder")}
                 className="flex-1 rounded-md border px-3 py-1.5 text-sm outline-none focus:ring-2"
                 style={{
                   borderColor: "var(--border)",
@@ -319,9 +309,9 @@ export default function AutoBackupPanel() {
                 disabled={browseStatus === "picking"}
                 className="px-3 py-1.5 rounded-md border text-xs font-medium transition-opacity disabled:opacity-40"
                 style={{ borderColor: "var(--border)", color: "var(--foreground)" }}
-                title="Open folder picker"
+                title={t("backup.titleBrowse")}
               >
-                {browseStatus === "picking" ? "…" : "Browse…"}
+                {browseStatus === "picking" ? t("backup.browsePicking") : t("backup.browse")}
               </button>
               <button
                 onClick={validatePath}
@@ -329,25 +319,24 @@ export default function AutoBackupPanel() {
                 className="px-3 py-1.5 rounded-md border text-xs font-medium transition-opacity disabled:opacity-40"
                 style={{ borderColor: "var(--border)", color: "var(--foreground)" }}
               >
-                {pathStatus === "checking" ? "Checking…" : "Check"}
+                {pathStatus === "checking" ? t("backup.checking") : t("backup.check")}
               </button>
             </div>
             {pathStatus === "ok" && (
-              <p className="mt-1 text-xs text-emerald-600 dark:text-emerald-400">✓ Folder is writable</p>
+              <p className="mt-1 text-xs text-emerald-600 dark:text-emerald-400">{t("backup.folderOk")}</p>
             )}
             {pathStatus === "error" && (
               <p className="mt-1 text-xs text-red-600 dark:text-red-400">✗ {pathError}</p>
             )}
             <p className="mt-1 text-xs" style={mutedStyle}>
-              Type a path or click Browse… to use a folder picker.
-              The folder must already exist.
+              {t("backup.folderHelp")}
             </p>
           </div>
 
           {/* Interval */}
           <div>
             <label className="block text-xs font-medium mb-2" style={mutedStyle}>
-              Backup interval
+              {t("backup.intervalLabel")}
             </label>
             <div className="flex flex-wrap gap-4 text-sm">
               {(["daily", "weekly", "custom"] as const).map((v) => (
@@ -361,7 +350,7 @@ export default function AutoBackupPanel() {
                     style={{ accentColor: "var(--accent)" }}
                   />
                   <span style={{ color: "var(--foreground)" }}>
-                    {v === "daily" ? "Daily" : v === "weekly" ? "Weekly" : "Custom"}
+                    {v === "daily" ? t("backup.intervalDaily") : v === "weekly" ? t("backup.intervalWeekly") : t("backup.intervalCustom")}
                   </span>
                 </label>
               ))}
@@ -381,7 +370,7 @@ export default function AutoBackupPanel() {
                     color: "var(--foreground)",
                   }}
                 />
-                <span className="text-sm" style={mutedStyle}>hours</span>
+                <span className="text-sm" style={mutedStyle}>{t("backup.intervalHours")}</span>
               </div>
             )}
           </div>
@@ -389,7 +378,7 @@ export default function AutoBackupPanel() {
           {/* Retention */}
           <div>
             <label className="block text-xs font-medium mb-1.5" style={mutedStyle}>
-              Retention policy
+              {t("backup.retentionLabel")}
             </label>
             <select
               value={retentionType}
@@ -401,14 +390,14 @@ export default function AutoBackupPanel() {
                 color: "var(--foreground)",
               }}
             >
-              <option value="keep_all">Keep all backups</option>
-              <option value="keep_n">Keep N most recent</option>
-              <option value="smart">Smart — tiered retention</option>
+              <option value="keep_all">{t("backup.retentionAll")}</option>
+              <option value="keep_n">{t("backup.retentionN")}</option>
+              <option value="smart">{t("backup.retentionSmart")}</option>
             </select>
 
             {retentionType === "keep_n" && (
               <div className="mt-2 flex items-center gap-2">
-                <span className="text-sm" style={mutedStyle}>Keep</span>
+                <span className="text-sm" style={mutedStyle}>{t("backup.retentionKeep")}</span>
                 <input
                   type="number"
                   min={1}
@@ -422,14 +411,13 @@ export default function AutoBackupPanel() {
                     color: "var(--foreground)",
                   }}
                 />
-                <span className="text-sm" style={mutedStyle}>most recent backups</span>
+                <span className="text-sm" style={mutedStyle}>{t("backup.retentionMostRecent")}</span>
               </div>
             )}
 
             {retentionType === "smart" && (
               <p className="mt-1.5 text-xs leading-relaxed" style={mutedStyle}>
-                Keeps all backups from the last 7 days, one per week for the
-                last month, and one per month beyond that.
+                {t("backup.retentionSmartDesc")}
               </p>
             )}
           </div>
@@ -442,7 +430,7 @@ export default function AutoBackupPanel() {
               className="px-4 py-1.5 rounded-lg text-sm font-medium text-white transition-opacity disabled:opacity-50"
               style={{ backgroundColor: "var(--accent)" }}
             >
-              {saveStatus === "saving" ? "Saving…" : "Save settings"}
+              {saveStatus === "saving" ? t("backup.saving") : t("backup.saveSettings")}
             </button>
 
             <button
@@ -451,13 +439,13 @@ export default function AutoBackupPanel() {
               className="px-4 py-1.5 rounded-lg border text-sm font-medium transition-opacity disabled:opacity-40"
               style={{ borderColor: "var(--border)", color: "var(--foreground)" }}
             >
-              {runStatus === "running" ? "Running…" : "Run backup now"}
+              {runStatus === "running" ? t("backup.running") : t("backup.runNow")}
             </button>
           </div>
 
           {/* Save feedback */}
           {saveStatus === "saved" && (
-            <p className="text-xs text-emerald-600 dark:text-emerald-400">✓ Settings saved.</p>
+            <p className="text-xs text-emerald-600 dark:text-emerald-400">{t("backup.settingsSaved")}</p>
           )}
           {saveStatus === "error" && (
             <p className="text-xs text-red-600 dark:text-red-400">✗ {saveError}</p>
@@ -466,7 +454,7 @@ export default function AutoBackupPanel() {
           {/* Run feedback */}
           {runStatus === "done" && (
             <p className="text-xs text-emerald-600 dark:text-emerald-400">
-              ✓ Backup complete: {runMsg}
+              {t("backup.backupComplete")} {runMsg}
             </p>
           )}
           {runStatus === "error" && (

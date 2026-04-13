@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import Link from "next/link";
+import { useTranslation } from "@/lib/i18n/LocaleContext";
 
 interface Props {
   chapter: number;
@@ -11,6 +12,7 @@ interface Props {
 }
 
 export default function ChapterDropdown({ chapter, chapterCount, osisBook, textSource }: Props) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -36,9 +38,9 @@ export default function ChapterDropdown({ chapter, chapterCount, osisBook, textS
         onClick={() => setOpen((v) => !v)}
         className="flex items-center gap-1 text-xs px-2 py-1 rounded transition-colors"
         style={{ color: "var(--nav-fg)" }}
-        title="Jump to chapter"
+        title={t("nav.titleJumpToChapter")}
       >
-        <span>Ch. {chapter}</span>
+        <span>{t("nav.chapterPrefix")}{chapter}</span>
         <span className="text-[10px] opacity-60">{open ? "▲" : "▼"}</span>
       </button>
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "@/lib/i18n/LocaleContext";
 
 export type GreekLexicon  = "AbbottSmith" | "Dodson";
 export type HebrewLexicon = "BDB" | "HebrewStrong";
@@ -19,6 +20,7 @@ export function getHebrewLexicon(): HebrewLexicon {
 }
 
 export default function SettingsButton() {
+  const { t } = useTranslation();
   const [open, setOpen]               = useState(false);
   const [greekLex, setGreekLex]       = useState<GreekLexicon>("AbbottSmith");
   const [hebrewLex, setHebrewLex]     = useState<HebrewLexicon>("BDB");
@@ -69,8 +71,8 @@ export default function SettingsButton() {
     <div ref={panelRef} className="relative">
       <button
         onClick={() => setOpen((o) => !o)}
-        aria-label="Settings"
-        title="Settings"
+        aria-label={t("settings.title")}
+        title={t("settings.title")}
         className="flex items-center justify-center w-7 h-7 rounded transition-colors"
         style={{ color: open ? "var(--accent)" : "var(--nav-fg-muted)" }}
       >
@@ -104,19 +106,19 @@ export default function SettingsButton() {
             className="text-xs font-semibold uppercase tracking-wider mb-3"
             style={{ color: "var(--text-muted)" }}
           >
-            Settings
+            {t("settings.title")}
           </p>
 
           {/* Greek Lexicon */}
           <div className="mb-4">
             <p className="text-xs font-medium mb-1.5" style={{ color: "var(--foreground)" }}>
-              Greek Lexicon
+              {t("settings.greekLexicon")}
             </p>
             <div className="flex flex-col gap-1">
               {(
                 [
-                  ["AbbottSmith", "Abbott-Smith (recommended)"],
-                  ["Dodson",      "Dodson Greek Lexicon"],
+                  ["AbbottSmith", t("settings.abbottSmith")],
+                  ["Dodson",      t("settings.dodson")],
                 ] as [GreekLexicon, string][]
               ).map(([value, label]) => (
                 <label key={value} className="flex items-center gap-2 cursor-pointer">
@@ -139,13 +141,13 @@ export default function SettingsButton() {
           {/* Hebrew Lexicon */}
           <div>
             <p className="text-xs font-medium mb-1.5" style={{ color: "var(--foreground)" }}>
-              Hebrew Lexicon
+              {t("settings.hebrewLexicon")}
             </p>
             <div className="flex flex-col gap-1">
               {(
                 [
-                  ["BDB",          "BDB (unabridged)"],
-                  ["HebrewStrong", "Strong's Hebrew"],
+                  ["BDB",          t("settings.bdb")],
+                  ["HebrewStrong", t("settings.strongHebrew")],
                 ] as [HebrewLexicon, string][]
               ).map(([value, label]) => (
                 <label key={value} className="flex items-center gap-2 cursor-pointer">
