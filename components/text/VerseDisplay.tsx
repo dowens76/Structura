@@ -118,6 +118,7 @@ interface VerseDisplayProps {
   onUpdateAnnotation?: (id: number, updates: { label?: string; color?: string; description?: string | null; outOfSequence?: boolean }) => void;
   onExpandAnnotationRange?: (id: number, direction: "expand-start" | "shrink-start" | "expand-end" | "shrink-end") => void;
   showAnnotationCol?: boolean;
+  showAtnachBreaks?: boolean;
   /** Called when the user clicks a verse-number label; used to scroll the notes pane */
   onVerseClick?: (verseNum: number) => void;
   /** Extra gap (px) inserted between the verse-label column and the source-text column
@@ -759,6 +760,7 @@ export default function VerseDisplay({
   onVerseClick,
   rstSourcePad = 0,
   presentationMode = false,
+  showAtnachBreaks = false,
 }: VerseDisplayProps) {
   const firstWordId = words[0]?.wordId;
   const verseStartsNewParagraph = firstWordId ? paragraphBreakIds.has(firstWordId) : false;
@@ -1269,39 +1271,59 @@ export default function VerseDisplay({
 
       // Render words inside the group (spaces between them are INSIDE the
       // wrapper, so the background fills the inter-word gap).
-      const inner = gWords.map((word, wi) => (
-        <span key={word.wordId}>
-          <WordToken
-            word={word}
-            displayMode={displayMode}
-            grammarFilter={grammarFilter}
-            colorRules={colorRules}
-            onSelect={onSelectWord}
-            selectedWordId={selectedWordId}
-            showTooltip={showTooltips}
-            useLinguisticTerms={useLinguisticTerms}
-            editingParagraphs={editingParagraphs}
-            characterRef={charRef}
-            characterMap={characterMap}
-            editingRefs={editingRefs}
-            editingSpeech={editingSpeech}
-            isRangeStart={word.wordId === speechRangeStartWordId}
-            highlightCharIds={highlightCharIds}
-            wordTagRef={groupWtr}
-            wordTagMap={wordTagMap}
-            editingWordTags={editingWordTags}
-            highlightWordTagIds={highlightWordTagIds}
-            wordFormatting={wordFormattingMap.get(word.wordId) ?? null}
-            editingFormatting={editingFormatting}
-            interlinearSubMode={interlinearSubMode}
-            constituentLabel={constituentLabelMap.get(word.wordId)}
-            datasetValue={datasetEntryMap.get(word.wordId)}
-            onSaveConstituentLabel={onSaveConstituentLabel}
-            onSaveDatasetEntry={onSaveDatasetEntry}
-          />
-          {wi < gWords.length - 1 && " "}
-        </span>
-      ));
+      const inner = gWords.map((word, wi) => {
+        const wordHasAtnach =
+          showAtnachBreaks &&
+          isHebrew &&
+          (word.surfaceText ?? "").includes("\u0591");
+        return (
+          <span key={word.wordId}>
+            <WordToken
+              word={word}
+              displayMode={displayMode}
+              grammarFilter={grammarFilter}
+              colorRules={colorRules}
+              onSelect={onSelectWord}
+              selectedWordId={selectedWordId}
+              showTooltip={showTooltips}
+              useLinguisticTerms={useLinguisticTerms}
+              editingParagraphs={editingParagraphs}
+              characterRef={charRef}
+              characterMap={characterMap}
+              editingRefs={editingRefs}
+              editingSpeech={editingSpeech}
+              isRangeStart={word.wordId === speechRangeStartWordId}
+              highlightCharIds={highlightCharIds}
+              wordTagRef={groupWtr}
+              wordTagMap={wordTagMap}
+              editingWordTags={editingWordTags}
+              highlightWordTagIds={highlightWordTagIds}
+              wordFormatting={wordFormattingMap.get(word.wordId) ?? null}
+              editingFormatting={editingFormatting}
+              interlinearSubMode={interlinearSubMode}
+              constituentLabel={constituentLabelMap.get(word.wordId)}
+              datasetValue={datasetEntryMap.get(word.wordId)}
+              onSaveConstituentLabel={onSaveConstituentLabel}
+              onSaveDatasetEntry={onSaveDatasetEntry}
+            />
+            {wordHasAtnach && (
+              <span
+                aria-hidden="true"
+                style={{
+                  display: "inline-block",
+                  verticalAlign: "middle",
+                  width: "1px",
+                  height: "1.1em",
+                  backgroundColor: "#7c3aed",
+                  opacity: 0.55,
+                  margin: "0 0.35em",
+                }}
+              />
+            )}
+            {wi < gWords.length - 1 && " "}
+          </span>
+        );
+      });
 
       // Wrap in a styled span (or plain span when unstyled); space between
       // groups goes OUTSIDE so it isn't coloured by the adjacent group.

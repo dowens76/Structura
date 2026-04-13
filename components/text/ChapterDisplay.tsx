@@ -125,6 +125,7 @@ export default function ChapterDisplay({
   const [notesOpen, setNotesOpen] = useState(false);
   const [notesScrollVerse, setNotesScrollVerse] = useState<number | null>(null);
   const [showTooltips, setShowTooltips] = useState(false);
+  const [showAtnachBreaks, setShowAtnachBreaks] = useState(false);
   // Store active translations by abbreviation so they survive cross-book navigation
   const [activeTranslationAbbrs, setActiveTranslationAbbrs] = useState<Set<string>>(new Set());
   const [colorRules, setColorRules] = useState<ColorRule[]>([]);
@@ -685,6 +686,56 @@ export default function ChapterDisplay({
   // Called when a translation word is clicked in paragraph-editing mode.
   function handleToggleTranslationParagraphBreak(wordId: string, abbr: string) {
     return handleToggleParagraphBreakById(wordId, abbr);
+  }
+
+  async function handleAddAtnachParagraphBreaks() {
+    const toAdd: string[] = [];
+    for (let i = 0; i < words.length - 1; i++) {
+      const w = words[i];
+      const next = words[i + 1];
+      if (
+        w.verse === next.verse &&
+        (w.surfaceText ?? "").includes("\u0591") &&
+        !paragraphBreakIds.has(next.wordId)
+      ) {
+        toAdd.push(next.wordId);
+      }
+    }
+    if (toAdd.length === 0) return;
+
+    pushUndo({
+      label: `Add ${toAdd.length} atnach ¶`,
+      undo: () => {
+        setParagraphBreakIds((prev) => {
+          const next = new Set(prev);
+          toAdd.forEach((id) => next.delete(id));
+          return next;
+        });
+        toAdd.forEach((id) =>
+          fetch("/api/paragraph-breaks", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ wordId: id, book, chapter, source: textSource }),
+          })
+        );
+      },
+    });
+
+    setParagraphBreakIds((prev) => {
+      const next = new Set(prev);
+      toAdd.forEach((id) => next.add(id));
+      return next;
+    });
+
+    await Promise.all(
+      toAdd.map((id) =>
+        fetch("/api/paragraph-breaks", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ wordId: id, book, chapter, source: textSource }),
+        })
+      )
+    );
   }
 
   // ── Section break handlers ───────────────────────────────────────────────────
@@ -2142,6 +2193,32 @@ export default function ChapterDisplay({
                 Tooltips
               </button>
 
+              {isHebrew && (
+                <>
+                  <button
+                    onClick={() => setShowAtnachBreaks((v) => !v)}
+                    title={showAtnachBreaks
+                      ? "Hide atnach half-verse markers"
+                      : "Show atnach accent markers (main cantillation accent dividing each verse)"}
+                    className={[
+                      "px-2.5 py-1 rounded text-xs font-medium transition-colors",
+                      showAtnachBreaks
+                        ? "bg-violet-600 text-white"
+                        : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
+                    ].join(" ")}
+                  >
+                    Atnach
+                  </button>
+                  <button
+                    onClick={handleAddAtnachParagraphBreaks}
+                    title="Insert paragraph breaks at every atnach accent in this chapter"
+                    className="px-2.5 py-1 rounded text-xs font-medium transition-colors bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700"
+                  >
+                    ¶ Atnach
+                  </button>
+                </>
+              )}
+
               {/* Paragraph edit mode toggle */}
               <button
                 onClick={() => setEditingParagraphs((v) => !v)}
@@ -2835,6 +2912,7 @@ export default function ChapterDisplay({
                 useLinguisticTerms={useLinguisticTerms}
                 paragraphBreakIds={paragraphBreakIds}
                 editingParagraphs={editingParagraphs}
+                showAtnachBreaks={showAtnachBreaks}
                 characterRefMap={characterRefMap}
                 characterMap={characterMap}
                 wordSpeechMap={wordSpeechMap}
