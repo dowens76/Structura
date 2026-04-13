@@ -102,7 +102,7 @@ Structura ships as a Linux, Mac, and Windows app via Tauri v2. The bundled app i
 
 Note for Mac users: The MacOS will complain that the app is damaged. To get around this security feature, open the terminal and run: 
 
-`` `xattr -cr /Applications/Structura.app`` `
+``xattr -cr /Applications/Structura.app`` 
 
 ---
 
