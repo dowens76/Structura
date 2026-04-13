@@ -146,7 +146,11 @@ npm run db:push:source   # apply schema migrations to source.db
 
 ## macOS Desktop App
 
-Structura ships as a native macOS app (`.app` / `.dmg`) via Tauri v2. The bundled app includes the Next.js server, Node.js runtime, and all source databases — no external dependencies required at runtime.
+Structura ships as a Linux, Mac, and Windows app via Tauri v2. The bundled app includes the Next.js server, Node.js runtime, and all source databases — no external dependencies required at runtime.
+
+Note for Mac users: The MacOS will complain that the app is damaged. To get around this security feature, open the terminal and run: 
+
+`` `xattr -cr /Applications/Structura.app`` `
 
 ### Build
 
