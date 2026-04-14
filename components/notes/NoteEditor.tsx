@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useCallback } from "react";
+import { useEffect, useRef, useCallback, useState } from "react";
 import { useEditor, EditorContent } from "@tiptap/react";
 import { Extension } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
@@ -11,6 +11,7 @@ import Placeholder from "@tiptap/extension-placeholder";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
+import ZoteroCitePicker from "./ZoteroCitePicker";
 
 // ─── Search-highlight ProseMirror extension ───────────────────────────────────
 
@@ -244,11 +245,23 @@ export default function NoteEditor({
     editor.commands.setSearchQuery(searchQuery ?? "");
   }, [editor, searchQuery]);
 
+  const [showCitePicker, setShowCitePicker] = useState(false);
+
+  const handleCiteClose = useCallback(() => setShowCitePicker(false), []);
+  const handleCiteInsert = useCallback(
+    (html: string) => {
+      editor.chain().focus().insertContent(html).run();
+      setShowCitePicker(false);
+    },
+    [editor],
+  );
+
   if (!editor) return null;
 
   return (
     <div className="note-editor">
-      {/* ── Toolbar ─────────────────────────────────────────────────── */}
+      {/* ── Toolbar wrapper — position: relative so picker floats below ── */}
+      <div style={{ position: "relative" }}>
       <div className="note-toolbar flex items-center gap-0.5 flex-wrap px-2 py-1 border-b border-stone-100 dark:border-stone-800">
         {/* Paragraph styles */}
         <ToolBtn
@@ -371,7 +384,34 @@ export default function NoteEditor({
             <path d="M0 3h4l-2 3h2v3H0V6l2-3zm6 0h4l-2 3h2v3H6V6l2-3z"/>
           </svg>
         </ToolBtn>
+
+        <Sep />
+
+        {/* Zotero citation */}
+        <ToolBtn
+          onClick={() => setShowCitePicker((v) => !v)}
+          active={showCitePicker}
+          title="Insert Zotero citation"
+        >
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" opacity="0.9">
+            <rect x="1" y="1" width="7" height="9" rx="1" fill="none" stroke="currentColor" strokeWidth="1.2"/>
+            <line x1="3" y1="4" x2="6" y2="4" stroke="currentColor" strokeWidth="1"/>
+            <line x1="3" y1="6" x2="6" y2="6" stroke="currentColor" strokeWidth="1"/>
+            <line x1="3" y1="8" x2="5" y2="8" stroke="currentColor" strokeWidth="1"/>
+            <circle cx="9.5" cy="9.5" r="2" fill="currentColor" opacity="0.7"/>
+            <text x="9.5" y="11.2" textAnchor="middle" fontSize="3" fill="white" fontWeight="bold">Z</text>
+          </svg>
+        </ToolBtn>
       </div>
+
+      {/* Floating citation picker */}
+      {showCitePicker && (
+        <ZoteroCitePicker
+          onInsert={handleCiteInsert}
+          onClose={handleCiteClose}
+        />
+      )}
+      </div>{/* end relative wrapper */}
 
       {/* ── Editor content area ─────────────────────────────────────── */}
       <EditorContent editor={editor} />
