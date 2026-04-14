@@ -410,11 +410,19 @@ function layoutTree(
       if (node.type === "segment") {
         const pos = posMap.get(node.id);
         if (pos?.transLeftX !== undefined) {
-          // Mirror source indentation: segments that are indented further right
-          // in the source column get a proportionally longer translation arm,
-          // matching the visual arm lengths on the source side.
-          const srcIndent = (pos.leftX - LEAF_MARGIN) - (refLeftX - LEAF_MARGIN);
-          node.x = (pos.transLeftX - LEAF_MARGIN) + srcIndent;
+          if (use3Col) {
+            // Hebrew 3-col: translation column has fixed width; all leaves at
+            // the same x (column boundary minus LEAF_MARGIN).  Do NOT apply
+            // srcIndent: for RTL text pos.leftX reflects text width, not
+            // indentation, so applying it would push leaves arbitrarily far
+            // into the translation column.
+            node.x = pos.transLeftX - LEAF_MARGIN;
+          } else {
+            // LTR 3-col / 2-col: mirror source indentation so segments indented
+            // further right in the source column get proportionally longer arms.
+            const srcIndent = (pos.leftX - LEAF_MARGIN) - (refLeftX - LEAF_MARGIN);
+            node.x = (pos.transLeftX - LEAF_MARGIN) + srcIndent;
+          }
         }
       }
     }
