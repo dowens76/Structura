@@ -68,6 +68,9 @@ interface LayoutLink {
 
 export interface Props {
   relations: RstRelation[];
+  /** Independent translation-side relations (unlinked mode). When omitted, the
+   *  translation column mirrors the source tree (linked mode / default behaviour). */
+  tvRelations?: RstRelation[];
   containerRef: RefObject<HTMLDivElement | null>;
   isHebrew: boolean;
   /** True when a translation column is visible (3-col layout). Controls whether
@@ -85,6 +88,9 @@ export interface Props {
    *  selecting that group (by its groupId) as an RST endpoint. */
   onSelectGroup?: (groupId: string) => void;
   customTypes?: RstTypeEntry[];
+  /** When true (unlinked mode, translation side active), selector dots are
+   *  placed in the translation column rather than the source column. */
+  editingTranslation?: boolean;
 }
 
 // ── DOM measurement ───────────────────────────────────────────────────────────
@@ -263,6 +269,7 @@ function flattenHierarchy(
 
 function layoutTree(
   relations: RstRelation[],
+  tvRelations: RstRelation[] | undefined,
   paragraphFirstWordIds: string[],
   posMap: Map<string, SegPos>,
   isHebrew: boolean,
@@ -402,9 +409,12 @@ function layoutTree(
   }
 
   // ── Build translation mirror tree (if any segment has transLeftX) ────────────
+  // When tvRelations is provided (unlinked mode) it has its own structure;
+  // otherwise the translation column mirrors the source tree exactly.
   let trans: { nodes: LayoutNode[]; links: LayoutLink[] } = { nodes: [], links: [] };
   if (hasTransMeasured && yMapTrans.size > 0) {
-    const treeRootTrans = buildRstTree(relations, paragraphFirstWordIds);
+    const tvRels = tvRelations ?? relations;
+    const treeRootTrans = buildRstTree(tvRels, paragraphFirstWordIds);
     trans = flattenHierarchy(treeRootTrans, yMapTrans, transXFn, true);
     for (const node of trans.nodes) {
       if (node.type === "segment") {
@@ -442,6 +452,7 @@ function layoutTree(
 
 export default function RstRelationOverlay({
   relations,
+  tvRelations,
   containerRef,
   isHebrew,
   hasTranslation,
@@ -455,6 +466,7 @@ export default function RstRelationOverlay({
   onEditGroup,
   onSelectGroup,
   customTypes = [],
+  editingTranslation = false,
 }: Props) {
   const relMap = customTypes.length > 0
     ? buildRelationshipMap(customTypes)
@@ -512,6 +524,7 @@ export default function RstRelationOverlay({
   const allSegIds = [
     ...new Set([
       ...relations.map(r => r.segWordId),
+      ...(tvRelations ?? []).map(r => r.segWordId),
       ...(editing ? paragraphFirstWordIds : []),
     ]),
   ];
@@ -522,14 +535,14 @@ export default function RstRelationOverlay({
       const container = containerRef.current;
       if (!container) return;
       const newPos           = measureSegments(allSegIds, container);
-      const { nodes, links } = layoutTree(relations, paragraphFirstWordIds, newPos, isHebrew, hasTranslation);
+      const { nodes, links } = layoutTree(relations, tvRelations, paragraphFirstWordIds, newPos, isHebrew, hasTranslation);
       setPosMap(newPos);
       setSvgH(container.scrollHeight);
       setLayoutNodes(nodes);
       setLayoutLinks(links);
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [relations, containerRef, isHebrew, hasTranslation, editing, paragraphFirstWordIds.join(",")]);
+  }, [relations, tvRelations, containerRef, isHebrew, hasTranslation, editing, paragraphFirstWordIds.join(",")]);
 
   useLayoutEffect(() => {
     scheduleRemeasure();
@@ -554,7 +567,8 @@ export default function RstRelationOverlay({
   const SAT_R     = 4;
   const SEG_R     = 3.5;
 
-  const relatedSegIds = new Set(relations.map(r => r.segWordId));
+  const relatedSegIds   = new Set(relations.map(r => r.segWordId));
+  const tvRelatedSegIds = new Set((tvRelations ?? []).map(r => r.segWordId));
 
   const groupNodes = layoutNodes.filter(n => n.type === "group");
 
@@ -564,6 +578,27 @@ export default function RstRelationOverlay({
     ? (relations.find(r => r.segWordId === selectedNucleusWordId && r.role === "nucleus")?.groupId ?? null)
     : null;
 
+  // ── Pre-compute per-group spine X ─────────────────────────────────────────
+  // The spine is placed LEVEL_WIDTH beyond the *innermost* leaf in the group
+  // (innermost = closest to the margin, i.e. furthest from the text):
+  //   LTR / translation  →  smallest  x2  →  spine to the left
+  //   Hebrew source (RTL) →  largest   x2  →  spine to the right
+  // Computed once here so both edge drawing and chip placement share it.
+  const spineXByParent = new Map<string, number>();
+  for (const lk of layoutLinks) {
+    const key      = `${lk.parentId}:${lk.isTrans ? 1 : 0}`;
+    const isRtlSrc = isHebrew && !lk.isTrans;
+    const cur      = spineXByParent.get(key);
+    spineXByParent.set(
+      key,
+      cur === undefined ? lk.x2 : (isRtlSrc ? Math.max(cur, lk.x2) : Math.min(cur, lk.x2))
+    );
+  }
+  for (const [key, innerX] of spineXByParent) {
+    const isRtlSrc = key.endsWith(":0") && isHebrew;
+    spineXByParent.set(key, isRtlSrc ? innerX + LEVEL_WIDTH : innerX - LEVEL_WIDTH);
+  }
+
   return (
     <svg
       ref={svgRef}
@@ -572,59 +607,26 @@ export default function RstRelationOverlay({
       aria-hidden="true"
     >
       {/* ── Tree edges ────────────────────────────────────────────────────── */}
-      {(() => {
-        // Build a per-group spine X.
-        //
-        // The spine is placed LEVEL_WIDTH beyond the *innermost* leaf in the group
-        // (innermost = closest to the margin, i.e. furthest from the text):
-        //   LTR / translation  →  smallest  x2  across all children → spine to the left
-        //   Hebrew source (RTL) →  largest   x2  across all children → spine to the right
-        //
-        // Using the innermost leaf (rather than the nucleus leaf alone) guarantees two things:
-        //   1. All horizontal arms run in the correct direction (toward the text, never backward).
-        //   2. When the nucleus is the least-indented member, its arm equals exactly LEVEL_WIDTH.
-        //
-        // Key: `${parentId}:${isTrans}` to avoid source/translation key collisions.
-        const spineXByParent = new Map<string, number>();
-        for (const lk of layoutLinks) {
-          const key      = `${lk.parentId}:${lk.isTrans ? 1 : 0}`;
-          const isRtlSrc = isHebrew && !lk.isTrans;
-          const cur      = spineXByParent.get(key);
-          if (isRtlSrc) {
-            // RTL: take the maximum (rightmost) leaf x2
-            spineXByParent.set(key, cur === undefined ? lk.x2 : Math.max(cur, lk.x2));
-          } else {
-            // LTR: take the minimum (leftmost) leaf x2
-            spineXByParent.set(key, cur === undefined ? lk.x2 : Math.min(cur, lk.x2));
-          }
-        }
-        // Offset each group's innermost-leaf position by LEVEL_WIDTH in the outward direction.
-        for (const [key, innerX] of spineXByParent) {
-          const isRtlSrc = key.endsWith(":0") && isHebrew;
-          spineXByParent.set(key, isRtlSrc ? innerX + LEVEL_WIDTH : innerX - LEVEL_WIDTH);
-        }
-
-        return layoutLinks.map((lk, i) => {
-          const meta   = relMap[lk.relType];
-          const color  = meta?.color ?? "#6B7280";
-          const isSat  = lk.role === "satellite";
-          const key    = `${lk.parentId}:${lk.isTrans ? 1 : 0}`;
-          const spineX = spineXByParent.get(key) ?? lk.x1;
-          const pathD  = `M ${spineX},${lk.y1} V ${lk.y2} H ${lk.x2}`;
-          return (
-            <path
-              key={i}
-              d={pathD}
-              fill="none"
-              stroke={color}
-              strokeWidth={editing ? 2 : 1.5}
-              strokeDasharray={isSat ? "4 3" : undefined}
-              opacity={0.85}
-              style={{ pointerEvents: "none" }}
-            />
-          );
-        });
-      })()}
+      {layoutLinks.map((lk, i) => {
+        const meta   = relMap[lk.relType];
+        const color  = meta?.color ?? "#6B7280";
+        const isSat  = lk.role === "satellite";
+        const key    = `${lk.parentId}:${lk.isTrans ? 1 : 0}`;
+        const spineX = spineXByParent.get(key) ?? lk.x1;
+        const pathD  = `M ${spineX},${lk.y1} V ${lk.y2} H ${lk.x2}`;
+        return (
+          <path
+            key={i}
+            d={pathD}
+            fill="none"
+            stroke={color}
+            strokeWidth={editing ? 2 : 1.5}
+            strokeDasharray={isSat ? "4 3" : undefined}
+            opacity={0.85}
+            style={{ pointerEvents: "none" }}
+          />
+        );
+      })}
 
       {/* ── Group nodes (relation-type chips) ─────────────────────────────── */}
       {groupNodes.map((n, i) => {
@@ -639,20 +641,48 @@ export default function RstRelationOverlay({
         const CHIP_H = 16;
 
         const isSelectedEndpoint = n.id === selectedGroupId && !n.isTrans;
-        // Move the chip one LEVEL_WIDTH toward the text ("inside the bracket").
-        // Hebrew source tree extends rightward, so inward = left (−).
-        // LTR and translation trees extend leftward, so inward = right (+).
-        const chipX = (isHebrew && !n.isTrans) ? n.x - LEVEL_WIDTH : n.x + LEVEL_WIDTH;
-        // Connector dot position: on the tree-facing (outer) side of the chip.
-        const connDotX = isHebrew
-          ? chipX + CHIP_W / 2 + 7
-          : chipX - CHIP_W / 2 - 7;
-        // Position the chip at the satellite arm's Y (within 2px of the horizontal
-        // line connecting to the satellite), falling back to the group's centre Y.
+
         const satLink = layoutLinks.find(
           lk => lk.parentId === n.id && lk.role === "satellite" && !!lk.isTrans === !!n.isTrans
         );
-        const chipY = satLink?.y2 ?? n.y;
+
+        // ── Chip X: just inside the spine, toward the text ───────────────
+        // The spine is the vertical bar of the RST bracket.  "Just inside"
+        // means on the text-facing side (right for LTR, left for RTL).
+        // A 2 px gap keeps the chip from overlapping the spine stroke.
+        const CHIP_GAP = 2;
+        const spineKey = `${n.id}:${n.isTrans ? 1 : 0}`;
+        const spineX   = spineXByParent.get(spineKey);
+        const chipX    = spineX !== undefined
+          ? (isHebrew && !n.isTrans)
+            ? spineX - CHIP_W / 2 - CHIP_GAP   // RTL: chip left of spine
+            : spineX + CHIP_W / 2 + CHIP_GAP   // LTR: chip right of spine
+          : (isHebrew && !n.isTrans)            // fallback if spine unavailable
+            ? n.x - LEVEL_WIDTH
+            : n.x + LEVEL_WIDTH;
+
+        // ── Chip Y: clear of the horizontal arm ──────────────────────────
+        // The horizontal arm for a satellite sits at satLink.y2; nucleusY is
+        // satLink.y1 (flattenHierarchy always uses nucleusY as y1 for every
+        // link in the group).  To avoid covering the arm:
+        //   • satellite BELOW nucleus (y2 > y1): chip floats ABOVE the arm
+        //   • satellite ABOVE nucleus (y2 < y1): chip floats BELOW the arm
+        // Coordinate relations (no satellite) center the chip at group Y.
+        const CHIP_GAP_Y = 3;
+        let chipY: number;
+        if (satLink) {
+          const satelliteIsLower = satLink.y2 > satLink.y1; // satellite below nucleus
+          chipY = satelliteIsLower
+            ? satLink.y2 - CHIP_H / 2 - CHIP_GAP_Y   // float above arm
+            : satLink.y2 + CHIP_H / 2 + CHIP_GAP_Y;  // float below arm
+        } else {
+          chipY = n.y; // coordinate / fallback: centre on group Y
+        }
+
+        // Connector dot: tree-facing (outer) side of chip.
+        const connDotX = (isHebrew && !n.isTrans)
+          ? chipX + CHIP_W / 2 + 7   // RTL: dot to the right of chip (away from text)
+          : chipX - CHIP_W / 2 - 7;  // LTR: dot to the left of chip (away from text)
 
         return (
           <g
@@ -726,7 +756,7 @@ export default function RstRelationOverlay({
         );
       })}
 
-      {/* ── Segment leaf dots (role-coloured anchors on source tree only) ─── */}
+      {/* ── Segment leaf dots — source tree ──────────────────────────────── */}
       {layoutNodes
         .filter(n => n.type === "segment" && !n.isTrans && relatedSegIds.has(n.id))
         .map(n => (
@@ -738,24 +768,54 @@ export default function RstRelationOverlay({
             style={{ pointerEvents: "none" }}
           />
         ))}
+      {/* ── Segment leaf dots — translation tree (unlinked mode) ──────────── */}
+      {tvRelations && layoutNodes
+        .filter(n => n.type === "segment" && n.isTrans && tvRelatedSegIds.has(n.id))
+        .map(n => (
+          <circle
+            key={`tv-leaf-${n.id}`}
+            cx={n.x} cy={n.y} r={3}
+            fill={n.role === "nucleus" ? "#7C3AED" : "#F59E0B"}
+            opacity={0.9}
+            style={{ pointerEvents: "none" }}
+          />
+        ))}
 
       {/* ── Editing mode: segment selector dots ──────────────────────────── */}
-      {editing && paragraphFirstWordIds.map(wordId => {
+      {editing && (() => {
+        // When editing translation side, find a reference transLeftX from any
+        // measured segment (verses without translation text lack data-seg-translation
+        // and thus have transLeftX=undefined; fall back to the nearest sibling value).
+        const refTransLeftX = editingTranslation
+          ? [...posMap.values()].find(p => p.transLeftX !== undefined)?.transLeftX
+          : undefined;
+
+        return paragraphFirstWordIds.map(wordId => {
         const pos = posMap.get(wordId);
         if (!pos) return null;
 
         const isNucleus   = wordId === selectedNucleusWordId;
         const isSatellite = wordId === selectedSatelliteWordId;
 
-        // Selector dots match the leaf-dot position used by the rendered tree.
-        // Hebrew 3-col: just outside the source column's right boundary.
-        // Hebrew 2-col: just right of the text's right edge.
-        // LTR (2-col or 3-col): just left of the text start (in the left gutter).
-        const dotX = (isHebrew && pos.srcCellRightX !== undefined)
-          ? pos.srcCellRightX + LEAF_MARGIN          // Hebrew 3-col
-          : isHebrew
-            ? pos.rightX + LEAF_MARGIN               // Hebrew 2-col
-            : pos.leftX - LEAF_MARGIN;               // LTR (any layout)
+        let dotX: number;
+        if (editingTranslation) {
+          // Translation column: dots sit at the translation text's left edge.
+          // Use this segment's own transLeftX, or fall back to the reference value
+          // from another segment (e.g. when this verse has no translation text).
+          const txLeft = pos.transLeftX ?? refTransLeftX;
+          if (txLeft === undefined) return null;
+          dotX = txLeft - LEAF_MARGIN;
+        } else {
+          // Source column selector dot positions:
+          // Hebrew 3-col: just outside the source column's right boundary.
+          // Hebrew 2-col: just right of the text's right edge.
+          // LTR (2-col or 3-col): just left of the text start (in the left gutter).
+          dotX = (isHebrew && pos.srcCellRightX !== undefined)
+            ? pos.srcCellRightX + LEAF_MARGIN
+            : isHebrew
+              ? pos.rightX + LEAF_MARGIN
+              : pos.leftX - LEAF_MARGIN;
+        }
         const dotY = pos.top + (pos.bottom - pos.top) / 2;
 
         const r      = isNucleus ? NUCLEUS_R : isSatellite ? SAT_R : SEG_R;
@@ -772,7 +832,8 @@ export default function RstRelationOverlay({
             onClick={() => onSelectSegment(wordId)}
           />
         );
-      })}
+        });
+      })()}
     </svg>
   );
 }

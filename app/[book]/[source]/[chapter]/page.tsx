@@ -99,7 +99,8 @@ export default async function ChapterPage({ params, searchParams }: PageProps) {
   let initialWordTags: Awaited<ReturnType<typeof getWordTags>> = [];
   let initialWordTagRefs: Awaited<ReturnType<typeof getChapterWordTagRefs>> = [];
   let initialLineIndents: { wordId: string; indentLevel: number }[] = [];
-  let initialRstRelations: Awaited<ReturnType<typeof getChapterRstRelations>> = [];
+  let initialRstRelations:   Awaited<ReturnType<typeof getChapterRstRelations>> = [];
+  let initialTvRstRelations: Awaited<ReturnType<typeof getChapterRstRelations>> = [];
   let initialWordArrows: Awaited<ReturnType<typeof getChapterWordArrows>> = [];
   let initialWordFormatting: { wordId: string; isBold: boolean; isItalic: boolean }[] = [];
   let initialSceneBreaks: Awaited<ReturnType<typeof getChapterSceneBreaks>> = [];
@@ -114,7 +115,7 @@ export default async function ChapterPage({ params, searchParams }: PageProps) {
     [availableTranslations, initialParagraphBreakIds, initialCharacters,
      initialCharacterRefs, initialSpeechSections,
      initialWordTags, initialWordTagRefs, initialLineIndents,
-     initialRstRelations, initialWordArrows, initialWordFormatting,
+     initialRstRelations, initialTvRstRelations, initialWordArrows, initialWordFormatting,
      initialSceneBreaks, initialLineAnnotations,
      bookSceneBreaks, bookMaxVerses] = await Promise.all([
       getAvailableTranslationsForChapter(osisBook, chapter, workspaceId),
@@ -126,6 +127,7 @@ export default async function ChapterPage({ params, searchParams }: PageProps) {
       getChapterWordTagRefs(osisBook, chapter, workspaceId),
       getChapterLineIndents(osisBook, chapter, workspaceId),
       getChapterRstRelations(osisBook, chapter, textSource, workspaceId),
+      getChapterRstRelations(osisBook, chapter, `tv:${textSource}`, workspaceId),
       getChapterWordArrows(osisBook, chapter, textSource, workspaceId),
       getChapterWordFormatting(osisBook, chapter, workspaceId),
       getChapterSceneBreaks(osisBook, chapter, workspaceId),
@@ -290,6 +292,7 @@ export default async function ChapterPage({ params, searchParams }: PageProps) {
             initialWordTagRefs={initialWordTagRefs}
             initialLineIndents={initialLineIndents}
             initialRstRelations={initialRstRelations}
+            initialTvRstRelations={initialTvRstRelations}
             initialWordArrows={initialWordArrows}
             initialWordFormatting={initialWordFormatting}
             initialSceneBreaks={initialSceneBreaks}

@@ -51,6 +51,7 @@ interface ChapterDisplayProps {
   initialWordTagRefs: WordTagRef[];
   initialLineIndents: { wordId: string; indentLevel: number }[];
   initialRstRelations: RstRelation[];
+  initialTvRstRelations?: RstRelation[];
   initialWordArrows: WordArrow[];
   initialWordFormatting: { wordId: string; isBold: boolean; isItalic: boolean }[];
   initialSceneBreaks: { wordId: string; heading: string | null; level: number; verse: number; outOfSequence: boolean; extendedThrough: number | null }[];
@@ -101,6 +102,7 @@ export default function ChapterDisplay({
   initialWordTagRefs,
   initialLineIndents,
   initialRstRelations,
+  initialTvRstRelations = [],
   initialWordArrows,
   initialWordFormatting,
   initialSceneBreaks,
@@ -211,8 +213,13 @@ export default function ChapterDisplay({
   const [editingIndents, setEditingIndents] = useState(false);
 
   // ── RST relation state ───────────────────────────────────────────────────
-  const [rstRelations, setRstRelations]   = useState<RstRelation[]>(initialRstRelations);
-  const [editingRst, setEditingRst]        = useState(false);
+  const [rstRelations, setRstRelations]      = useState<RstRelation[]>(initialRstRelations);
+  const [tvRstRelations, setTvRstRelations]  = useState<RstRelation[]>(initialTvRstRelations);
+  const [rstRelationsLinked, setRstRelationsLinked] = useState(
+    () => readLocal("structura:rstLinked", true)
+  );
+  const [rstEditingSide, setRstEditingSide]  = useState<"source" | "translation">("source");
+  const [editingRst, setEditingRst]          = useState(false);
   // First-selected segment (nucleus for subordinate; first nucleus for coordinate)
   const [rstSegA, setRstSegA]              = useState<string | null>(null);
   // Second-selected segment (triggers picker)
@@ -409,6 +416,7 @@ export default function ChapterDisplay({
   useEffect(() => { writeLocal("structura:interlinearSubMode", interlinearSubMode); }, [interlinearSubMode]);
   useEffect(() => { writeLocal("structura:useLinguisticTerms", useLinguisticTerms); }, [useLinguisticTerms]);
   useEffect(() => { writeLocal("structura:hideSourceText", hideSourceText); }, [hideSourceText]);
+  useEffect(() => { writeLocal("structura:rstLinked", rstRelationsLinked); }, [rstRelationsLinked]);
 
   // ── Load datasets list on mount ───────────────────────────────────────────
   useEffect(() => {
@@ -1715,43 +1723,52 @@ export default function ChapterDisplay({
     const category = relMeta?.category ?? "subordinate";
     const isCoord  = category === "coordinate";
 
+    // Determine active side for unlinked mode
+    const editingTv   = !rstRelationsLinked && rstEditingSide === "translation";
+    const activeRels  = editingTv ? tvRstRelations : rstRelations;
+    const setActive   = editingTv ? setTvRstRelations : setRstRelations;
+    const activeSrc   = editingTv ? `tv:${textSource}` : textSource;
+
     let members: { segWordId: string; role: "nucleus" | "satellite"; sortOrder: number }[];
     if (isCoord) {
-      // Both are nuclei — check if rstSegA is already in a same-type coordination group
-      // to allow extending an existing group.
-      const existingGroup = rstRelations.find(
+      const existingGroup = activeRels.find(
         (r) => r.segWordId === rstSegA && r.relType === relType && r.role === "nucleus"
       );
       if (existingGroup) {
-        // Extend the existing group: add rstSegB as another nucleus
-        const groupId = existingGroup.groupId;
-        const maxOrder = rstRelations
+        const groupId  = existingGroup.groupId;
+        const maxOrder = activeRels
           .filter((r) => r.groupId === groupId)
           .reduce((m, r) => Math.max(m, r.sortOrder), 0);
+        const extMember = [{ segWordId: rstSegB, role: "nucleus" as const, sortOrder: maxOrder + 1 }];
+
         const resp = await fetch("/api/rst-relations", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            groupId,
-            members: [{ segWordId: rstSegB, role: "nucleus", sortOrder: maxOrder + 1 }],
-            relType,
-            book,
-            chapter,
-            source: textSource,
-          }),
+          body: JSON.stringify({ groupId, members: extMember, relType, book, chapter, source: activeSrc }),
         });
         const { relations: newRels } = await resp.json();
-        setRstRelations((prev) => [...prev, ...newRels]);
+        setActive((prev) => [...prev, ...newRels]);
+
+        if (rstRelationsLinked) {
+          const tvMax = tvRstRelations.filter((r) => r.groupId === groupId).reduce((m, r) => Math.max(m, r.sortOrder), 0);
+          const respTv = await fetch("/api/rst-relations", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ groupId, members: [{ segWordId: rstSegB, role: "nucleus" as const, sortOrder: tvMax + 1 }], relType, book, chapter, source: `tv:${textSource}` }),
+          });
+          const { relations: newTvRels } = await respTv.json();
+          setTvRstRelations((prev) => [...prev, ...newTvRels]);
+        }
+
         setRstSegB(null);
         setShowRstPicker(false);
         return;
       }
       members = [
-        { segWordId: rstSegA, role: "nucleus", sortOrder: 0 },
-        { segWordId: rstSegB, role: "nucleus", sortOrder: 1 },
+        { segWordId: rstSegA, role: "nucleus",  sortOrder: 0 },
+        { segWordId: rstSegB, role: "nucleus",  sortOrder: 1 },
       ];
     } else {
-      // Subordinate: A is nucleus, B is satellite (unless swapped)
       const nucleusId   = rstRolesSwapped ? rstSegB : rstSegA;
       const satelliteId = rstRolesSwapped ? rstSegA : rstSegB;
       members = [
@@ -1764,11 +1781,21 @@ export default function ChapterDisplay({
     const resp = await fetch("/api/rst-relations", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ groupId, members, relType, book, chapter, source: textSource }),
+      body: JSON.stringify({ groupId, members, relType, book, chapter, source: activeSrc }),
     });
     const { relations: newRels } = await resp.json();
-    setRstRelations((prev) => [...prev, ...newRels]);
-    // Keep segA selected so user can chain relations from the same segment
+    setActive((prev) => [...prev, ...newRels]);
+
+    if (rstRelationsLinked) {
+      const respTv = await fetch("/api/rst-relations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ groupId, members, relType, book, chapter, source: `tv:${textSource}` }),
+      });
+      const { relations: newTvRels } = await respTv.json();
+      setTvRstRelations((prev) => [...prev, ...newTvRels]);
+    }
+
     setRstSegB(null);
     setRstRolesSwapped(false);
     setShowRstPicker(false);
@@ -1798,7 +1825,11 @@ export default function ChapterDisplay({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ groupId: rstEditGroupId, relType }),
     });
+    // Update both arrays; when unlinked only one has this groupId — safe either way.
     setRstRelations((prev) =>
+      prev.map((r) => r.groupId === rstEditGroupId ? { ...r, relType } : r)
+    );
+    setTvRstRelations((prev) =>
       prev.map((r) => r.groupId === rstEditGroupId ? { ...r, relType } : r)
     );
     setRstEditGroupId(null);
@@ -1810,7 +1841,9 @@ export default function ChapterDisplay({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ groupId }),
     });
+    // Filter both arrays; when unlinked only one will have this groupId — safe either way.
     setRstRelations((prev) => prev.filter((r) => r.groupId !== groupId));
+    setTvRstRelations((prev) => prev.filter((r) => r.groupId !== groupId));
   }
 
   // ── Word arrow handlers ────────────────────────────────────────────────────
@@ -2079,6 +2112,40 @@ export default function ChapterDisplay({
     await handleUpdateTranslationVerse(abbr, verse, snapRecord.text, false);
   }
 
+  // ── Mode mutual-exclusivity ────────────────────────────────────────────────
+  // Compatible groups (may be active simultaneously):
+  //   A: paragraph + indent
+  //   B: bold + italic
+  //   C: speech + rst + indent
+  // All other combinations are mutually incompatible.
+  const COMPAT: Record<string, string[]> = {
+    paragraph:   ["indents"],
+    indents:     ["paragraph", "speech", "rst"],
+    bold:        ["italic"],
+    italic:      ["bold"],
+    speech:      ["rst", "indents"],
+    rst:         ["speech", "indents"],
+    arrows:      [],
+    scenes:      [],
+    annotations: [],
+    refs:        [],
+    wordTags:    [],
+  };
+  function deactivateIncompatible(mode: string) {
+    const keep = new Set([mode, ...(COMPAT[mode] ?? [])]);
+    if (!keep.has("paragraph"))   setEditingParagraphs(false);
+    if (!keep.has("scenes"))      setEditingScenes(false);
+    if (!keep.has("annotations")) { setEditingAnnotations(false); setAnnotRangeStart(null); setAnnotRangeEnd(null); }
+    if (!keep.has("refs"))        setEditingRefs(false);
+    if (!keep.has("speech"))      { setEditingSpeech(false); setSpeechRangeStart(null); }
+    if (!keep.has("wordTags"))    { setEditingWordTags(false); setPendingWordTag(false); }
+    if (!keep.has("indents"))     setEditingIndents(false);
+    if (!keep.has("rst"))         { setEditingRst(false); setRstSegA(null); setRstSegB(null); setShowRstPicker(false); setRstEditGroupId(null); }
+    if (!keep.has("arrows"))      { setEditingArrows(false); setArrowFromWordId(null); }
+    if (!keep.has("bold"))        setEditingBold(false);
+    if (!keep.has("italic"))      setEditingItalic(false);
+  }
+
   return (
     <div className="relative h-full min-h-0 flex flex-row">
       {/* Main text area — takes remaining width; notes pane sits to the right */}
@@ -2091,6 +2158,8 @@ export default function ChapterDisplay({
         >
           <RstRelationOverlay
             relations={rstRelations}
+            tvRelations={!rstRelationsLinked ? tvRstRelations : undefined}
+            editingTranslation={editingRst && !rstRelationsLinked && rstEditingSide === "translation"}
             containerRef={textContainerRef}
             isHebrew={isHebrew}
             hasTranslation={hasActiveTranslations}
@@ -2223,7 +2292,7 @@ export default function ChapterDisplay({
 
               {/* Paragraph edit mode toggle */}
               <button
-                onClick={() => setEditingParagraphs((v) => !v)}
+                onClick={() => { if (!editingParagraphs) deactivateIncompatible("paragraph"); setEditingParagraphs((v) => !v); }}
                 title={editingParagraphs
                   ? t("toolbar.titleParagraphOn")
                   : t("toolbar.titleParagraphOff")}
@@ -2239,7 +2308,7 @@ export default function ChapterDisplay({
 
               {/* Scene / episode break mode */}
               <button
-                onClick={() => editingScenes ? handleExitSceneEditing() : setEditingScenes(true)}
+                onClick={() => { if (editingScenes) { handleExitSceneEditing(); } else { deactivateIncompatible("scenes"); setEditingScenes(true); } }}
                 title={editingScenes
                   ? t("toolbar.titleSectionOn")
                   : t("toolbar.titleSectionOff")}
@@ -2256,9 +2325,8 @@ export default function ChapterDisplay({
               {/* Line annotation mode */}
               <button
                 onClick={() => {
+                  if (!editingAnnotations) deactivateIncompatible("annotations");
                   setEditingAnnotations((v) => !v);
-                  setAnnotRangeStart(null);
-                  setAnnotRangeEnd(null);
                 }}
                 title={editingAnnotations
                   ? t("toolbar.titleAnnotationOn")
@@ -2278,11 +2346,8 @@ export default function ChapterDisplay({
           {/* Character reference tag mode — always visible */}
           <button
             onClick={() => {
+              if (!editingRefs) deactivateIncompatible("refs");
               setEditingRefs((v) => !v);
-              setEditingSpeech(false);
-              setEditingWordTags(false);
-              setPendingWordTag(false);
-              setSpeechRangeStart(null);
             }}
             title={editingRefs ? t("toolbar.titleRefsOn") : t("toolbar.titleRefsOff")}
             className={[
@@ -2299,11 +2364,8 @@ export default function ChapterDisplay({
             /* Speech section tag mode */
             <button
               onClick={() => {
+                if (!editingSpeech) deactivateIncompatible("speech");
                 setEditingSpeech((v) => !v);
-                setEditingRefs(false);
-                setEditingWordTags(false);
-                setPendingWordTag(false);
-                setSpeechRangeStart(null);
               }}
               title={editingSpeech
                 ? t("toolbar.titleSpeechOn")
@@ -2322,12 +2384,8 @@ export default function ChapterDisplay({
           {/* Word / concept tag mode — always visible */}
           <button
             onClick={() => {
+              if (!editingWordTags) deactivateIncompatible("wordTags");
               setEditingWordTags((v) => !v);
-              setEditingRefs(false);
-              setEditingSpeech(false);
-              setEditingIndents(false);
-              setSpeechRangeStart(null);
-              setPendingWordTag(false);
             }}
             title={editingWordTags
               ? t("toolbar.titleWordTagOn")
@@ -2347,12 +2405,8 @@ export default function ChapterDisplay({
               {/* Paragraph indent mode */}
               <button
                 onClick={() => {
+                  if (!editingIndents) deactivateIncompatible("indents");
                   setEditingIndents((v) => !v);
-                  setEditingRefs(false);
-                  setEditingSpeech(false);
-                  setEditingWordTags(false);
-                  setSpeechRangeStart(null);
-                  setPendingWordTag(false);
                 }}
                 title={editingIndents
                   ? t("toolbar.titleIndentOn")
@@ -2401,14 +2455,16 @@ export default function ChapterDisplay({
               <button
                 onClick={() => {
                   const entering = !editingRst;
+                  if (entering) {
+                    deactivateIncompatible("rst");
+                  } else {
+                    setRstSegA(null);
+                    setRstSegB(null);
+                    setShowRstPicker(false);
+                    setRstEditGroupId(null);
+                    setShowRstTypeManager(false);
+                  }
                   setEditingRst(entering);
-                  setEditingArrows(false);
-                  setArrowFromWordId(null);
-                  setRstSegA(null);
-                  setRstSegB(null);
-                  setShowRstPicker(false);
-                  setRstEditGroupId(null);
-                  if (!entering) setShowRstTypeManager(false);
                 }}
                 title={editingRst
                   ? t("toolbar.titleRstOn")
@@ -2436,16 +2492,65 @@ export default function ChapterDisplay({
                   {t("toolbar.rstLabels")}
                 </button>
               )}
+              {editingRst && hasActiveTranslations && (
+                <>
+                  <label
+                    className="flex items-center gap-1 text-[11px] text-stone-500 dark:text-stone-400 cursor-pointer select-none"
+                    title={rstRelationsLinked ? t("toolbar.titleRstLinked") : t("toolbar.titleRstUnlinked")}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={rstRelationsLinked}
+                      onChange={(e) => {
+                        const nowLinked = e.target.checked;
+                        setRstRelationsLinked(nowLinked);
+                        if (nowLinked) setRstEditingSide("source");
+                      }}
+                      className="w-3 h-3 accent-rose-600 cursor-pointer"
+                    />
+                    {t("toolbar.rstLinkLabel")}
+                  </label>
+                  {!rstRelationsLinked && (
+                    <div className="flex gap-0.5">
+                      <button
+                        onClick={() => setRstEditingSide("source")}
+                        title={t("toolbar.titleRstSrcSide")}
+                        className={[
+                          "px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors",
+                          rstEditingSide === "source"
+                            ? "bg-rose-600 text-white"
+                            : "bg-stone-100 dark:bg-stone-800 text-stone-500 dark:text-stone-400 hover:bg-stone-200 dark:hover:bg-stone-700",
+                        ].join(" ")}
+                      >
+                        Src
+                      </button>
+                      <button
+                        onClick={() => setRstEditingSide("translation")}
+                        title={t("toolbar.titleRstTransSide")}
+                        className={[
+                          "px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors",
+                          rstEditingSide === "translation"
+                            ? "bg-rose-600 text-white"
+                            : "bg-stone-100 dark:bg-stone-800 text-stone-500 dark:text-stone-400 hover:bg-stone-200 dark:hover:bg-stone-700",
+                        ].join(" ")}
+                      >
+                        Trans
+                      </button>
+                    </div>
+                  )}
+                </>
+              )}
 
               {/* Word arrow mode */}
               <button
                 onClick={() => {
-                  setEditingArrows((v) => !v);
-                  setEditingRst(false);
-                  setRstSegA(null);
-                  setRstSegB(null);
-                  setShowRstPicker(false);
-                  setArrowFromWordId(null);
+                  const entering = !editingArrows;
+                  if (entering) {
+                    deactivateIncompatible("arrows");
+                  } else {
+                    setArrowFromWordId(null);
+                  }
+                  setEditingArrows(entering);
                 }}
                 title={editingArrows
                   ? t("toolbar.titleArrowOn")
@@ -2481,17 +2586,8 @@ export default function ChapterDisplay({
               {/* Bold formatting mode */}
               <button
                 onClick={() => {
+                  if (!editingBold) deactivateIncompatible("bold");
                   setEditingBold((v) => !v);
-                  setEditingParagraphs(false);
-                  setEditingRefs(false);
-                  setEditingSpeech(false);
-                  setEditingWordTags(false);
-                  setEditingIndents(false);
-                  setEditingRst(false);
-                  setEditingArrows(false);
-                  setSpeechRangeStart(null);
-                  setRstSegA(null);
-                  setArrowFromWordId(null);
                 }}
                 title={editingBold ? t("toolbar.titleBoldOn") : t("toolbar.titleBoldOff")}
                 className={[
@@ -2507,17 +2603,8 @@ export default function ChapterDisplay({
               {/* Italic formatting mode */}
               <button
                 onClick={() => {
+                  if (!editingItalic) deactivateIncompatible("italic");
                   setEditingItalic((v) => !v);
-                  setEditingParagraphs(false);
-                  setEditingRefs(false);
-                  setEditingSpeech(false);
-                  setEditingWordTags(false);
-                  setEditingIndents(false);
-                  setEditingRst(false);
-                  setEditingArrows(false);
-                  setSpeechRangeStart(null);
-                  setRstSegA(null);
-                  setArrowFromWordId(null);
                 }}
                 title={editingItalic ? t("toolbar.titleItalicOn") : t("toolbar.titleItalicOff")}
                 className={[
