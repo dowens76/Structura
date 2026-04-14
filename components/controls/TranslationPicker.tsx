@@ -32,6 +32,7 @@ export default function TranslationPicker({
   onToggle,
 }: TranslationPickerProps) {
   const [open, setOpen] = useState(false);
+  const [alignLeft, setAlignLeft] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
   // Local language state — seeded from props, updated optimistically
@@ -43,6 +44,13 @@ export default function TranslationPicker({
   useEffect(() => {
     setLanguages(new Map(availableTranslations.map((t) => [t.id, t.language ?? null])));
   }, [availableTranslations]);
+
+  // Flip alignment when there isn't enough space to the left of the button
+  useEffect(() => {
+    if (!open || !containerRef.current) return;
+    const rect = containerRef.current.getBoundingClientRect();
+    setAlignLeft(rect.right < 320);
+  }, [open]);
 
   // Close on outside click or Escape
   useEffect(() => {
@@ -128,7 +136,7 @@ export default function TranslationPicker({
       {/* Dropdown panel */}
       {open && (
         <div
-          className="absolute top-full mt-1 right-0 z-50 rounded-md border shadow-lg py-1"
+          className={`absolute top-full mt-1 z-50 rounded-md border shadow-lg py-1 ${alignLeft ? "left-0" : "right-0"}`}
           style={{
             minWidth: "320px",
             backgroundColor: "var(--surface)",
