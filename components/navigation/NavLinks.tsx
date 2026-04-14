@@ -80,7 +80,6 @@ export default function NavLinks({
       {/* Utility links */}
       <Link
         href="/export/lists"
-        target="_blank"
         className="text-xs px-2 py-1 rounded transition-colors"
         style={{ color: "var(--nav-fg)" }}
       >
@@ -103,7 +102,6 @@ export default function NavLinks({
       {!parallelMode && (
         <Link
           href={exportHref}
-          target="_blank"
           className="text-xs px-2 py-1 rounded transition-colors"
           style={{ color: "var(--nav-fg)" }}
         >
