@@ -250,7 +250,7 @@ export default function NoteEditor({
   const handleCiteClose = useCallback(() => setShowCitePicker(false), []);
   const handleCiteInsert = useCallback(
     (html: string) => {
-      editor.chain().focus().insertContent(html).run();
+      if (editor) editor.chain().focus().insertContent(html).run();
       setShowCitePicker(false);
     },
     [editor],
