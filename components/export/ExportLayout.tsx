@@ -23,6 +23,16 @@ export default function ExportLayout({ children, revealHref, filename, noteConte
   const [pngStatus, setPngStatus] = useState<"idle" | "loading" | "done">("idle");
   const [slidesStatus, setSlidesStatus] = useState<"idle" | "loading" | "done">("idle");
 
+  async function handlePdf() {
+    // WKWebView (Tauri Mac) ignores window.print(). Use Tauri's own print API instead.
+    if ("__TAURI_INTERNALS__" in window) {
+      const { getCurrentWebviewWindow } = await import("@tauri-apps/api/webviewWindow");
+      await getCurrentWebviewWindow().print();
+    } else {
+      window.print();
+    }
+  }
+
   async function handlePng() {
     if (!textRef.current || pngStatus === "loading") return;
     setPngStatus("loading");
@@ -122,7 +132,7 @@ export default function ExportLayout({ children, revealHref, filename, noteConte
           </span>
           <button
             className={btnPrimary}
-            onClick={() => window.print()}
+            onClick={handlePdf}
             title="Open print dialog — choose 'Save as PDF' in the destination"
           >
             📄 PDF
