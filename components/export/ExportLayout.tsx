@@ -36,10 +36,30 @@ export default function ExportLayout({ children, revealHref, filename, noteConte
         pixelRatio: 2,
         backgroundColor: bg,
       });
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `structura-${filename}.png`;
-      a.click();
+
+      // WKWebView (Tauri Mac) does not honour `<a download>` for data URLs.
+      // Detect Tauri at call-time (event handlers are always client-side) and
+      // delegate the save dialog + file write to the Rust command instead.
+      if ("__TAURI_INTERNALS__" in window) {
+        const { invoke } = await import("@tauri-apps/api/core");
+        const saved = await invoke<boolean>("save_file", {
+          filename: `structura-${filename}.png`,
+          dataUrl: url,
+          filterName: "PNG Image",
+          ext: "png",
+        });
+        if (!saved) {
+          // User cancelled — stay idle rather than showing "done"
+          setPngStatus("idle");
+          return;
+        }
+      } else {
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `structura-${filename}.png`;
+        a.click();
+      }
+
       setPngStatus("done");
     } catch (err) {
       console.error("PNG export failed:", err);

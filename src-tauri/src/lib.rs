@@ -23,6 +23,59 @@ async fn pick_folder(app: AppHandle) -> Option<String> {
     rx.recv().ok().flatten()
 }
 
+// ── Tauri command: native save-file dialog + write ────────────────────────────
+//
+// Called from the frontend export toolbar for PNG (and any future binary
+// export formats).  The frontend passes a base64 data-URL; this command
+// strips the header, decodes the bytes, shows the native save dialog, and
+// writes the file to whatever path the user picked.  Returns `true` if the
+// file was saved, `false` if the user cancelled.
+
+#[tauri::command]
+async fn save_file(
+    app: AppHandle,
+    filename: String,
+    data_url: String,
+    filter_name: String,
+    ext: String,
+) -> Result<bool, String> {
+    use base64::Engine;
+    use tauri_plugin_dialog::DialogExt;
+
+    // Strip "data:<mime>;base64," prefix
+    let b64 = data_url
+        .split(',')
+        .nth(1)
+        .ok_or_else(|| "Invalid data URL: missing comma separator".to_string())?;
+
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(b64)
+        .map_err(|e| format!("Base64 decode error: {e}"))?;
+
+    // Show native save dialog
+    let (tx, rx) = std::sync::mpsc::channel::<Option<String>>();
+    app.dialog()
+        .file()
+        .set_file_name(&filename)
+        .add_filter(&filter_name, &[ext.as_str()])
+        .save_file(move |path| {
+            let _ = tx.send(path.map(|p| p.to_string()));
+        });
+
+    match rx.recv().ok().flatten() {
+        Some(path) => {
+            std::fs::write(&path, &bytes)
+                .map_err(|e| format!("Failed to write {path}: {e}"))?;
+            log::info!("Saved export file to {path}");
+            Ok(true)
+        }
+        None => {
+            log::info!("Save file dialog cancelled by user");
+            Ok(false)
+        }
+    }
+}
+
 // ── First-run: copy user.db.template → appDataDir/user.db ───────────────────
 
 fn ensure_user_db(app: &AppHandle) -> Result<PathBuf, String> {
@@ -188,7 +241,7 @@ pub fn run() {
 
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![pick_folder])
+        .invoke_handler(tauri::generate_handler![pick_folder, save_file])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

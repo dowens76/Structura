@@ -9,6 +9,7 @@
     "core:default",
     "core:webview:allow-print",
     "dialog:allow-open",
+    "dialog:allow-save",
     "shell:allow-execute",
     "shell:allow-open",
     "fs:allow-app-write-recursive",
