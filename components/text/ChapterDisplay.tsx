@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useEffect, useRef } from "react";
+import { useMemo, useState, useEffect, useRef, useCallback } from "react";
 import type { Word, Character, CharacterRef, SpeechSection, WordTag, WordTagRef, RstRelation, WordArrow, LineAnnotation } from "@/lib/db/schema";
 import type { Translation, TranslationVerse } from "@/lib/db/schema";
 import type { DisplayMode, GrammarFilterState, TranslationTextEntry, InterlinearSubMode } from "@/lib/morphology/types";
@@ -17,6 +17,7 @@ import WordArrowOverlay from "./WordArrowOverlay";
 import ClearAnnotationsDialog, { type ClearCategory } from "@/components/controls/ClearAnnotationsDialog";
 import TranslationPicker from "@/components/controls/TranslationPicker";
 import NotesPane from "@/components/notes/NotesPane";
+import SearchPane from "@/components/search/SearchPane";
 import ResizablePane from "@/components/ResizablePane";
 import RstTypeManager from "@/components/controls/RstTypeManager";
 import type { ColorRule } from "@/lib/morphology/colorRules";
@@ -127,7 +128,17 @@ export default function ChapterDisplay({
   const [selectedWord, setSelectedWord] = useState<Word | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
   const [notesOpen, setNotesOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchHits, setSearchHits] = useState<Set<string>>(new Set());
   const [notesScrollVerse, setNotesScrollVerse] = useState<number | null>(null);
+
+  // Auto-open search pane if a previous search was persisted in sessionStorage
+  useEffect(() => {
+    try {
+      if (sessionStorage.getItem("structura.search")) setSearchOpen(true);
+    } catch { /* ignore */ }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [showTooltips, setShowTooltips] = useState(false);
   const [showAtnachBreaks, setShowAtnachBreaks] = useState(false);
   // Store active translations by abbreviation so they survive cross-book navigation
@@ -199,6 +210,47 @@ export default function ChapterDisplay({
     () => new Map(wordTags.map((t) => [t.id, t])),
     [wordTags]
   );
+
+  // ── Search hit highlighting ──────────────────────────────────────────────────
+  /** Called by SearchPane whenever results change. Filters to words in this chapter. */
+  const handleSearchResults = useCallback((allResults: import("@/app/api/search/words/route").SearchResult[]) => {
+    const normalizedSource = textSource === "LXX" ? "STEPBIBLE_LXX" : textSource;
+    const hits = new Set<string>();
+    for (const r of allResults) {
+      if (r.book === book && r.chapter === chapter && r.textSource === normalizedSource) {
+        hits.add(r.wordId);
+      }
+    }
+    setSearchHits(hits);
+  }, [book, chapter, textSource]);
+
+  /** Called by SearchPane after a successful save-as-list.
+   *  Injects the new tag into local state and clears temp highlights. */
+  const handleSearchSaved = useCallback((tagId: number, name: string, color: string, wordRefs: { wordId: string; book: string; chapter: number; textSource: string }[]) => {
+    // Add the new corpus-wide tag to local state
+    const newTag: WordTag = { id: tagId, workspaceId: 1, book: "*", name, color, type: "search", createdAt: new Date().toISOString() };
+    setWordTags((prev) => [...prev, newTag]);
+
+    // Add refs for the current chapter to the local wordTagRefMap
+    const normalizedSource = textSource === "LXX" ? "STEPBIBLE_LXX" : textSource;
+    const chapterRefs = wordRefs.filter(
+      (r) => r.book === book && r.chapter === chapter && r.textSource === normalizedSource
+    );
+    if (chapterRefs.length > 0) {
+      setWordTagRefMap((prev) => {
+        const next = new Map(prev);
+        for (const r of chapterRefs) {
+          // Only add if not already tagged (onConflictDoNothing mirrors DB behaviour)
+          if (!next.has(r.wordId)) {
+            next.set(r.wordId, { id: -1, workspaceId: 1, wordId: r.wordId, tagId, textSource: r.textSource, book: r.book, chapter: r.chapter });
+          }
+        }
+        return next;
+      });
+    }
+    // Clear temporary search highlights — now handled by the tag system
+    setSearchHits(new Set());
+  }, [book, chapter, textSource]);
 
   // ── Paragraph indentation state ─────────────────────────────────────────────
   // Source and translation indents are stored separately: tv:-prefixed wordIds
@@ -2644,6 +2696,22 @@ export default function ChapterDisplay({
                 </button>
               </div>
 
+              {/* Search panel toggle */}
+              <div className="border-l border-[var(--border)] pl-3 ml-1">
+                <button
+                  onClick={() => setSearchOpen((v) => !v)}
+                  title={searchOpen ? "Close Search" : "Search corpus"}
+                  className={[
+                    "px-2.5 py-1 rounded text-xs font-medium transition-colors",
+                    searchOpen
+                      ? "bg-amber-500 text-white"
+                      : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
+                  ].join(" ")}
+                >
+                  🔍
+                </button>
+              </div>
+
               {/* Copy outline to clipboard */}
               {(sceneBreakMap.size > 0 || bookSceneBreaks.length > 0) && (
                 <button
@@ -3022,6 +3090,7 @@ export default function ChapterDisplay({
                 wordTagMap={wordTagMap}
                 editingWordTags={editingWordTags}
                 highlightWordTagIds={highlightWordTagIds}
+                searchHits={searchHits}
                 lineIndentMap={lineIndentMap}
                 translationIndentMap={tvLineIndentMap}
                 indentsLinked={indentsLinked}
@@ -3085,6 +3154,19 @@ export default function ChapterDisplay({
             scrollToVerse={notesScrollVerse}
             onScrollHandled={() => setNotesScrollVerse(null)}
             onClose={() => setNotesOpen(false)}
+          />
+        </ResizablePane>
+      )}
+
+      {/* Search pane */}
+      {searchOpen && !presentationMode && (
+        <ResizablePane storageKey="pane-search-width" defaultWidth={340} minWidth={260} maxWidth={800}>
+          <SearchPane
+            book={book}
+            textSource={textSource}
+            onClose={() => { setSearchOpen(false); setSearchHits(new Set()); }}
+            onResultsChange={handleSearchResults}
+            onSaveComplete={handleSearchSaved}
           />
         </ResizablePane>
       )}

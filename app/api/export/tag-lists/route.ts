@@ -106,12 +106,16 @@ export async function POST(request: NextRequest) {
   let refs: RawRef[] = [];
 
   if (type === "wordTag") {
+    // book='*' means corpus-wide (saved search list) — never filter those by bookFilter
     const conditions = [eq(wordTags.workspaceId, workspaceId), eq(wordTags.name, name)];
-    if (bookFilter && bookFilter.length > 0) conditions.push(inArray(wordTags.book, bookFilter));
+    if (bookFilter && bookFilter.length > 0) {
+      conditions.push(or(inArray(wordTags.book, bookFilter), eq(wordTags.book, "*"))!);
+    }
     const matchingTags = await userDb.select({ id: wordTags.id }).from(wordTags).where(and(...conditions));
     if (matchingTags.length > 0) {
       const tagIds = matchingTags.map((t) => t.id);
       const refConditions = [eq(wordTagRefs.workspaceId, workspaceId), inArray(wordTagRefs.tagId, tagIds)];
+      // For refs, bookFilter still applies (each ref has the actual book)
       if (bookFilter && bookFilter.length > 0) refConditions.push(inArray(wordTagRefs.book, bookFilter));
       const rows = await userDb.select({
         wordId: wordTagRefs.wordId, book: wordTagRefs.book,

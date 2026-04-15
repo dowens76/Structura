@@ -1317,3 +1317,32 @@ export async function getUltTranslation(_workspaceId?: number): Promise<Translat
     .limit(1);
   return result[0] ?? null;
 }
+
+/**
+ * Bulk-insert word tag refs, skipping any that conflict on (workspaceId, wordId).
+ * This preserves existing manually-assigned tags.
+ * Returns the count of rows actually inserted.
+ */
+export async function bulkInsertWordTagRefs(
+  tagId: number,
+  refs: Array<{ wordId: string; book: string; chapter: number; textSource: string }>,
+  workspaceId: number
+): Promise<{ inserted: number }> {
+  if (refs.length === 0) return { inserted: 0 };
+
+  // SQLite has a limit of 999 bound parameters; each row uses 5 params.
+  const CHUNK = 190;
+  let inserted = 0;
+
+  for (let i = 0; i < refs.length; i += CHUNK) {
+    const chunk = refs.slice(i, i + CHUNK);
+    const result = await userDb
+      .insert(wordTagRefs)
+      .values(chunk.map((r) => ({ tagId, workspaceId, wordId: r.wordId, book: r.book, chapter: r.chapter, textSource: r.textSource })))
+      .onConflictDoNothing()
+      .returning({ id: wordTagRefs.id });
+    inserted += result.length;
+  }
+
+  return { inserted };
+}

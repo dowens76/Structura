@@ -69,6 +69,8 @@ interface VerseDisplayProps {
   wordTagMap: Map<number, WordTag>;
   editingWordTags: boolean;
   highlightWordTagIds: Set<number>;
+  // Temporary search hit highlighting (word IDs in the current chapter)
+  searchHits?: Set<string>;
   // Paragraph indentation
   lineIndentMap: Map<string, number>;
   translationIndentMap?: Map<string, number>;
@@ -717,6 +719,7 @@ export default function VerseDisplay({
   wordTagMap,
   editingWordTags,
   highlightWordTagIds,
+  searchHits,
   lineIndentMap,
   translationIndentMap,
   indentsLinked = true,
@@ -1276,8 +1279,12 @@ export default function VerseDisplay({
           showAtnachBreaks &&
           isHebrew &&
           (word.surfaceText ?? "").includes("\u0591");
+        const isSearchHit = searchHits?.has(word.wordId) ?? false;
         return (
-          <span key={word.wordId}>
+          <span
+            key={word.wordId}
+            style={isSearchHit ? { backgroundColor: "rgba(251, 191, 36, 0.4)", borderRadius: "2px" } : undefined}
+          >
             <WordToken
               word={word}
               displayMode={displayMode}
