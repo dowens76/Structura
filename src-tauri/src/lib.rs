@@ -11,6 +11,19 @@ fn find_free_port() -> u16 {
     listener.local_addr().unwrap().port()
 }
 
+// ── Tauri command: open print dialog ─────────────────────────────────────────
+//
+// window.print() is ignored by WKWebView on macOS.  This command calls the
+// native print API on the main window instead.
+
+#[tauri::command]
+async fn print_page(app: AppHandle) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window("main") {
+        window.print().map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
 // ── Tauri command: native folder picker ───────────────────────────────────────
 
 #[tauri::command]
@@ -241,7 +254,7 @@ pub fn run() {
 
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![pick_folder, save_file])
+        .invoke_handler(tauri::generate_handler![pick_folder, save_file, print_page])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

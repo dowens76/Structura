@@ -24,10 +24,11 @@ export default function ExportLayout({ children, revealHref, filename, noteConte
   const [slidesStatus, setSlidesStatus] = useState<"idle" | "loading" | "done">("idle");
 
   async function handlePdf() {
-    // WKWebView (Tauri Mac) ignores window.print(). Use Tauri's own print API instead.
+    // WKWebView (Tauri Mac) ignores window.print(). Delegate to the Rust
+    // print_page command which calls the native WebviewWindow::print() API.
     if ("__TAURI_INTERNALS__" in window) {
-      const { getCurrentWebviewWindow } = await import("@tauri-apps/api/webviewWindow");
-      await getCurrentWebviewWindow().print();
+      const { invoke } = await import("@tauri-apps/api/core");
+      await invoke("print_page");
     } else {
       window.print();
     }
