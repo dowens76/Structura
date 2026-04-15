@@ -645,8 +645,12 @@ export async function getChapterSpeechSections(
 }
 
 /**
- * Create or extend a speech section. Deletes any existing sections that overlap
- * [startWordId..endWordId], then merges adjacent same-character sections.
+ * Create or extend a speech section. Supports nested speech boxes:
+ * - Same character + any overlap → delete and merge (existing behaviour).
+ * - Different character + fully contained (one range completely inside the other)
+ *   → keep both; the ranges nest visually.
+ * - Different character + partial overlap → delete the conflicting section
+ *   (the new box wins the disputed words).
  * Returns the updated full section list for the chapter.
  */
 export async function upsertSpeechSection(
@@ -669,28 +673,40 @@ export async function upsertSpeechSection(
   // Ensure start <= end
   const lo = Math.min(startPos, endPos);
   const hi = Math.max(startPos, endPos);
-  const loWordId = chapterWords[lo].wordId;
-  const hiWordId = chapterWords[hi].wordId;
 
   // Load all existing sections for this chapter
   const existing = await getChapterSpeechSections(book, chapter, textSource, workspaceId);
 
-  // Find sections that overlap [lo..hi]
+  // Classify overlapping sections
   const overlapping = existing.filter((s) => {
     const si = posMap.get(s.startWordId) ?? -1;
     const ei = posMap.get(s.endWordId)   ?? -1;
     return si <= hi && ei >= lo;
   });
 
-  // Delete overlapping sections
-  for (const s of overlapping) {
+  const sameCharOverlapping  = overlapping.filter((s) => s.characterId === characterId);
+  const diffCharOverlapping  = overlapping.filter((s) => s.characterId !== characterId);
+
+  // Different-character sections: only delete partial overlaps.
+  // Fully-contained sections (either direction) are kept to allow nesting.
+  const diffCharToDelete = diffCharOverlapping.filter((s) => {
+    const si = posMap.get(s.startWordId) ?? -1;
+    const ei = posMap.get(s.endWordId)   ?? -1;
+    const newContainsExisting = lo <= si && ei <= hi; // existing is inside new range
+    const existingContainsNew = si <= lo && hi <= ei; // new is inside existing range
+    return !newContainsExisting && !existingContainsNew; // partial overlap → delete
+  });
+
+  // Delete same-character overlaps + partially-overlapping different-character ones
+  const toDelete = [...sameCharOverlapping, ...diffCharToDelete];
+  for (const s of toDelete) {
     await userDb.delete(speechSections).where(eq(speechSections.id, s.id));
   }
 
-  // Determine expanded range (absorb any overlapping sections)
+  // Expand range only by absorbing same-character deleted sections
   let finalLo = lo;
   let finalHi = hi;
-  for (const s of overlapping) {
+  for (const s of sameCharOverlapping) {
     const si = posMap.get(s.startWordId) ?? lo;
     const ei = posMap.get(s.endWordId)   ?? hi;
     finalLo = Math.min(finalLo, si);
@@ -698,7 +714,7 @@ export async function upsertSpeechSection(
   }
 
   // Check adjacency: sections immediately before/after that share the same character
-  const remaining = existing.filter((s) => !overlapping.some((o) => o.id === s.id));
+  const remaining = existing.filter((s) => !toDelete.some((o) => o.id === s.id));
   for (const s of remaining) {
     if (s.characterId !== characterId) continue;
     const si = posMap.get(s.startWordId) ?? -1;

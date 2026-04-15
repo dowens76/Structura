@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import type { Word, CharacterRef, Character, SpeechSection, WordTag, WordTagRef, LineAnnotation } from "@/lib/db/schema";
 import type { DisplayMode, GrammarFilterState, TranslationTextEntry, InterlinearSubMode } from "@/lib/morphology/types";
 import type { ColorRule } from "@/lib/morphology/colorRules";
@@ -46,7 +46,7 @@ interface VerseDisplayProps {
   // Character tagging
   characterRefMap: Map<string, CharacterRef>;
   characterMap: Map<number, Character>;
-  wordSpeechMap: Map<string, SpeechSection>;
+  wordSpeechMap: Map<string, SpeechSection[]>;
   prevVerseLastWordId: string | null;
   nextVerseFirstWordId: string | null;
   editingRefs: boolean;
@@ -780,23 +780,25 @@ export default function VerseDisplay({
   );
 
   // ── Cross-verse speech continuation ──────────────────────────────────────
-  // When a speech section bridges into/from a neighbouring verse we collapse
-  // the gap between those verse rows so the coloured box appears unbroken.
+  // When any speech section (including nested ones) bridges into/from a
+  // neighbouring verse we collapse the gap so coloured boxes appear unbroken.
   const crossFirstWord = sourceSegments[0]?.[0] ?? null;
   const crossLastSeg   = sourceSegments[sourceSegments.length - 1];
   const crossLastWord  = crossLastSeg[crossLastSeg.length - 1] ?? null;
-  const crossPrevSec   = prevVerseLastWordId
-    ? (wordSpeechMap.get(prevVerseLastWordId) ?? null) : null;
-  const crossFirstSec  = crossFirstWord
-    ? (wordSpeechMap.get(crossFirstWord.wordId) ?? null) : null;
-  const speechContinuesFromPrev =
-    !!(crossPrevSec && crossFirstSec && crossPrevSec.id === crossFirstSec.id);
-  const crossNextSec  = nextVerseFirstWordId
-    ? (wordSpeechMap.get(nextVerseFirstWordId) ?? null) : null;
-  const crossLastSec2 = crossLastWord
-    ? (wordSpeechMap.get(crossLastWord.wordId) ?? null) : null;
-  const speechContinuesIntoNext =
-    !!(crossNextSec && crossLastSec2 && crossNextSec.id === crossLastSec2.id);
+
+  const crossPrevSecs  = prevVerseLastWordId
+    ? (wordSpeechMap.get(prevVerseLastWordId) ?? []) : [];
+  const crossFirstSecs = crossFirstWord
+    ? (wordSpeechMap.get(crossFirstWord.wordId) ?? []) : [];
+  const crossPrevIds   = new Set(crossPrevSecs.map((s) => s.id));
+  const speechContinuesFromPrev = crossFirstSecs.some((s) => crossPrevIds.has(s.id));
+
+  const crossNextSecs  = nextVerseFirstWordId
+    ? (wordSpeechMap.get(nextVerseFirstWordId) ?? []) : [];
+  const crossLastSecs  = crossLastWord
+    ? (wordSpeechMap.get(crossLastWord.wordId) ?? []) : [];
+  const crossNextIds   = new Set(crossNextSecs.map((s) => s.id));
+  const speechContinuesIntoNext = crossLastSecs.some((s) => crossNextIds.has(s.id));
 
   // Annotation box: suppress inter-verse spacing when an annotation spans the verse boundary.
   const firstSegWordId = sourceSegments[0]?.[0]?.wordId ?? null;
@@ -808,19 +810,33 @@ export default function VerseDisplay({
 
 
   // ── Speech box helpers ──────────────────────────────────────────────────
+  // A LayerData describes one speech section that spans an entire paragraph segment.
+  // Layers are ordered outermost (largest range) → innermost (smallest range).
+  type LayerData = {
+    segSpeech: SpeechSection;
+    segSpeaker: Character;
+    isSegStart: boolean; // this layer's box begins at this segment
+    isSegEnd:   boolean; // this layer's box ends at this segment
+  };
+
   type SegSpeechData = {
-    segSpeech: SpeechSection | null;
+    // Back-compat aliases for callers that only care about the primary (outermost) layer
+    segSpeech:  SpeechSection | null;
     segSpeaker: Character | null;
     isSegStart: boolean;
-    isSegEnd: boolean;
+    isSegEnd:   boolean;
+    // All layers (may be empty when the segment has no speech)
+    layers: LayerData[];
   };
 
   function getSegSpeech(seg: Word[], si: number): SegSpeechData {
-    const segFirstSec = wordSpeechMap.get(seg[0].wordId) ?? null;
-    const segLastSec  = wordSpeechMap.get(seg[seg.length - 1].wordId) ?? null;
-    const segSpeech   = (segFirstSec && segLastSec && segFirstSec.id === segLastSec.id)
-      ? segFirstSec : null;
-    const segSpeaker  = segSpeech ? (characterMap.get(segSpeech.characterId) ?? null) : null;
+    const firstSecs = wordSpeechMap.get(seg[0].wordId) ?? [];
+    const lastSecs  = wordSpeechMap.get(seg[seg.length - 1].wordId) ?? [];
+    const lastIds   = new Set(lastSecs.map((s) => s.id));
+
+    // A section "belongs to this segment" only if it covers the entire segment
+    // (i.e. both the first and last word are inside the section).
+    const segSections = firstSecs.filter((s) => lastIds.has(s.id));
 
     const prevWordId = si === 0
       ? prevVerseLastWordId
@@ -828,87 +844,176 @@ export default function VerseDisplay({
     const nextWordId = si === sourceSegments.length - 1
       ? nextVerseFirstWordId
       : (sourceSegments[si + 1][0]?.wordId ?? null);
-    const prevSec = prevWordId ? (wordSpeechMap.get(prevWordId) ?? null) : null;
-    const nextSec = nextWordId ? (wordSpeechMap.get(nextWordId) ?? null) : null;
-    const isSegStart = !!segSpeaker && prevSec?.id !== segSpeech?.id;
-    const isSegEnd   = !!segSpeaker && nextSec?.id !== segSpeech?.id;
-    return { segSpeech, segSpeaker, isSegStart, isSegEnd };
+    const prevIds = new Set((prevWordId ? (wordSpeechMap.get(prevWordId) ?? []) : []).map((s) => s.id));
+    const nextIds = new Set((nextWordId ? (wordSpeechMap.get(nextWordId) ?? []) : []).map((s) => s.id));
+
+    const layers: LayerData[] = [];
+    for (const section of segSections) {
+      const speaker = characterMap.get(section.characterId) ?? null;
+      if (!speaker) continue;
+      layers.push({
+        segSpeech:  section,
+        segSpeaker: speaker,
+        isSegStart: !prevIds.has(section.id),
+        isSegEnd:   !nextIds.has(section.id),
+      });
+    }
+
+    const outer = layers[0] ?? null;
+    return {
+      segSpeech:  outer?.segSpeech  ?? null,
+      segSpeaker: outer?.segSpeaker ?? null,
+      isSegStart: outer?.isSegStart ?? false,
+      isSegEnd:   outer?.isSegEnd   ?? false,
+      layers,
+    };
   }
 
-  // Build the CSS style that wraps a paragraph row (or segment div in single-col)
+  // Build the CSS style for one nesting layer of a speech box.
+  // depth=0 → outermost (extends slightly to the left with a negative margin).
+  // depth=1 → next inner layer (slightly less extension, so bars stack visually).
+  // depth≥2 → innermost; no extension beyond the text area.
   function segBoxStyle(
     segSpeaker: Character | null,
     isSegStart: boolean,
-    isSegEnd: boolean
+    isSegEnd: boolean,
+    depth: number = 0
   ): React.CSSProperties {
     if (!segSpeaker) return {};
     const side = `3px solid ${segSpeaker.color}`;
     const edge = `1.5px solid ${segSpeaker.color}`;
+    // Each depth level is 0.375 rem less extended than the previous.
+    // depth 0 → 0.75 rem extension (the original), depth 1 → 0.375 rem, depth 2+ → 0 rem
+    const extRem = Math.max(0, 0.75 - depth * 0.375);
+    const radius = depth === 0 ? "4px" : "2px";
     return {
       backgroundColor: `${segSpeaker.color}0C`,
       borderLeft:   isHebrew ? "none" : side,
       borderRight:  isHebrew ? side   : "none",
       borderTop:    isSegStart ? edge : "none",
       borderBottom: isSegEnd   ? edge : "none",
-      paddingLeft:  isHebrew ? "0.5rem"   : "0.75rem",
-      paddingRight: isHebrew ? "0.75rem"  : "0.5rem",
-      marginLeft:   isHebrew ? 0          : "-0.75rem",
-      marginRight:  isHebrew ? "-0.75rem" : 0,
+      paddingLeft:  isHebrew ? "0.5rem"        : `${extRem}rem`,
+      paddingRight: isHebrew ? `${extRem}rem`  : "0.5rem",
+      marginLeft:   isHebrew ? 0               : `-${extRem}rem`,
+      marginRight:  isHebrew ? `-${extRem}rem` : 0,
       borderRadius: [
-        isSegStart ? "4px" : "0",
-        isSegStart ? "4px" : "0",
-        isSegEnd   ? "4px" : "0",
-        isSegEnd   ? "4px" : "0",
+        isSegStart ? radius : "0",
+        isSegStart ? radius : "0",
+        isSegEnd   ? radius : "0",
+        isSegEnd   ? radius : "0",
       ].join(" "),
       position: "relative",
     };
   }
 
-  // Controls shown on the first row of a speech section when editingSpeech is active:
-  //  • Character badge (click → reassign section to the currently active character)
-  //  • × delete button
-  function renderDeleteBtn(
-    segSpeaker: Character | null,
-    segSpeech: SpeechSection | null,
-    isSegStart: boolean
-  ): React.ReactNode {
-    if (!segSpeaker || !segSpeech || !editingSpeech || !isSegStart) return null;
-    const canReassign = onReassignSpeechSection && _activeCharId !== null && _activeCharId !== segSpeech.characterId;
+  // Render all speech-section control badges for a segment row.
+  // All badges are placed in a single absolutely-positioned container so they
+  // never overlap regardless of how many nesting layers are present.
+  function renderDeleteBtns(layers: LayerData[]): React.ReactNode {
+    if (!editingSpeech) return null;
+    // Only show badges for layers whose box starts at this segment.
+    const startLayers = layers.filter((l) => l.isSegStart);
+    if (startLayers.length === 0) return null;
     return (
       <div
-        className="absolute flex items-center gap-0.5 z-10"
+        className="absolute flex items-center gap-1 z-20"
         style={{ top: "4px", ...(isHebrew ? { left: "4px" } : { right: "4px" }) }}
       >
-        {/* Character badge — click to reassign to the active character */}
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            if (canReassign) onReassignSpeechSection!(segSpeech.id, _activeCharId!);
-          }}
-          className="flex items-center justify-center w-5 h-5 rounded-full text-white text-[10px] font-bold leading-none transition-opacity"
-          style={{
-            backgroundColor: segSpeaker.color,
-            opacity: canReassign ? 1 : 0.55,
-            cursor: canReassign ? "pointer" : "default",
-          }}
-          title={canReassign
-            ? `Reassign to active character`
-            : `${segSpeaker.name} — select a different character above to reassign`}
-        >
-          {segSpeaker.name[0]?.toUpperCase() ?? "?"}
-        </button>
-        {/* Delete button */}
-        <button
-          type="button"
-          onClick={(e) => { e.stopPropagation(); onDeleteSpeechSection(segSpeech.id); }}
-          className="flex items-center justify-center w-4 h-4 rounded-full text-white text-xs leading-none bg-stone-500 dark:bg-stone-400 hover:bg-red-500 dark:hover:bg-red-500 transition-colors"
-          title={`Delete "${segSpeaker.name}" speech section`}
-        >
-          ×
-        </button>
+        {startLayers.map(({ segSpeaker, segSpeech }) => {
+          const canReassign =
+            onReassignSpeechSection &&
+            _activeCharId !== null &&
+            _activeCharId !== segSpeech.characterId;
+          return (
+            <React.Fragment key={segSpeech.id}>
+              {/* Character badge — click to reassign */}
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (canReassign) onReassignSpeechSection!(segSpeech.id, _activeCharId!);
+                }}
+                className="flex items-center justify-center w-5 h-5 rounded-full text-white text-[10px] font-bold leading-none transition-opacity"
+                style={{
+                  backgroundColor: segSpeaker.color,
+                  opacity: canReassign ? 1 : 0.55,
+                  cursor: canReassign ? "pointer" : "default",
+                }}
+                title={
+                  canReassign
+                    ? `Reassign to active character`
+                    : `${segSpeaker.name} — select a different character above to reassign`
+                }
+              >
+                {segSpeaker.name[0]?.toUpperCase() ?? "?"}
+              </button>
+              {/* Delete button */}
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); onDeleteSpeechSection(segSpeech.id); }}
+                className="flex items-center justify-center w-4 h-4 rounded-full text-white text-xs leading-none bg-stone-500 dark:bg-stone-400 hover:bg-red-500 dark:hover:bg-red-500 transition-colors"
+                title={`Delete "${segSpeaker.name}" speech section`}
+              >
+                ×
+              </button>
+            </React.Fragment>
+          );
+        })}
       </div>
     );
+  }
+
+  // Wrap content in nested speech-box divs (outermost → innermost).
+  // The innermost div carries the grid/layout styles; outer divs are purely decorative borders.
+  // innerProps is spread onto the innermost div — use for attributes like dir="rtl".
+  function wrapInSpeechLayers(
+    layers:       LayerData[],
+    innerContent: React.ReactNode,
+    innerStyle:   React.CSSProperties,
+    innerClass:   string,
+    innerProps?:  React.HTMLAttributes<HTMLDivElement>
+  ): React.ReactNode {
+    if (layers.length === 0) {
+      return (
+        <div className={innerClass} style={innerStyle} {...(innerProps ?? {})}>
+          {innerContent}
+        </div>
+      );
+    }
+
+    // Build from innermost outward so the outermost div is the outer wrapper.
+    // The innermost div carries the grid and its layer's box style.
+    const innermostLayer = layers[layers.length - 1];
+    let node: React.ReactNode = (
+      <div
+        className={innerClass}
+        style={{ ...innerStyle, ...segBoxStyle(innermostLayer.segSpeaker, innermostLayer.isSegStart, innermostLayer.isSegEnd, layers.length - 1) }}
+        {...(innerProps ?? {})}
+      >
+        {innerContent}
+      </div>
+    );
+
+    // Wrap each intermediate layer (if any) — no grid styles, just box border/background.
+    for (let i = layers.length - 2; i >= 1; i--) {
+      const layer = layers[i];
+      node = (
+        <div style={segBoxStyle(layer.segSpeaker, layer.isSegStart, layer.isSegEnd, i)}>
+          {node}
+        </div>
+      );
+    }
+
+    // Outermost layer: also carries all delete/reassign badge buttons.
+    const outermostLayer = layers[0];
+    node = (
+      <div style={segBoxStyle(outermostLayer.segSpeaker, outermostLayer.isSegStart, outermostLayer.isSegEnd, 0)}>
+        {renderDeleteBtns(layers)}
+        {node}
+      </div>
+    );
+
+    return node;
   }
 
   // ── Section break separator ──────────────────────────────────────────────
@@ -1193,11 +1298,17 @@ export default function VerseDisplay({
   // ── Word runs ───────────────────────────────────────────────────────────
   type SegRun = { inlineSec: SpeechSection | null; words: Word[] };
 
-  function computeRuns(seg: Word[], segSpeech: SpeechSection | null): SegRun[] {
+  // For words that only partially fall inside a speech section (the section starts
+  // or ends mid-segment), we render them with an inline background tint + a small
+  // delete badge.  With nested sections the "inline" section is the innermost one
+  // that is NOT already shown as a full-segment box layer.
+  function computeRuns(seg: Word[], layers: LayerData[]): SegRun[] {
+    const segSecIds = new Set(layers.map((l) => l.segSpeech.id));
     const runs: SegRun[] = [];
     seg.forEach((w) => {
-      const sec = wordSpeechMap.get(w.wordId) ?? null;
-      const inlineSec = (sec && (!segSpeech || sec.id !== segSpeech.id)) ? sec : null;
+      const secs = wordSpeechMap.get(w.wordId) ?? [];
+      // Pick the innermost (last) section that isn't a segment-level layer
+      const inlineSec = [...secs].reverse().find((s) => !segSecIds.has(s.id)) ?? null;
       const last = runs[runs.length - 1];
       if (last && last.inlineSec?.id === inlineSec?.id) last.words.push(w);
       else runs.push({ inlineSec, words: [w] });
@@ -1378,8 +1489,8 @@ export default function VerseDisplay({
       <div className={`${verseStartsNewParagraph ? "mt-5" : ""} ${(speechContinuesIntoNext || annotContinuesIntoNext) ? "" : "mb-4"}`}>
         {verseStartsNewParagraph && firstWordId && renderSegSeparator(firstWordId)}
         {sourceSegments.map((seg, si) => {
-          const { segSpeech, segSpeaker, isSegStart, isSegEnd } = getSegSpeech(seg, si);
-          const runs = computeRuns(seg, segSpeech);
+          const { layers, isSegStart } = getSegSpeech(seg, si);
+          const runs = computeRuns(seg, layers);
           const paraStartId = wordToParaStart.get(seg[0].wordId) ?? seg[0].wordId;
           const indentLevel = lineIndentMap.get(paraStartId) ?? 0;
           // ── Hanging-indent label and source elements ──────────────
@@ -1448,10 +1559,18 @@ export default function VerseDisplay({
 
           // Suppress the dashed separator (and its margin) when this segment is a
           // continuation of the same speech box or annotation — no gap inside the box.
+          // Use the outermost layer to decide: if it continues, no gap.
           const suppressSeparator = !editingParagraphs && (
-            (!isSegStart && !!segSpeaker) ||
+            (layers.length > 0 && !isSegStart) ||
             (annotationsBySegment?.get(seg[0].wordId) ?? []).some(e => !e.isStart)
           );
+
+          // Grid styles for the innermost box div (or the plain div when no layers).
+          const gridStyle: React.CSSProperties = {
+            gridTemplateColumns: "auto 1fr",
+            columnGap: rstSourcePad || undefined,
+          };
+          const gridClass = `grid items-start${editingSpeech ? " cursor-crosshair" : ""}${editingAnnotations ? " cursor-pointer" : ""}${si > 0 && !suppressSeparator ? " mt-1" : ""}`;
 
           return (
             // data-rst-seg is used by RstRelationOverlay to measure segment position
@@ -1463,17 +1582,14 @@ export default function VerseDisplay({
                 <div className="flex-1 min-w-0">
                   {/* 2-column grid: label first, source second. For Hebrew (RTL) dir="rtl"
                       reverses visual column order so label appears on the RIGHT.
-                      rstSourcePad adds a gap between the label and source columns so
-                      RST tree arrows don't overlap the verse number. */}
-                  <div
-                    style={{ gridTemplateColumns: "auto 1fr", columnGap: rstSourcePad || undefined, ...segBoxStyle(segSpeaker, isSegStart, isSegEnd) }}
-                    className={`grid items-start${editingSpeech ? " cursor-crosshair" : ""}${editingAnnotations ? " cursor-pointer" : ""}${si > 0 && !suppressSeparator ? " mt-1" : ""}`}
-                    dir={isHebrew ? "rtl" : "ltr"}
-                  >
-                    {renderDeleteBtn(segSpeaker, segSpeech, isSegStart)}
-                    {segLabelEl}
-                    {segSourceEl}
-                  </div>
+                      Nested speech boxes are rendered as concentric wrappers around this grid. */}
+                  {wrapInSpeechLayers(
+                    layers,
+                    <>{segLabelEl}{segSourceEl}</>,
+                    gridStyle,
+                    gridClass,
+                    { dir: isHebrew ? "rtl" : "ltr" }
+                  )}
                 </div>
                 {renderAnnotationColForSeg(seg[0].wordId)}
               </div>
@@ -1525,8 +1641,8 @@ export default function VerseDisplay({
       {/* Each source paragraph is its own 5-cell grid row so the speech-box
           background/border wraps the source, arc columns, label AND translation together. */}
       {sourceSegments.map((seg, si) => {
-        const { segSpeech, segSpeaker, isSegStart, isSegEnd } = getSegSpeech(seg, si);
-        const runs = computeRuns(seg, segSpeech);
+        const { layers, isSegStart } = getSegSpeech(seg, si);
+        const runs = computeRuns(seg, layers);
 
         // Indent level needed both for source hanging-indent and translation padding
         const paraStartId = wordToParaStart.get(seg[0].wordId) ?? seg[0].wordId;
@@ -1758,10 +1874,118 @@ export default function VerseDisplay({
           : "calc(0.625 * var(--greek-font-size, 1.25rem))";
 
         // Suppress the dashed separator when this segment continues the same speech box or annotation.
+        // Use the outermost layer to decide — if it continues from the previous segment, no gap.
         const suppressSeparator = !editingParagraphs && (
-          (!isSegStart && !!segSpeaker) ||
+          (layers.length > 0 && !isSegStart) ||
           (annotationsBySegment?.get(seg[0].wordId) ?? []).some(e => !e.isStart)
         );
+
+        // Build the grid inner content (source column + label column + translation column).
+        const gridContent = (
+          <>
+            {/* Source words (hidden in translation-only mode) */}
+            {!hideSourceText && (
+              <div
+                dir={isHebrew ? "rtl" : "ltr"}
+                data-rst-src-block={seg[0].wordId}
+                style={{
+                  paddingLeft:  !isHebrew && indentLevel > 0 ? `${indentLevel * 2}rem` : undefined,
+                  paddingRight: isHebrew  && indentLevel > 0 ? `${indentLevel * 2}rem` : undefined,
+                  textIndent:   `${HANG_PX}px hanging` as React.CSSProperties["textIndent"],
+                  marginRight:  isHebrew && rstSourcePad ? rstSourcePad : undefined,
+                }}
+              >
+                <span
+                  data-rst-text={seg[0].wordId}
+                  className={`${isHebrew ? "text-hebrew" : "text-greek"} leading-loose`}
+                  lang={isHebrew ? "he" : "grc"}
+                >
+                  {renderRuns(runs)}
+                </span>
+              </div>
+            )}
+
+            {/* Paragraph label / indent controls (centre column) */}
+            <div className="flex items-start justify-center">
+              {editingIndents ? (
+                <div className="flex flex-col gap-0.5" data-seg-label={seg[0].wordId}>
+                  {/* Source indent row — always shown */}
+                  <div className="flex items-center gap-0.5">
+                    {!indentsLinked && (
+                      <span className="text-[9px] font-bold text-stone-400 dark:text-stone-500 w-3 shrink-0 select-none">S</span>
+                    )}
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); onSetSegmentIndent(paraStartId, Math.max(0, indentLevel - 1)); }}
+                      disabled={indentLevel === 0}
+                      className="w-5 h-5 flex items-center justify-center text-xs rounded text-stone-500 dark:text-stone-400 hover:bg-stone-200 dark:hover:bg-stone-600 disabled:opacity-25 transition-colors"
+                      title="Decrease source indent"
+                    >−</button>
+                    <span className="text-teal-600 dark:text-teal-400 text-[10px] font-mono w-4 text-center select-none">
+                      {indentLevel > 0 ? indentLevel : "·"}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); onSetSegmentIndent(paraStartId, Math.min(6, indentLevel + 1)); }}
+                      disabled={indentLevel >= 6}
+                      className="w-5 h-5 flex items-center justify-center text-xs rounded text-stone-500 dark:text-stone-400 hover:bg-stone-200 dark:hover:bg-stone-600 disabled:opacity-25 transition-colors"
+                      title="Increase source indent"
+                    >+</button>
+                  </div>
+                  {/* Translation indent row — only when decoupled */}
+                  {!indentsLinked && (
+                    <div className="flex items-center gap-0.5">
+                      <span className="text-[9px] font-bold text-stone-400 dark:text-stone-500 w-3 shrink-0 select-none">T</span>
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); onSetSegmentTvIndent?.(paraStartId, Math.max(0, tvIndentLevel - 1)); }}
+                        disabled={tvIndentLevel === 0}
+                        className="w-5 h-5 flex items-center justify-center text-xs rounded text-stone-500 dark:text-stone-400 hover:bg-stone-200 dark:hover:bg-stone-600 disabled:opacity-25 transition-colors"
+                        title="Decrease translation indent"
+                      >−</button>
+                      <span className="text-teal-600 dark:text-teal-400 text-[10px] font-mono w-4 text-center select-none">
+                        {tvIndentLevel > 0 ? tvIndentLevel : "·"}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); onSetSegmentTvIndent?.(paraStartId, Math.min(6, tvIndentLevel + 1)); }}
+                        disabled={tvIndentLevel >= 6}
+                        className="w-5 h-5 flex items-center justify-center text-xs rounded text-stone-500 dark:text-stone-400 hover:bg-stone-200 dark:hover:bg-stone-600 disabled:opacity-25 transition-colors"
+                        title="Increase translation indent"
+                      >+</button>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <span
+                  className="text-stone-400 dark:text-stone-600 text-sm font-mono select-none"
+                  data-seg-label={seg[0].wordId}
+                  data-osis-ref={`${book}.${chapter}.${verseNum}`}
+                  style={{ minWidth: "5rem", textAlign: "center", paddingTop: labelPaddingTop }}
+                >
+                  {paraLabels[si]}
+                </span>
+              )}
+            </div>
+
+            {/* Translation content. Hanging indent lives on each <p> element. */}
+            <div
+              className="flex flex-col gap-1"
+              data-seg-translation={seg[0].wordId}
+              style={{
+                paddingTop: "4px",
+                marginLeft: rstSourcePad || undefined,
+              }}
+            >
+              {tvRowContent}
+            </div>
+          </>
+        );
+
+        const gridStyle: React.CSSProperties = {
+          gridTemplateColumns: hideSourceText ? "auto 1fr" : "1fr auto 1fr",
+        };
+        const gridClass = `grid items-start${editingSpeech ? " cursor-crosshair" : ""}${editingAnnotations ? " cursor-pointer" : ""}`;
 
         return (
           // data-rst-seg is used by RstRelationOverlay to measure segment position
@@ -1771,125 +1995,9 @@ export default function VerseDisplay({
             {/* Flex wrapper so the annotation column can sit to the right of the text grid */}
             <div className="flex items-stretch">
               <div className="flex-1 min-w-0">
-                {/* Grid layout (arc columns removed; hanging indent handles the visual depth):
-                    Hebrew 5-col: source | verse-label | translation     → "1fr auto 1fr" + dir=rtl on source
-                    Greek  5-col: source | verse-label | translation     → "1fr auto 1fr"
-                    3-col (hideSourceText): verse-label | translation    → "auto 1fr" */}
-                <div
-                  className={`grid items-start${editingSpeech ? " cursor-crosshair" : ""}${editingAnnotations ? " cursor-pointer" : ""}`}
-                  style={{
-                    gridTemplateColumns: hideSourceText
-                      ? "auto 1fr"
-                      : "1fr auto 1fr",
-                    ...segBoxStyle(segSpeaker, isSegStart, isSegEnd),
-                  }}
-                >
-                  {renderDeleteBtn(segSpeaker, segSpeech, isSegStart)}
-
-                  {/* Source words (hidden in translation-only mode) */}
-                  {!hideSourceText && (
-                    <div
-                      dir={isHebrew ? "rtl" : "ltr"}
-                      data-rst-src-block={seg[0].wordId}
-                      style={{
-                        // "Xpx hanging" indents continuation lines without negative positioning,
-                        // so inline-flex interlinear chips on the first line are never displaced.
-                        paddingLeft:  !isHebrew && indentLevel > 0 ? `${indentLevel * 2}rem` : undefined,
-                        paddingRight: isHebrew  && indentLevel > 0 ? `${indentLevel * 2}rem` : undefined,
-                        textIndent:   `${HANG_PX}px hanging` as React.CSSProperties["textIndent"],
-                        // Hebrew 3-col: pull source block's right edge leftward so RST arrows
-                        // (anchored from srcCellRightX) don't overlap the centre label column.
-                        marginRight:  isHebrew && rstSourcePad ? rstSourcePad : undefined,
-                      }}
-                    >
-                      <span
-                        data-rst-text={seg[0].wordId}
-                        className={`${isHebrew ? "text-hebrew" : "text-greek"} leading-loose`}
-                        lang={isHebrew ? "he" : "grc"}
-                      >
-                        {renderRuns(runs)}
-                      </span>
-                    </div>
-                  )}
-
-                  {/* Paragraph label / indent controls (centre column) */}
-                  <div className="flex items-start justify-center">
-                    {editingIndents ? (
-                      <div className="flex flex-col gap-0.5" data-seg-label={seg[0].wordId}>
-                        {/* Source indent row — always shown */}
-                        <div className="flex items-center gap-0.5">
-                          {!indentsLinked && (
-                            <span className="text-[9px] font-bold text-stone-400 dark:text-stone-500 w-3 shrink-0 select-none">S</span>
-                          )}
-                          <button
-                            type="button"
-                            onClick={(e) => { e.stopPropagation(); onSetSegmentIndent(paraStartId, Math.max(0, indentLevel - 1)); }}
-                            disabled={indentLevel === 0}
-                            className="w-5 h-5 flex items-center justify-center text-xs rounded text-stone-500 dark:text-stone-400 hover:bg-stone-200 dark:hover:bg-stone-600 disabled:opacity-25 transition-colors"
-                            title="Decrease source indent"
-                          >−</button>
-                          <span className="text-teal-600 dark:text-teal-400 text-[10px] font-mono w-4 text-center select-none">
-                            {indentLevel > 0 ? indentLevel : "·"}
-                          </span>
-                          <button
-                            type="button"
-                            onClick={(e) => { e.stopPropagation(); onSetSegmentIndent(paraStartId, Math.min(6, indentLevel + 1)); }}
-                            disabled={indentLevel >= 6}
-                            className="w-5 h-5 flex items-center justify-center text-xs rounded text-stone-500 dark:text-stone-400 hover:bg-stone-200 dark:hover:bg-stone-600 disabled:opacity-25 transition-colors"
-                            title="Increase source indent"
-                          >+</button>
-                        </div>
-                        {/* Translation indent row — only when decoupled */}
-                        {!indentsLinked && (
-                          <div className="flex items-center gap-0.5">
-                            <span className="text-[9px] font-bold text-stone-400 dark:text-stone-500 w-3 shrink-0 select-none">T</span>
-                            <button
-                              type="button"
-                              onClick={(e) => { e.stopPropagation(); onSetSegmentTvIndent?.(paraStartId, Math.max(0, tvIndentLevel - 1)); }}
-                              disabled={tvIndentLevel === 0}
-                              className="w-5 h-5 flex items-center justify-center text-xs rounded text-stone-500 dark:text-stone-400 hover:bg-stone-200 dark:hover:bg-stone-600 disabled:opacity-25 transition-colors"
-                              title="Decrease translation indent"
-                            >−</button>
-                            <span className="text-teal-600 dark:text-teal-400 text-[10px] font-mono w-4 text-center select-none">
-                              {tvIndentLevel > 0 ? tvIndentLevel : "·"}
-                            </span>
-                            <button
-                              type="button"
-                              onClick={(e) => { e.stopPropagation(); onSetSegmentTvIndent?.(paraStartId, Math.min(6, tvIndentLevel + 1)); }}
-                              disabled={tvIndentLevel >= 6}
-                              className="w-5 h-5 flex items-center justify-center text-xs rounded text-stone-500 dark:text-stone-400 hover:bg-stone-200 dark:hover:bg-stone-600 disabled:opacity-25 transition-colors"
-                              title="Increase translation indent"
-                            >+</button>
-                          </div>
-                        )}
-                      </div>
-                    ) : (
-                      <span
-                        className="text-stone-400 dark:text-stone-600 text-sm font-mono select-none"
-                        data-seg-label={seg[0].wordId}
-                        data-osis-ref={`${book}.${chapter}.${verseNum}`}
-                        style={{ minWidth: "5rem", textAlign: "center", paddingTop: labelPaddingTop }}
-                      >
-                        {paraLabels[si]}
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Translation content. Hanging indent lives on each <p> element. */}
-                  <div
-                    className="flex flex-col gap-1"
-                    data-seg-translation={seg[0].wordId}
-                    style={{
-                      paddingTop: "4px",
-                      // Push translation text rightward so the RST mirror tree
-                      // (which extends left from transLeftX) doesn't overlap the
-                      // centre label column.
-                      marginLeft: rstSourcePad || undefined,
-                    }}
-                  >
-                    {tvRowContent}
-                  </div>
-                </div>
+                {/* Grid layout: nested speech-box divs wrap from the outside in.
+                    The innermost div carries the grid styles; outer divs are borders only. */}
+                {wrapInSpeechLayers(layers, gridContent, gridStyle, gridClass)}
               </div>
               {renderAnnotationColForSeg(seg[0].wordId)}
             </div>

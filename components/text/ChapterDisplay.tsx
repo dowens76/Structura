@@ -590,15 +590,29 @@ export default function ChapterDisplay({
     [activeTranslationAbbrs, allAvailableTranslations]
   );
 
-  // wordId → SpeechSection (derived from ordered word list + section bounds)
-  const wordSpeechMap = useMemo<Map<string, SpeechSection>>(() => {
+  // wordId → SpeechSection[] sorted largest-range-first (outermost → innermost).
+  // Multiple sections per word occur when speech boxes nest (a quote within a quote).
+  const wordSpeechMap = useMemo<Map<string, SpeechSection[]>>(() => {
     const posMap = new Map(words.map((w, i) => [w.wordId, i]));
-    const result = new Map<string, SpeechSection>();
-    for (const section of speechSections) {
+
+    // Sort descending by range size so index-0 is always the outermost section.
+    const sorted = [...speechSections].sort((a, b) => {
+      const aLen = ((posMap.get(a.endWordId) ?? 0) - (posMap.get(a.startWordId) ?? 0));
+      const bLen = ((posMap.get(b.endWordId) ?? 0) - (posMap.get(b.startWordId) ?? 0));
+      return bLen - aLen;
+    });
+
+    const result = new Map<string, SpeechSection[]>();
+    for (const section of sorted) {
       const si = posMap.get(section.startWordId) ?? -1;
       const ei = posMap.get(section.endWordId)   ?? -1;
       if (si < 0 || ei < 0) continue;
-      for (let i = si; i <= ei; i++) result.set(words[i].wordId, section);
+      for (let i = si; i <= ei; i++) {
+        const wid = words[i].wordId;
+        const arr = result.get(wid);
+        if (arr) arr.push(section);
+        else result.set(wid, [section]);
+      }
     }
     return result;
   }, [words, speechSections]);

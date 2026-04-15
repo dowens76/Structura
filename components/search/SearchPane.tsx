@@ -32,11 +32,15 @@ interface MorphFilters {
   stem: string;
   state: string;
   verbCase: string;
+  suffixPerson: string;
+  suffixGender: string;
+  suffixNumber: string;
 }
 
 const EMPTY_FILTERS: MorphFilters = {
   partOfSpeech: "", person: "", gender: "", number: "",
   tense: "", voice: "", mood: "", stem: "", state: "", verbCase: "",
+  suffixPerson: "", suffixGender: "", suffixNumber: "",
 };
 
 const POS_OPTIONS = [
@@ -271,7 +275,7 @@ export default function SearchPane({ book, textSource, onClose, onResultsChange,
       setResults(data.results);
       setTotal(data.total);
       setTruncated(data.truncated);
-      persistResults(data.results, data.total, data.truncated, type, q, srcs, f);
+      persistResults(data.results, data.total, data.truncated, type, q, [...srcs], f);
     } catch {
       setError("Network error.");
     } finally {
@@ -337,8 +341,30 @@ export default function SearchPane({ book, textSource, onClose, onResultsChange,
     }
   };
 
-  const clearFilters = () => setFilters(EMPTY_FILTERS);
+  const [showSuffix, setShowSuffix] = useState(false);
+
+  const clearFilters = () => { setFilters(EMPTY_FILTERS); setShowSuffix(false); };
   const hasFilters = Object.values(filters).some(Boolean);
+
+  // ── POS-based field visibility ───────────────────────────────────────────────
+  const pos = filters.partOfSpeech;
+  const isNominal    = ["noun", "adjective", "pronoun"].includes(pos);
+  const isVerbal     = pos === "verb";
+  const isParticle   = ["particle", "preposition", "article"].includes(pos);
+  const isUninflected = ["conjunction", "adverb", "interjection"].includes(pos);
+  const posFiltered  = !!pos;
+
+  const showStem      = hasHebrew && (!posFiltered || isVerbal);
+  const showAspect    = hasHebrew && (!posFiltered || isVerbal);
+  const showGreekTense = hasGreek && (!posFiltered || isVerbal);
+  const showPerson    = !posFiltered || isVerbal;
+  const showGender    = !posFiltered || isNominal || isVerbal;
+  const showNumber    = !posFiltered || isNominal || isVerbal;
+  const showState     = hasHebrew && (!posFiltered || isNominal || isParticle);
+  const showVoice     = hasGreek && (!posFiltered || isVerbal);
+  const showMood      = hasGreek && (!posFiltered || isVerbal);
+  const showCase      = hasGreek && (!posFiltered || isNominal || isParticle);
+  const showAnything  = !isUninflected || !posFiltered;
 
   return (
     <div className="flex flex-col h-full bg-[var(--background)] border-l border-[var(--border)] shadow-[-4px_0_16px_rgba(0,0,0,0.1)]">
@@ -445,17 +471,53 @@ export default function SearchPane({ book, textSource, onClose, onResultsChange,
               </button>
             )}
           </div>
+
+          {/* POS always shown */}
           <SelectFilter label="POS" value={filters.partOfSpeech} options={POS_OPTIONS} onChange={setFilter("partOfSpeech")} />
-          {hasHebrew && <SelectFilter label="Stem" value={filters.stem} options={STEM_OPTIONS} onChange={setFilter("stem")} />}
-          {hasHebrew && <SelectFilter label="Aspect" value={filters.tense} options={HEB_TENSE_OPTIONS} onChange={setFilter("tense")} />}
-          {hasGreek && <SelectFilter label="Tense" value={filters.tense} options={GRK_TENSE_OPTIONS} onChange={setFilter("tense")} />}
-          <SelectFilter label="Gender" value={filters.gender} options={GENDER_OPTIONS} onChange={setFilter("gender")} />
-          <SelectFilter label="Person" value={filters.person} options={PERSON_OPTIONS} onChange={setFilter("person")} />
-          <SelectFilter label="Number" value={filters.number} options={NUMBER_OPTIONS} onChange={setFilter("number")} />
-          {hasHebrew && <SelectFilter label="State" value={filters.state} options={STATE_OPTIONS} onChange={setFilter("state")} />}
-          {hasGreek && <SelectFilter label="Voice" value={filters.voice} options={VOICE_OPTIONS} onChange={setFilter("voice")} />}
-          {hasGreek && <SelectFilter label="Mood" value={filters.mood} options={MOOD_OPTIONS} onChange={setFilter("mood")} />}
-          {hasGreek && <SelectFilter label="Case" value={filters.verbCase} options={CASE_OPTIONS} onChange={setFilter("verbCase")} />}
+
+          {showAnything && (<>
+            {/* Verbal fields: Stem, Aspect/Tense, Person, Gender, Number */}
+            {showStem      && <SelectFilter label="Stem"   value={filters.stem}    options={STEM_OPTIONS}      onChange={setFilter("stem")} />}
+            {showAspect    && <SelectFilter label="Aspect" value={filters.tense}   options={HEB_TENSE_OPTIONS} onChange={setFilter("tense")} />}
+            {showGreekTense && <SelectFilter label="Tense" value={filters.tense}   options={GRK_TENSE_OPTIONS} onChange={setFilter("tense")} />}
+            {showPerson    && <SelectFilter label="Person" value={filters.person}  options={PERSON_OPTIONS}    onChange={setFilter("person")} />}
+
+            {/* Shared: Gender, Number */}
+            {showGender    && <SelectFilter label="Gender" value={filters.gender}  options={GENDER_OPTIONS}    onChange={setFilter("gender")} />}
+            {showNumber    && <SelectFilter label="Number" value={filters.number}  options={NUMBER_OPTIONS}    onChange={setFilter("number")} />}
+
+            {/* Nominal / particle fields */}
+            {showState     && <SelectFilter label="State"  value={filters.state}   options={STATE_OPTIONS}     onChange={setFilter("state")} />}
+
+            {/* Greek-only verbal */}
+            {showVoice     && <SelectFilter label="Voice"  value={filters.voice}   options={VOICE_OPTIONS}     onChange={setFilter("voice")} />}
+            {showMood      && <SelectFilter label="Mood"   value={filters.mood}    options={MOOD_OPTIONS}      onChange={setFilter("mood")} />}
+            {showCase      && <SelectFilter label="Case"   value={filters.verbCase} options={CASE_OPTIONS}     onChange={setFilter("verbCase")} />}
+
+            {/* Hebrew verb suffix */}
+            {hasHebrew && isVerbal && (
+              <div className="pt-0.5">
+                <button
+                  type="button"
+                  onClick={() => setShowSuffix((v) => !v)}
+                  className="flex items-center gap-1 text-xs text-stone-400 dark:text-stone-500 hover:text-stone-600 dark:hover:text-stone-300 transition-colors"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor"
+                    className={`w-3 h-3 transition-transform ${showSuffix ? "rotate-90" : ""}`}>
+                    <path fillRule="evenodd" d="M6.22 4.22a.75.75 0 0 1 1.06 0l3.25 3.25a.75.75 0 0 1 0 1.06l-3.25 3.25a.75.75 0 0 1-1.06-1.06L9.19 8 6.22 5.03a.75.75 0 0 1 0-1.06Z" clipRule="evenodd"/>
+                  </svg>
+                  Suffix
+                </button>
+                {showSuffix && (
+                  <div className="mt-1.5 pl-3 space-y-1.5 border-l-2 border-stone-200 dark:border-stone-700">
+                    <SelectFilter label="Person" value={filters.suffixPerson} options={PERSON_OPTIONS} onChange={setFilter("suffixPerson")} />
+                    <SelectFilter label="Gender" value={filters.suffixGender} options={GENDER_OPTIONS} onChange={setFilter("suffixGender")} />
+                    <SelectFilter label="Number" value={filters.suffixNumber} options={NUMBER_OPTIONS} onChange={setFilter("suffixNumber")} />
+                  </div>
+                )}
+              </div>
+            )}
+          </>)}
         </div>
 
         {/* Search button */}
