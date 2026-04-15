@@ -111,6 +111,7 @@ export const words = sqliteTable(
     index("words_lemma_idx").on(table.lemma),
     index("words_pos_idx").on(table.partOfSpeechId),
     index("words_source_idx").on(table.textSourceId),
+    index("words_surface_norm_idx").on(table.surfaceNorm),
   ]
 );
 

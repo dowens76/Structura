@@ -8,6 +8,7 @@ import LexiconPane from "./LexiconPane";
 interface MorphologyPanelProps {
   word: Word | null;
   useLinguisticTerms?: boolean;
+  onSearchRequest?: (query: string, source: string) => void;
 }
 
 function Field({ label, value }: { label: string; value: string | null | undefined }) {
@@ -20,7 +21,7 @@ function Field({ label, value }: { label: string; value: string | null | undefin
   );
 }
 
-export default function MorphologyPanel({ word, useLinguisticTerms = false }: MorphologyPanelProps) {
+export default function MorphologyPanel({ word, useLinguisticTerms = false, onSearchRequest }: MorphologyPanelProps) {
   if (!word) {
     return (
       <div className="h-full flex items-center justify-center text-stone-400 dark:text-stone-600 text-sm">
@@ -57,21 +58,47 @@ export default function MorphologyPanel({ word, useLinguisticTerms = false }: Mo
         {displaySurface}
       </div>
 
-      {/* Lemma (Greek only) */}
+      {/* Lemma (Greek only) — clickable to search */}
       {showLemma && (
-        <div
-          className={`text-lg text-stone-500 dark:text-stone-400 mb-2 ${isHebrew ? "text-hebrew" : "text-greek"}`}
-          dir={isHebrew ? "rtl" : "ltr"}
-          lang={isHebrew ? "he" : "grc"}
-        >
-          {word.lemma}
+        <div className="mb-2 flex items-center gap-1.5">
+          <span
+            className={`text-lg text-stone-500 dark:text-stone-400 ${isHebrew ? "text-hebrew" : "text-greek"}`}
+            dir={isHebrew ? "rtl" : "ltr"}
+            lang={isHebrew ? "he" : "grc"}
+          >
+            {word.lemma}
+          </span>
+          {onSearchRequest && (
+            <button
+              onClick={() => onSearchRequest(word.lemma!, word.textSource)}
+              title="Search for this lemma"
+              className="shrink-0 text-stone-300 hover:text-amber-500 dark:text-stone-600 dark:hover:text-amber-400 transition-colors"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
+                <path fillRule="evenodd" d="M9.965 11.026a5 5 0 1 1 1.06-1.06l2.755 2.754a.75.75 0 1 1-1.06 1.06l-2.755-2.754ZM10.5 7a3.5 3.5 0 1 1-7 0 3.5 3.5 0 0 1 7 0Z" clipRule="evenodd" />
+              </svg>
+            </button>
+          )}
         </div>
       )}
 
-      {/* Strong's number */}
+      {/* Strong's number — clickable to search */}
       {word.strongNumber && (
-        <div className="text-sm font-mono text-stone-400 dark:text-stone-500 mb-4">
-          {word.strongNumber}
+        <div className="mb-4 flex items-center gap-1.5">
+          <span className="text-sm font-mono text-stone-400 dark:text-stone-500">
+            {word.strongNumber}
+          </span>
+          {onSearchRequest && (
+            <button
+              onClick={() => onSearchRequest(word.strongNumber!, word.textSource)}
+              title="Search for this Strong's number"
+              className="shrink-0 text-stone-300 hover:text-amber-500 dark:text-stone-600 dark:hover:text-amber-400 transition-colors"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
+                <path fillRule="evenodd" d="M9.965 11.026a5 5 0 1 1 1.06-1.06l2.755 2.754a.75.75 0 1 1-1.06 1.06l-2.755-2.754ZM10.5 7a3.5 3.5 0 1 1-7 0 3.5 3.5 0 0 1 7 0Z" clipRule="evenodd" />
+              </svg>
+            </button>
+          )}
         </div>
       )}
 

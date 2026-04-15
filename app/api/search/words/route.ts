@@ -130,8 +130,11 @@ export async function GET(request: NextRequest) {
       if (isHebrew(q)) {
         // Search surfaceNorm (Hebrew without cantillation) — fall back to surfaceText
         conditions.push(or(like(words.surfaceNorm, `%${q}%`), like(words.surfaceText, `%${q}%`))!);
+      } else if (/^[HG]\d+[a-z]?$/.test(q)) {
+        // Exact Strong's number (e.g. H7225, G3056) — match strongNumber column directly
+        conditions.push(eq(words.strongNumber, q));
       } else {
-        // Strong's number or lemma text
+        // Generic lemma text search
         conditions.push(like(words.lemma, `%${q}%`));
       }
     }
@@ -246,6 +249,8 @@ export async function GET(request: NextRequest) {
       } else if (searchType === "lemma" && q) {
         if (isHebrew(q)) {
           conditions.push(or(like(words.surfaceNorm, `%${q}%`), like(words.surfaceText, `%${q}%`))!);
+        } else if (/^[HG]\d+[a-z]?$/.test(q)) {
+          conditions.push(eq(words.strongNumber, q));
         } else {
           conditions.push(like(words.lemma, `%${q}%`));
         }

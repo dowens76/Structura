@@ -130,6 +130,7 @@ export default function ChapterDisplay({
   const [notesOpen, setNotesOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchHits, setSearchHits] = useState<Set<string>>(new Set());
+  const [searchRequest, setSearchRequest] = useState<{ query: string; source: string; nonce: number } | null>(null);
   const [notesScrollVerse, setNotesScrollVerse] = useState<number | null>(null);
 
   // Auto-open search pane if a previous search was persisted in sessionStorage
@@ -251,6 +252,12 @@ export default function ChapterDisplay({
     // Clear temporary search highlights — now handled by the tag system
     setSearchHits(new Set());
   }, [book, chapter, textSource]);
+
+  /** Called by MorphologyPanel when the user clicks a lemma or Strong's number. */
+  const handleSearchFromWord = useCallback((query: string, source: string) => {
+    setSearchOpen(true);
+    setSearchRequest({ query, source, nonce: Date.now() });
+  }, []);
 
   // ── Paragraph indentation state ─────────────────────────────────────────────
   // Source and translation indents are stored separately: tv:-prefixed wordIds
@@ -3167,6 +3174,7 @@ export default function ChapterDisplay({
             onClose={() => { setSearchOpen(false); setSearchHits(new Set()); }}
             onResultsChange={handleSearchResults}
             onSaveComplete={handleSearchSaved}
+            searchRequest={searchRequest}
           />
         </ResizablePane>
       )}
@@ -3188,7 +3196,7 @@ export default function ChapterDisplay({
                 </button>
               </div>
               <div className="flex-1 overflow-y-auto">
-                <MorphologyPanel word={selectedWord} useLinguisticTerms={useLinguisticTerms} />
+                <MorphologyPanel word={selectedWord} useLinguisticTerms={useLinguisticTerms} onSearchRequest={handleSearchFromWord} />
               </div>
             </div>
           </ResizablePane>

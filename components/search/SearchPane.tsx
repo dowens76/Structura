@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useEffect, useRef } from "react";
 import type { SearchResult } from "@/app/api/search/words/route";
+import type { LemmaSuggestion } from "@/app/api/search/lemma-suggest/route";
 
 const SOURCES = ["OSHB", "SBLGNT", "STEPBIBLE_LXX"] as const;
 type Source = typeof SOURCES[number];
@@ -97,6 +98,8 @@ export interface SearchPaneProps {
   onClose: () => void;
   onResultsChange?: (results: SearchResult[]) => void;
   onSaveComplete?: (tagId: number, name: string, color: string, wordRefs: WordRef[]) => void;
+  /** When set (nonce changes), auto-populate the search fields and run a search. */
+  searchRequest?: { query: string; source: string; nonce: number } | null;
 }
 
 function SelectFilter({
@@ -124,7 +127,7 @@ function SelectFilter({
   );
 }
 
-export default function SearchPane({ book, textSource, onClose, onResultsChange, onSaveComplete }: SearchPaneProps) {
+export default function SearchPane({ book, textSource, onClose, onResultsChange, onSaveComplete, searchRequest }: SearchPaneProps) {
   // ── Restore from sessionStorage on mount ───────────────────────────────────
   const restored = useRef(false);
 
@@ -180,6 +183,32 @@ export default function SearchPane({ book, textSource, onClose, onResultsChange,
     });
   };
 
+  // ── Lemma autocomplete ───────────────────────────────────────────────────────
+  const [suggestions, setSuggestions] = useState<LemmaSuggestion[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const suggestTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const queryIsHebrew = /[\u05D0-\u05EA]/.test(query);
+
+  useEffect(() => {
+    if (searchType !== "lemma" || !queryIsHebrew || !hasHebrew || !query.trim()) {
+      setSuggestions([]);
+      setShowSuggestions(false);
+      return;
+    }
+    if (suggestTimer.current) clearTimeout(suggestTimer.current);
+    suggestTimer.current = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/search/lemma-suggest?q=${encodeURIComponent(query.trim())}`);
+        if (res.ok) {
+          const data = await res.json() as { suggestions: LemmaSuggestion[] };
+          setSuggestions(data.suggestions);
+          setShowSuggestions(data.suggestions.length > 0);
+        }
+      } catch { /* ignore */ }
+    }, 250);
+    return () => { if (suggestTimer.current) clearTimeout(suggestTimer.current); };
+  }, [query, searchType, queryIsHebrew, hasHebrew]);
+
   // ── Results ─────────────────────────────────────────────────────────────────
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -199,31 +228,36 @@ export default function SearchPane({ book, textSource, onClose, onResultsChange,
     onResultsChange?.(r);
   }, [onResultsChange]);
 
-  const handleSearch = useCallback(async () => {
+  const runSearch = useCallback(async (
+    type: SearchType,
+    q: string,
+    srcs: Set<Source>,
+    f: MorphFilters,
+  ) => {
     setError(null);
     setResults(null);
     setShowSaveForm(false);
     setSaveMsg(null);
 
-    if (searchType !== "morph" && !query.trim()) {
+    if (type !== "morph" && !q.trim()) {
       setError("Enter a search term.");
       return;
     }
 
     const params = new URLSearchParams();
-    params.set("searchType", searchType);
-    params.set("source", Array.from(activeSources).join(","));
-    if (searchType !== "morph") params.set("q", query.trim());
-    if (filters.partOfSpeech) params.set("partOfSpeech", filters.partOfSpeech);
-    if (filters.person)       params.set("person",       filters.person);
-    if (filters.gender)       params.set("gender",       filters.gender);
-    if (filters.number)       params.set("number",       filters.number);
-    if (filters.tense)        params.set("tense",        filters.tense);
-    if (filters.voice)        params.set("voice",        filters.voice);
-    if (filters.mood)         params.set("mood",         filters.mood);
-    if (filters.stem)         params.set("stem",         filters.stem);
-    if (filters.state)        params.set("state",        filters.state);
-    if (filters.verbCase)     params.set("verbCase",     filters.verbCase);
+    params.set("searchType", type);
+    params.set("source", Array.from(srcs).join(","));
+    if (type !== "morph") params.set("q", q.trim());
+    if (f.partOfSpeech) params.set("partOfSpeech", f.partOfSpeech);
+    if (f.person)       params.set("person",       f.person);
+    if (f.gender)       params.set("gender",       f.gender);
+    if (f.number)       params.set("number",       f.number);
+    if (f.tense)        params.set("tense",        f.tense);
+    if (f.voice)        params.set("voice",        f.voice);
+    if (f.mood)         params.set("mood",         f.mood);
+    if (f.stem)         params.set("stem",         f.stem);
+    if (f.state)        params.set("state",        f.state);
+    if (f.verbCase)     params.set("verbCase",     f.verbCase);
 
     setLoading(true);
     try {
@@ -237,13 +271,17 @@ export default function SearchPane({ book, textSource, onClose, onResultsChange,
       setResults(data.results);
       setTotal(data.total);
       setTruncated(data.truncated);
-      persistResults(data.results, data.total, data.truncated, searchType, query, activeSources, filters);
+      persistResults(data.results, data.total, data.truncated, type, q, srcs, f);
     } catch {
       setError("Network error.");
     } finally {
       setLoading(false);
     }
-  }, [searchType, query, activeSources, filters, persistResults]);
+  }, [persistResults]);
+
+  const handleSearch = useCallback(async () => {
+    await runSearch(searchType, query, activeSources, filters);
+  }, [runSearch, searchType, query, activeSources, filters]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter") handleSearch();
@@ -254,6 +292,19 @@ export default function SearchPane({ book, textSource, onClose, onResultsChange,
     onResultsChange?.([]);
     onClose();
   };
+
+  // ── External search trigger (from word pane) ─────────────────────────────────
+  useEffect(() => {
+    if (!searchRequest) return;
+    const src = searchRequest.source as Source;
+    const newSources = new Set(SOURCES.includes(src) ? [src] : (["OSHB"] as Source[]));
+    setSearchType("lemma");
+    setQuery(searchRequest.query);
+    setActiveSources(newSources);
+    setFilters(EMPTY_FILTERS);
+    runSearch("lemma", searchRequest.query, newSources, EMPTY_FILTERS);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchRequest?.nonce]);
 
   const handleSave = async () => {
     if (!results || results.length === 0 || !listName.trim()) return;
@@ -345,15 +396,43 @@ export default function SearchPane({ book, textSource, onClose, onResultsChange,
 
         {/* Text input */}
         {searchType !== "morph" && (
-          <input
-            type="text"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder={searchType === "surface" ? "Surface text…" : hasHebrew && !hasGreek ? "Hebrew word or Strong's number…" : "Lemma or Strong's number…"}
-            className="w-full text-sm rounded border border-[var(--border)] bg-[var(--surface)] text-[var(--foreground)] px-2.5 py-1.5 focus:outline-none focus:border-amber-400"
-            dir={searchType === "surface" && hasHebrew && !hasGreek ? "rtl" : searchType === "lemma" && hasHebrew ? "auto" : "ltr"}
-          />
+          <div className="relative">
+            <input
+              type="text"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={handleKeyDown}
+              onFocus={() => suggestions.length > 0 && setShowSuggestions(true)}
+              onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
+              placeholder={searchType === "surface" ? "Surface text…" : hasHebrew && !hasGreek ? "Hebrew word or Strong's number…" : "Lemma or Strong's number…"}
+              className="w-full text-sm rounded border border-[var(--border)] bg-[var(--surface)] text-[var(--foreground)] px-2.5 py-1.5 focus:outline-none focus:border-amber-400"
+              dir={searchType === "surface" && hasHebrew && !hasGreek ? "rtl" : searchType === "lemma" && hasHebrew ? "auto" : "ltr"}
+            />
+            {showSuggestions && suggestions.length > 0 && (
+              <div className="absolute top-full left-0 right-0 z-50 mt-0.5 bg-[var(--surface)] border border-[var(--border)] rounded shadow-lg max-h-52 overflow-y-auto">
+                {suggestions.map((s, i) => (
+                  <button
+                    key={`${i}-${s.surfaceNorm}-${s.strongNumber}`}
+                    type="button"
+                    onMouseDown={(e) => {
+                      e.preventDefault(); // prevent blur before click
+                      setQuery(s.surfaceNorm);
+                      setShowSuggestions(false);
+                    }}
+                    className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-amber-50 dark:hover:bg-amber-950/30 transition-colors text-left"
+                  >
+                    <span dir="rtl" className="text-sm text-[var(--foreground)] shrink-0">{s.surfaceNorm}</span>
+                    {s.strongNumber && (
+                      <span className="text-xs text-stone-400 dark:text-stone-500 shrink-0">{s.strongNumber}</span>
+                    )}
+                    {s.gloss && (
+                      <span className="text-xs text-stone-500 dark:text-stone-400 truncate flex-1">{s.gloss}</span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         )}
 
         {/* Morphology filters */}
