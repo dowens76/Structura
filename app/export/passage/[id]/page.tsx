@@ -143,7 +143,7 @@ export default async function ExportPassagePage({ params }: PageProps) {
         <p style={{ fontSize: "0.75rem", color: "#78716c" }}>Structura · {textSource}</p>
       </div>
 
-      <ExportLayout revealHref={revealHref} filename={filename} noteContext={noteContext}>
+      <ExportLayout revealHref={revealHref} filename={filename} backHref={`/${encodeURIComponent(osisBook)}/${textSource}/passage/${id}`} noteContext={noteContext}>
         <div className="px-6 pt-4 pb-2 print:hidden" style={{ borderBottom: "1px solid var(--border)" }}>
           <h1
             style={{

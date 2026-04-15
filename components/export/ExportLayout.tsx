@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRef, useState, type ReactNode } from "react";
 import NotesExportMenu from "./NotesExportMenu";
 
@@ -9,6 +10,8 @@ interface Props {
   revealHref: string;
   /** Suggested filename stem, e.g. "Gen-1" or "passage-4" */
   filename: string;
+  /** URL to navigate back to the source chapter or passage */
+  backHref: string;
   /** When provided, a Notes export menu is shown in the toolbar. */
   noteContext?: {
     /** Human-readable document title, e.g. "Genesis 1" */
@@ -18,7 +21,7 @@ interface Props {
   };
 }
 
-export default function ExportLayout({ children, revealHref, filename, noteContext }: Props) {
+export default function ExportLayout({ children, revealHref, filename, backHref, noteContext }: Props) {
   const textRef = useRef<HTMLDivElement>(null);
   const [pngStatus, setPngStatus] = useState<"idle" | "loading" | "done">("idle");
   const [slidesStatus, setSlidesStatus] = useState<"idle" | "loading" | "done">("idle");
@@ -118,9 +121,21 @@ export default function ExportLayout({ children, revealHref, filename, noteConte
 
       {/* Floating toolbar */}
       <div
-        className="export-toolbar sticky top-4 z-20 flex justify-end px-6 pointer-events-none"
+        className="export-toolbar sticky top-4 z-20 flex justify-between px-6 pointer-events-none"
         aria-hidden="false"
       >
+        <Link
+          href={backHref}
+          className="pointer-events-auto px-3 py-1.5 rounded-xl shadow-lg border text-xs font-medium transition-colors"
+          style={{
+            backgroundColor: "var(--surface)",
+            borderColor: "var(--border)",
+            color: "var(--text-muted)",
+          }}
+          title="Go back"
+        >
+          ← Back
+        </Link>
         <div
           className="pointer-events-auto flex items-center gap-2 px-4 py-2 rounded-xl shadow-lg border text-sm"
           style={{
