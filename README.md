@@ -14,11 +14,12 @@ Structura ships as a Linux, Mac, and Windows app. Download the latest release at
 
 ## Text Sources
 
-| Source | Language | Words |
-|--------|----------|-------|
-| OSHB (Open Scriptures Hebrew Bible) | Biblical Hebrew | 305,507 |
-| LXX Rahlfs 1935 | Koine Greek (OT) | 623,199 |
-| SBLGNT / MorphGNT | Koine Greek (NT) | 137,554 |
+| Source | Language |
+|--------|----------|
+| OSHB (Open Scriptures Hebrew Bible) | Biblical Hebrew |
+| LXX Rahlfs 1935 | Koine Greek (OT) |
+| SBLGNT / MorphGNT | Koine Greek (NT) |
+| ULT (The UnfoldingWord Literal Text) |
 
 ---
 
