@@ -1385,12 +1385,31 @@ export default function VerseDisplay({
 
       // Render words inside the group (spaces between them are INSIDE the
       // wrapper, so the background fills the inter-word gap).
+
+      // Build underline style for inter-word spaces when a character tag is active.
+      const char1 = charRef ? characterMap.get(charRef.character1Id) : null;
+      const char2 = charRef?.character2Id != null ? characterMap.get(charRef.character2Id) : null;
+      const spaceUnderlineStyle: React.CSSProperties | undefined = char1 && char2 ? {
+        backgroundImage: `repeating-linear-gradient(to right, ${char1.color} 0px, ${char1.color} 4px, ${char2.color} 4px, ${char2.color} 8px)`,
+        backgroundSize: "100% 2px",
+        backgroundPosition: "center bottom",
+        backgroundRepeat: "no-repeat",
+        paddingBottom: isHebrew ? "6px" : "2px",
+        display: "inline-block",
+      } : char1 ? {
+        textDecoration: "underline",
+        textDecorationColor: char1.color,
+        textDecorationThickness: "2px",
+        textUnderlineOffset: isHebrew ? "6px" : "2px",
+      } : undefined;
+
       const inner = gWords.map((word, wi) => {
         const wordHasAtnach =
           showAtnachBreaks &&
           isHebrew &&
           (word.surfaceText ?? "").includes("\u0591");
         const isSearchHit = searchHits?.has(word.wordId) ?? false;
+        const isLastInGroup = wi === gWords.length - 1;
         return (
           <span
             key={word.wordId}
@@ -1438,7 +1457,11 @@ export default function VerseDisplay({
                 }}
               />
             )}
-            {wi < gWords.length - 1 && " "}
+            {!isLastInGroup && (
+              spaceUnderlineStyle
+                ? <span style={spaceUnderlineStyle}>{" "}</span>
+                : " "
+            )}
           </span>
         );
       });
