@@ -247,7 +247,20 @@ export default function WordArrowOverlay({
               </text>
             )}
 
-            {/* Delete handle */}
+            {/* Invisible hover target — rendered before delete handle so the
+                handle sits on top in SVG z-order and receives clicks correctly */}
+            <path
+              d={d}
+              stroke="transparent"
+              strokeWidth={12}
+              fill="none"
+              style={{ pointerEvents: "auto" }}
+              onMouseEnter={() => setHoveredId(arrow.id)}
+              onMouseLeave={() => setHoveredId(null)}
+            />
+
+            {/* Delete handle — rendered last so it is on top and intercepts
+                clicks before the hover target can swallow them */}
             {(editing || isHovered) && (
               <g
                 style={{ pointerEvents: "auto", cursor: "pointer", opacity: isHovered ? 1 : 0, transition: "opacity 0.15s" }}
@@ -259,17 +272,6 @@ export default function WordArrowOverlay({
                 <text x={midX} y={midY + handleDy + 4} textAnchor="middle" fontSize={10} fill={ARROW_COLOR} opacity={0.8} style={{ userSelect: "none" }}>×</text>
               </g>
             )}
-
-            {/* Invisible hover target */}
-            <path
-              d={d}
-              stroke="transparent"
-              strokeWidth={12}
-              fill="none"
-              style={{ pointerEvents: "auto" }}
-              onMouseEnter={() => setHoveredId(arrow.id)}
-              onMouseLeave={() => setHoveredId(null)}
-            />
           </g>
         );
       })}

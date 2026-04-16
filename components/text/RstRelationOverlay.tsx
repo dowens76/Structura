@@ -661,23 +661,36 @@ export default function RstRelationOverlay({
             ? n.x - LEVEL_WIDTH
             : n.x + LEVEL_WIDTH;
 
-        // ── Chip Y: clear of the horizontal arm ──────────────────────────
-        // The horizontal arm for a satellite sits at satLink.y2; nucleusY is
-        // satLink.y1 (flattenHierarchy always uses nucleusY as y1 for every
-        // link in the group).  To avoid covering the arm:
-        //   • satellite BELOW nucleus (y2 > y1): chip floats ABOVE the arm
-        //   • satellite ABOVE nucleus (y2 < y1): chip floats BELOW the arm
-        // Coordinate relations (no satellite) center the chip at group Y.
+        // ── Chip Y positions ──────────────────────────────────────────────
+        // Subordinate chips float above/below their satellite arm (one chip).
+        // Coordinate chips (no satellite) place one chip at the vertical
+        // midpoint of each spine segment between adjacent arm Y values —
+        // keeping them out of the text and clearly marking each segment.
         const CHIP_GAP_Y = 3;
-        let chipY: number;
-        if (satLink) {
-          const satelliteIsLower = satLink.y2 > satLink.y1; // satellite below nucleus
-          chipY = satelliteIsLower
-            ? satLink.y2 - CHIP_H / 2 - CHIP_GAP_Y   // float above arm
-            : satLink.y2 + CHIP_H / 2 + CHIP_GAP_Y;  // float below arm
-        } else {
-          chipY = n.y; // coordinate / fallback: centre on group Y
-        }
+        const chipYs: number[] = (() => {
+          if (satLink) {
+            const satelliteIsLower = satLink.y2 > satLink.y1;
+            return [satelliteIsLower
+              ? satLink.y2 - CHIP_H / 2 - CHIP_GAP_Y   // float above arm
+              : satLink.y2 + CHIP_H / 2 + CHIP_GAP_Y]; // float below arm
+          }
+          // Coordinate: gather every Y that an arm touches on the spine,
+          // sort them, and place a chip at the midpoint of each consecutive pair.
+          const groupLinks = layoutLinks.filter(
+            lk => lk.parentId === n.id && !!lk.isTrans === !!n.isTrans
+          );
+          const ySet = new Set<number>();
+          for (const lk of groupLinks) { ySet.add(lk.y1); ySet.add(lk.y2); }
+          const sortedYs = [...ySet].sort((a, b) => a - b);
+          if (sortedYs.length < 2) return [n.y];
+          const mids: number[] = [];
+          for (let j = 0; j < sortedYs.length - 1; j++)
+            mids.push((sortedYs[j] + sortedYs[j + 1]) / 2);
+          return mids;
+        })();
+
+        // Primary Y: first chip — anchors delete button and connector dot.
+        const primaryChipY = chipYs[0];
 
         // Connector dot: tree-facing (outer) side of chip.
         const connDotX = (isHebrew && !n.isTrans)
@@ -691,60 +704,66 @@ export default function RstRelationOverlay({
             onMouseLeave={() => isInteractive && setHoveredGroup(null)}
             style={{ pointerEvents: isInteractive ? "all" : "none" }}
           >
-            {/* Purple ring when this group is the currently-selected RST endpoint */}
-            {isSelectedEndpoint && (
-              <rect
-                x={chipX - CHIP_W / 2 - 3} y={chipY - CHIP_H / 2 - 3}
-                width={CHIP_W + 6}          height={CHIP_H + 6}
-                rx={5} fill="none" stroke="#7C3AED" strokeWidth={2}
-                style={{ pointerEvents: "none" }}
-              />
-            )}
-            {/* White ring when this group's type is being edited */}
-            {isEditingThis && !n.isTrans && (
-              <rect
-                x={chipX - CHIP_W / 2 - 3} y={chipY - CHIP_H / 2 - 3}
-                width={CHIP_W + 6}          height={CHIP_H + 6}
-                rx={5} fill="none" stroke="white" strokeWidth={2}
-                style={{ pointerEvents: "none" }}
-              />
-            )}
-            <rect
-              x={chipX - CHIP_W / 2} y={chipY - CHIP_H / 2}
-              width={CHIP_W}          height={CHIP_H}
-              rx={3}
-              fill={color}
-              opacity={n.isTrans ? 0.6 : isEditingThis ? 1 : 0.9}
-              style={{ cursor: (isInteractive && onEditGroup) ? "pointer" : "default" }}
-              onClick={e => {
-                if (isInteractive && onEditGroup) { e.stopPropagation(); onEditGroup(n.id); }
-              }}
-            />
-            <text
-              x={chipX} y={chipY + 4}
-              textAnchor="middle" fill="white"
-              fontSize={9} fontFamily="monospace" fontWeight="bold"
-              style={{ pointerEvents: "none", userSelect: "none" }}
-            >{abbr}</text>
+            {/* Rings and chip pills — one per Y position */}
+            {chipYs.map((chipY, yi) => (
+              <g key={yi}>
+                {/* Purple ring when this group is the currently-selected RST endpoint */}
+                {isSelectedEndpoint && (
+                  <rect
+                    x={chipX - CHIP_W / 2 - 3} y={chipY - CHIP_H / 2 - 3}
+                    width={CHIP_W + 6}          height={CHIP_H + 6}
+                    rx={5} fill="none" stroke="#7C3AED" strokeWidth={2}
+                    style={{ pointerEvents: "none" }}
+                  />
+                )}
+                {/* White ring when this group's type is being edited */}
+                {isEditingThis && !n.isTrans && (
+                  <rect
+                    x={chipX - CHIP_W / 2 - 3} y={chipY - CHIP_H / 2 - 3}
+                    width={CHIP_W + 6}          height={CHIP_H + 6}
+                    rx={5} fill="none" stroke="white" strokeWidth={2}
+                    style={{ pointerEvents: "none" }}
+                  />
+                )}
+                <rect
+                  x={chipX - CHIP_W / 2} y={chipY - CHIP_H / 2}
+                  width={CHIP_W}          height={CHIP_H}
+                  rx={3}
+                  fill={color}
+                  opacity={n.isTrans ? 0.6 : isEditingThis ? 1 : 0.9}
+                  style={{ cursor: (isInteractive && onEditGroup) ? "pointer" : "default" }}
+                  onClick={e => {
+                    if (isInteractive && onEditGroup) { e.stopPropagation(); onEditGroup(n.id); }
+                  }}
+                />
+                <text
+                  x={chipX} y={chipY + 4}
+                  textAnchor="middle" fill="white"
+                  fontSize={9} fontFamily="monospace" fontWeight="bold"
+                  style={{ pointerEvents: "none", userSelect: "none" }}
+                >{abbr}</text>
+              </g>
+            ))}
 
+            {/* Delete button — anchored to primary (first) chip */}
             {isInteractive && isHovered && (
               <g
                 style={{ cursor: "pointer", pointerEvents: "all" }}
                 onClick={e => { e.stopPropagation(); onDeleteGroup(n.id); }}
               >
-                <circle cx={chipX + CHIP_W / 2} cy={chipY - CHIP_H / 2} r={6} fill="#DC2626" />
+                <circle cx={chipX + CHIP_W / 2} cy={primaryChipY - CHIP_H / 2} r={6} fill="#DC2626" />
                 <text
-                  x={chipX + CHIP_W / 2} y={chipY - CHIP_H / 2 + 4}
+                  x={chipX + CHIP_W / 2} y={primaryChipY - CHIP_H / 2 + 4}
                   textAnchor="middle" fill="white" fontSize={9} fontFamily="sans-serif"
                   style={{ pointerEvents: "none", userSelect: "none" }}
                 >×</text>
               </g>
             )}
 
-            {/* Connector dot: selects this group as an RST endpoint */}
+            {/* Connector dot — anchored to primary (first) chip */}
             {editing && !n.isTrans && onSelectGroup && (
               <circle
-                cx={connDotX} cy={chipY} r={SEG_R}
+                cx={connDotX} cy={primaryChipY} r={SEG_R}
                 fill={isSelectedEndpoint ? "#7C3AED" : "transparent"}
                 stroke={isSelectedEndpoint ? "#7C3AED" : "#94A3B8"}
                 strokeWidth={1.5}
