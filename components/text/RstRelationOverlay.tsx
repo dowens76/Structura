@@ -848,7 +848,7 @@ export default function RstRelationOverlay({
             cx={dotX} cy={dotY} r={r}
             fill={fill} stroke={stroke} strokeWidth={sw}
             style={{ cursor: "pointer", pointerEvents: "all" }}
-            onClick={() => onSelectSegment(wordId)}
+            onClick={(e) => { e.stopPropagation(); onSelectSegment(wordId); }}
           />
         );
         });

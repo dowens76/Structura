@@ -3076,6 +3076,7 @@ export default function ChapterDisplay({
         {/* Chapter text */}
         <div
           className={`py-6 flex-1 ${hasActiveTranslations ? "" : "max-w-3xl mx-auto w-full"}`}
+          onClick={editingRst && rstSegA ? () => { setRstSegA(null); setRstSegB(null); setShowRstPicker(false); } : undefined}
           style={{
             paddingLeft:  "1.5rem",
             paddingRight: "1.5rem",
