@@ -4,13 +4,22 @@ A biblical text analysis workbench for studying the Hebrew Old Testament, Septua
 
 ---
 
+## How to Obtain the Desktop App
+
+Structura ships as a Linux, Mac, and Windows app. Download the latest release at https://github.com/dowens76/structura/releases/latest.
+
+**Important note for Mac users:** The MacOS will complain that the app is damaged. To get around this security feature, open the terminal and run: 
+
+``xattr -cr /Applications/Structura.app`` 
+
 ## Text Sources
 
-| Source | Language | Words |
-|--------|----------|-------|
-| OSHB (Open Scriptures Hebrew Bible) | Biblical Hebrew | 305,507 |
-| LXX Rahlfs 1935 | Koine Greek (OT) | 623,199 |
-| SBLGNT / MorphGNT | Koine Greek (NT) | 137,554 |
+| Source | Language |
+|--------|----------|
+| OSHB (Open Scriptures Hebrew Bible) | Biblical Hebrew |
+| LXX Rahlfs 1935 | Koine Greek (OT) |
+| SBLGNT / MorphGNT | Koine Greek (NT) |
+| ULT (The UnfoldingWord Literal Text) | English |
 
 ---
 
@@ -24,15 +33,15 @@ A biblical text analysis workbench for studying the Hebrew Old Testament, Septua
   - *Interlinear* — Source text with a sub-line showing lemma, Strong's number, morphological parsing code, grammatical constituent label, or a user dataset value
 - **Morphology panel** — Click any word to see its full grammatical parsing, lemma, Strong's number, and Scripture reference
 - **Adjustable font sizes** — Independent size controls for Hebrew, Greek, and translation text
-- **Linguistic terminology toggle** — Switch between traditional labels (perfect/imperfect) and Hebrew-specific labels (Qatal/Yiqtol/Wayyiqtol/Weqatal)
-- **Tooltips** — Hover over any word for parsing information
+- **Hebrew verb terminology toggle** — Switch between traditional labels (perfect/imperfect) and Hebrew-specific labels (Qatal/Yiqtol/Wayyiqtol/Weqatal)
+- **Tooltips** — Hover over any word for parsing information (when enabled)
 - **Dark mode** — Full light/dark theme support
 - **Parallel view** — Side-by-side OSHB Hebrew and LXX Septuagint for books shared between the two
 
 ### Translation
 
-- **Built-in ULT** — The UnfoldingWord Literal Text (31,102 verses, all 66 books) is bundled as a built-in translation and available in the translation picker immediately after running `npm run import:ult`
-- **Import translations** — Paste any translation (KJV, NASB, ESV, etc.) from Bible.com, or import via USFM
+- **Built-in ULT** — The UnfoldingWord Literal Text (31,102 verses, all 66 books) is bundled as a built-in translation and available in the translation picker
+- **Import translations** — Paste any translation with verse numbers and text (one chapter at a time), or import USFM-formatted translation text 
 - **Parallel display** — One or more translations shown alongside the source text in both chapter and passage views
 - **In-place editing** — Edit translation text directly in the view; edits are saved and override the built-in base text
 - **Translation-specific formatting** — Independent paragraph breaks, indentation, and bold/italic per translation
@@ -64,7 +73,7 @@ When display mode is set to Interlinear, a toolbar picker selects what appears b
 
 - **Word tags** — Instantly create a tag named after a word's lexical form by clicking it
 - **Concept tags** — Create custom named tags for themes, motifs, or any category
-- **Highlight** — Click a tag in the panel to highlight all instances across the text; contiguous tagged words show as a continuous highlight
+- **Highlight** — Click a tag in the panel to highlight all instances across the text
 
 ### Structural Annotation
 
@@ -76,14 +85,14 @@ When display mode is set to Interlinear, a toolbar picker selects what appears b
 
 ### Discourse & Rhetorical Analysis
 
-- **RST relations** — Draw Rhetorical Structure Theory relationships between paragraph segments using 14 relation types across coordinate and subordinate categories (Cause/Reason, Purpose, Concession, Condition, Temporal, etc.)
+- **Clause relations** — Draw  arrows to show relationships between paragraph segments (according to Rhetorical Structure Theory) using 14 relation types across coordinate and subordinate categories (Cause/Reason, Purpose, Concession, Condition, Temporal, etc.)
 - **Free-form arrows** — Draw directional arrows between any two words across verse boundaries
-- **Line annotations** — Annotate paragraph segments with Plot elements (Inciting Situation, Conflict, Turning Action, Resolution, etc.), Theme labels, or free-form Descriptions
+- **Line annotations** — Annotate lines or segments of text in one of three ways, identifying plot elements (Background information, Initial Situation, Conflict, Transforming Action, Resolution, etc.), theme labels (A, B, C, etc.), or free-form descriptions
 
 ### Export & Backup
 
-- **HTML export** — Export a passage or chapter to a self-contained HTML file preserving all visual annotations
-- **Manual backup** — Download a complete snapshot of `user.db` (all workspaces, annotations, translations, and settings) as a `.db` file
+- **PDF and PNG export** — Export a passage or chapter to a PDF file or PNG image, preserving all visual annotations
+- **Manual backup** — Download a complete snapshot of all workspaces, annotations, translations, and settings as a `.db` file
 - **Manual restore** — Upload a previously downloaded `.db` backup to replace the current database
 - **Automatic backups** — Schedule periodic backups to a local folder; configurable interval (daily / weekly / custom hours), retention policy (keep all / keep N / smart tiered), and a native OS folder picker; runs while the app is open
 
@@ -96,15 +105,9 @@ When display mode is set to Interlinear, a toolbar picker selects what appears b
 - **Multiple workspaces** — Annotations and settings are scoped to a workspace; switch workspaces from the nav bar
 - **Shared translations** — Imported translation text is available across all workspaces; only annotations (character refs, word tags, paragraph breaks, etc.) are workspace-specific
 
-## Desktop App
-
-Structura ships as a Linux, Mac, and Windows app via Tauri v2. The bundled app includes the Next.js server, Node.js runtime, and all source databases — no external dependencies required at runtime.
-
-Note for Mac users: The MacOS will complain that the app is damaged. To get around this security feature, open the terminal and run: 
-
-``xattr -cr /Applications/Structura.app`` 
-
 ---
+
+# For Developers
 
 ## Tech Stack
 
