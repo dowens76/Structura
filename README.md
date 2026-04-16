@@ -107,6 +107,8 @@ When display mode is set to Interlinear, a toolbar picker selects what appears b
 
 ---
 
+# For Developers
+
 ## Tech Stack
 
 - **Next.js 16** (App Router) + TypeScript
