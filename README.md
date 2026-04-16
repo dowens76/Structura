@@ -19,7 +19,7 @@ Structura ships as a Linux, Mac, and Windows app. Download the latest release at
 | OSHB (Open Scriptures Hebrew Bible) | Biblical Hebrew |
 | LXX Rahlfs 1935 | Koine Greek (OT) |
 | SBLGNT / MorphGNT | Koine Greek (NT) |
-| ULT (The UnfoldingWord Literal Text) |
+| ULT (The UnfoldingWord Literal Text) | English |
 
 ---
 
