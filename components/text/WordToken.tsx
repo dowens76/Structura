@@ -39,6 +39,7 @@ interface WordTokenProps {
   datasetValue?: string | null;
   onSaveConstituentLabel?: (wordId: string, label: string | null) => void;
   onSaveDatasetEntry?: (wordId: string, value: string | null) => void;
+  onLemmaClick?: (word: Word) => void;
 }
 
 /** Split surface text into leading punctuation, core word, and trailing punctuation.
@@ -82,6 +83,7 @@ interface InterlinearLabelProps {
   datasetValue: string | null;
   onSaveConstituentLabel?: (wordId: string, label: string | null) => void;
   onSaveDatasetEntry?: (wordId: string, value: string | null) => void;
+  onLemmaClick?: () => void;
 }
 
 function InterlinearLabel({
@@ -92,6 +94,7 @@ function InterlinearLabel({
   datasetValue,
   onSaveConstituentLabel,
   onSaveDatasetEntry,
+  onLemmaClick,
 }: InterlinearLabelProps) {
   const [popoverOpen, setPopoverOpen] = useState(false);
   const [draftValue,  setDraftValue]  = useState("");
@@ -115,8 +118,14 @@ function InterlinearLabel({
   }
 
   const isEditable = subMode === "constituent" || (typeof subMode === "object" && subMode.type === "dataset");
+  const isLemmaSearchable = subMode === "lemma" && !!onLemmaClick;
 
   function handleLabelClick(e: React.MouseEvent) {
+    if (isLemmaSearchable) {
+      e.stopPropagation();
+      onLemmaClick!();
+      return;
+    }
     if (!isEditable) return;
     e.stopPropagation();
     if (subMode === "constituent") {
@@ -145,10 +154,11 @@ function InterlinearLabel({
         className={[
           "word-parse",
           isEditable ? "cursor-pointer rounded px-0.5 hover:bg-stone-100 dark:hover:bg-stone-700" : "",
+          isLemmaSearchable ? "cursor-pointer rounded px-0.5 hover:underline" : "",
         ].join(" ")}
         style={labelStyle}
         onClick={handleLabelClick}
-        title={isEditable ? "Click to edit" : undefined}
+        title={isLemmaSearchable ? "Search this lemma" : isEditable ? "Click to edit" : undefined}
       >
         {getText()}
       </span>
@@ -269,6 +279,7 @@ export default function WordToken({
   datasetValue,
   onSaveConstituentLabel,
   onSaveDatasetEntry,
+  onLemmaClick,
 }: WordTokenProps) {
   const [hovering, setHovering] = useState(false);
   const [tooltipBelow, setTooltipBelow] = useState(false);
@@ -403,6 +414,7 @@ export default function WordToken({
           datasetValue={datasetValue ?? null}
           onSaveConstituentLabel={onSaveConstituentLabel}
           onSaveDatasetEntry={onSaveDatasetEntry}
+          onLemmaClick={onLemmaClick ? () => onLemmaClick(word) : undefined}
         />
       </span>
     );

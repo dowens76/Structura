@@ -17,9 +17,9 @@ const CATEGORY_META: { key: ClearCategory; label: string; icon: string }[] = [
   { key: "characterRefs",      label: "Character tags",          icon: "👤" },
   { key: "speechSections",     label: "Speech sections",         icon: "💬" },
   { key: "wordTagRefs",        label: "Word / concept tags",     icon: "🏷" },
-  { key: "lineIndents",        label: "Indentations",            icon: "↳" },
-  { key: "rstRelations",        label: "RST relations",           icon: "⤢" },
-  { key: "wordArrows",         label: "Arrows",                  icon: "↗" },
+  { key: "lineIndents",        label: "Indentations",            icon: "⇥" },
+  { key: "rstRelations",        label: "Relational arrows",       icon: "↳" },
+  { key: "wordArrows",         label: "Arrows",                  icon: "↷" },
   { key: "wordFormatting",     label: "Bold / italic formatting",icon: "B" },
 ];
 

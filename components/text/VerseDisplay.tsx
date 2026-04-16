@@ -88,6 +88,7 @@ interface VerseDisplayProps {
   datasetEntryMap?: Map<string, string>;
   onSaveConstituentLabel?: (wordId: string, label: string | null) => void;
   onSaveDatasetEntry?: (wordId: string, value: string | null) => void;
+  onLemmaClick?: (word: Word) => void;
   // Source text visibility
   hideSourceText?: boolean;
   // Translation text editing
@@ -734,6 +735,7 @@ export default function VerseDisplay({
   datasetEntryMap = new Map<string, string>(),
   onSaveConstituentLabel,
   onSaveDatasetEntry,
+  onLemmaClick,
   hideSourceText = false,
   editingTranslation = false,
   onUpdateTranslationVerse,
@@ -1442,6 +1444,7 @@ export default function VerseDisplay({
               datasetValue={datasetEntryMap.get(word.wordId)}
               onSaveConstituentLabel={onSaveConstituentLabel}
               onSaveDatasetEntry={onSaveDatasetEntry}
+              onLemmaClick={onLemmaClick}
             />
             {wordHasAtnach && (
               <span

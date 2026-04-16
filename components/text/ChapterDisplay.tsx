@@ -259,6 +259,16 @@ export default function ChapterDisplay({
     setSearchRequest({ query, source, nonce: Date.now() });
   }, []);
 
+  /** Called when the user clicks a lemma in interlinear mode. */
+  const handleLemmaClick = useCallback((word: import("@/lib/db/schema").Word) => {
+    const query = word.language === "hebrew"
+      ? (word.strongNumber ?? word.lemma ?? "")
+      : (word.lemma ?? "");
+    if (!query) return;
+    setSearchOpen(true);
+    setSearchRequest({ query, source: word.textSource, nonce: Date.now() });
+  }, []);
+
   // ── Paragraph indentation state ─────────────────────────────────────────────
   // Source and translation indents are stored separately: tv:-prefixed wordIds
   // hold the translation column's indent level in the DB.
@@ -3131,6 +3141,7 @@ export default function ChapterDisplay({
                 datasetEntryMap={datasetEntryMap}
                 onSaveConstituentLabel={handleSaveConstituentLabel}
                 onSaveDatasetEntry={handleSaveDatasetEntry}
+                onLemmaClick={displayMode === "interlinear" && interlinearSubMode === "lemma" ? handleLemmaClick : undefined}
                 hideSourceText={hideSourceText}
                 editingTranslation={editingTranslation}
                 onUpdateTranslationVerse={handleUpdateTranslationVerse}
