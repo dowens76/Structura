@@ -2251,6 +2251,7 @@ export default function ChapterDisplay({
             containerRef={textContainerRef}
             isHebrew={isHebrew}
             hasTranslation={hasActiveTranslations}
+            hideSourceTree={hideSourceText}
             editing={editingRst}
             paragraphFirstWordIds={paragraphFirstWordIds}
             selectedNucleusWordId={rstSegA}

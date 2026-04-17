@@ -91,6 +91,8 @@ export interface Props {
   /** When true (unlinked mode, translation side active), selector dots are
    *  placed in the translation column rather than the source column. */
   editingTranslation?: boolean;
+  /** When true, source-side RST arrows are hidden (source text is not visible). */
+  hideSourceTree?: boolean;
 }
 
 // ── DOM measurement ───────────────────────────────────────────────────────────
@@ -139,8 +141,13 @@ function measureSegments(
     const transEl    = container.querySelector<HTMLElement>(
       `[data-seg-translation="${CSS.escape(id)}"]`,
     );
+    // Indentation on the translation column lives on the first <p> inside the
+    // translation div, not on the div itself — read padding from that element.
+    const transPEl   = transEl?.querySelector("p");
+    const transPCs   = transPEl ? getComputedStyle(transPEl) : null;
+    const transPadL  = transPCs ? (parseFloat(transPCs.paddingLeft) || 0) : 0;
     const transLeftX = transEl
-      ? transEl.getBoundingClientRect().left - cRect.left
+      ? transEl.getBoundingClientRect().left - cRect.left + transPadL
       : undefined;
 
     // 3-col only: measure the source grid-cell div (blockified, stable column bounds).
@@ -159,11 +166,18 @@ function measureSegments(
       ? labelEl.getBoundingClientRect().left - cRect.left
       : undefined;
 
+    // Account for paddingLeft/paddingRight so that indented paragraphs
+    // (which use CSS padding to shift text inward) report the actual
+    // text-start edge rather than the element's outer border-box edge.
+    const cs = getComputedStyle(textEl);
+    const padLeft  = parseFloat(cs.paddingLeft)  || 0;
+    const padRight = parseFloat(cs.paddingRight) || 0;
+
     result.set(id, {
       top:       anchorTop    - cRect.top + scrollTop,
       bottom:    anchorBottom - cRect.top + scrollTop,
-      leftX:     textR.left   - cRect.left,
-      rightX:    textR.right  - cRect.left,
+      leftX:     textR.left   - cRect.left + padLeft,
+      rightX:    textR.right  - cRect.left - padRight,
       transLeftX,
       srcCellRightX,
       labelLeftX,
@@ -365,11 +379,19 @@ function layoutTree(
   const src = flattenHierarchy(treeRoot, yMapSource, srcXFn, false);
 
   if (use3Col) {
-    // Hebrew 3-col: override leaf x to just outside the column-cell right boundary.
+    // Hebrew 3-col: each paragraph has its own independent grid, so srcCellRightX
+    // varies per row.  Normalise using refSrcCellRightX as a stable baseline:
+    //   anchor = refSrcCellRightX - srcPadRight + LEAF_MARGIN
+    // where srcPadRight = srcCellRightX - rightX = the paddingRight on the source
+    // block div.  Unindented segments → refSrcCellRightX + LEAF_MARGIN (constant).
+    // Indented segments → that value minus their padding (proportionally shorter arm).
     for (const node of src.nodes) {
       if (node.type === "segment") {
         const pos = posMap.get(node.id);
-        if (pos?.srcCellRightX !== undefined) node.x = pos.srcCellRightX + LEAF_MARGIN;
+        if (pos?.srcCellRightX !== undefined) {
+          const srcPadRight = pos.srcCellRightX - pos.rightX;
+          node.x = refSrcCellRightX - srcPadRight + LEAF_MARGIN;
+        }
       }
     }
     for (const link of src.links) {
@@ -420,19 +442,10 @@ function layoutTree(
       if (node.type === "segment") {
         const pos = posMap.get(node.id);
         if (pos?.transLeftX !== undefined) {
-          if (use3Col) {
-            // Hebrew 3-col: translation column has fixed width; all leaves at
-            // the same x (column boundary minus LEAF_MARGIN).  Do NOT apply
-            // srcIndent: for RTL text pos.leftX reflects text width, not
-            // indentation, so applying it would push leaves arbitrarily far
-            // into the translation column.
-            node.x = pos.transLeftX - LEAF_MARGIN;
-          } else {
-            // LTR 3-col / 2-col: mirror source indentation so segments indented
-            // further right in the source column get proportionally longer arms.
-            const srcIndent = (pos.leftX - LEAF_MARGIN) - (refLeftX - LEAF_MARGIN);
-            node.x = (pos.transLeftX - LEAF_MARGIN) + srcIndent;
-          }
+          // transLeftX already includes paddingLeft of the translation <p>,
+          // so transLeftX - LEAF_MARGIN lands at a consistent offset from the
+          // actual text-start edge for both Hebrew 3-col and LTR layouts.
+          node.x = pos.transLeftX - LEAF_MARGIN;
         }
       }
     }
@@ -467,6 +480,7 @@ export default function RstRelationOverlay({
   onSelectGroup,
   customTypes = [],
   editingTranslation = false,
+  hideSourceTree = false,
 }: Props) {
   const relMap = customTypes.length > 0
     ? buildRelationshipMap(customTypes)
@@ -583,21 +597,29 @@ export default function RstRelationOverlay({
   // (innermost = closest to the margin, i.e. furthest from the text):
   //   LTR / translation  →  smallest  x2  →  spine to the left
   //   Hebrew source (RTL) →  largest   x2  →  spine to the right
-  // Computed once here so both edge drawing and chip placement share it.
-  const spineXByParent = new Map<string, number>();
-  for (const lk of layoutLinks) {
-    const key      = `${lk.parentId}:${lk.isTrans ? 1 : 0}`;
-    const isRtlSrc = isHebrew && !lk.isTrans;
-    const cur      = spineXByParent.get(key);
-    spineXByParent.set(
-      key,
-      cur === undefined ? lk.x2 : (isRtlSrc ? Math.max(cur, lk.x2) : Math.min(cur, lk.x2))
-    );
+  //
+  // Two-pass approach: lk.x2 for group children is depth-based (xFn) and
+  // becomes stale when leaves are overridden for indentation. Pass 1 computes
+  // correct spines for leaf-only groups; pass 2 uses those to fix spines of
+  // groups that have group children (e.g. Purpose → Sequence → indented leaves).
+  function computeSpinePass(prevSpines: Map<string, number>): Map<string, number> {
+    const inner = new Map<string, number>();
+    for (const lk of layoutLinks) {
+      const key       = `${lk.parentId}:${lk.isTrans ? 1 : 0}`;
+      const childKey  = `${lk.childId}:${lk.isTrans ? 1 : 0}`;
+      const isRtlSrc  = isHebrew && !lk.isTrans;
+      const effectiveX2 = prevSpines.get(childKey) ?? lk.x2;
+      const cur       = inner.get(key);
+      inner.set(key, cur === undefined ? effectiveX2 : (isRtlSrc ? Math.max(cur, effectiveX2) : Math.min(cur, effectiveX2)));
+    }
+    for (const [key, innerX] of inner) {
+      const isRtlSrc = key.endsWith(":0") && isHebrew;
+      inner.set(key, isRtlSrc ? innerX + LEVEL_WIDTH : innerX - LEVEL_WIDTH);
+    }
+    return inner;
   }
-  for (const [key, innerX] of spineXByParent) {
-    const isRtlSrc = key.endsWith(":0") && isHebrew;
-    spineXByParent.set(key, isRtlSrc ? innerX + LEVEL_WIDTH : innerX - LEVEL_WIDTH);
-  }
+  const spinePass1     = computeSpinePass(new Map());
+  const spineXByParent = computeSpinePass(spinePass1);
 
   return (
     <svg
@@ -607,13 +629,19 @@ export default function RstRelationOverlay({
       aria-hidden="true"
     >
       {/* ── Tree edges ────────────────────────────────────────────────────── */}
-      {layoutLinks.map((lk, i) => {
+      {layoutLinks.filter(lk => !hideSourceTree || lk.isTrans).map((lk, i) => {
         const meta   = relMap[lk.relType];
         const color  = meta?.color ?? "#6B7280";
         const isSat  = lk.role === "satellite";
         const key    = `${lk.parentId}:${lk.isTrans ? 1 : 0}`;
-        const spineX = spineXByParent.get(key) ?? lk.x1;
-        const pathD  = `M ${spineX},${lk.y1} V ${lk.y2} H ${lk.x2}`;
+        const spineX  = spineXByParent.get(key) ?? lk.x1;
+        // If the child is itself a group, use its actual spine as the arm endpoint
+        // (lk.x2 for group children is depth-based and becomes stale after leaf
+        // positions are overridden for indentation).
+        const childSpineKey = `${lk.childId}:${lk.isTrans ? 1 : 0}`;
+        const childSpineX   = spineXByParent.get(childSpineKey);
+        const armX2         = childSpineX !== undefined ? childSpineX : lk.x2;
+        const pathD   = `M ${spineX},${lk.y1} V ${lk.y2} H ${armX2}`;
         return (
           <path
             key={i}
@@ -629,7 +657,7 @@ export default function RstRelationOverlay({
       })}
 
       {/* ── Group nodes (relation-type chips) ─────────────────────────────── */}
-      {groupNodes.map((n, i) => {
+      {groupNodes.filter(n => !hideSourceTree || n.isTrans).map((n, i) => {
         const meta          = relMap[n.relType ?? ""];
         const color         = meta?.color ?? "#6B7280";
         const abbr          = meta?.abbr  ?? (n.relType ?? "?").slice(0, 3);
@@ -776,7 +804,7 @@ export default function RstRelationOverlay({
       })}
 
       {/* ── Segment leaf dots — source tree ──────────────────────────────── */}
-      {layoutNodes
+      {!hideSourceTree && layoutNodes
         .filter(n => n.type === "segment" && !n.isTrans && relatedSegIds.has(n.id))
         .map(n => (
           <circle
