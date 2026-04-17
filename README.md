@@ -12,6 +12,12 @@ Structura ships as a Linux, Mac, and Windows app. Download the latest release at
 
 ``xattr -cr /Applications/Structura.app`` 
 
+### How to Give Feedback
+
+If you want to give feedback about the app, share ideas for new features, or connect about visually analysing Bible passages, click on the Discussions tab above and start or respond to a discussion. You will need a free Github account. 
+
+---
+
 ## Text Sources
 
 | Source | Language |
