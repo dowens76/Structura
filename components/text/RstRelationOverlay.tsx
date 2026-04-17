@@ -802,55 +802,60 @@ export default function RstRelationOverlay({
 
       {/* ── Editing mode: segment selector dots ──────────────────────────── */}
       {editing && (() => {
-        // When editing translation side, find a reference transLeftX from any
-        // measured segment (verses without translation text lack data-seg-translation
-        // and thus have transLeftX=undefined; fall back to the nearest sibling value).
-        const refTransLeftX = editingTranslation
+        // Find a reference transLeftX for segments that lack translation text
+        // (fall back to the nearest sibling's value).
+        const refTransLeftX = hasTranslation
           ? [...posMap.values()].find(p => p.transLeftX !== undefined)?.transLeftX
           : undefined;
 
-        return paragraphFirstWordIds.map(wordId => {
+        return paragraphFirstWordIds.flatMap(wordId => {
         const pos = posMap.get(wordId);
-        if (!pos) return null;
+        if (!pos) return [];
 
         const isNucleus   = wordId === selectedNucleusWordId;
         const isSatellite = wordId === selectedSatelliteWordId;
-
-        let dotX: number;
-        if (editingTranslation) {
-          // Translation column: dots sit at the translation text's left edge.
-          // Use this segment's own transLeftX, or fall back to the reference value
-          // from another segment (e.g. when this verse has no translation text).
-          const txLeft = pos.transLeftX ?? refTransLeftX;
-          if (txLeft === undefined) return null;
-          dotX = txLeft - LEAF_MARGIN;
-        } else {
-          // Source column selector dot positions:
-          // Hebrew 3-col: just outside the source column's right boundary.
-          // Hebrew 2-col: just right of the text's right edge.
-          // LTR (2-col or 3-col): just left of the text start (in the left gutter).
-          dotX = (isHebrew && pos.srcCellRightX !== undefined)
-            ? pos.srcCellRightX + LEAF_MARGIN
-            : isHebrew
-              ? pos.rightX + LEAF_MARGIN
-              : pos.leftX - LEAF_MARGIN;
-        }
-        const dotY = pos.top + (pos.bottom - pos.top) / 2;
 
         const r      = isNucleus ? NUCLEUS_R : isSatellite ? SAT_R : SEG_R;
         const fill   = isNucleus ? "#7C3AED" : isSatellite ? "#F59E0B" : "transparent";
         const stroke = isNucleus ? "#7C3AED" : isSatellite ? "#F59E0B" : "#94A3B8";
         const sw     = isNucleus || isSatellite ? 0 : 1.5;
+        const dotY   = pos.top + (pos.bottom - pos.top) / 2;
 
-        return (
+        // Source-column dot
+        const srcDotX = (isHebrew && pos.srcCellRightX !== undefined)
+          ? pos.srcCellRightX + LEAF_MARGIN
+          : isHebrew
+            ? pos.rightX + LEAF_MARGIN
+            : pos.leftX - LEAF_MARGIN;
+
+        const dots: React.ReactElement[] = [
           <circle
-            key={wordId}
-            cx={dotX} cy={dotY} r={r}
+            key={`${wordId}-src`}
+            cx={srcDotX} cy={dotY} r={r}
             fill={fill} stroke={stroke} strokeWidth={sw}
             style={{ cursor: "pointer", pointerEvents: "all" }}
             onClick={(e) => { e.stopPropagation(); onSelectSegment(wordId); }}
           />
-        );
+        ];
+
+        // Translation-column dot (shown whenever translation is visible)
+        if (hasTranslation) {
+          const txLeft = pos.transLeftX ?? refTransLeftX;
+          if (txLeft !== undefined) {
+            const txDotX = txLeft - LEAF_MARGIN;
+            dots.push(
+              <circle
+                key={`${wordId}-trans`}
+                cx={txDotX} cy={dotY} r={r}
+                fill={fill} stroke={stroke} strokeWidth={sw}
+                style={{ cursor: "pointer", pointerEvents: "all" }}
+                onClick={(e) => { e.stopPropagation(); onSelectSegment(wordId); }}
+              />
+            );
+          }
+        }
+
+        return dots;
         });
       })()}
     </svg>
