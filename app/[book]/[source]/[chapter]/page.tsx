@@ -9,7 +9,7 @@ import {
   getChapterWordTagRefs, getChapterLineIndents, getChapterRstRelations,
   getChapterWordArrows, getChapterWordFormatting, getChapterSceneBreaks,
   getChapterLineAnnotations, getBookSceneBreaks, getBookChapterMaxVerses,
-  getUltVerses, getUltTranslation,
+  getUltVerses, getUltTranslation, getChapterParagraphHeadings,
 } from "@/lib/db/queries";
 import type { TranslationVerse } from "@/lib/db/schema";
 import type { TextSource } from "@/lib/morphology/types";
@@ -107,6 +107,7 @@ export default async function ChapterPage({ params, searchParams }: PageProps) {
   let initialLineAnnotations: Awaited<ReturnType<typeof getChapterLineAnnotations>> = [];
   let bookSceneBreaks: Awaited<ReturnType<typeof getBookSceneBreaks>> = [];
   let bookMaxVerses: Awaited<ReturnType<typeof getBookChapterMaxVerses>> = new Map();
+  let initialParagraphHeadings: { verse: number; heading: string }[] = [];
   let translationVerseData: Record<number, TranslationVerse[]> = {};
   let ultBaseVerses: { verse: number; text: string }[] = [];
   let ultTranslation: Awaited<ReturnType<typeof getUltTranslation>> = null;
@@ -117,7 +118,7 @@ export default async function ChapterPage({ params, searchParams }: PageProps) {
      initialWordTags, initialWordTagRefs, initialLineIndents,
      initialRstRelations, initialTvRstRelations, initialWordArrows, initialWordFormatting,
      initialSceneBreaks, initialLineAnnotations,
-     bookSceneBreaks, bookMaxVerses] = await Promise.all([
+     bookSceneBreaks, bookMaxVerses, initialParagraphHeadings] = await Promise.all([
       getAvailableTranslationsForChapter(osisBook, chapter, workspaceId),
       getChapterParagraphBreaks(osisBook, chapter, workspaceId),
       getCharacters(osisBook, workspaceId),
@@ -134,6 +135,7 @@ export default async function ChapterPage({ params, searchParams }: PageProps) {
       getChapterLineAnnotations(osisBook, chapter, textSource, workspaceId),
       getBookSceneBreaks(osisBook, textSource, workspaceId),
       getBookChapterMaxVerses(osisBook, textSource),
+      getChapterParagraphHeadings(osisBook, chapter, workspaceId),
     ]);
     await Promise.all(
       availableTranslations.map(async (t) => {
@@ -297,6 +299,7 @@ export default async function ChapterPage({ params, searchParams }: PageProps) {
             initialWordFormatting={initialWordFormatting}
             initialSceneBreaks={initialSceneBreaks}
             initialLineAnnotations={initialLineAnnotations}
+            initialParagraphHeadings={initialParagraphHeadings}
             bookSceneBreaks={bookSceneBreaks}
             bookMaxVerses={bookMaxVerses}
             headingSlot={

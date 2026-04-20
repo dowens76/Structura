@@ -405,6 +405,24 @@ export const wordDatasetEntries = sqliteTable(
 
 // ─── Auto-backup settings (single-row, id always 1) ────────────────────────
 
+export const paragraphHeadings = sqliteTable(
+  "paragraph_headings",
+  {
+    id:          integer("id").primaryKey({ autoIncrement: true }),
+    workspaceId: integer("workspace_id").notNull().default(1)
+                   .references(() => workspaces.id, { onDelete: "cascade" }),
+    book:        text("book").notNull(),
+    chapter:     integer("chapter").notNull(),
+    verse:       integer("verse").notNull(),
+    heading:     text("heading").notNull(),
+    createdAt:   text("created_at").$defaultFn(() => new Date().toISOString()),
+  },
+  (t) => [
+    uniqueIndex("ph_ws_bkchv_idx").on(t.workspaceId, t.book, t.chapter, t.verse),
+    index("ph_book_ch_idx").on(t.book, t.chapter),
+  ]
+);
+
 export const autoBackupSettings = sqliteTable("auto_backup_settings", {
   id:             integer("id").primaryKey(),  // always 1
   enabled:        integer("enabled", { mode: "boolean" }).notNull().default(false),
@@ -431,6 +449,7 @@ export type NewWorkspace = typeof workspaces.$inferInsert;
 export type Translation = typeof translations.$inferSelect;
 export type TranslationVerse = typeof translationVerses.$inferSelect;
 export type ParagraphBreak = typeof paragraphBreaks.$inferSelect;
+export type ParagraphHeading = typeof paragraphHeadings.$inferSelect;
 export type Character = typeof characters.$inferSelect;
 export type CharacterRef = typeof characterRefs.$inferSelect;
 export type SpeechSection = typeof speechSections.$inferSelect;

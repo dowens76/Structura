@@ -57,6 +57,7 @@ interface ChapterDisplayProps {
   initialWordFormatting: { wordId: string; isBold: boolean; isItalic: boolean }[];
   initialSceneBreaks: { wordId: string; heading: string | null; level: number; verse: number; outOfSequence: boolean; extendedThrough: number | null }[];
   initialLineAnnotations: LineAnnotation[];
+  initialParagraphHeadings?: { verse: number; heading: string }[];
   bookSceneBreaks: { wordId: string; heading: string | null; level: number; chapter: number; verse: number; extendedThrough: number | null }[];
   bookMaxVerses: Map<number, number>;
   /** Base verse text from data/ult.db (empty if not imported). */
@@ -108,6 +109,7 @@ export default function ChapterDisplay({
   initialWordFormatting,
   initialSceneBreaks,
   initialLineAnnotations,
+  initialParagraphHeadings = [],
   bookSceneBreaks,
   bookMaxVerses,
   ultBaseVerses = [],
@@ -152,6 +154,10 @@ export default function ChapterDisplay({
   const [editingParagraphs, setEditingParagraphs] = useState(false);
   const [paragraphBreakIds, setParagraphBreakIds] = useState<Set<string>>(
     () => new Set(initialParagraphBreakIds)
+  );
+  const [editingTranslationHeadings, setEditingTranslationHeadings] = useState(false);
+  const [paragraphHeadingMap, setParagraphHeadingMap] = useState<Map<number, string>>(
+    () => new Map(initialParagraphHeadings.map((h) => [h.verse, h.heading]))
   );
 
   // ── Section break state ──────────────────────────────────────────────────────
@@ -779,6 +785,21 @@ export default function ChapterDisplay({
   // Called when a translation word is clicked in paragraph-editing mode.
   function handleToggleTranslationParagraphBreak(wordId: string, abbr: string) {
     return handleToggleParagraphBreakById(wordId, abbr);
+  }
+
+  async function handleSetParagraphHeading(verse: number, heading: string) {
+    const trimmed = heading.trim();
+    setParagraphHeadingMap((prev) => {
+      const next = new Map(prev);
+      if (trimmed) next.set(verse, trimmed);
+      else next.delete(verse);
+      return next;
+    });
+    await fetch("/api/paragraph-headings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ book, chapter, verse, heading: trimmed }),
+    });
   }
 
   async function handleAddAtnachParagraphBreaks() {
@@ -2205,7 +2226,7 @@ export default function ChapterDisplay({
   //   refs, speech, arrows, wordTags
   // Each lists everything it is COMPATIBLE with — i.e., everything except the
   // other three annotation-editing modes.
-  const NON_ANNOTATION = ["paragraph", "scenes", "annotations", "indents", "rst", "bold", "italic"] as const;
+  const NON_ANNOTATION = ["paragraph", "scenes", "annotations", "indents", "rst", "bold", "italic", "translationHeadings"] as const;
   const COMPAT: Record<string, string[]> = {
     paragraph:   ["indents"],
     indents:     ["paragraph", "speech", "rst"],
@@ -2221,6 +2242,7 @@ export default function ChapterDisplay({
   };
   function deactivateIncompatible(mode: string) {
     const keep = new Set([mode, ...(COMPAT[mode] ?? [])]);
+    if (!keep.has("translationHeadings")) setEditingTranslationHeadings(false);
     if (!keep.has("paragraph"))   setEditingParagraphs(false);
     if (!keep.has("scenes"))      setEditingScenes(false);
     if (!keep.has("annotations")) { setEditingAnnotations(false); setAnnotRangeStart(null); setAnnotRangeEnd(null); }
@@ -2822,6 +2844,20 @@ export default function ChapterDisplay({
                       ✏
                     </button>
                   )}
+                  {hasActiveTranslations && (
+                    <button
+                      onClick={() => { if (!editingTranslationHeadings) deactivateIncompatible("translationHeadings"); setEditingTranslationHeadings((v) => !v); }}
+                      title={editingTranslationHeadings ? "Exit paragraph heading edit mode" : "Edit paragraph headings for translation"}
+                      className={[
+                        "px-2.5 py-1 rounded text-xs font-medium transition-colors",
+                        editingTranslationHeadings
+                          ? "bg-violet-600 text-white"
+                          : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
+                      ].join(" ")}
+                    >
+                      H
+                    </button>
+                  )}
                 </div>
               )}
 
@@ -3178,6 +3214,9 @@ export default function ChapterDisplay({
                 }}
                 rstSourcePad={(rstRelations.length > 0 || editingRst) ? 48 : 0}
                 presentationMode={presentationMode}
+                paragraphHeadings={paragraphHeadingMap}
+                editingTranslationHeadings={editingTranslationHeadings}
+                onSetParagraphHeading={handleSetParagraphHeading}
               />
             );
           })}

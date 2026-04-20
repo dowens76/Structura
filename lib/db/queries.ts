@@ -3,7 +3,7 @@ import { sourceDb, userDb, sourceLookups, lxxLookups, getLxxDb, getUltSqlite } f
 import type { LookupMaps } from "./index";
 import { books, words } from "./source-schema";
 import type { Word, WordRow } from "./source-schema";
-import { translations, translationVerses, paragraphBreaks, characters, characterRefs, speechSections, wordTags, wordTagRefs, lineIndents, sceneBreaks, passages, clauseRelationships, rstRelations, wordArrows, wordFormatting, lineAnnotations } from "./user-schema";
+import { translations, translationVerses, paragraphBreaks, paragraphHeadings, characters, characterRefs, speechSections, wordTags, wordTagRefs, lineIndents, sceneBreaks, passages, clauseRelationships, rstRelations, wordArrows, wordFormatting, lineAnnotations } from "./user-schema";
 import type { Book, Translation, TranslationVerse, Character, CharacterRef, SpeechSection, WordTag, WordTagRef, Passage, ClauseRelationship, RstRelation, WordArrow, LineAnnotation } from "./schema";
 import type { TextSource, Testament } from "@/lib/morphology/types";
 
@@ -276,6 +276,52 @@ export async function toggleParagraphBreak(
     await userDb.insert(paragraphBreaks).values({ wordId, book, chapter, textSource, workspaceId });
     return { added: true };
   }
+}
+
+// ── Paragraph headings ────────────────────────────────────────────────────────
+
+export async function getChapterParagraphHeadings(
+  book: string,
+  chapter: number,
+  workspaceId: number
+): Promise<{ verse: number; heading: string }[]> {
+  return userDb
+    .select({ verse: paragraphHeadings.verse, heading: paragraphHeadings.heading })
+    .from(paragraphHeadings)
+    .where(
+      and(
+        eq(paragraphHeadings.workspaceId, workspaceId),
+        eq(paragraphHeadings.book, book),
+        eq(paragraphHeadings.chapter, chapter)
+      )
+    );
+}
+
+export async function setParagraphHeading(
+  book: string,
+  chapter: number,
+  verse: number,
+  heading: string,
+  workspaceId: number
+): Promise<void> {
+  if (!heading.trim()) {
+    await userDb.delete(paragraphHeadings).where(
+      and(
+        eq(paragraphHeadings.workspaceId, workspaceId),
+        eq(paragraphHeadings.book, book),
+        eq(paragraphHeadings.chapter, chapter),
+        eq(paragraphHeadings.verse, verse)
+      )
+    );
+    return;
+  }
+  await userDb
+    .insert(paragraphHeadings)
+    .values({ workspaceId, book, chapter, verse, heading: heading.trim() })
+    .onConflictDoUpdate({
+      target: [paragraphHeadings.workspaceId, paragraphHeadings.book, paragraphHeadings.chapter, paragraphHeadings.verse],
+      set: { heading: heading.trim() },
+    });
 }
 
 // ── Section breaks ────────────────────────────────────────────────────────────

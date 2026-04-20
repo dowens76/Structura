@@ -129,6 +129,10 @@ interface VerseDisplayProps {
   rstSourcePad?: number;
   /** When true, doubles font sizes for section headings and annotation labels */
   presentationMode?: boolean;
+  /** Map of verse number → heading text for paragraph headings on translation text */
+  paragraphHeadings?: Map<number, string>;
+  editingTranslationHeadings?: boolean;
+  onSetParagraphHeading?: (verse: number, heading: string) => void;
 }
 
 // ── Annotation sub-components ────────────────────────────────────────────────
@@ -766,9 +770,35 @@ export default function VerseDisplay({
   rstSourcePad = 0,
   presentationMode = false,
   showAtnachBreaks = false,
+  paragraphHeadings,
+  editingTranslationHeadings = false,
+  onSetParagraphHeading,
 }: VerseDisplayProps) {
   const firstWordId = words[0]?.wordId;
   const verseStartsNewParagraph = firstWordId ? paragraphBreakIds.has(firstWordId) : false;
+
+  // ── Paragraph heading state ──────────────────────────────────────────────
+  const currentHeading = paragraphHeadings?.get(verseNum) ?? "";
+  const [headingEditing, setHeadingEditing] = useState(false);
+  const [headingDraft, setHeadingDraft] = useState(currentHeading);
+  const headingInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!editingTranslationHeadings) setHeadingEditing(false);
+  }, [editingTranslationHeadings]);
+
+  useEffect(() => {
+    setHeadingDraft(currentHeading);
+  }, [currentHeading]);
+
+  useEffect(() => {
+    if (headingEditing) headingInputRef.current?.focus();
+  }, [headingEditing]);
+
+  function commitHeading() {
+    setHeadingEditing(false);
+    onSetParagraphHeading?.(verseNum, headingDraft);
+  }
 
   const pilcrowClass = editingParagraphs
     ? "text-amber-500"
@@ -1749,7 +1779,12 @@ export default function VerseDisplay({
                     lineHeight: "var(--source-row-height, 1.625)",
                     paddingLeft: tvIndentLevel > 0 ? `${tvIndentLevel * 2}rem` : undefined,
                     textIndent: `${HANG_PX}px hanging` as React.CSSProperties["textIndent"],
+                    cursor: (editingTranslationHeadings || editingScenes) ? "text" : undefined,
+                    outline: (editingTranslationHeadings || editingScenes) ? "1px dashed rgba(139,92,246,0.35)" : undefined,
+                    outlineOffset: "2px",
                   }}
+                  onClick={(editingTranslationHeadings || editingScenes) ? (e) => { e.stopPropagation(); setHeadingDraft(currentHeading); setHeadingEditing(true); } : undefined}
+                  title={(editingTranslationHeadings || editingScenes) ? "Click to add a paragraph heading above this verse" : undefined}
                 >
                   {rowSegs.flatMap((tvSeg, segIdx) =>
                     tvSeg.tokens.map((token, localWi) => {
@@ -1809,6 +1844,8 @@ export default function VerseDisplay({
 
                       const tokenClassName = editingArrows
                         ? "cursor-crosshair rounded px-0.5 -mx-0.5 hover:bg-slate-100 dark:hover:bg-slate-900/40 transition-colors"
+                        : (editingTranslationHeadings || editingScenes)
+                        ? "cursor-pointer rounded px-0.5 -mx-0.5 hover:bg-violet-100 dark:hover:bg-violet-900/40 transition-colors"
                         : editingFormatting
                         ? "cursor-crosshair rounded px-0.5 -mx-0.5 hover:bg-amber-50 dark:hover:bg-amber-950/40 transition-colors"
                         : editingRefs
@@ -1823,6 +1860,8 @@ export default function VerseDisplay({
 
                       const handleClick = editingArrows
                         ? () => onSelectArrowWordById?.(wordId)
+                        : (editingTranslationHeadings || editingScenes)
+                        ? (e: React.MouseEvent) => { e.stopPropagation(); setHeadingDraft(currentHeading); setHeadingEditing(true); }
                         : editingFormatting
                         ? () => onSelectTranslationWord(wordId, abbr)
                         : editingRefs
@@ -2016,6 +2055,40 @@ export default function VerseDisplay({
         return (
           // data-rst-seg is used by RstRelationOverlay to measure segment position
           <div key={si} data-rst-seg={seg[0].wordId}>
+            {/* Paragraph heading — shown above first segment only */}
+            {si === 0 && (currentHeading || editingTranslationHeadings || editingScenes || headingEditing) && (
+              <div className="mb-1 mt-2">
+                {headingEditing ? (
+                  <input
+                    ref={headingInputRef}
+                    value={headingDraft}
+                    onChange={(e) => setHeadingDraft(e.target.value)}
+                    onBlur={commitHeading}
+                    onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); commitHeading(); } if (e.key === "Escape") { setHeadingDraft(currentHeading); setHeadingEditing(false); } }}
+                    placeholder="Paragraph heading…"
+                    className="w-full border-b border-violet-400 bg-transparent text-sm font-semibold outline-none py-0.5 text-stone-800 dark:text-stone-100 placeholder-stone-400 dark:placeholder-stone-500"
+                    style={{ fontFamily: "Georgia, 'Times New Roman', serif" }}
+                  />
+                ) : currentHeading ? (
+                  <p
+                    className={`text-sm font-semibold text-stone-700 dark:text-stone-200 ${(editingTranslationHeadings || editingScenes) ? "cursor-pointer hover:text-violet-600 dark:hover:text-violet-400" : ""}`}
+                    style={{ fontFamily: "Georgia, 'Times New Roman', serif" }}
+                    onClick={(editingTranslationHeadings || editingScenes) ? () => { setHeadingDraft(currentHeading); setHeadingEditing(true); } : undefined}
+                    title={(editingTranslationHeadings || editingScenes) ? "Click to edit heading" : undefined}
+                  >
+                    {currentHeading}
+                  </p>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => { setHeadingDraft(""); setHeadingEditing(true); }}
+                    className="text-xs text-stone-400 dark:text-stone-500 hover:text-violet-500 dark:hover:text-violet-400 italic transition-colors"
+                  >
+                    + heading
+                  </button>
+                )}
+              </div>
+            )}
             {/* Separator (scene or regular paragraph break) on a within-verse segment */}
             {si > 0 && !suppressSeparator && renderSegSeparator(seg[0].wordId)}
             {/* Flex wrapper so the annotation column can sit to the right of the text grid */}
