@@ -18,6 +18,7 @@ import ClearAnnotationsDialog, { type ClearCategory } from "@/components/control
 import TranslationPicker from "@/components/controls/TranslationPicker";
 import NotesPane from "@/components/notes/NotesPane";
 import SearchPane from "@/components/search/SearchPane";
+import OutlinePane from "@/components/text/OutlinePane";
 import ResizablePane from "@/components/ResizablePane";
 import RstTypeManager from "@/components/controls/RstTypeManager";
 import type { ColorRule } from "@/lib/morphology/colorRules";
@@ -328,7 +329,8 @@ export default function ChapterDisplay({
   // ── Presentation mode ─────────────────────────────────────────────────────
   const [presentationMode, setPresentationMode] = useState(false);
 
-  // ── Outline copy ──────────────────────────────────────────────────────────
+  // ── Outline pane ──────────────────────────────────────────────────────────
+  const [outlineOpen, setOutlineOpen] = useState(false);
   const [outlineCopied, setOutlineCopied] = useState(false);
 
   // ── Translation text editing ───────────────────────────────────────────────
@@ -2773,16 +2775,19 @@ export default function ChapterDisplay({
                 </button>
               </div>
 
-              {/* Copy outline to clipboard */}
+              {/* Outline sidebar toggle */}
               {(sceneBreakMap.size > 0 || bookSceneBreaks.length > 0) && (
                 <button
                   type="button"
-                  onClick={handleExportOutline}
-                  className="shrink-0 text-xs px-2 py-1 rounded hover:bg-stone-200 dark:hover:bg-stone-700 transition-colors bg-stone-100 dark:bg-stone-800"
-                  style={{ color: "var(--text-muted)" }}
+                  onClick={() => setOutlineOpen((v) => !v)}
+                  className="shrink-0 text-xs px-2 py-1 rounded hover:bg-stone-200 dark:hover:bg-stone-700 transition-colors"
+                  style={{
+                    color: outlineOpen ? "var(--accent)" : "var(--text-muted)",
+                    backgroundColor: outlineOpen ? "rgba(200,155,60,0.12)" : "var(--nav-bg)",
+                  }}
                   title={t("toolbar.titleCopyOutline")}
                 >
-                  {outlineCopied ? t("toolbar.outlineCopied") : t("toolbar.outline")}
+                  {t("toolbar.outline")}
                 </button>
               )}
 
@@ -3248,6 +3253,22 @@ export default function ChapterDisplay({
             onResultsChange={handleSearchResults}
             onSaveComplete={handleSearchSaved}
             searchRequest={searchRequest}
+          />
+        </ResizablePane>
+      )}
+
+      {/* Outline pane */}
+      {outlineOpen && !presentationMode && (
+        <ResizablePane storageKey="pane-outline-width" defaultWidth={320} minWidth={220} maxWidth={600}>
+          <OutlinePane
+            book={book}
+            chapter={chapter}
+            textSource={textSource}
+            sceneBreakMap={sceneBreakMap}
+            bookSceneBreaks={bookSceneBreaks}
+            sectionRanges={sectionRanges}
+            onUpdateCurrentHeading={handleUpdateSceneHeading}
+            onClose={() => setOutlineOpen(false)}
           />
         </ResizablePane>
       )}
