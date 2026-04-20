@@ -93,6 +93,9 @@ export interface Props {
   editingTranslation?: boolean;
   /** When true, source-side RST arrows are hidden (source text is not visible). */
   hideSourceTree?: boolean;
+  /** Extra element to watch for size changes (e.g. the flex-1 wrapper that shrinks
+   *  when a sidebar opens). Triggers remeasurement without affecting coordinates. */
+  layoutRef?: RefObject<HTMLDivElement | null>;
 }
 
 // ── DOM measurement ───────────────────────────────────────────────────────────
@@ -481,6 +484,7 @@ export default function RstRelationOverlay({
   customTypes = [],
   editingTranslation = false,
   hideSourceTree = false,
+  layoutRef,
 }: Props) {
   const relMap = customTypes.length > 0
     ? buildRelationshipMap(customTypes)
@@ -564,6 +568,12 @@ export default function RstRelationOverlay({
     if (!container) return;
     const ro = new ResizeObserver(scheduleRemeasure);
     ro.observe(container);
+    // Also observe the layout wrapper (e.g. the flex-1 div that shrinks when a
+    // sidebar opens) so we remeasure even if `container` doesn't directly report
+    // a size change due to overflow constraints.
+    if (layoutRef?.current && layoutRef.current !== container) {
+      ro.observe(layoutRef.current);
+    }
     const mo = new MutationObserver(scheduleRemeasure);
     mo.observe(container, { childList: true, subtree: true, attributes: false });
     container.addEventListener("scroll", scheduleRemeasure, { passive: true });
@@ -573,7 +583,7 @@ export default function RstRelationOverlay({
       container.removeEventListener("scroll", scheduleRemeasure);
       if (frameRef.current) cancelAnimationFrame(frameRef.current);
     };
-  }, [scheduleRemeasure, containerRef]);
+  }, [scheduleRemeasure, containerRef, layoutRef]);
 
   if (!svgH) return null;
 

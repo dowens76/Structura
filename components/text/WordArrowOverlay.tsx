@@ -20,6 +20,9 @@ interface Props {
   arrows: WordArrow[];
   containerRef: RefObject<HTMLDivElement | null>; // scrollable inner div — for DOM queries
   outerRef?:    RefObject<HTMLDivElement | null>; // non-clipping outer wrapper — for SVG coordinates; falls back to containerRef
+  /** Extra element to watch for size changes (e.g. the flex-1 wrapper that shrinks
+   *  when a sidebar opens). Triggers remeasurement without affecting coordinates. */
+  layoutRef?:   RefObject<HTMLDivElement | null>;
   editing: boolean;
   selectedFromWordId: string | null;
   onDeleteArrow: (id: number) => void;
@@ -74,6 +77,7 @@ export default function WordArrowOverlay({
   arrows,
   containerRef,
   outerRef,
+  layoutRef,
   editing,
   selectedFromWordId,
   onDeleteArrow,
@@ -125,6 +129,12 @@ export default function WordArrowOverlay({
     // Observe container for resize — e.g. window resize changes word positions.
     const ro = new ResizeObserver(scheduleMeasure);
     ro.observe(outer);
+    // Also observe the layout wrapper (e.g. the flex-1 div that shrinks when a
+    // sidebar opens). This ensures remeasurement even if `outer` doesn't directly
+    // report a size change due to overflow constraints.
+    if (layoutRef?.current && layoutRef.current !== outer) {
+      ro.observe(layoutRef.current);
+    }
 
     // Re-measure when DOM content changes — e.g. translation toggled on/off shifts
     // source words from a single-column layout to a 5-column grid layout.
@@ -137,7 +147,7 @@ export default function WordArrowOverlay({
       if (frameRef.current) cancelAnimationFrame(frameRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [arrows, containerRef, effectiveOuterRef]);
+  }, [arrows, containerRef, effectiveOuterRef, layoutRef]);
 
   if (svgHeight === 0) return null;
 

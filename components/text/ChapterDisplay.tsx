@@ -2249,6 +2249,7 @@ export default function ChapterDisplay({
             tvRelations={!rstRelationsLinked ? tvRstRelations : undefined}
             editingTranslation={editingRst && !rstRelationsLinked && rstEditingSide === "translation"}
             containerRef={textContainerRef}
+            layoutRef={outerRef}
             isHebrew={isHebrew}
             hasTranslation={hasActiveTranslations}
             hideSourceTree={hideSourceText}
@@ -2266,6 +2267,7 @@ export default function ChapterDisplay({
           <WordArrowOverlay
             arrows={wordArrowsState}
             containerRef={textContainerRef}
+            layoutRef={outerRef}
             editing={editingArrows}
             selectedFromWordId={arrowFromWordId}
             onDeleteArrow={handleDeleteWordArrow}
