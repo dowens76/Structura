@@ -58,7 +58,6 @@ interface ChapterDisplayProps {
   initialWordFormatting: { wordId: string; isBold: boolean; isItalic: boolean }[];
   initialSceneBreaks: { wordId: string; heading: string | null; level: number; verse: number; outOfSequence: boolean; extendedThrough: number | null }[];
   initialLineAnnotations: LineAnnotation[];
-  initialParagraphHeadings?: { verse: number; heading: string }[];
   bookSceneBreaks: { wordId: string; heading: string | null; level: number; chapter: number; verse: number; extendedThrough: number | null }[];
   bookMaxVerses: Map<number, number>;
   /** Base verse text from data/ult.db (empty if not imported). */
@@ -110,7 +109,6 @@ export default function ChapterDisplay({
   initialWordFormatting,
   initialSceneBreaks,
   initialLineAnnotations,
-  initialParagraphHeadings = [],
   bookSceneBreaks,
   bookMaxVerses,
   ultBaseVerses = [],
