@@ -2208,13 +2208,13 @@ export default function ChapterDisplay({
   //   refs, speech, arrows, wordTags
   // Each lists everything it is COMPATIBLE with — i.e., everything except the
   // other three annotation-editing modes.
-  const NON_ANNOTATION = ["paragraph", "scenes", "annotations", "indents", "rst", "bold", "italic"] as const;
+  const NON_ANNOTATION = ["paragraph", "scenes", "annotations", "indents", "rst"] as const;
   const COMPAT: Record<string, string[]> = {
     paragraph:   ["indents"],
     indents:     ["paragraph", "speech", "rst"],
     bold:        ["italic"],
     italic:      ["bold"],
-    speech:      ["rst", "indents", "scenes", "annotations", "bold", "italic"],
+    speech:      ["rst", "indents", "scenes", "annotations"],
     rst:         ["speech", "indents"],
     arrows:      [...NON_ANNOTATION],
     scenes:      [],
