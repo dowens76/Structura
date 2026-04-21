@@ -1053,8 +1053,23 @@ export default function VerseDisplay({
       );
     }
 
-    // Build from innermost outward so the outermost div is the outer wrapper.
-    // The innermost div carries the grid and its layer's box style.
+    // Single layer: one div carries both the grid styles and the speech box style.
+    if (layers.length === 1) {
+      const layer = layers[0];
+      return (
+        <div
+          className={innerClass}
+          style={{ ...innerStyle, ...segBoxStyle(layer.segSpeaker, layer.isSegStart, layer.isSegEnd, 0) }}
+          {...(innerProps ?? {})}
+        >
+          {renderDeleteBtns(layers)}
+          {innerContent}
+        </div>
+      );
+    }
+
+    // Multiple layers: build from innermost outward. The innermost div carries the
+    // grid styles; outer divs are purely decorative borders.
     const innermostLayer = layers[layers.length - 1];
     let node: React.ReactNode = (
       <div
