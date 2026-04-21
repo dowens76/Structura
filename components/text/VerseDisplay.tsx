@@ -770,75 +770,6 @@ export default function VerseDisplay({
   const firstWordId = words[0]?.wordId;
   const verseStartsNewParagraph = firstWordId ? paragraphBreakIds.has(firstWordId) : false;
 
-  // ── Translation-column heading state (backed by sceneBreakMap) ───────────
-  // Use the most-prominent (lowest-level number) break at the verse's first word.
-  const verseBreaks = firstWordId ? (sceneBreakMap.get(firstWordId) ?? []) : [];
-  const primaryBreak = [...verseBreaks].sort((a, b) => a.level - b.level)[0] ?? null;
-  const currentHeading = primaryBreak?.heading ?? null;
-  const primaryLevel = primaryBreak?.level ?? 1;
-
-  const [headingEditing, setHeadingEditing] = useState(false);
-  const [headingDraft, setHeadingDraft] = useState(currentHeading ?? "");
-  const [headingEditLevel, setHeadingEditLevel] = useState<number>(primaryLevel);
-  const headingInputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    if (!editingScenes) setHeadingEditing(false);
-  }, [editingScenes]);
-
-  useEffect(() => {
-    setHeadingDraft(currentHeading ?? "");
-  }, [currentHeading]);
-
-  useEffect(() => {
-    if (headingEditing) headingInputRef.current?.focus();
-  }, [headingEditing]);
-
-  // Heading class mirroring the source-text section break style
-  function tvHeadingClass(level: number): string {
-    if (presentationMode) {
-      switch (level) {
-        case 1: return "text-[31px] font-bold uppercase tracking-widest text-stone-800 dark:text-stone-100";
-        case 2: return "text-[26px] font-semibold uppercase tracking-wider text-stone-700 dark:text-stone-200";
-        case 3: return "text-[22px] font-medium uppercase tracking-wide text-stone-600 dark:text-stone-300";
-        case 4: return "text-[20px] font-normal uppercase tracking-wide text-stone-500 dark:text-stone-400";
-        case 5: return "text-[18px] font-normal uppercase tracking-normal text-stone-500 dark:text-stone-400";
-        case 6: return "text-[18px] font-normal text-stone-500 dark:text-stone-400";
-        default: return "text-[20px] text-stone-500 dark:text-stone-400";
-      }
-    }
-    switch (level) {
-      case 1: return "text-[15px] font-bold uppercase tracking-widest text-stone-800 dark:text-stone-100";
-      case 2: return "text-[13px] font-semibold uppercase tracking-wider text-stone-700 dark:text-stone-200";
-      case 3: return "text-[12px] font-medium uppercase tracking-wide text-stone-600 dark:text-stone-300";
-      case 4: return "text-[12px] font-normal uppercase tracking-wide text-stone-500 dark:text-stone-400";
-      case 5: return "text-[11px] font-normal uppercase tracking-normal text-stone-500 dark:text-stone-400";
-      case 6: return "text-[11px] font-normal text-stone-500 dark:text-stone-400";
-      default: return "text-[13px] text-stone-500 dark:text-stone-400";
-    }
-  }
-
-  function commitHeading() {
-    setHeadingEditing(false);
-    if (!firstWordId) return;
-    if (verseBreaks.length === 0) {
-      // Create new break at chosen level, then set heading
-      onToggleSceneBreak?.(firstWordId, headingEditLevel, verseNum);
-      onUpdateSceneHeading?.(firstWordId, headingEditLevel, headingDraft);
-    } else if (headingEditLevel !== primaryLevel) {
-      // Level changed — switch level then update heading
-      onChangeSceneBreakLevel?.(firstWordId, primaryLevel, headingEditLevel, verseNum);
-      onUpdateSceneHeading?.(firstWordId, headingEditLevel, headingDraft);
-    } else {
-      onUpdateSceneHeading?.(firstWordId, primaryLevel, headingDraft);
-    }
-  }
-
-  function handleTranslationHeadingClick() {
-    setHeadingEditLevel(primaryLevel);
-    setHeadingDraft(currentHeading ?? "");
-    setHeadingEditing(true);
-  }
 
   const pilcrowClass = editingParagraphs
     ? "text-amber-500"
@@ -1834,11 +1765,8 @@ export default function VerseDisplay({
                     lineHeight: "var(--source-row-height, 1.625)",
                     paddingLeft: tvIndentLevel > 0 ? `${tvIndentLevel * 2}rem` : undefined,
                     textIndent: `${HANG_PX}px hanging` as React.CSSProperties["textIndent"],
-                    cursor: editingScenes ? "text" : undefined,
-                    outline: editingScenes ? "1px dashed rgba(139,92,246,0.35)" : undefined,
-                    outlineOffset: "2px",
                   }}
-                  onClick={editingScenes ? (e) => { e.stopPropagation(); handleTranslationHeadingClick(); } : undefined}
+                  onClick={editingScenes && firstWordId ? (e) => { e.stopPropagation(); if (!(sceneBreakMap.get(firstWordId)?.length)) onToggleSceneBreak?.(firstWordId, 1, verseNum); } : undefined}
                   title={editingScenes ? "Click to add a section heading above this verse" : undefined}
                 >
                   {rowSegs.flatMap((tvSeg, segIdx) =>
@@ -1916,7 +1844,7 @@ export default function VerseDisplay({
                       const handleClick = editingArrows
                         ? () => onSelectArrowWordById?.(wordId)
                         : editingScenes
-                        ? (e: React.MouseEvent) => { e.stopPropagation(); handleTranslationHeadingClick(); }
+                        ? (e: React.MouseEvent) => { e.stopPropagation(); if (firstWordId && !(sceneBreakMap.get(firstWordId)?.length)) onToggleSceneBreak?.(firstWordId, 1, verseNum); }
                         : editingFormatting
                         ? () => onSelectTranslationWord(wordId, abbr)
                         : editingRefs
@@ -2110,56 +2038,6 @@ export default function VerseDisplay({
         return (
           // data-rst-seg is used by RstRelationOverlay to measure segment position
           <div key={si} data-rst-seg={seg[0].wordId}>
-            {/* Section heading in translation column — mirrors source-text heading; shown above first segment only */}
-            {si === 0 && (currentHeading || editingScenes || headingEditing) && (
-              <div className="mb-1 mt-2">
-                {headingEditing ? (
-                  <div className="flex flex-col gap-1">
-                    {/* Level selector */}
-                    <div className="flex gap-1">
-                      {([1, 2, 3, 4, 5, 6] as const).map((l) => (
-                        <button
-                          key={l}
-                          type="button"
-                          onMouseDown={(e) => { e.preventDefault(); setHeadingEditLevel(l); }}
-                          className={`text-[10px] px-1.5 h-5 rounded font-semibold transition-colors ${headingEditLevel === l ? "bg-amber-400 dark:bg-amber-600 text-white" : "bg-stone-200 dark:bg-stone-700 text-stone-500 dark:text-stone-400 hover:bg-amber-200 dark:hover:bg-amber-800/50"}`}
-                          title={`Level ${l}`}
-                        >
-                          {l}
-                        </button>
-                      ))}
-                    </div>
-                    <input
-                      ref={headingInputRef}
-                      value={headingDraft}
-                      onChange={(e) => setHeadingDraft(e.target.value)}
-                      onBlur={commitHeading}
-                      onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); commitHeading(); } if (e.key === "Escape") { setHeadingDraft(currentHeading ?? ""); setHeadingEditing(false); } }}
-                      placeholder="Section heading…"
-                      className="w-full border-b border-violet-400 bg-transparent outline-none py-0.5 placeholder-stone-400 dark:placeholder-stone-500"
-                      style={{ fontFamily: "Georgia, 'Times New Roman', serif" }}
-                    />
-                  </div>
-                ) : currentHeading ? (
-                  <span
-                    className={`${tvHeadingClass(primaryLevel)} ${editingScenes ? "cursor-pointer hover:opacity-70" : ""}`}
-                    style={{ fontFamily: "Georgia, 'Times New Roman', serif" }}
-                    onClick={editingScenes ? () => { setHeadingEditLevel(primaryLevel); setHeadingDraft(currentHeading); setHeadingEditing(true); } : undefined}
-                    title={editingScenes ? "Click to edit heading" : undefined}
-                  >
-                    {currentHeading}
-                  </span>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={handleTranslationHeadingClick}
-                    className="text-xs text-stone-400 dark:text-stone-500 hover:text-violet-500 dark:hover:text-violet-400 italic transition-colors"
-                  >
-                    + heading
-                  </button>
-                )}
-              </div>
-            )}
             {/* Separator (scene or regular paragraph break) on a within-verse segment */}
             {si > 0 && !suppressSeparator && renderSegSeparator(seg[0].wordId)}
             {/* Flex wrapper so the annotation column can sit to the right of the text grid */}
