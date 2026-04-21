@@ -628,14 +628,16 @@ export default function SearchPane({ book, textSource, onClose, onResultsChange,
                     </span>
                     <span className="flex-1 min-w-0">
                       <span
-                        className="block text-sm text-[var(--foreground)] leading-5"
+                        className={`block leading-6 ${isHebrew ? "text-hebrew" : "text-greek"} text-[var(--foreground)]`}
                         dir={isHebrew ? "rtl" : "ltr"}
                       >
                         {r.surfaceText.replace(/\//g, "")}
                       </span>
-                      {r.lemma && (
-                        <span className="block text-xs text-stone-400 dark:text-stone-500 leading-4">
-                          {r.lemma}
+                      {(r.lemma || r.morphCode) && (
+                        <span className="block text-xs text-stone-400 dark:text-stone-500 leading-4 mt-0.5">
+                          {r.lemma && <span>{r.lemma}</span>}
+                          {r.lemma && r.morphCode && <span className="mx-1 opacity-40">·</span>}
+                          {r.morphCode && <span className="font-mono">{r.morphCode}</span>}
                         </span>
                       )}
                     </span>
