@@ -23,7 +23,7 @@ import type { ParsedMorphology } from "./types";
 
 const TENSE_MAP: Record<string, string> = {
   P: "present", I: "imperfect", F: "future", A: "aorist",
-  R: "perfect", X: "pluperfect",
+  X: "perfect", Y: "pluperfect",
 };
 
 const VOICE_MAP: Record<string, string> = {

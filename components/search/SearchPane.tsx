@@ -490,7 +490,7 @@ export default function SearchPane({ book, textSource, onClose, onResultsChange,
               value={morphPattern}
               onChange={(e) => { setMorphPattern(e.target.value); if (e.target.value) setFilters(EMPTY_FILTERS); }}
               onKeyDown={handleKeyDown}
-              placeholder="e.g. V-PAI-3S or HC/Nc---"
+              placeholder="e.g. HC/Nc--- or V- *PAI*"
               className="flex-1 text-xs font-mono rounded border border-[var(--border)] bg-[var(--surface)] text-[var(--foreground)] px-1.5 py-0.5 focus:outline-none focus:border-amber-400 placeholder:font-sans placeholder:text-stone-400"
             />
           </div>

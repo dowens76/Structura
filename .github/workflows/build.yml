@@ -29,6 +29,10 @@ jobs:
             target: x86_64-unknown-linux-gnu
             label: Linux (x64)
             friendly: Linux
+          - os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+            label: Linux (ARM64)
+            friendly: Linux_ARM64
 
     name: ${{ matrix.label }}
     runs-on: ${{ matrix.os }}
@@ -80,14 +84,14 @@ jobs:
             squashfs-tools
 
       - name: Allow unprivileged user namespaces (required for AppImage)
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && matrix.target == 'x86_64-unknown-linux-gnu'
         run: |
           # Both sysctls exist on some kernel versions but not all — ignore errors.
           sudo sysctl -w kernel.unprivileged_userns_clone=1 2>/dev/null || true
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 2>/dev/null || true
 
       - name: Test linuxdeploy execution
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && matrix.target == 'x86_64-unknown-linux-gnu'
         run: |
           mkdir -p /tmp/ld-preflight
           wget -q https://github.com/tauri-apps/binary-releases/releases/download/linuxdeploy/linuxdeploy-x86_64.AppImage \
@@ -139,7 +143,7 @@ jobs:
           Rename-Item $src.FullName "Structura_${{ matrix.friendly }}_${{ github.ref_name }}.exe"
 
       - name: Rename Linux AppImage
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && matrix.target == 'x86_64-unknown-linux-gnu'
         shell: bash
         run: |
           src=$(ls src-tauri/target/${{ matrix.target }}/release/bundle/appimage/*.AppImage | head -1)
@@ -176,7 +180,7 @@ jobs:
           fail_on_unmatched_files: true
 
       - name: Release Linux AppImage
-        if: runner.os == 'Linux' && startsWith(github.ref, 'refs/tags/v')
+        if: runner.os == 'Linux' && matrix.target == 'x86_64-unknown-linux-gnu' && startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2.3.2
         with:
           tag_name: ${{ github.ref_name }}
@@ -214,7 +218,7 @@ jobs:
           if-no-files-found: error
 
       - name: Archive Linux AppImage (manual run)
-        if: runner.os == 'Linux' && !startsWith(github.ref, 'refs/tags/v')
+        if: runner.os == 'Linux' && matrix.target == 'x86_64-unknown-linux-gnu' && !startsWith(github.ref, 'refs/tags/v')
         uses: actions/upload-artifact@v7
         with:
           name: Structura_${{ matrix.friendly }}_${{ github.ref_name }}_AppImage

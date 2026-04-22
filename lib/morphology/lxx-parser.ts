@@ -22,7 +22,7 @@ const POS_MAP: Record<string, string> = {
 
 const TENSE_MAP: Record<string, string> = {
   P: "present", I: "imperfect", F: "future", A: "aorist",
-  R: "perfect", L: "pluperfect", X: "pluperfect",
+  R: "perfect", L: "pluperfect", X: "perfect", Y: "pluperfect",
 };
 
 const VOICE_MAP: Record<string, string> = {

@@ -169,5 +169,5 @@ export const sourceDb     = getSourceDb();
 export const lexicaDb     = getLexicaDb()!;
 export const userDb       = getUserDb();
 export const userSqlite   = getUserSqlite();
-export const sourceLookups = loadLookupMaps(SOURCE_DB_PATH);
+export const sourceLookups = loadLookupMaps(SOURCE_DB_PATH); // tense map: X=perfect, Y=pluperfect
 export const lxxLookups    = loadLookupMaps(LXX_DB_PATH);

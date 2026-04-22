@@ -109,7 +109,8 @@ if (process.platform === "linux") {
 const bundleFlag =
   process.platform === "darwin"  ? "--bundles app" :
   process.platform === "win32"   ? "--bundles nsis" :
-  /* linux */                      "--bundles appimage,deb";
+  npmArch === "arm64"            ? "--bundles deb" :
+  /* linux x64 */                  "--bundles appimage,deb";
 
 const verboseFlag = process.platform === "linux" ? "--verbose" : "";
 
