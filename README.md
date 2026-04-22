@@ -86,8 +86,9 @@ When display mode is set to Interlinear, a toolbar picker selects what appears b
 - **Paragraph breaks** — Mark paragraph divisions within and across verses
 - **Line indentation** — Indent paragraph segments up to five levels; source and translation indentation can be linked or controlled independently
 - **Bold / italic** — Apply bold or italic formatting to individual words
-- **Scene / episode breaks** — A six-level hierarchical break system with headings, out-of-sequence flags, and cross-chapter range tracking
-- **Outline export** — Generate a classical hierarchical outline (I. A. 1. a. …) from scene breaks and download as a text file
+- **Scene / episode breaks** — A six-level hierarchical break system with headings, out-of-sequence flags, and cross-chapter range tracking; each break can optionally be marked as a **thematic heading** with a chosen letter (A–Z), which replaces the standard outline prefix and indents the entry by letter depth in the outline
+- **Outline sidebar** — View all section breaks for a book in a collapsible pane; thematic headings display with their letter and letter-depth indentation instead of the classical I./A./1. numbering
+- **Outline export** — Copy or download the outline as plain text; thematic headings are rendered with letter prefixes and matching indentation to match the sidebar display
 
 ### Discourse & Rhetorical Analysis
 
