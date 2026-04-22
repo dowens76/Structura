@@ -159,7 +159,7 @@ jobs:
 
       - name: Release macOS DMG
         if: runner.os == 'macOS' && startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v2.3.2
         with:
           tag_name: ${{ github.ref_name }}
           generate_release_notes: true
@@ -168,7 +168,7 @@ jobs:
 
       - name: Release Windows installer
         if: runner.os == 'Windows' && startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v2.3.2
         with:
           tag_name: ${{ github.ref_name }}
           generate_release_notes: true
@@ -177,7 +177,7 @@ jobs:
 
       - name: Release Linux AppImage
         if: runner.os == 'Linux' && startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v2.3.2
         with:
           tag_name: ${{ github.ref_name }}
           generate_release_notes: true
@@ -186,7 +186,7 @@ jobs:
 
       - name: Release Linux deb
         if: runner.os == 'Linux' && startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v2.3.2
         with:
           tag_name: ${{ github.ref_name }}
           generate_release_notes: true

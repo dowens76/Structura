@@ -67,6 +67,11 @@ export async function GET(request: NextRequest) {
   const filterStem         = sp.get("stem") ?? "";
   const filterState        = sp.get("state") ?? "";
   const filterVerbCase     = sp.get("verbCase") ?? "";
+  // Raw morph code pattern: "-" → "_" (any single char), "*" → "%" (any sequence)
+  const morphPatternRaw    = sp.get("morphPattern")?.trim() ?? "";
+  const morphPatternLike   = morphPatternRaw
+    ? morphPatternRaw.replace(/-/g, "_").replace(/\*/g, "%")
+    : "";
 
   // Validate: need either a text query or at least one morphology filter
   if (searchType !== "morph" && q.length === 0) {
@@ -75,7 +80,8 @@ export async function GET(request: NextRequest) {
   if (
     searchType === "morph" &&
     !filterPartOfSpeech && !filterPerson && !filterGender && !filterNumber &&
-    !filterTense && !filterVoice && !filterMood && !filterStem && !filterState && !filterVerbCase
+    !filterTense && !filterVoice && !filterMood && !filterStem && !filterState && !filterVerbCase &&
+    !morphPatternLike
   ) {
     return NextResponse.json({ error: "At least one morphology filter required" }, { status: 400 });
   }
@@ -141,7 +147,17 @@ export async function GET(request: NextRequest) {
 
     // Morphology filters
     if (filterPartOfSpeech && posByVal[filterPartOfSpeech] != null) {
-      conditions.push(eq(words.partOfSpeechId, posByVal[filterPartOfSpeech]));
+      const posId = posByVal[filterPartOfSpeech];
+      if (filterPartOfSpeech === "preposition") {
+        // Also include words where R (preposition) appears as an inseparable prefix morpheme
+        conditions.push(or(
+          eq(words.partOfSpeechId, posId),
+          like(words.morphCode, "HR/%"),
+          like(words.morphCode, "H%/R/%"),
+        )!);
+      } else {
+        conditions.push(eq(words.partOfSpeechId, posId));
+      }
     }
     if (filterPerson && perByVal[filterPerson] != null) {
       conditions.push(eq(words.personId, perByVal[filterPerson]));
@@ -169,6 +185,9 @@ export async function GET(request: NextRequest) {
     }
     if (filterVerbCase && vcByVal[filterVerbCase] != null) {
       conditions.push(eq(words.verbCaseId, vcByVal[filterVerbCase]));
+    }
+    if (morphPatternLike) {
+      conditions.push(like(words.morphCode, morphPatternLike));
     }
 
     const rows = await sourceDb
@@ -258,7 +277,16 @@ export async function GET(request: NextRequest) {
 
       // Morphology filters
       if (filterPartOfSpeech && posByVal[filterPartOfSpeech] != null) {
-        conditions.push(eq(words.partOfSpeechId, posByVal[filterPartOfSpeech]));
+        const posId = posByVal[filterPartOfSpeech];
+        if (filterPartOfSpeech === "preposition") {
+          conditions.push(or(
+            eq(words.partOfSpeechId, posId),
+            like(words.morphCode, "HR/%"),
+            like(words.morphCode, "H%/R/%"),
+          )!);
+        } else {
+          conditions.push(eq(words.partOfSpeechId, posId));
+        }
       }
       if (filterPerson && perByVal[filterPerson] != null) {
         conditions.push(eq(words.personId, perByVal[filterPerson]));
@@ -286,6 +314,9 @@ export async function GET(request: NextRequest) {
       }
       if (filterVerbCase && vcByVal[filterVerbCase] != null) {
         conditions.push(eq(words.verbCaseId, vcByVal[filterVerbCase]));
+      }
+      if (morphPatternLike) {
+        conditions.push(like(words.morphCode, morphPatternLike));
       }
 
       // LXX books table lives in lxxDb but the osisCode/name/bookNumber live in sourceDb.

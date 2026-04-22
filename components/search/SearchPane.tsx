@@ -84,6 +84,7 @@ interface StoredSearch {
   query: string;
   sources: Source[];
   filters: MorphFilters;
+  morphPattern: string;
   results: SearchResult[];
   total: number;
   truncated: boolean;
@@ -142,6 +143,7 @@ export default function SearchPane({ book, textSource, onClose, onResultsChange,
   const [searchType, setSearchType] = useState<SearchType>("surface");
   const [query, setQuery] = useState("");
   const [filters, setFilters] = useState<MorphFilters>(EMPTY_FILTERS);
+  const [morphPattern, setMorphPattern] = useState("");
   const [results, setResults] = useState<SearchResult[] | null>(null);
   const [total, setTotal] = useState(0);
   const [truncated, setTruncated] = useState(false);
@@ -158,6 +160,7 @@ export default function SearchPane({ book, textSource, onClose, onResultsChange,
       setSearchType(stored.searchType);
       setQuery(stored.query);
       setFilters(stored.filters);
+      setMorphPattern(stored.morphPattern ?? "");
       setResults(stored.results);
       setTotal(stored.total);
       setTruncated(stored.truncated);
@@ -224,9 +227,9 @@ export default function SearchPane({ book, textSource, onClose, onResultsChange,
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
 
-  const persistResults = useCallback((r: SearchResult[], t: number, tr: boolean, type: SearchType, q: string, srcs: Source[], f: MorphFilters) => {
+  const persistResults = useCallback((r: SearchResult[], t: number, tr: boolean, type: SearchType, q: string, srcs: Source[], f: MorphFilters, mp: string) => {
     try {
-      const stored: StoredSearch = { searchType: type, query: q, sources: Array.from(srcs), filters: f, results: r, total: t, truncated: tr };
+      const stored: StoredSearch = { searchType: type, query: q, sources: Array.from(srcs), filters: f, morphPattern: mp, results: r, total: t, truncated: tr };
       sessionStorage.setItem(SESSION_KEY, JSON.stringify(stored));
     } catch { /* ignore quota errors */ }
     onResultsChange?.(r);
@@ -237,21 +240,26 @@ export default function SearchPane({ book, textSource, onClose, onResultsChange,
     q: string,
     srcs: Set<Source>,
     f: MorphFilters,
+    mp: string,
   ) => {
     setError(null);
     setResults(null);
     setShowSaveForm(false);
     setSaveMsg(null);
 
-    if (type !== "morph" && !q.trim()) {
+    const hasMorphFilters = Object.values(f).some(Boolean) || !!mp.trim();
+    // If on Surface/Lemma tab with no text query but morph filters are set, run as morph-only
+    const effectiveType: SearchType = (type !== "morph" && !q.trim() && hasMorphFilters) ? "morph" : type;
+
+    if (effectiveType !== "morph" && !q.trim()) {
       setError("Enter a search term.");
       return;
     }
 
     const params = new URLSearchParams();
-    params.set("searchType", type);
+    params.set("searchType", effectiveType);
     params.set("source", Array.from(srcs).join(","));
-    if (type !== "morph") params.set("q", q.trim());
+    if (effectiveType !== "morph") params.set("q", q.trim());
     if (f.partOfSpeech) params.set("partOfSpeech", f.partOfSpeech);
     if (f.person)       params.set("person",       f.person);
     if (f.gender)       params.set("gender",       f.gender);
@@ -262,6 +270,7 @@ export default function SearchPane({ book, textSource, onClose, onResultsChange,
     if (f.stem)         params.set("stem",         f.stem);
     if (f.state)        params.set("state",        f.state);
     if (f.verbCase)     params.set("verbCase",     f.verbCase);
+    if (mp.trim())      params.set("morphPattern", mp.trim());
 
     setLoading(true);
     try {
@@ -275,7 +284,7 @@ export default function SearchPane({ book, textSource, onClose, onResultsChange,
       setResults(data.results);
       setTotal(data.total);
       setTruncated(data.truncated);
-      persistResults(data.results, data.total, data.truncated, type, q, [...srcs], f);
+      persistResults(data.results, data.total, data.truncated, type, q, [...srcs], f, mp);
     } catch {
       setError("Network error.");
     } finally {
@@ -284,8 +293,8 @@ export default function SearchPane({ book, textSource, onClose, onResultsChange,
   }, [persistResults]);
 
   const handleSearch = useCallback(async () => {
-    await runSearch(searchType, query, activeSources, filters);
-  }, [runSearch, searchType, query, activeSources, filters]);
+    await runSearch(searchType, query, activeSources, filters, morphPattern);
+  }, [runSearch, searchType, query, activeSources, filters, morphPattern]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter") handleSearch();
@@ -306,7 +315,8 @@ export default function SearchPane({ book, textSource, onClose, onResultsChange,
     setQuery(searchRequest.query);
     setActiveSources(newSources);
     setFilters(EMPTY_FILTERS);
-    runSearch("lemma", searchRequest.query, newSources, EMPTY_FILTERS);
+    setMorphPattern("");
+    runSearch("lemma", searchRequest.query, newSources, EMPTY_FILTERS, "");
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchRequest?.nonce]);
 
@@ -343,8 +353,8 @@ export default function SearchPane({ book, textSource, onClose, onResultsChange,
 
   const [showSuffix, setShowSuffix] = useState(false);
 
-  const clearFilters = () => { setFilters(EMPTY_FILTERS); setShowSuffix(false); };
-  const hasFilters = Object.values(filters).some(Boolean);
+  const clearFilters = () => { setFilters(EMPTY_FILTERS); setMorphPattern(""); setShowSuffix(false); };
+  const hasFilters = Object.values(filters).some(Boolean) || !!morphPattern;
 
   // ── POS-based field visibility ───────────────────────────────────────────────
   const pos = filters.partOfSpeech;
@@ -470,6 +480,19 @@ export default function SearchPane({ book, textSource, onClose, onResultsChange,
                 Clear
               </button>
             )}
+          </div>
+
+          {/* Morph code pattern input */}
+          <div className="flex items-center gap-1.5">
+            <label className="text-xs text-stone-500 dark:text-stone-400 w-16 shrink-0">Pattern</label>
+            <input
+              type="text"
+              value={morphPattern}
+              onChange={(e) => { setMorphPattern(e.target.value); if (e.target.value) setFilters(EMPTY_FILTERS); }}
+              onKeyDown={handleKeyDown}
+              placeholder="e.g. V-PAI-3S or HC/Nc---"
+              className="flex-1 text-xs font-mono rounded border border-[var(--border)] bg-[var(--surface)] text-[var(--foreground)] px-1.5 py-0.5 focus:outline-none focus:border-amber-400 placeholder:font-sans placeholder:text-stone-400"
+            />
           </div>
 
           {/* POS always shown */}
