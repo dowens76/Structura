@@ -35,7 +35,7 @@ import { useTranslation } from "@/lib/i18n/LocaleContext";
 function isPunctuationWord(word: Word): boolean {
   const text = (word.surfaceText ?? "").replace(/\//g, "").trim();
   // Match common ASCII and Unicode punctuation: quotes, period, comma, colon, semicolon, middle dot
-  return text.length > 0 && /^["""''\u2018\u2019\u201C\u201D.,:;?·\u00B7]+$/.test(text);
+  return text.length > 0 && /^["""''\u2018\u2019\u201C\u201D.,:;?·\u00B7\u05C3\u05BE\u05C0]+$/.test(text);
 }
 
 interface ChapterDisplayProps {
@@ -182,6 +182,8 @@ export default function ChapterDisplay({
   // ── Character tagging state ────────────────────────────────────────────────
   const [highlightCharIds, setHighlightCharIds] = useState<Set<number>>(new Set());
   const [editingRefs, setEditingRefs] = useState(false);
+  const [refRangeStart, setRefRangeStart] = useState<string | null>(null);
+  const [wordTagRangeStart, setWordTagRangeStart] = useState<string | null>(null);
   const [editingSpeech, setEditingSpeech] = useState(false);
   const [characters, setCharacters] = useState<Character[]>(initialCharacters);
   const [activeCharId, setActiveCharId] = useState<number | null>(
@@ -644,6 +646,27 @@ export default function ChapterDisplay({
     return map;
   }, [activeTranslationIds, allAvailableTranslations, localTranslationVerseData]);
 
+  // Build abbr → ordered list of TV word IDs for shift-click range selection
+  const tvWordIdLists = useMemo(() => {
+    const map = new Map<string, string[]>();
+    const verseNums = [...activeTranslationVerseMap.keys()].sort((a, b) => a - b);
+    for (const verseNum of verseNums) {
+      const entries = activeTranslationVerseMap.get(verseNum) ?? [];
+      for (const { abbr, text } of entries) {
+        const tokens = text
+          .split(/\s+/)
+          .filter(Boolean)
+          .flatMap((t) => t.split(/(?<=\u2014)(?=.)/));
+        let list = map.get(abbr);
+        if (!list) { list = []; map.set(abbr, list); }
+        for (let wi = 0; wi < tokens.length; wi++) {
+          list.push(`tv:${abbr}:${book}.${chapter}.${verseNum}.${wi}`);
+        }
+      }
+    }
+    return map;
+  }, [activeTranslationVerseMap, book, chapter]);
+
   const hasActiveTranslations = activeTranslationIds.size > 0;
 
   function toggleTranslation(id: number) {
@@ -715,7 +738,7 @@ export default function ChapterDisplay({
     }
     if (editingRefs) {
       if (activeCharId === null) return;
-      handleToggleCharacterRef(word);
+      handleToggleCharacterRef(word, shiftHeld);
       return;
     }
     if (editingSpeech) {
@@ -724,7 +747,7 @@ export default function ChapterDisplay({
       return;
     }
     if (editingWordTags) {
-      handleToggleWordTagRef(word);
+      handleToggleWordTagRef(word, shiftHeld);
       return;
     }
     setSelectedWord(word);
@@ -1302,22 +1325,72 @@ export default function ChapterDisplay({
     }
   }
 
-  function handleToggleCharacterRef(word: Word) {
+  function handleToggleCharacterRef(word: Word, shiftHeld = false) {
     if (isPunctuationWord(word)) return;
-    return handleToggleCharacterRefById(word.wordId, textSource);
+    if (shiftHeld && refRangeStart !== null) {
+      // Apply active character to all words in the range that don't already have it
+      const posMap = new Map(words.map((w, i) => [w.wordId, i]));
+      const startPos = posMap.get(refRangeStart) ?? 0;
+      const endPos   = posMap.get(word.wordId)   ?? 0;
+      const [lo, hi] = startPos <= endPos ? [startPos, endPos] : [endPos, startPos];
+      for (const w of words.slice(lo, hi + 1)) {
+        if (isPunctuationWord(w)) continue;
+        const existing = characterRefMap.get(w.wordId);
+        if (!existing || (existing.character1Id !== activeCharId && existing.character2Id !== activeCharId)) {
+          handleToggleCharacterRefById(w.wordId, textSource);
+        }
+      }
+      setRefRangeStart(null);
+    } else {
+      setRefRangeStart(word.wordId);
+      handleToggleCharacterRefById(word.wordId, textSource);
+    }
   }
 
   // Called when a translation word is clicked in refs-editing, word-tag-editing,
   // or formatting mode.
-  function handleSelectTranslationWord(wordId: string, abbr: string) {
+  function handleSelectTranslationWord(wordId: string, abbr: string, shiftHeld = false) {
     if (editingBold || editingItalic) {
       handleToggleFormattingById(wordId, abbr);
       return;
     }
     if (editingRefs && activeCharId !== null) {
-      handleToggleCharacterRefById(wordId, abbr);
+      if (shiftHeld && refRangeStart?.startsWith(`tv:${abbr}:`)) {
+        const tvList = tvWordIdLists.get(abbr) ?? [];
+        const startPos = tvList.indexOf(refRangeStart);
+        const endPos   = tvList.indexOf(wordId);
+        if (startPos !== -1 && endPos !== -1) {
+          const [lo, hi] = startPos <= endPos ? [startPos, endPos] : [endPos, startPos];
+          for (const id of tvList.slice(lo, hi + 1)) {
+            const existing = characterRefMap.get(id);
+            if (!existing || (existing.character1Id !== activeCharId && existing.character2Id !== activeCharId)) {
+              handleToggleCharacterRefById(id, abbr);
+            }
+          }
+        }
+        setRefRangeStart(null);
+      } else {
+        setRefRangeStart(wordId);
+        handleToggleCharacterRefById(wordId, abbr);
+      }
     } else if (editingWordTags && activeWordTagId !== null && !pendingWordTag) {
-      handleToggleWordTagRefById(wordId, abbr);
+      if (shiftHeld && wordTagRangeStart?.startsWith(`tv:${abbr}:`)) {
+        const tvList = tvWordIdLists.get(abbr) ?? [];
+        const startPos = tvList.indexOf(wordTagRangeStart);
+        const endPos   = tvList.indexOf(wordId);
+        if (startPos !== -1 && endPos !== -1) {
+          const [lo, hi] = startPos <= endPos ? [startPos, endPos] : [endPos, startPos];
+          for (const id of tvList.slice(lo, hi + 1)) {
+            if (wordTagRefMap.get(id)?.tagId !== activeWordTagId) {
+              handleToggleWordTagRefById(id, abbr);
+            }
+          }
+        }
+        setWordTagRangeStart(null);
+      } else {
+        setWordTagRangeStart(wordId);
+        handleToggleWordTagRefById(wordId, abbr);
+      }
     }
   }
 
@@ -1354,7 +1427,7 @@ export default function ChapterDisplay({
     }
   }
 
-  async function handleToggleWordTagRef(word: Word) {
+  async function handleToggleWordTagRef(word: Word, shiftHeld = false) {
     if (isPunctuationWord(word)) return;
     if (pendingWordTag && pendingWordTagColor !== null) {
       // "Word" type: create a new tag named after the lemma and immediately tag this word.
@@ -1371,7 +1444,23 @@ export default function ChapterDisplay({
       return;
     }
     if (activeWordTagId === null) return;
-    await handleToggleWordTagRefById(word.wordId, textSource);
+    if (shiftHeld && wordTagRangeStart !== null) {
+      // Apply active tag to all words in the range that don't already have it
+      const posMap = new Map(words.map((w, i) => [w.wordId, i]));
+      const startPos = posMap.get(wordTagRangeStart) ?? 0;
+      const endPos   = posMap.get(word.wordId)       ?? 0;
+      const [lo, hi] = startPos <= endPos ? [startPos, endPos] : [endPos, startPos];
+      for (const w of words.slice(lo, hi + 1)) {
+        if (isPunctuationWord(w)) continue;
+        if (wordTagRefMap.get(w.wordId)?.tagId !== activeWordTagId) {
+          handleToggleWordTagRefById(w.wordId, textSource);
+        }
+      }
+      setWordTagRangeStart(null);
+    } else {
+      setWordTagRangeStart(word.wordId);
+      await handleToggleWordTagRefById(word.wordId, textSource);
+    }
   }
 
   async function handleCreateTag(
@@ -2247,9 +2336,9 @@ export default function ChapterDisplay({
     if (!keep.has("paragraph"))   setEditingParagraphs(false);
     if (!keep.has("scenes"))      setEditingScenes(false);
     if (!keep.has("annotations")) { setEditingAnnotations(false); setAnnotRangeStart(null); setAnnotRangeEnd(null); }
-    if (!keep.has("refs"))        setEditingRefs(false);
+    if (!keep.has("refs"))        { setEditingRefs(false); setRefRangeStart(null); }
     if (!keep.has("speech"))      { setEditingSpeech(false); setSpeechRangeStart(null); }
-    if (!keep.has("wordTags"))    { setEditingWordTags(false); setPendingWordTag(false); }
+    if (!keep.has("wordTags"))    { setEditingWordTags(false); setPendingWordTag(false); setWordTagRangeStart(null); }
     if (!keep.has("indents"))     setEditingIndents(false);
     if (!keep.has("rst"))         { setEditingRst(false); setRstSegA(null); setRstSegB(null); setShowRstPicker(false); setRstEditGroupId(null); }
     if (!keep.has("arrows"))      { setEditingArrows(false); setArrowFromWordId(null); }
@@ -2322,6 +2411,8 @@ export default function ChapterDisplay({
                 setEditingItalic(false);
                 setEditingTranslation(false);
                 setSpeechRangeStart(null);
+                setRefRangeStart(null);
+                setWordTagRangeStart(null);
                 setRstSegA(null);
                 setRstSegB(null);
                 setShowRstPicker(false);
@@ -3145,6 +3236,7 @@ export default function ChapterDisplay({
                 editingSpeech={editingSpeech}
                 activeCharId={activeCharId}
                 speechRangeStartWordId={speechRangeStart?.wordId ?? null}
+                tagRangeStartWordId={refRangeStart ?? wordTagRangeStart}
                 book={book}
                 chapter={chapter}
                 onSelectTranslationWord={handleSelectTranslationWord}

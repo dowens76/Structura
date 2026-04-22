@@ -33,7 +33,7 @@ import { generateOutline } from "@/lib/utils/outlineExport";
  *  be skipped during character / word-tag selection. */
 function isPunctuationWord(word: Word): boolean {
   const text = (word.surfaceText ?? "").replace(/\//g, "").trim();
-  return text.length > 0 && /^["""''\u2018\u2019\u201C\u201D.,:;?·\u00B7]+$/.test(text);
+  return text.length > 0 && /^["""''\u2018\u2019\u201C\u201D.,:;?·\u00B7\u05C3\u05BE\u05C0]+$/.test(text);
 }
 
 // ── Persistent settings helpers ───────────────────────────────────────────

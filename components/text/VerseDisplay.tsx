@@ -53,10 +53,11 @@ interface VerseDisplayProps {
   editingSpeech: boolean;
   activeCharId: number | null;
   speechRangeStartWordId: string | null;
+  tagRangeStartWordId?: string | null;
   // Translation word tagging
   book: string;
   chapter: number;
-  onSelectTranslationWord: (wordId: string, abbr: string) => void;
+  onSelectTranslationWord: (wordId: string, abbr: string, shiftHeld?: boolean) => void;
   // Translation paragraph breaks
   onToggleTranslationParagraphBreak: (wordId: string, abbr: string) => void;
   // Character highlight
@@ -710,6 +711,7 @@ export default function VerseDisplay({
   editingSpeech,
   activeCharId: _activeCharId,
   speechRangeStartWordId,
+  tagRangeStartWordId = null,
   book,
   chapter,
   onSelectTranslationWord,
@@ -1437,12 +1439,14 @@ export default function VerseDisplay({
         backgroundPosition: "center bottom",
         backgroundRepeat: "no-repeat",
         paddingBottom: isHebrew ? "6px" : "2px",
-        display: "inline-block",
+        whiteSpace: "pre",
       } : char1 ? {
-        textDecoration: "underline",
-        textDecorationColor: char1.color,
-        textDecorationThickness: "2px",
-        textUnderlineOffset: isHebrew ? "6px" : "2px",
+        backgroundImage: `linear-gradient(to right, ${char1.color}, ${char1.color})`,
+        backgroundSize: "100% 2px",
+        backgroundPosition: "center bottom",
+        backgroundRepeat: "no-repeat",
+        paddingBottom: isHebrew ? "6px" : "2px",
+        whiteSpace: "pre",
       } : undefined;
 
       const inner = gWords.map((word, wi) => {
@@ -1471,7 +1475,7 @@ export default function VerseDisplay({
               characterMap={characterMap}
               editingRefs={editingRefs}
               editingSpeech={editingSpeech}
-              isRangeStart={word.wordId === speechRangeStartWordId}
+              isRangeStart={word.wordId === speechRangeStartWordId || word.wordId === tagRangeStartWordId}
               highlightCharIds={highlightCharIds}
               wordTagRef={groupWtr}
               wordTagMap={wordTagMap}
@@ -1865,6 +1869,8 @@ export default function VerseDisplay({
                         ? "cursor-crosshair rounded px-0.5 -mx-0.5 hover:bg-yellow-100 dark:hover:bg-yellow-900/40 transition-colors"
                         : undefined;
 
+                      const isTvRangeStart = wordId === tagRangeStartWordId;
+
                       const handleClick = editingArrows
                         ? () => onSelectArrowWordById?.(wordId)
                         : editingScenes
@@ -1872,7 +1878,7 @@ export default function VerseDisplay({
                         : editingFormatting
                         ? () => onSelectTranslationWord(wordId, abbr)
                         : editingRefs
-                        ? () => onSelectTranslationWord(wordId, abbr)
+                        ? (e: React.MouseEvent) => onSelectTranslationWord(wordId, abbr, e.shiftKey)
                         : editingParagraphs
                         ? () => onToggleTranslationParagraphBreak(wordId, abbr)
                         : editingSpeech
@@ -1890,7 +1896,7 @@ export default function VerseDisplay({
                             if (srcSeg?.[0]) onSelectWord(srcSeg[0]);
                           }
                         : editingWordTags
-                        ? () => onSelectTranslationWord(wordId, abbr)
+                        ? (e: React.MouseEvent) => onSelectTranslationWord(wordId, abbr, e.shiftKey)
                         : undefined;
 
                       const isLastToken =
@@ -1924,7 +1930,7 @@ export default function VerseDisplay({
                           <span
                             data-word-id={wordId}
                             style={{ ...underlineStyle, ...tvBgStyle, ...tvFormattingStyle }}
-                            className={tokenClassName}
+                            className={[tokenClassName, isTvRangeStart ? "outline outline-2 outline-violet-400 bg-violet-100 dark:bg-violet-900/40" : ""].filter(Boolean).join(" ")}
                             onClick={handleClick}
                           >
                             {tokCore}
