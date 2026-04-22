@@ -165,10 +165,10 @@ export default function ExportTextView({
   );
 
   const sceneBreakMap = useMemo(() => {
-    const m = new Map<string, Array<{ heading: string | null; level: number; verse: number; outOfSequence: boolean; extendedThrough: number | null }>>();
+    const m = new Map<string, Array<{ heading: string | null; level: number; verse: number; outOfSequence: boolean; extendedThrough: number | null; thematic: boolean; thematicLetter: string | null }>>();
     for (const sb of sceneBreaks) {
       const arr = m.get(sb.wordId) ?? [];
-      arr.push({ heading: sb.heading, level: sb.level, verse: sb.verse, outOfSequence: sb.outOfSequence, extendedThrough: null });
+      arr.push({ heading: sb.heading, level: sb.level, verse: sb.verse, outOfSequence: sb.outOfSequence, extendedThrough: null, thematic: false, thematicLetter: null });
       m.set(sb.wordId, arr);
     }
     return m;

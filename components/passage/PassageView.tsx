@@ -246,12 +246,12 @@ export default function PassageView({
   const [showClearDialog, setShowClearDialog] = useState(false);
 
   // ── Section break state ──────────────────────────────────────────────────────
-  const [sceneBreakMap, setSceneBreakMap] = useState<Map<string, Array<{ heading: string | null; level: number; verse: number; outOfSequence: boolean; extendedThrough: number | null }>>>(
+  const [sceneBreakMap, setSceneBreakMap] = useState<Map<string, Array<{ heading: string | null; level: number; verse: number; outOfSequence: boolean; extendedThrough: number | null; thematic: boolean; thematicLetter: string | null }>>>(
     () => {
-      const m = new Map<string, Array<{ heading: string | null; level: number; verse: number; outOfSequence: boolean; extendedThrough: number | null }>>();
+      const m = new Map<string, Array<{ heading: string | null; level: number; verse: number; outOfSequence: boolean; extendedThrough: number | null; thematic: boolean; thematicLetter: string | null }>>();
       for (const sb of initialSceneBreaks) {
         const arr = m.get(sb.wordId) ?? [];
-        arr.push({ heading: sb.heading, level: sb.level, verse: sb.verse, outOfSequence: sb.outOfSequence, extendedThrough: sb.extendedThrough });
+        arr.push({ heading: sb.heading, level: sb.level, verse: sb.verse, outOfSequence: sb.outOfSequence, extendedThrough: sb.extendedThrough, thematic: false, thematicLetter: null });
         m.set(sb.wordId, arr);
       }
       return m;
@@ -1472,7 +1472,7 @@ export default function PassageView({
         if (filtered.length === 0) next.delete(wordId);
         else next.set(wordId, filtered);
       } else {
-        arr.push({ heading: null, level, verse, outOfSequence: false, extendedThrough: null });
+        arr.push({ heading: null, level, verse, outOfSequence: false, extendedThrough: null, thematic: false, thematicLetter: null });
         arr.sort((a, b) => a.level - b.level);
         next.set(wordId, arr);
       }
@@ -1494,7 +1494,7 @@ export default function PassageView({
         const next = new Map(prev);
         if (wasSet) {
           const arr = [...(prev.get(wordId) ?? [])];
-          arr.push({ heading: null, level, verse, outOfSequence: false, extendedThrough: null });
+          arr.push({ heading: null, level, verse, outOfSequence: false, extendedThrough: null, thematic: false, thematicLetter: null });
           arr.sort((a, b) => a.level - b.level);
           next.set(wordId, arr);
         } else {

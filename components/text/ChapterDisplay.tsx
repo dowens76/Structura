@@ -56,9 +56,9 @@ interface ChapterDisplayProps {
   initialTvRstRelations?: RstRelation[];
   initialWordArrows: WordArrow[];
   initialWordFormatting: { wordId: string; isBold: boolean; isItalic: boolean }[];
-  initialSceneBreaks: { wordId: string; heading: string | null; level: number; verse: number; outOfSequence: boolean; extendedThrough: number | null }[];
+  initialSceneBreaks: { wordId: string; heading: string | null; level: number; verse: number; outOfSequence: boolean; extendedThrough: number | null; thematic: boolean; thematicLetter: string | null }[];
   initialLineAnnotations: LineAnnotation[];
-  bookSceneBreaks: { wordId: string; heading: string | null; level: number; chapter: number; verse: number; extendedThrough: number | null }[];
+  bookSceneBreaks: { wordId: string; heading: string | null; level: number; chapter: number; verse: number; extendedThrough: number | null; thematic: boolean; thematicLetter: string | null }[];
   bookMaxVerses: Map<number, number>;
   /** Base verse text from data/ult.db (empty if not imported). */
   ultBaseVerses?: { verse: number; text: string }[];
@@ -156,14 +156,14 @@ export default function ChapterDisplay({
   );
 
   // ── Section break state ──────────────────────────────────────────────────────
-  // Map of wordId → Array<{ heading, level, verse, outOfSequence, extendedThrough }>.
+  // Map of wordId → Array<{ heading, level, verse, outOfSequence, extendedThrough, thematic, thematicLetter }>.
   // Multiple levels may exist at the same wordId; toggling also mirrors into paragraphBreakIds.
-  const [sceneBreakMap, setSceneBreakMap] = useState<Map<string, Array<{ heading: string | null; level: number; verse: number; outOfSequence: boolean; extendedThrough: number | null }>>>(
+  const [sceneBreakMap, setSceneBreakMap] = useState<Map<string, Array<{ heading: string | null; level: number; verse: number; outOfSequence: boolean; extendedThrough: number | null; thematic: boolean; thematicLetter: string | null }>>>(
     () => {
-      const m = new Map<string, Array<{ heading: string | null; level: number; verse: number; outOfSequence: boolean; extendedThrough: number | null }>>();
+      const m = new Map<string, Array<{ heading: string | null; level: number; verse: number; outOfSequence: boolean; extendedThrough: number | null; thematic: boolean; thematicLetter: string | null }>>();
       for (const sb of initialSceneBreaks) {
         const arr = m.get(sb.wordId) ?? [];
-        arr.push({ heading: sb.heading, level: sb.level, verse: sb.verse, outOfSequence: sb.outOfSequence, extendedThrough: sb.extendedThrough });
+        arr.push({ heading: sb.heading, level: sb.level, verse: sb.verse, outOfSequence: sb.outOfSequence, extendedThrough: sb.extendedThrough, thematic: sb.thematic, thematicLetter: sb.thematicLetter });
         m.set(sb.wordId, arr);
       }
       return m;
@@ -854,7 +854,7 @@ export default function ChapterDisplay({
         if (filtered.length === 0) next.delete(wordId);
         else next.set(wordId, filtered);
       } else {
-        arr.push({ heading: null, level, verse, outOfSequence: false, extendedThrough: null });
+        arr.push({ heading: null, level, verse, outOfSequence: false, extendedThrough: null, thematic: false, thematicLetter: null });
         arr.sort((a, b) => a.level - b.level);
         next.set(wordId, arr);
       }
@@ -879,7 +879,7 @@ export default function ChapterDisplay({
         const next = new Map(prev);
         if (wasSet) {
           const arr = [...(prev.get(wordId) ?? [])];
-          arr.push({ heading: null, level, verse, outOfSequence: false, extendedThrough: null });
+          arr.push({ heading: null, level, verse, outOfSequence: false, extendedThrough: null, thematic: false, thematicLetter: null });
           arr.sort((a, b) => a.level - b.level);
           next.set(wordId, arr);
         } else {
@@ -1031,6 +1031,26 @@ export default function ChapterDisplay({
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ wordId, level, extendedThrough }),
+      });
+    } catch {
+      // Non-critical; leave optimistic state
+    }
+  }
+
+  async function handleUpdateSceneThematic(wordId: string, level: number, thematic: boolean, thematicLetter: string | null) {
+    setSceneBreakMap((prev) => {
+      const next = new Map(prev);
+      const arr = (prev.get(wordId) ?? []).map((b) =>
+        b.level === level ? { ...b, thematic, thematicLetter: thematic ? thematicLetter : null } : b
+      );
+      next.set(wordId, arr);
+      return next;
+    });
+    try {
+      await fetch("/api/scene-breaks", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ wordId, level, thematic, thematicLetter }),
       });
     } catch {
       // Non-critical; leave optimistic state
@@ -3164,6 +3184,7 @@ export default function ChapterDisplay({
                 onUpdateSceneHeading={handleUpdateSceneHeading}
                 onUpdateSceneOutOfSequence={handleUpdateSceneOutOfSequence}
                 onUpdateSceneExtendedThrough={handleUpdateSceneExtendedThrough}
+                onUpdateSceneThematic={handleUpdateSceneThematic}
                 onChangeSceneBreakLevel={handleChangeSceneBreakLevel}
                 sectionRanges={sectionRanges}
                 annotationsBySegment={annotationsBySegment}

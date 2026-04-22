@@ -99,12 +99,13 @@ interface VerseDisplayProps {
   editingArrows?: boolean;
   onSelectArrowWordById?: (wordId: string) => void;
   // Section breaks — multiple breaks per wordId (one per level), stacked in display
-  sceneBreakMap?: Map<string, Array<{ heading: string | null; level: number; verse: number; outOfSequence: boolean; extendedThrough: number | null }>>;
+  sceneBreakMap?: Map<string, Array<{ heading: string | null; level: number; verse: number; outOfSequence: boolean; extendedThrough: number | null; thematic: boolean; thematicLetter: string | null }>>;
   editingScenes?: boolean;
   onToggleSceneBreak?: (wordId: string, level: number, verse: number) => void;
   onUpdateSceneHeading?: (wordId: string, level: number, heading: string) => void;
   onUpdateSceneOutOfSequence?: (wordId: string, level: number, outOfSequence: boolean) => void;
   onUpdateSceneExtendedThrough?: (wordId: string, level: number, extendedThrough: number | null) => void;
+  onUpdateSceneThematic?: (wordId: string, level: number, thematic: boolean, thematicLetter: string | null) => void;
   onChangeSceneBreakLevel?: (wordId: string, fromLevel: number, toLevel: number, verse: number) => void;
   // Precomputed verse ranges: key = `${wordId}:${level}` → { endChapter, endVerse }
   sectionRanges?: Map<string, { endChapter: number; endVerse: number }>;
@@ -742,12 +743,13 @@ export default function VerseDisplay({
   onCancelTranslationVerse,
   editingArrows = false,
   onSelectArrowWordById,
-  sceneBreakMap = new Map() as Map<string, Array<{ heading: string | null; level: number; verse: number; outOfSequence: boolean; extendedThrough: number | null }>>,
+  sceneBreakMap = new Map() as Map<string, Array<{ heading: string | null; level: number; verse: number; outOfSequence: boolean; extendedThrough: number | null; thematic: boolean; thematicLetter: string | null }>>,
   editingScenes = false,
   onToggleSceneBreak,
   onUpdateSceneHeading,
   onUpdateSceneOutOfSequence,
   onUpdateSceneExtendedThrough,
+  onUpdateSceneThematic,
   onChangeSceneBreakLevel,
   sectionRanges,
   annotationsBySegment,
@@ -1136,6 +1138,28 @@ export default function VerseDisplay({
                   />
                   <span className="text-[10px] text-stone-400 dark:text-stone-500">Out of sequence</span>
                 </label>
+                <div className="flex items-center gap-1.5 ml-10">
+                  <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={br.thematic}
+                      onChange={(e) => onUpdateSceneThematic?.(wordId, br.level, e.target.checked, br.thematicLetter ?? "A")}
+                      className="w-3 h-3 rounded accent-amber-500 cursor-pointer"
+                    />
+                    <span className="text-[10px] text-stone-400 dark:text-stone-500">Thematic</span>
+                  </label>
+                  {br.thematic && (
+                    <select
+                      value={br.thematicLetter ?? "A"}
+                      onChange={(e) => onUpdateSceneThematic?.(wordId, br.level, true, e.target.value)}
+                      className="text-[10px] text-stone-500 dark:text-stone-400 bg-transparent border-b border-stone-300 dark:border-stone-600 outline-none cursor-pointer"
+                    >
+                      {"ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("").map((l) => (
+                        <option key={l} value={l}>{l}</option>
+                      ))}
+                    </select>
+                  )}
+                </div>
                 {book === "Ps" && (
                   <div className="flex items-center gap-1.5 ml-10">
                     <span className="text-[10px] text-stone-400 dark:text-stone-500 shrink-0">Group through Ps:</span>

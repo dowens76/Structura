@@ -334,7 +334,7 @@ export async function getChapterSceneBreaks(
   book: string,
   chapter: number,
   workspaceId: number
-): Promise<{ wordId: string; heading: string | null; level: number; verse: number; outOfSequence: boolean; extendedThrough: number | null }[]> {
+): Promise<{ wordId: string; heading: string | null; level: number; verse: number; outOfSequence: boolean; extendedThrough: number | null; thematic: boolean; thematicLetter: string | null }[]> {
   const rows = await userDb
     .select({
       wordId:          sceneBreaks.wordId,
@@ -343,6 +343,8 @@ export async function getChapterSceneBreaks(
       verse:           sceneBreaks.verse,
       outOfSequence:   sceneBreaks.outOfSequence,
       extendedThrough: sceneBreaks.extendedThrough,
+      thematic:        sceneBreaks.thematic,
+      thematicLetter:  sceneBreaks.thematicLetter,
     })
     .from(sceneBreaks)
     .where(and(eq(sceneBreaks.workspaceId, workspaceId), eq(sceneBreaks.book, book), eq(sceneBreaks.chapter, chapter)))
@@ -358,7 +360,7 @@ export async function getBookSceneBreaks(
   book: string,
   textSource: string,
   workspaceId: number
-): Promise<{ wordId: string; heading: string | null; level: number; chapter: number; verse: number; outOfSequence: boolean; extendedThrough: number | null }[]> {
+): Promise<{ wordId: string; heading: string | null; level: number; chapter: number; verse: number; outOfSequence: boolean; extendedThrough: number | null; thematic: boolean; thematicLetter: string | null }[]> {
   const rows = await userDb
     .select({
       wordId:          sceneBreaks.wordId,
@@ -368,6 +370,8 @@ export async function getBookSceneBreaks(
       verse:           sceneBreaks.verse,
       outOfSequence:   sceneBreaks.outOfSequence,
       extendedThrough: sceneBreaks.extendedThrough,
+      thematic:        sceneBreaks.thematic,
+      thematicLetter:  sceneBreaks.thematicLetter,
     })
     .from(sceneBreaks)
     .where(and(eq(sceneBreaks.workspaceId, workspaceId), eq(sceneBreaks.book, book), eq(sceneBreaks.textSource, textSource)))
@@ -513,6 +517,20 @@ export async function updateSceneBreakExtendedThrough(
   await userDb
     .update(sceneBreaks)
     .set({ extendedThrough })
+    .where(and(eq(sceneBreaks.workspaceId, workspaceId), eq(sceneBreaks.wordId, wordId), eq(sceneBreaks.level, level)));
+}
+
+/** Sets or clears the thematic flag and letter for a specific (wordId, level) section break. */
+export async function updateSceneBreakThematic(
+  wordId: string,
+  level: number,
+  thematic: boolean,
+  thematicLetter: string | null,
+  workspaceId: number
+): Promise<void> {
+  await userDb
+    .update(sceneBreaks)
+    .set({ thematic, thematicLetter: thematic ? thematicLetter : null })
     .where(and(eq(sceneBreaks.workspaceId, workspaceId), eq(sceneBreaks.wordId, wordId), eq(sceneBreaks.level, level)));
 }
 

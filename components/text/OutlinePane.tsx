@@ -51,14 +51,16 @@ interface RawBreak {
   verse: number;
   level: number;
   heading: string | null;
+  thematic: boolean;
+  thematicLetter: string | null;
 }
 
 interface OutlinePaneProps {
   book: string;
   chapter: number;
   textSource: string;
-  sceneBreakMap: Map<string, Array<{ heading: string | null; level: number; verse: number }>>;
-  bookSceneBreaks: { wordId: string; heading: string | null; level: number; chapter: number; verse: number }[];
+  sceneBreakMap: Map<string, Array<{ heading: string | null; level: number; verse: number; thematic: boolean; thematicLetter: string | null }>>;
+  bookSceneBreaks: { wordId: string; heading: string | null; level: number; chapter: number; verse: number; thematic: boolean; thematicLetter: string | null }[];
   sectionRanges: Map<string, SectionRangeForOutline>;
   onUpdateCurrentHeading: (wordId: string, level: number, heading: string) => void;
   onClose: () => void;
@@ -82,6 +84,8 @@ export default function OutlinePane({
   const [headingOverrides, setHeadingOverrides] = useState<Map<string, string | null>>(new Map());
   const [copied, setCopied]         = useState(false);
 
+  const INDENT_PX = 18;
+
   // Merge current-chapter live state with book-wide static data
   const sortedBreaks = useMemo<RawBreak[]>(() => {
     const list: RawBreak[] = [];
@@ -90,7 +94,7 @@ export default function OutlinePane({
     }
     for (const [wordId, arr] of sceneBreakMap) {
       for (const br of arr) {
-        list.push({ wordId, chapter, verse: br.verse, level: br.level, heading: br.heading });
+        list.push({ wordId, chapter, verse: br.verse, level: br.level, heading: br.heading, thematic: br.thematic, thematicLetter: br.thematicLetter });
       }
     }
     list.sort((a, b) =>
@@ -105,22 +109,28 @@ export default function OutlinePane({
   const items = useMemo(() => {
     const counters = [0, 0, 0, 0, 0, 0, 0];
     return sortedBreaks.map((br) => {
-      counters[br.level]++;
-      for (let l = br.level + 1; l <= 6; l++) counters[l] = 0;
+      if (!br.thematic) {
+        counters[br.level]++;
+        for (let l = br.level + 1; l <= 6; l++) counters[l] = 0;
+      }
       const key   = `${br.wordId}:${br.level}`;
       const range = sectionRanges.get(key);
       const heading = headingOverrides.has(key)
         ? headingOverrides.get(key) ?? null
         : br.heading;
+      const thematicIndent = br.thematic && br.thematicLetter
+        ? (br.thematicLetter.toUpperCase().charCodeAt(0) - 65 + 1) * INDENT_PX
+        : null;
       return {
         ...br,
         heading,
         key,
-        prefix:  formatPrefix(br.level, counters[br.level]),
+        prefix: br.thematic && br.thematicLetter ? br.thematicLetter : formatPrefix(br.level, counters[br.level]),
         rangeStr: range
           ? formatRange(br.chapter, br.verse, range.endChapter, range.endVerse)
           : `${br.chapter}:${br.verse}`,
         isCurrent: br.chapter === chapter,
+        thematicIndent,
       };
     });
   }, [sortedBreaks, sectionRanges, headingOverrides, chapter]);
@@ -164,14 +174,13 @@ export default function OutlinePane({
     const breaksForCopy = items.map((it) => ({
       wordId: it.wordId, heading: it.heading, level: it.level,
       chapter: it.chapter, verse: it.verse,
+      thematic: it.thematic, thematicLetter: it.thematicLetter,
     }));
     const text = generateOutline(breaksForCopy, sectionRanges);
     await navigator.clipboard.writeText(text);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   }
-
-  const INDENT_PX = 18;
 
   return (
     <div className="flex flex-col h-full" style={{ backgroundColor: "var(--background)", borderLeft: "1px solid var(--border)" }}>
@@ -214,7 +223,7 @@ export default function OutlinePane({
           <ul className="space-y-0.5">
             {items.map((item) => {
               const isEditing = editKey === item.key;
-              const indentPx  = (item.level - 1) * INDENT_PX;
+              const indentPx  = item.thematicIndent !== null ? item.thematicIndent : (item.level - 1) * INDENT_PX;
               const textSize  = item.level === 1 ? "text-sm font-semibold"
                 : item.level === 2 ? "text-sm font-medium"
                 : "text-xs";

@@ -6,6 +6,7 @@ import {
   updateSceneBreakHeading,
   updateSceneBreakOutOfSequence,
   updateSceneBreakExtendedThrough,
+  updateSceneBreakThematic,
 } from "@/lib/db/queries";
 import { getActiveWorkspaceId } from "@/lib/workspace";
 
@@ -51,14 +52,14 @@ export async function POST(request: NextRequest) {
 // Level is required to identify which break to update.
 export async function PATCH(request: NextRequest) {
   const workspaceId = await getActiveWorkspaceId();
-  let body: { wordId?: string; level?: number; heading?: string | null; outOfSequence?: boolean; extendedThrough?: number | null };
+  let body: { wordId?: string; level?: number; heading?: string | null; outOfSequence?: boolean; extendedThrough?: number | null; thematic?: boolean; thematicLetter?: string | null };
   try {
     body = await request.json();
   } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const { wordId, level, heading, outOfSequence, extendedThrough } = body;
+  const { wordId, level, heading, outOfSequence, extendedThrough, thematic, thematicLetter } = body;
   if (!wordId || level == null) {
     return NextResponse.json({ error: "Missing wordId or level" }, { status: 400 });
   }
@@ -71,6 +72,9 @@ export async function PATCH(request: NextRequest) {
   }
   if (extendedThrough !== undefined) {
     await updateSceneBreakExtendedThrough(wordId, level, extendedThrough, workspaceId);
+  }
+  if (thematic !== undefined) {
+    await updateSceneBreakThematic(wordId, level, thematic, thematicLetter ?? null, workspaceId);
   }
   return new NextResponse(null, { status: 204 });
 }

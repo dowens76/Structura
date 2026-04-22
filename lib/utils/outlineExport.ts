@@ -60,6 +60,8 @@ export interface SectionBreakForOutline {
   level: number;
   chapter: number;
   verse: number;
+  thematic?: boolean;
+  thematicLetter?: string | null;
 }
 
 export interface SectionRangeForOutline {
@@ -86,14 +88,24 @@ export function generateOutline(
     const { level } = sb;
     if (level < 1 || level > 6) continue;
 
-    // Increment this level's counter and reset all lower-priority levels
-    counters[level]++;
-    for (let l = level + 1; l <= 6; l++) {
-      counters[l] = 0;
+    const isThematic = sb.thematic && sb.thematicLetter;
+
+    if (!isThematic) {
+      counters[level]++;
+      for (let l = level + 1; l <= 6; l++) {
+        counters[l] = 0;
+      }
     }
 
-    const indent = "  ".repeat(level - 1);
-    const prefix = formatPrefix(level, counters[level]);
+    const letterIndex = isThematic
+      ? sb.thematicLetter!.toUpperCase().charCodeAt(0) - 65
+      : -1;
+    const indent = isThematic
+      ? "  ".repeat(letterIndex + 1)
+      : "  ".repeat(level - 1);
+    const prefix = isThematic
+      ? sb.thematicLetter! + " "
+      : formatPrefix(level, counters[level]);
     const heading = sb.heading?.trim() ?? "(untitled)";
 
     const rangeKey = `${sb.wordId}:${level}`;

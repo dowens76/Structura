@@ -191,6 +191,8 @@ export const sceneBreaks = sqliteTable(
     verse:           integer("verse").notNull().default(0),
     outOfSequence:   integer("out_of_sequence", { mode: "boolean" }).notNull().default(false),
     extendedThrough: integer("extended_through"),
+    thematic:        integer("thematic", { mode: "boolean" }).notNull().default(false),
+    thematicLetter:  text("thematic_letter"),
     textSource:      text("text_source").notNull(),
     book:            text("book").notNull(),
     chapter:         integer("chapter").notNull(),
