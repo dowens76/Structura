@@ -106,9 +106,23 @@ export async function POST(request: NextRequest) {
         for (const table of [...REQUIRED_TABLES].reverse()) {
           userSqlite.exec(`DELETE FROM "${table}"`);
         }
-        // Insert from the backup.
+        // Insert from the backup, using only columns present in both schemas.
+        // This allows restoring from older backups that predate schema additions
+        // (e.g. scene_breaks gaining `thematic` / `thematic_letter`): missing
+        // columns are omitted from the INSERT and fall back to their DEFAULT values.
         for (const table of REQUIRED_TABLES) {
-          userSqlite.exec(`INSERT INTO "${table}" SELECT * FROM restore_src."${table}"`);
+          const backupCols = new Set(
+            (userSqlite.prepare(`PRAGMA restore_src.table_info("${table}")`).all() as { name: string }[])
+              .map((r) => r.name)
+          );
+          const currentCols = (
+            userSqlite.prepare(`PRAGMA table_info("${table}")`).all() as { name: string }[]
+          ).map((r) => r.name);
+          const shared  = currentCols.filter((c) => backupCols.has(c));
+          const colList = shared.map((c) => `"${c}"`).join(", ");
+          userSqlite.exec(
+            `INSERT INTO "${table}" (${colList}) SELECT ${colList} FROM restore_src."${table}"`
+          );
         }
       });
 
