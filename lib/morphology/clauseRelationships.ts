@@ -29,6 +29,7 @@ export const RELATIONSHIP_TYPES: RstTypeEntry[] = [
   { key: "content",      label: "Content",        category: "subordinate", abbr: "Cnt", color: "#0891B2", isBuiltIn: true },
   { key: "degree",       label: "Degree",         category: "subordinate", abbr: "Deg", color: "#C026D3", isBuiltIn: true },
   { key: "explanation",  label: "Explanation",    category: "subordinate", abbr: "Exp", color: "#059669", isBuiltIn: true },
+  { key: "inference",   label: "Inference",      category: "subordinate", abbr: "Inf", color: "#0D9488", isBuiltIn: true },
   { key: "manner",       label: "Manner/Means",   category: "subordinate", abbr: "Mnr", color: "#4F46E5", isBuiltIn: true },
   { key: "purpose",      label: "Purpose",        category: "subordinate", abbr: "Pur", color: "#DB2777", isBuiltIn: true },
   { key: "relative",     label: "Relative",       category: "subordinate", abbr: "Rel", color: "#0284C7", isBuiltIn: true },

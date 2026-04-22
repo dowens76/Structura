@@ -92,7 +92,7 @@ When display mode is set to Interlinear, a toolbar picker selects what appears b
 
 ### Discourse & Rhetorical Analysis
 
-- **Clause relations** — Draw  arrows to show relationships between paragraph segments (according to Rhetorical Structure Theory) using 14 relation types across coordinate and subordinate categories (Cause/Reason, Purpose, Concession, Condition, Temporal, etc.)
+- **Clause relations** — Draw  arrows to show relationships between paragraph segments (according to Rhetorical Structure Theory) using 15 relation types across coordinate and subordinate categories (Cause/Reason, Purpose, Concession, Condition, Inference, Temporal, etc.)
 - **Free-form arrows** — Draw directional arrows between any two words across verse boundaries
 - **Line annotations** — Annotate lines or segments of text in one of three ways, identifying plot elements (Background information, Initial Situation, Conflict, Transforming Action, Resolution, etc.), theme labels (A, B, C, etc.), or free-form descriptions
 
