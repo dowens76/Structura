@@ -2200,14 +2200,14 @@ export default function ChapterDisplay({
 
   // ── Mode mutual-exclusivity ────────────────────────────────────────────────
   // Compatible groups (may be active simultaneously):
-  //   A: paragraph + indent
+  //   A: indent (compatible with paragraph, speech, rst)
   //   B: bold + italic
   //   C: speech + rst + indent
   // All other combinations are mutually incompatible.
   // Modes that are mutually exclusive with each other (only one may be active):
-  //   refs, speech, arrows, wordTags
+  //   refs, speech, arrows, wordTags, paragraph
   // Each lists everything it is COMPATIBLE with — i.e., everything except the
-  // other three annotation-editing modes.
+  // other annotation-editing modes.
   const NON_ANNOTATION = ["paragraph", "scenes", "annotations", "indents", "rst"] as const;
   const COMPAT: Record<string, string[]> = {
     paragraph:   ["indents"],
@@ -2219,8 +2219,8 @@ export default function ChapterDisplay({
     arrows:      [...NON_ANNOTATION],
     scenes:      [],
     annotations: [],
-    refs:        [...NON_ANNOTATION],
-    wordTags:    [...NON_ANNOTATION],
+    refs:        ["annotations", "indents", "rst"],
+    wordTags:    ["annotations", "indents", "rst"],
   };
   function deactivateIncompatible(mode: string) {
     const keep = new Set([mode, ...(COMPAT[mode] ?? [])]);
