@@ -1814,11 +1814,26 @@ export default function VerseDisplay({
                         backgroundRepeat: "no-repeat",
                         paddingBottom: "2px",
                       } : char1 ? {
-                        textDecoration: "underline",
-                        textDecorationColor: char1.color,
-                        textDecorationThickness: "2px",
-                        textUnderlineOffset: "2px",
+                        backgroundImage: `linear-gradient(to right, ${char1.color}, ${char1.color})`,
+                        backgroundSize: "100% 2px",
+                        backgroundPosition: "center bottom",
+                        backgroundRepeat: "no-repeat",
+                        paddingBottom: "2px",
                       } : {};
+
+                      // Look ahead: if the next token shares the same character ref,
+                      // emit a styled space so the underline is continuous.
+                      const nextWordId = `tv:${abbr}:${book}.${chapter}.${verseNum}.${globalWi + 1}`;
+                      const nextRef = characterRefMap.get(nextWordId) ?? null;
+                      const sameCharAsNext =
+                        ref != null &&
+                        nextRef != null &&
+                        ref.character1Id === nextRef.character1Id &&
+                        (ref.character2Id ?? null) === (nextRef.character2Id ?? null);
+                      const tvSpaceStyle: React.CSSProperties | undefined =
+                        sameCharAsNext && char1
+                          ? { ...underlineStyle, whiteSpace: "pre" }
+                          : undefined;
 
                       const isTokenHighlighted = highlightCharIds.size > 0 && ref != null && (
                         highlightCharIds.has(ref.character1Id) ||
@@ -1936,7 +1951,11 @@ export default function VerseDisplay({
                             {tokCore}
                           </span>
                           {tokTrail}
-                          {!isLastToken && " "}
+                          {!isLastToken && (
+                            tvSpaceStyle
+                              ? <span style={tvSpaceStyle}>{" "}</span>
+                              : " "
+                          )}
                         </span>
                       );
                     })

@@ -320,10 +320,11 @@ export default function WordToken({
     backgroundRepeat: "no-repeat",
     paddingBottom: isHebrew ? "6px" : "2px",
   } : char1 ? {
-    textDecoration: "underline",
-    textDecorationColor: char1.color,
-    textDecorationThickness: "2px",
-    textUnderlineOffset: isHebrew ? "6px" : "2px",
+    backgroundImage: `linear-gradient(to right, ${char1.color}, ${char1.color})`,
+    backgroundSize: "100% 2px",
+    backgroundPosition: "center bottom",
+    backgroundRepeat: "no-repeat",
+    paddingBottom: isHebrew ? "6px" : "2px",
   } : {};
 
   // (Character highlight and word-tag ring are rendered by VerseDisplay's
