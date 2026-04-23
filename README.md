@@ -6,7 +6,9 @@ A biblical text analysis workbench for studying the Hebrew Old Testament, Septua
 
 ## How to Obtain the Desktop App
 
-Structura ships as a Linux, Mac, and Windows app. Download the latest release at https://github.com/dowens76/structura/releases/latest.
+Structura ships as a Linux, Mac, and Windows app. As of version 0.6.0, Chromebook users with Linux enabled may use the ARM64 deb file. The app has not yet been tested on a Chromebook, so if you use it, share your experiences through the feedback system explained in the next section. 
+
+Download the latest release at https://github.com/dowens76/structura/releases/latest.
 
 **Important note for Mac users:** The MacOS will complain that the app is damaged. To get around this security feature, open the terminal and run: 
 
