@@ -140,12 +140,21 @@ export function getLxxDb(): ReturnType<typeof drizzle<typeof sourceSchema>> | nu
   return _lxxDb;
 }
 
+function migrateUserDb(sqlite: Database.Database): void {
+  const cols = (sqlite.prepare("PRAGMA table_info(scene_breaks)").all() as { name: string }[]).map(r => r.name);
+  if (!cols.includes("thematic"))
+    sqlite.exec("ALTER TABLE scene_breaks ADD COLUMN thematic INTEGER NOT NULL DEFAULT 0");
+  if (!cols.includes("thematic_letter"))
+    sqlite.exec("ALTER TABLE scene_breaks ADD COLUMN thematic_letter TEXT");
+}
+
 export function getUserDb() {
   if (!_userDb) {
     _userSqlite = new Database(USER_DB_PATH);
     _userSqlite.pragma("journal_mode = WAL");
     _userSqlite.pragma("synchronous = NORMAL");
     _userSqlite.pragma("foreign_keys = ON");
+    migrateUserDb(_userSqlite);
     _userDb = drizzle(_userSqlite, { schema: userSchema });
   }
   return _userDb;
