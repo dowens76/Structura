@@ -80,6 +80,11 @@ export interface Props {
   paragraphFirstWordIds: string[];
   selectedNucleusWordId: string | null;
   selectedSatelliteWordId: string | null;
+  /** When the first endpoint was chosen by clicking a group connector dot,
+   *  this is that group's ID.  The chip for this group shows the selection ring
+   *  and the underlying paragraph dot is NOT highlighted, making it clear that
+   *  the entire group (not just one paragraph) is selected as the endpoint. */
+  selectedNucleusGroupId?: string | null;
   editingGroupId?: string | null;
   onSelectSegment: (wordId: string) => void;
   onDeleteGroup: (groupId: string) => void;
@@ -153,13 +158,17 @@ function measureSegments(
       ? transEl.getBoundingClientRect().left - cRect.left + transPadL
       : undefined;
 
-    // 3-col only: measure the source grid-cell div (blockified, stable column bounds).
+    // Measure the source grid-cell div.  Its padding carries the paragraph
+    // indentation (paddingLeft for LTR, paddingRight for Hebrew RTL), so we
+    // read leftX/rightX from it rather than from the inner text span (which
+    // has no padding of its own and therefore always reports the same position
+    // regardless of indentation level).
     const srcBlockEl = container.querySelector<HTMLElement>(
       `[data-rst-src-block="${CSS.escape(id)}"]`,
     );
-    const srcCellRightX = srcBlockEl
-      ? srcBlockEl.getBoundingClientRect().right - cRect.left
-      : undefined;
+    const srcBlockR    = srcBlockEl?.getBoundingClientRect() ?? null;
+    // srcCellRightX = raw border-box right (used as stable column boundary in 3-col).
+    const srcCellRightX = srcBlockR ? srcBlockR.right - cRect.left : undefined;
 
     // Hebrew 2-col: measure the verse-label left edge so the tree stays clear of it.
     const labelEl = container.querySelector<HTMLElement>(
@@ -169,18 +178,19 @@ function measureSegments(
       ? labelEl.getBoundingClientRect().left - cRect.left
       : undefined;
 
-    // Account for paddingLeft/paddingRight so that indented paragraphs
-    // (which use CSS padding to shift text inward) report the actual
-    // text-start edge rather than the element's outer border-box edge.
-    const cs = getComputedStyle(textEl);
+    // Read indentation padding from the source-block element (which carries it).
+    // Fall back to the text span when srcBlockEl is unavailable.
+    const posEl  = srcBlockEl ?? textEl;
+    const posR   = srcBlockR  ?? textR;
+    const cs     = getComputedStyle(posEl);
     const padLeft  = parseFloat(cs.paddingLeft)  || 0;
     const padRight = parseFloat(cs.paddingRight) || 0;
 
     result.set(id, {
       top:       anchorTop    - cRect.top + scrollTop,
       bottom:    anchorBottom - cRect.top + scrollTop,
-      leftX:     textR.left   - cRect.left + padLeft,
-      rightX:    textR.right  - cRect.left - padRight,
+      leftX:     posR.left  - cRect.left + padLeft,
+      rightX:    posR.right - cRect.left - padRight,
       transLeftX,
       srcCellRightX,
       labelLeftX,
@@ -476,6 +486,7 @@ export default function RstRelationOverlay({
   paragraphFirstWordIds,
   selectedNucleusWordId,
   selectedSatelliteWordId,
+  selectedNucleusGroupId,
   editingGroupId,
   onSelectSegment,
   onDeleteGroup,
@@ -596,11 +607,25 @@ export default function RstRelationOverlay({
 
   const groupNodes = layoutNodes.filter(n => n.type === "group");
 
-  // If a group's nucleus segWordId is the currently-selected first endpoint,
-  // that group should be visually highlighted.
-  const selectedGroupId = selectedNucleusWordId
-    ? (relations.find(r => r.segWordId === selectedNucleusWordId && r.role === "nucleus")?.groupId ?? null)
-    : null;
+  // Which group chip shows the selection ring.
+  // • selectedNucleusGroupId (explicit): user clicked a group connector dot —
+  //   show ONLY the group ring; the underlying paragraph dot is suppressed.
+  // • Derived fallback: user clicked a paragraph dot that happens to be the
+  //   nucleus of a group — show the group ring AND the paragraph dot.
+  const selectedGroupId: string | null = selectedNucleusGroupId
+    ?? (selectedNucleusWordId
+      ? (relations.find(r => r.segWordId === selectedNucleusWordId && r.role === "nucleus")?.groupId ?? null)
+      : null);
+
+  // Paragraph segWordIds that belong to the explicitly-selected group.
+  // Their selector dots are suppressed so only the group chip glows.
+  const suppressedDotIds: Set<string> = selectedNucleusGroupId
+    ? new Set(
+        relations
+          .filter(r => r.groupId === selectedNucleusGroupId)
+          .map(r => r.segWordId),
+      )
+    : new Set();
 
   // ── Pre-compute per-group spine X ─────────────────────────────────────────
   // The spine is placed LEVEL_WIDTH beyond the *innermost* leaf in the group
@@ -631,6 +656,38 @@ export default function RstRelationOverlay({
   const spinePass1     = computeSpinePass(new Map());
   const spineXByParent = computeSpinePass(spinePass1);
 
+  // ── Subordinate group nucleus-X lookup ───────────────────────────────────
+  // Subordinate relations are drawn as an L-shape: a vertical stroke runs from
+  // the nucleus leaf position down (or up) to the satellite's Y, then a
+  // horizontal arm extends to the satellite anchor.  This is visually distinct
+  // from the shared-spine bracket used for coordinate relations and prevents
+  // all subordinate arrows from overlapping on one vertical line.
+  //
+  // For each subordinate group we record the nucleus leaf X so that both the
+  // satellite link path and the relation-type chip can use it.
+  const nucleusXByGroup = new Map<string, number>(); // `groupId:isTrans` → nucleusX
+  // Subordinate groups whose nucleus is itself a coordinate group (spans
+  // multiple paragraphs).  These use a Z-shape path rather than an L-shape:
+  //   H out from nucleus spine → V to satellite Y → H to satellite anchor
+  const nucleusIsGroup  = new Set<string>();
+  for (const lk of layoutLinks) {
+    if (lk.role !== "nucleus") continue;
+    if (relMap[lk.relType]?.category !== "subordinate") continue;
+    const gKey = `${lk.parentId}:${lk.isTrans ? 1 : 0}`;
+    const nucNode = layoutNodes.find(
+      n => n.id === lk.childId && !!n.isTrans === !!lk.isTrans,
+    );
+    if (!nucNode) continue;
+    // If the nucleus is itself a group node, use its spine; otherwise use the
+    // leaf X that was set by the post-processing override in layoutTree.
+    const nucChildKey = `${lk.childId}:${lk.isTrans ? 1 : 0}`;
+    const nucX = nucNode.type === "group"
+      ? (spineXByParent.get(nucChildKey) ?? nucNode.x)
+      : nucNode.x;
+    nucleusXByGroup.set(gKey, nucX);
+    if (nucNode.type === "group") nucleusIsGroup.add(gKey);
+  }
+
   return (
     <svg
       ref={svgRef}
@@ -651,7 +708,31 @@ export default function RstRelationOverlay({
         const childSpineKey = `${lk.childId}:${lk.isTrans ? 1 : 0}`;
         const childSpineX   = spineXByParent.get(childSpineKey);
         const armX2         = childSpineX !== undefined ? childSpineX : lk.x2;
-        const pathD   = `M ${spineX},${lk.y1} V ${lk.y2} H ${armX2}`;
+
+        // Subordinate relations avoid the shared-spine bracket:
+        //   • Nucleus link  → not drawn (the nucleus dot anchors it visually)
+        //   • Satellite link:
+        //       – Nucleus is a single segment → L-shape:
+        //           V from nucleus Y to satellite Y, then H to satellite anchor
+        //       – Nucleus is a coordinate group → Z-shape:
+        //           H out from nucleus spine, V to satellite Y, H to satellite anchor
+        const isSubordinate = meta?.category === "subordinate";
+        if (isSubordinate && !isSat) return null;
+
+        let pathD: string;
+        if (isSubordinate) {
+          const nucX = nucleusXByGroup.get(key) ?? spineX;
+          if (nucleusIsGroup.has(key)) {
+            const outerX = (isHebrew && !lk.isTrans)
+              ? nucX + LEVEL_WIDTH
+              : nucX - LEVEL_WIDTH;
+            pathD = `M ${nucX},${lk.y1} H ${outerX} V ${lk.y2} H ${armX2}`;
+          } else {
+            pathD = `M ${nucX},${lk.y1} V ${lk.y2} H ${armX2}`;
+          }
+        } else {
+          pathD = `M ${spineX},${lk.y1} V ${lk.y2} H ${armX2}`;
+        }
         return (
           <path
             key={i}
@@ -684,20 +765,33 @@ export default function RstRelationOverlay({
           lk => lk.parentId === n.id && lk.role === "satellite" && !!lk.isTrans === !!n.isTrans
         );
 
-        // ── Chip X: just inside the spine, toward the text ───────────────
-        // The spine is the vertical bar of the RST bracket.  "Just inside"
-        // means on the text-facing side (right for LTR, left for RTL).
-        // A 2 px gap keeps the chip from overlapping the spine stroke.
+        // ── Chip X ───────────────────────────────────────────────────────
+        // Coordinate relations: chip sits on the text-facing side of the
+        // shared spine (right for LTR, left for RTL), 2 px clear of the stroke.
+        // Subordinate relations: no spine — chip is centred at the nucleus leaf
+        // X (the corner of the L-shaped path) so it sits visually on the elbow.
         const CHIP_GAP = 2;
         const spineKey = `${n.id}:${n.isTrans ? 1 : 0}`;
         const spineX   = spineXByParent.get(spineKey);
-        const chipX    = spineX !== undefined
+        const isSubordGroup = relMap[n.relType ?? ""]?.category === "subordinate";
+        const subNucX = isSubordGroup ? nucleusXByGroup.get(spineKey) : undefined;
+        // Z-shape: chip sits near the *second* corner (outerX, satelliteY).
+        // L-shape: chip sits near the single corner (subNucX, satelliteY).
+        const subOuterX = (subNucX !== undefined && nucleusIsGroup.has(spineKey))
+          ? (isHebrew && !n.isTrans) ? subNucX + LEVEL_WIDTH : subNucX - LEVEL_WIDTH
+          : undefined;
+        const subCornerX = subOuterX ?? subNucX; // effective corner for chip placement
+        const chipX    = subCornerX !== undefined
           ? (isHebrew && !n.isTrans)
-            ? spineX - CHIP_W / 2 - CHIP_GAP   // RTL: chip left of spine
-            : spineX + CHIP_W / 2 + CHIP_GAP   // LTR: chip right of spine
-          : (isHebrew && !n.isTrans)            // fallback if spine unavailable
-            ? n.x - LEVEL_WIDTH
-            : n.x + LEVEL_WIDTH;
+            ? subCornerX - CHIP_W / 2 - CHIP_GAP
+            : subCornerX + CHIP_W / 2 + CHIP_GAP
+          : spineX !== undefined
+            ? (isHebrew && !n.isTrans)
+              ? spineX - CHIP_W / 2 - CHIP_GAP   // RTL: chip left of spine
+              : spineX + CHIP_W / 2 + CHIP_GAP   // LTR: chip right of spine
+            : (isHebrew && !n.isTrans)            // fallback if spine unavailable
+              ? n.x - LEVEL_WIDTH
+              : n.x + LEVEL_WIDTH;
 
         // ── Chip Y positions ──────────────────────────────────────────────
         // Subordinate chips float above/below their satellite arm (one chip).
@@ -707,6 +801,14 @@ export default function RstRelationOverlay({
         const CHIP_GAP_Y = 3;
         const chipYs: number[] = (() => {
           if (satLink) {
+            if (subNucX !== undefined) {
+              // Subordinate L-shape: chip floats just above/below the 90° corner
+              // where the vertical stroke meets the horizontal arm (satelliteY).
+              const satelliteIsLower = satLink.y2 > satLink.y1;
+              return [satelliteIsLower
+                ? satLink.y2 - CHIP_H / 2 - CHIP_GAP_Y   // corner below → chip above it
+                : satLink.y2 + CHIP_H / 2 + CHIP_GAP_Y]; // corner above → chip below it
+            }
             const satelliteIsLower = satLink.y2 > satLink.y1;
             return [satelliteIsLower
               ? satLink.y2 - CHIP_H / 2 - CHIP_GAP_Y   // float above arm
@@ -850,7 +952,12 @@ export default function RstRelationOverlay({
         const pos = posMap.get(wordId);
         if (!pos) return [];
 
-        const isNucleus   = wordId === selectedNucleusWordId;
+        // When a GROUP is the selected nucleus (connector-dot click), suppress
+        // the paragraph dots for all members of that group — only the chip ring
+        // should glow, making it visually clear that the group (not a specific
+        // paragraph) is the endpoint.
+        const suppressedByGroup = suppressedDotIds.has(wordId);
+        const isNucleus   = wordId === selectedNucleusWordId && !suppressedByGroup;
         const isSatellite = wordId === selectedSatelliteWordId;
 
         const r      = isNucleus ? NUCLEUS_R : isSatellite ? SAT_R : SEG_R;

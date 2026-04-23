@@ -88,14 +88,26 @@ export function buildRstTree(
     const relType = sorted[0].relType;
 
     const children: RstNode[] = sorted.map(m => {
-      // Is this member's segWordId the nucleus of a nested group?
-      // Only treat it as nested when it is a SATELLITE of the current group.
-      // If it is the NUCLEUS of the current group, the two groups share the same
-      // nucleus and are peers — do not nest one inside the other.
+      // ── Direct group reference ────────────────────────────────────────────
+      // When the user selects an existing group (not an individual paragraph)
+      // as an RST endpoint, its groupId is stored directly as segWordId.
+      // Detect this first so it works regardless of role.
+      if (byGroup.has(m.segWordId) && m.segWordId !== groupId) {
+        return {
+          id: `__placeholder__${m.segWordId}`,
+          type: "group" as const,
+          role: m.role,
+          relType: byGroup.get(m.segWordId)?.[0]?.relType,
+        };
+      }
+
+      // ── Implicit nesting via shared nucleus segWordId ─────────────────────
+      // Is this member's segWordId the nucleus representative of another group?
+      // Only nest when the member is a SATELLITE — if it is the NUCLEUS of the
+      // current group the two groups share the same nucleus and are coordinate
+      // peers; do not nest one inside the other.
       const childGroupId = nucleusToGroup.get(m.segWordId);
       if (childGroupId && childGroupId !== groupId && m.role !== "nucleus") {
-        // Return a placeholder — we'll swap in the real child node after all
-        // group nodes are built.  For now, store the childGroupId.
         return {
           id: `__placeholder__${childGroupId}`,
           type: "group" as const,
@@ -103,6 +115,7 @@ export function buildRstTree(
           relType: byGroup.get(childGroupId)?.[0]?.relType,
         };
       }
+
       return {
         id: m.segWordId,
         type: "segment" as const,

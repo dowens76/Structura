@@ -294,6 +294,9 @@ export default function ChapterDisplay({
   const [editingRst, setEditingRst]          = useState(false);
   // First-selected segment (nucleus for subordinate; first nucleus for coordinate)
   const [rstSegA, setRstSegA]              = useState<string | null>(null);
+  // When rstSegA was chosen by clicking a group connector dot, this is that
+  // group's ID — used to show only the chip ring (not the paragraph dot).
+  const [rstSegAGroupId, setRstSegAGroupId] = useState<string | null>(null);
   // Second-selected segment (triggers picker)
   const [rstSegB, setRstSegB]              = useState<string | null>(null);
   // Whether the user wants to swap nucleus/satellite roles (for subordinate types)
@@ -1893,9 +1896,11 @@ export default function ChapterDisplay({
   function handleSelectRstSegment(wordId: string) {
     if (!rstSegA) {
       setRstSegA(wordId);
+      setRstSegAGroupId(null); // direct paragraph selection — clear any prior group
     } else if (wordId === rstSegA) {
       // Click same segment again → deselect and reset
       setRstSegA(null);
+      setRstSegAGroupId(null);
       setRstSegB(null);
       setShowRstPicker(false);
     } else {
@@ -1905,11 +1910,26 @@ export default function ChapterDisplay({
     }
   }
 
-  /** Select an existing RST group as an endpoint by resolving its nucleus segWordId. */
+  /** Select an existing RST group as the first (or second) endpoint.
+   *  The group UUID itself is stored as rstSegA/rstSegB so buildRstTree can
+   *  detect the direct group reference via byGroup.has(segWordId).
+   *  rstSegAGroupId is also stored so only the chip ring glows (not the
+   *  underlying paragraph dot), making the group selection visually unambiguous. */
   function handleSelectRstGroup(groupId: string) {
-    const nucleusRow = rstRelations.find(r => r.groupId === groupId && r.role === "nucleus")
-      ?? rstRelations.find(r => r.groupId === groupId);
-    if (nucleusRow) handleSelectRstSegment(nucleusRow.segWordId);
+    if (!rstSegA) {
+      setRstSegA(groupId);
+      setRstSegAGroupId(groupId);
+    } else if (rstSegA === groupId) {
+      // Clicking the same group again → deselect
+      setRstSegA(null);
+      setRstSegAGroupId(null);
+      setShowRstPicker(false);
+    } else {
+      // Group is the second endpoint — complete the relation
+      setRstSegB(groupId);
+      setRstRolesSwapped(false);
+      setShowRstPicker(true);
+    }
   }
 
   async function handleCreateRstRelation(relType: string) {
@@ -2369,6 +2389,7 @@ export default function ChapterDisplay({
             paragraphFirstWordIds={paragraphFirstWordIds}
             selectedNucleusWordId={rstSegA}
             selectedSatelliteWordId={rstSegB}
+            selectedNucleusGroupId={rstSegAGroupId}
             editingGroupId={rstEditGroupId}
             onSelectSegment={handleSelectRstSegment}
             onDeleteGroup={handleDeleteRstGroup}

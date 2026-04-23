@@ -232,6 +232,7 @@ export default function PassageView({
   const [rstRelations, setRstRelations]       = useState<RstRelation[]>(initialRstRelations);
   const [editingRst, setEditingRst]           = useState(false);
   const [rstSegA, setRstSegA]                 = useState<string | null>(null);
+  const [rstSegAGroupId, setRstSegAGroupId]   = useState<string | null>(null);
   const [rstSegB, setRstSegB]                 = useState<string | null>(null);
   const [rstRolesSwapped, setRstRolesSwapped] = useState(false);
   const [showRstPicker, setShowRstPicker]     = useState(false);
@@ -1300,10 +1301,27 @@ export default function PassageView({
   function handleSelectRstSegment(wordId: string) {
     if (!rstSegA) {
       setRstSegA(wordId);
+      setRstSegAGroupId(null);
     } else if (wordId === rstSegA) {
+      setRstSegAGroupId(null);
       setRstSegA(null);
     } else {
       setRstSegB(wordId);
+      setShowRstPicker(true);
+    }
+  }
+
+  function handleSelectRstGroup(groupId: string) {
+    if (!rstSegA) {
+      setRstSegA(groupId);
+      setRstSegAGroupId(groupId);
+    } else if (rstSegA === groupId) {
+      setRstSegA(null);
+      setRstSegAGroupId(null);
+      setShowRstPicker(false);
+    } else {
+      setRstSegB(groupId);
+      setRstRolesSwapped(false);
       setShowRstPicker(true);
     }
   }
@@ -1877,7 +1895,9 @@ export default function PassageView({
           paragraphFirstWordIds={paragraphFirstWordIds}
           selectedNucleusWordId={rstSegA}
           selectedSatelliteWordId={rstSegB}
+          selectedNucleusGroupId={rstSegAGroupId}
           onSelectSegment={handleSelectRstSegment}
+          onSelectGroup={handleSelectRstGroup}
           onDeleteGroup={handleDeleteRstGroup}
           customTypes={customRstTypes}
         />
@@ -2464,8 +2484,8 @@ export default function PassageView({
           <div className="px-6 py-1 text-xs border-b border-[var(--border)] text-stone-500 dark:text-stone-400"
                style={{ backgroundColor: "var(--nav-bg)" }}>
             {rstSegA
-              ? "First segment selected — click another segment dot to choose a relation type"
-              : "Click a segment dot (◉) to start an RST relation"}
+              ? "First endpoint selected — click a segment dot or group connector dot to complete the relation"
+              : "Click a segment dot (◉) or group connector dot to start an RST relation. Click a label chip to change its type."}
           </div>
         )}
 
