@@ -5,6 +5,8 @@ import os from "os";
 import path from "path";
 import fs from "fs";
 
+export const dynamic = "force-dynamic";
+
 // ── GET /api/backup ────────────────────────────────────────────────────────────
 // Streams a complete copy of user.db using SQLite's online backup API.
 // Captures all workspaces, users, annotations, translation text — everything.

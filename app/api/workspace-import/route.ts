@@ -23,6 +23,8 @@ import {
 } from "@/lib/db/user-schema";
 import { getActiveWorkspaceId } from "@/lib/workspace";
 
+export const dynamic = "force-dynamic";
+
 // ─── Types ──────────────────────────────────────────────────────────────────
 
 type Chapter = { book: string; chapter: number };

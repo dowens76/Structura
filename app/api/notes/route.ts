@@ -4,6 +4,8 @@ import { notes } from "@/lib/db/schema";
 import { eq, and, inArray } from "drizzle-orm";
 import { getActiveWorkspaceId } from "@/lib/workspace";
 
+export const dynamic = "force-dynamic";
+
 // GET /api/notes?keys=verse:Gen.1.1,chapter:Gen.1,...
 // Returns: { [key]: { content: string; updatedAt: string } }
 export async function GET(request: NextRequest) {

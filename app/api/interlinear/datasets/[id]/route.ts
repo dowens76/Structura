@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { userSqlite } from "@/lib/db";
 
+export const dynamic = "force-dynamic";
+
 // ── DELETE /api/interlinear/datasets/[id] ─────────────────────────────────────
 // Deletes a dataset and all its entries (cascade).
 export async function DELETE(

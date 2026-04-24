@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { execFile } from "child_process";
 import { promisify } from "util";
 
+export const dynamic = "force-dynamic";
+
 const run = promisify(execFile);
 
 // ── GET /api/auto-backup/pick-folder ──────────────────────────────────────────

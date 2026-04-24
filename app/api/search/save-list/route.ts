@@ -4,6 +4,8 @@ import { wordTags, wordTagRefs } from "@/lib/db/user-schema";
 import { getActiveWorkspaceId } from "@/lib/workspace";
 import { bulkInsertWordTagRefs } from "@/lib/db/queries";
 
+export const dynamic = "force-dynamic";
+
 interface WordRef {
   wordId: string;
   book: string;

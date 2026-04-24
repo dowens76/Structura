@@ -3,6 +3,8 @@ import { lexicaDb } from "@/lib/db";
 import { lexiconEntries } from "@/lib/db/schema";
 import { eq, and } from "drizzle-orm";
 
+export const dynamic = "force-dynamic";
+
 // GET /api/lexicon?lemma=ἄβυσσος&source=AbbottSmith   (Greek — lemma-based)
 // GET /api/lexicon?strong=H7225&source=BDB             (Hebrew — strong-number-based)
 //

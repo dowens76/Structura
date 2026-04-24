@@ -7,6 +7,8 @@ import { buildDocxBuffer } from "@/lib/export/generate-docx";
 import { buildOdtBuffer }  from "@/lib/export/generate-odt";
 import type { NoteSection } from "@/lib/export/generate-docx";
 
+export const dynamic = "force-dynamic";
+
 // POST /api/export/notes
 // Body: { keys: string[]; title: string; format: "docx" | "odt" }
 // Returns binary file download.

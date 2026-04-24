@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { userSqlite } from "@/lib/db";
 
+export const dynamic = "force-dynamic";
+
 // ── GET /api/interlinear/datasets ─────────────────────────────────────────────
 // Lists all datasets for a workspace.
 // Query params: workspaceId (default 1)

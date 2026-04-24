@@ -13,6 +13,8 @@ import {
 import { and, eq, gte, lte, type SQL } from "drizzle-orm";
 import { getActiveWorkspaceId } from "@/lib/workspace";
 
+export const dynamic = "force-dynamic";
+
 const VALID_CATEGORIES = [
   "paragraphBreaks",
   "characterRefs",

@@ -4,6 +4,8 @@ import { sourceDb, getLxxDb, sourceLookups, lxxLookups } from "@/lib/db";
 import type { LookupById } from "@/lib/db";
 import { words, books } from "@/lib/db/source-schema";
 
+export const dynamic = "force-dynamic";
+
 // Detect if a string contains Hebrew characters (U+05D0–U+05EA)
 function isHebrew(s: string): boolean {
   return /[\u05D0-\u05EA]/.test(s);

@@ -4,6 +4,8 @@ import { translations } from "@/lib/db/schema";
 import { and, eq } from "drizzle-orm";
 import { getActiveWorkspaceId } from "@/lib/workspace";
 
+export const dynamic = "force-dynamic";
+
 // PATCH /api/translations
 // Body: { id: number; language: string | null }
 // Updates the language field of a single translation record.

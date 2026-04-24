@@ -3,6 +3,8 @@ import { userDb } from "@/lib/db";
 import { users } from "@/lib/db/user-schema";
 import { eq } from "drizzle-orm";
 
+export const dynamic = "force-dynamic";
+
 interface RouteContext {
   params: Promise<{ id: string }>;
 }

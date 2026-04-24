@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { userSqlite } from "@/lib/db";
 
+export const dynamic = "force-dynamic";
+
 // ── GET /api/interlinear/datasets/[id]/entries ────────────────────────────────
 // Returns entries for a dataset for a given chapter.
 // Query params: book, chapter, textSource

@@ -4,6 +4,8 @@ import { reloadScheduler } from "@/lib/backup/scheduler";
 import { readAutoBackupSettings } from "@/lib/backup/executor";
 import type { AutoBackupSettings } from "@/lib/db/user-schema";
 
+export const dynamic = "force-dynamic";
+
 const DEFAULTS: Omit<AutoBackupSettings, "id"> = {
   enabled:        false,
   folderPath:     null,

@@ -3,6 +3,8 @@ import { userDb } from "@/lib/db";
 import { users, workspaces } from "@/lib/db/user-schema";
 import { asc, eq } from "drizzle-orm";
 
+export const dynamic = "force-dynamic";
+
 // GET /api/workspaces?userId=1 — list all workspaces for a user
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);

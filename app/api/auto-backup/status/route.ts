@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { intervalMs, readAutoBackupSettings } from "@/lib/backup/executor";
 
+export const dynamic = "force-dynamic";
+
 // ── GET /api/auto-backup/status ───────────────────────────────────────────────
 // Returns the current settings row plus a derived nextRunAt timestamp.
 

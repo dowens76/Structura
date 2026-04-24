@@ -3,6 +3,8 @@ import { userDb } from "@/lib/db";
 import { users, workspaces } from "@/lib/db/user-schema";
 import { asc, eq } from "drizzle-orm";
 
+export const dynamic = "force-dynamic";
+
 // GET /api/users — list all users
 export async function GET() {
   const rows = await userDb.select().from(users).orderBy(asc(users.id));

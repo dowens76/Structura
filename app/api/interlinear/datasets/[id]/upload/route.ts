@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { userSqlite } from "@/lib/db";
 
+export const dynamic = "force-dynamic";
+
 // ── POST /api/interlinear/datasets/[id]/upload ────────────────────────────────
 // Bulk-upserts entries from a parsed file.
 // Body: { entries: Array<{ wordId, value, textSource, book, chapter }> }

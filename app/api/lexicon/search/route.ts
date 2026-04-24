@@ -3,6 +3,8 @@ import { lexicaDb } from "@/lib/db";
 import { lexiconEntries } from "@/lib/db/schema";
 import { eq, and, like, sql } from "drizzle-orm";
 
+export const dynamic = "force-dynamic";
+
 // GET /api/lexicon/search?q=H12&lang=hebrew&source=BDB&limit=8
 // GET /api/lexicon/search?q=λόγ&lang=greek&source=AbbottSmith&limit=8
 //

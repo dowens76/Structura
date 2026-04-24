@@ -4,6 +4,8 @@ import { translationVerses } from "@/lib/db/schema";
 import { and, eq } from "drizzle-orm";
 import { getActiveWorkspaceId } from "@/lib/workspace";
 
+export const dynamic = "force-dynamic";
+
 // PATCH /api/translation-verses
 // Body: { id: number, text: string }
 // Updates the text of a single translation verse record.

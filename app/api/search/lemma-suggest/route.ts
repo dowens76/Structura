@@ -4,6 +4,8 @@ import { sourceDb, lexicaDb, sourceLookups } from "@/lib/db";
 import { words } from "@/lib/db/source-schema";
 import { lexiconEntries } from "@/lib/db/lexica-schema";
 
+export const dynamic = "force-dynamic";
+
 export interface LemmaSuggestion {
   surfaceNorm: string;
   surfaceText: string;

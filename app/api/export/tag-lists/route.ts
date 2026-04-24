@@ -12,6 +12,8 @@ import {
 import { books, words } from "@/lib/db/source-schema";
 import { getActiveWorkspaceId } from "@/lib/workspace";
 
+export const dynamic = "force-dynamic";
+
 // ─── GET /api/export/tag-lists ────────────────────────────────────────────────
 // Returns all word-tag groups and character groups for the picker UI, plus
 // available translations and book list.

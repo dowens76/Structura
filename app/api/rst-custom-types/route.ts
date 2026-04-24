@@ -4,6 +4,8 @@ import { rstCustomTypes } from "@/lib/db/schema";
 import { and, eq, asc } from "drizzle-orm";
 import { getActiveWorkspaceId } from "@/lib/workspace";
 
+export const dynamic = "force-dynamic";
+
 // GET /api/rst-custom-types → all custom types ordered by sortOrder
 export async function GET() {
   const workspaceId = await getActiveWorkspaceId();

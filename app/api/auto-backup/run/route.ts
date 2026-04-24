@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { executeBackup, readAutoBackupSettings } from "@/lib/backup/executor";
 import type { AutoBackupSettings } from "@/lib/db/user-schema";
 
+export const dynamic = "force-dynamic";
+
 // ── POST /api/auto-backup/run ─────────────────────────────────────────────────
 // Immediately executes one backup.
 //

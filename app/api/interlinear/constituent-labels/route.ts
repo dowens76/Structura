@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { userSqlite } from "@/lib/db";
 
+export const dynamic = "force-dynamic";
+
 // ── GET /api/interlinear/constituent-labels ────────────────────────────────────
 // Returns all constituent labels for a given chapter.
 // Query params: workspaceId, book, chapter, textSource
