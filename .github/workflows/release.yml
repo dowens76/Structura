@@ -45,8 +45,8 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          KEYCHAIN_PATH: ${{ runner.temp }}/build.keychain-db
         run: |
+          export KEYCHAIN_PATH=$RUNNER_TEMP/build.keychain-db
           security unlock-keychain -p "" $KEYCHAIN_PATH
           npm run tauri:build
 
