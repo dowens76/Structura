@@ -41,7 +41,10 @@ jobs:
           rm certificate.p12
 
       - name: Create user database schema
-        run: npm run db:push
+        run: |
+          mkdir -p data
+          node -e "new (require('better-sqlite3'))('data/user.db').close()"
+          npm run db:push
 
       - name: Build and notarize
         env:
