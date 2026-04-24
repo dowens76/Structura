@@ -13,7 +13,7 @@
  * Run: npm run tauri:build
  */
 import { execSync } from "child_process";
-import { writeFileSync, unlinkSync, copyFileSync, existsSync, readdirSync, rmSync } from "fs";
+import { writeFileSync, unlinkSync, copyFileSync, existsSync, readdirSync, rmSync, readFileSync } from "fs";
 import { fileURLToPath } from "url";
 import path from "path";
 
@@ -98,7 +98,28 @@ if (process.platform === "linux") {
   }
 }
 
-// 9. Tauri build — platform-specific bundle targets
+// 9. macOS: re-sign all .node files in the server bundle with a secure timestamp.
+//    Pre-built native binaries (e.g. sharp) ship unsigned or without a timestamp,
+//    which causes Apple notarization to fail with "signature does not include a
+//    secure timestamp". Re-signing forces codesign to add one.
+if (process.platform === "darwin") {
+  const tauriConf = JSON.parse(readFileSync(path.join(ROOT, "src-tauri/tauri.conf.json"), "utf8"));
+  const signingIdentity = process.env.APPLE_SIGNING_IDENTITY ?? tauriConf.bundle?.macOS?.signingIdentity;
+  if (signingIdentity) {
+    const serverDir = path.join(ROOT, "src-tauri/resources/server");
+    const nodeFiles = execSync(`find "${serverDir}" -name "*.node"`, { encoding: "utf8" })
+      .trim().split("\n").filter(Boolean);
+    if (nodeFiles.length > 0) {
+      console.log(`\n▶ Re-signing ${nodeFiles.length} native .node file(s) with timestamp`);
+      for (const f of nodeFiles) {
+        execSync(`codesign --force --sign "${signingIdentity}" --timestamp "${f}"`, { stdio: "inherit", cwd: ROOT });
+        console.log(`  signed: ${path.relative(ROOT, f)}`);
+      }
+    }
+  }
+}
+
+// 11. Tauri build — platform-specific bundle targets
 //    macOS:   build .app only (we create the DMG manually to fix server/ first)
 //    Windows: NSIS installer
 //    Linux:   AppImage + deb.  appimagetool is itself an AppImage; CI runners
@@ -139,7 +160,7 @@ try {
   unlinkSync(overrideCfgPath);
 }
 
-// 10. macOS: fix flattened server/ directory inside .app bundle
+// 12. macOS: fix flattened server/ directory inside .app bundle
 if (process.platform === "darwin") {
   run("node scripts/fix-app-bundle.mjs", "Fixing .app bundle server/ structure");
 }
