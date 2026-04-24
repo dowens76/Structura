@@ -1900,6 +1900,7 @@ export default function PassageView({
           onSelectGroup={handleSelectRstGroup}
           onDeleteGroup={handleDeleteRstGroup}
           customTypes={customRstTypes}
+          hideSourceTree={hideSourceText}
         />
         {/* Overlay: word-to-word arrows */}
         <WordArrowOverlay

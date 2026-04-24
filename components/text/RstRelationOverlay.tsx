@@ -915,92 +915,83 @@ export default function RstRelationOverlay({
         );
       })}
 
-      {/* ── Segment leaf dots — source tree ──────────────────────────────── */}
-      {!hideSourceTree && layoutNodes
-        .filter(n => n.type === "segment" && !n.isTrans && relatedSegIds.has(n.id))
-        .map(n => (
-          <circle
-            key={`leaf-${n.id}`}
-            cx={n.x} cy={n.y} r={3}
-            fill={n.role === "nucleus" ? "#7C3AED" : "#F59E0B"}
-            opacity={0.9}
-            style={{ pointerEvents: "none" }}
-          />
-        ))}
-      {/* ── Segment leaf dots — translation tree (unlinked mode) ──────────── */}
-      {tvRelations && layoutNodes
-        .filter(n => n.type === "segment" && n.isTrans && tvRelatedSegIds.has(n.id))
-        .map(n => (
-          <circle
-            key={`tv-leaf-${n.id}`}
-            cx={n.x} cy={n.y} r={3}
-            fill={n.role === "nucleus" ? "#7C3AED" : "#F59E0B"}
-            opacity={0.9}
-            style={{ pointerEvents: "none" }}
-          />
-        ))}
-
-      {/* ── Editing mode: segment selector dots ──────────────────────────── */}
-      {editing && (() => {
-        // Find a reference transLeftX for segments that lack translation text
-        // (fall back to the nearest sibling's value).
+      {/* ── Segment anchor dots ─────────────────────────────────────────── */}
+      {/* Non-editing: solid colored dots for relation-connected paragraphs. */}
+      {/* Editing: interactive dots for all paragraphs.                     */}
+      {(() => {
         const refTransLeftX = hasTranslation
           ? [...posMap.values()].find(p => p.transLeftX !== undefined)?.transLeftX
           : undefined;
 
-        return paragraphFirstWordIds.flatMap(wordId => {
-        const pos = posMap.get(wordId);
-        if (!pos) return [];
+        // When not editing, only show dots for paragraphs in relations.
+        const visibleIds = editing
+          ? paragraphFirstWordIds
+          : paragraphFirstWordIds.filter(id => relatedSegIds.has(id) || tvRelatedSegIds.has(id));
 
-        // When a GROUP is the selected nucleus (connector-dot click), suppress
-        // the paragraph dots for all members of that group — only the chip ring
-        // should glow, making it visually clear that the group (not a specific
-        // paragraph) is the endpoint.
-        const suppressedByGroup = suppressedDotIds.has(wordId);
-        const isNucleus   = wordId === selectedNucleusWordId && !suppressedByGroup;
-        const isSatellite = wordId === selectedSatelliteWordId;
+        return visibleIds.flatMap(wordId => {
+          const pos = posMap.get(wordId);
+          if (!pos) return [];
 
-        const r      = isNucleus ? NUCLEUS_R : isSatellite ? SAT_R : SEG_R;
-        const fill   = isNucleus ? "#7C3AED" : isSatellite ? "#F59E0B" : "transparent";
-        const stroke = isNucleus ? "#7C3AED" : isSatellite ? "#F59E0B" : "#94A3B8";
-        const sw     = isNucleus || isSatellite ? 0 : 1.5;
-        const dotY   = pos.top + (pos.bottom - pos.top) / 2;
+          const suppressedByGroup = suppressedDotIds.has(wordId);
+          const isNucleus   = wordId === selectedNucleusWordId && !suppressedByGroup;
+          const isSatellite = wordId === selectedSatelliteWordId;
 
-        // Source-column dot
-        const srcDotX = (isHebrew && pos.srcCellRightX !== undefined)
-          ? pos.srcCellRightX + LEAF_MARGIN
-          : isHebrew
+          let r: number, fill: string, stroke: string, sw: number;
+          if (editing) {
+            r      = isNucleus ? NUCLEUS_R : isSatellite ? SAT_R : SEG_R;
+            fill   = isNucleus ? "#7C3AED" : isSatellite ? "#F59E0B" : "transparent";
+            stroke = isNucleus ? "#7C3AED" : isSatellite ? "#F59E0B" : "#94A3B8";
+            sw     = isNucleus || isSatellite ? 0 : 1.5;
+          } else {
+            // Solid dot colored by this segment's role in its relation.
+            const srcRole = relations.find(rel => rel.segWordId === wordId)?.role;
+            const dotColor = srcRole === "nucleus" ? "#7C3AED" : "#F59E0B";
+            r = SEG_R; fill = dotColor; stroke = dotColor; sw = 0;
+          }
+
+          const dotY    = pos.top + (pos.bottom - pos.top) / 2;
+          const srcDotX = isHebrew
             ? pos.rightX + LEAF_MARGIN
             : pos.leftX - LEAF_MARGIN;
 
-        const dots: React.ReactElement[] = [
-          <circle
-            key={`${wordId}-src`}
-            cx={srcDotX} cy={dotY} r={r}
-            fill={fill} stroke={stroke} strokeWidth={sw}
-            style={{ cursor: "pointer", pointerEvents: "all" }}
-            onClick={(e) => { e.stopPropagation(); onSelectSegment(wordId); }}
-          />
-        ];
+          const dots: React.ReactElement[] = [];
 
-        // Translation-column dot (shown whenever translation is visible)
-        if (hasTranslation) {
-          const txLeft = pos.transLeftX ?? refTransLeftX;
-          if (txLeft !== undefined) {
-            const txDotX = txLeft - LEAF_MARGIN;
+          if (!hideSourceTree || editing) {
             dots.push(
               <circle
-                key={`${wordId}-trans`}
-                cx={txDotX} cy={dotY} r={r}
+                key={`${wordId}-src`}
+                cx={srcDotX} cy={dotY} r={r}
                 fill={fill} stroke={stroke} strokeWidth={sw}
-                style={{ cursor: "pointer", pointerEvents: "all" }}
-                onClick={(e) => { e.stopPropagation(); onSelectSegment(wordId); }}
+                style={editing
+                  ? { cursor: "pointer", pointerEvents: "all" }
+                  : { pointerEvents: "none" }}
+                onClick={editing ? (e) => { e.stopPropagation(); onSelectSegment(wordId); } : undefined}
               />
             );
           }
-        }
 
-        return dots;
+          if (hasTranslation) {
+            const txLeft = pos.transLeftX ?? refTransLeftX;
+            if (txLeft !== undefined) {
+              const tvRole = (tvRelations ?? relations).find(rel => rel.segWordId === wordId)?.role;
+              const tvColor = editing
+                ? fill
+                : (tvRole === "nucleus" ? "#7C3AED" : "#F59E0B");
+              dots.push(
+                <circle
+                  key={`${wordId}-trans`}
+                  cx={txLeft - LEAF_MARGIN} cy={dotY} r={r}
+                  fill={tvColor} stroke={editing ? stroke : tvColor} strokeWidth={sw}
+                  style={editing
+                    ? { cursor: "pointer", pointerEvents: "all" }
+                    : { pointerEvents: "none" }}
+                  onClick={editing ? (e) => { e.stopPropagation(); onSelectSegment(wordId); } : undefined}
+                />
+              );
+            }
+          }
+
+          return dots;
         });
       })()}
     </svg>
