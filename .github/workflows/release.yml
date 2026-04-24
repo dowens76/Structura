@@ -40,6 +40,9 @@ jobs:
             -s -k "" $KEYCHAIN_PATH
           rm certificate.p12
 
+      - name: Create user database schema
+        run: npm run db:push
+
       - name: Build and notarize
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
