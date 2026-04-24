@@ -100,6 +100,29 @@ jobs:
           echo "--- linuxdeploy self-test ---"
           APPIMAGE_EXTRACT_AND_RUN=1 /tmp/ld-preflight/linuxdeploy --version 2>&1 || echo "Exit code: $?"
 
+      # ── macOS: import signing certificate into a keychain ─────────────────────
+      # This must run before the build so that our tauri-build.mjs re-signing
+      # step (which calls codesign directly) can find the certificate.
+      # KEYCHAIN_PATH is written to $GITHUB_ENV so all subsequent steps see it.
+      - name: Import signing certificate (macOS)
+        if: runner.os == 'macOS' && env.APPLE_CERTIFICATE != ''
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        run: |
+          KEYCHAIN_PATH=$RUNNER_TEMP/build.keychain-db
+          echo "$APPLE_CERTIFICATE" | base64 --decode > certificate.p12
+          security create-keychain -p "" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "" "$KEYCHAIN_PATH"
+          security import certificate.p12 -k "$KEYCHAIN_PATH" \
+            -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security list-keychains -d user -s "$KEYCHAIN_PATH" login.keychain-db
+          security set-key-partition-list -S apple-tool:,apple: \
+            -s -k "" "$KEYCHAIN_PATH"
+          rm certificate.p12
+          echo "KEYCHAIN_PATH=$KEYCHAIN_PATH" >> "$GITHUB_ENV"
+
       # ── Build ─────────────────────────────────────────────────────────────────
       - name: Build Tauri app
         run: npm run tauri:build
