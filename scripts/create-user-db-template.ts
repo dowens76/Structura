@@ -10,6 +10,7 @@
 
 import Database from "better-sqlite3";
 import { mkdirSync, copyFileSync, existsSync } from "fs";
+import { execSync } from "child_process";
 import path from "path";
 
 const ROOT        = process.cwd();
@@ -18,8 +19,11 @@ const DEST_DIR    = path.join(ROOT, "src-tauri", "resources");
 const DEST_DB     = path.join(DEST_DIR, "user.db.template");
 
 if (!existsSync(SOURCE_DB)) {
-  console.error("Error: data/user.db not found. Start the app once first to create it.");
-  process.exit(1);
+  // CI path: no user.db yet — create one from the Drizzle schema
+  console.log("data/user.db not found — creating from schema ...");
+  mkdirSync(path.join(ROOT, "data"), { recursive: true });
+  new Database(SOURCE_DB).close(); // creates an empty valid SQLite file
+  execSync("npm run db:push", { stdio: "inherit", cwd: ROOT });
 }
 
 console.log("Creating user.db.template from data/user.db ...");
