@@ -46,6 +46,7 @@
       "binaries/node"
     ],
     "macOS": {
+      "signingIdentity": "Developer ID Application: DANIEL C OWENS (5QS52T7HF4)",
       "entitlements": "entitlements.plist",
       "minimumSystemVersion": "10.15"
     }
