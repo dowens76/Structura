@@ -42,8 +42,9 @@ next-env.d.ts
 
 # Bible data (SQLite DB and downloaded source files)
 /data/structura.db
-/data/structura.db-shm
-/data/structura.db-wal
+/data/user.db
+/data/*.db-shm
+/data/*.db-wal
 /data/sources/
 
 # Tauri build artifacts
