@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { updateWordTag, deleteWordTag } from "@/lib/db/queries";
 
+export const dynamic = "force-dynamic";
+
 // PATCH /api/word-tags/:id  body: { name, color }
 export async function PATCH(
   request: NextRequest,

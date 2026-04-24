@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getChapterMaxVerse } from "@/lib/db/queries";
 
+export const dynamic = "force-dynamic";
+
 // GET /api/verse-count?book=Gen&chapter=1&source=OSHB
 // Returns the highest verse number in the given chapter, useful for passage boundary navigation.
 export async function GET(request: NextRequest) {

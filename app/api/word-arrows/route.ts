@@ -6,6 +6,8 @@ import {
 } from "@/lib/db/queries";
 import { getActiveWorkspaceId } from "@/lib/workspace";
 
+export const dynamic = "force-dynamic";
+
 export async function GET(req: NextRequest) {
   const workspaceId = await getActiveWorkspaceId();
   const { searchParams } = req.nextUrl;

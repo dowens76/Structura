@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { deleteCharacter, updateCharacter } from "@/lib/db/queries";
 
+export const dynamic = "force-dynamic";
+
 // PATCH /api/characters/:id  — update name and/or color
 export async function PATCH(
   request: NextRequest,

@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { getPassagesForBook, createPassage } from "@/lib/db/queries";
 import { getActiveWorkspaceId } from "@/lib/workspace";
 
+export const dynamic = "force-dynamic";
+
 // GET /api/passages?book=Gen&source=OSHB
 export async function GET(request: NextRequest) {
   const workspaceId = await getActiveWorkspaceId();

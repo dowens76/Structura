@@ -8,6 +8,8 @@ import {
 } from "@/lib/db/queries";
 import { getActiveWorkspaceId } from "@/lib/workspace";
 
+export const dynamic = "force-dynamic";
+
 /** GET ?book=&chapter=&source= → { relations: RstRelation[] } */
 export async function GET(req: NextRequest) {
   const workspaceId = await getActiveWorkspaceId();

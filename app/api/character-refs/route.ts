@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { getChapterCharacterRefs, upsertCharacterRef, removeCharacterRef } from "@/lib/db/queries";
 import { getActiveWorkspaceId } from "@/lib/workspace";
 
+export const dynamic = "force-dynamic";
+
 // GET /api/character-refs?book=Gen&chapter=1
 // Returns refs for ALL text sources in this chapter (source text + translations)
 export async function GET(request: NextRequest) {

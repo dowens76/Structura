@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { getCharacters, createCharacter } from "@/lib/db/queries";
 import { getActiveWorkspaceId } from "@/lib/workspace";
 
+export const dynamic = "force-dynamic";
+
 // GET /api/characters?book=Gen
 export async function GET(request: NextRequest) {
   const workspaceId = await getActiveWorkspaceId();

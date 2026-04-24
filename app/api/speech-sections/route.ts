@@ -11,6 +11,8 @@ import type { SpeechSection } from "@/lib/db/schema";
 import type { TextSource } from "@/lib/morphology/types";
 import { getActiveWorkspaceId } from "@/lib/workspace";
 
+export const dynamic = "force-dynamic";
+
 // GET /api/speech-sections?book=Gen&chapter=1&source=OSHB
 export async function GET(request: NextRequest) {
   const workspaceId = await getActiveWorkspaceId();

@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { upsertWordTagRef, removeWordTagRef } from "@/lib/db/queries";
 import { getActiveWorkspaceId } from "@/lib/workspace";
 
+export const dynamic = "force-dynamic";
+
 // POST /api/word-tag-refs
 // body: { wordId, tagId, book, chapter, source }
 // If tagId is null → remove the ref

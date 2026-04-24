@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPassage, updatePassage, deletePassage } from "@/lib/db/queries";
 
+export const dynamic = "force-dynamic";
+
 interface RouteContext {
   params: Promise<{ id: string }>;
 }

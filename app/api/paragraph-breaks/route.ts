@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { getChapterParagraphBreaks, toggleParagraphBreak } from "@/lib/db/queries";
 import { getActiveWorkspaceId } from "@/lib/workspace";
 
+export const dynamic = "force-dynamic";
+
 // GET /api/paragraph-breaks?book=Gen&chapter=1
 export async function GET(request: NextRequest) {
   const workspaceId = await getActiveWorkspaceId();

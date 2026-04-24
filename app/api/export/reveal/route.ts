@@ -25,6 +25,8 @@ import type {
 } from "@/lib/db/schema";
 import type { TextSource } from "@/lib/morphology/types";
 
+export const dynamic = "force-dynamic";
+
 // ── HTML escaping ─────────────────────────────────────────────────────────────
 
 function esc(s: string): string {
