@@ -42,6 +42,8 @@ jobs:
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
+          security list-keychains -d user -s build.keychain login.keychain
+          security default-keychain -s build.keychain
           security unlock-keychain -p "" build.keychain
           npm run tauri:build
 
