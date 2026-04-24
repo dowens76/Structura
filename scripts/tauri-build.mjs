@@ -104,14 +104,17 @@ if (process.platform === "linux") {
 //    secure timestamp". Re-signing forces codesign to add one.
 if (process.platform === "darwin") {
   const tauriConf = JSON.parse(readFileSync(path.join(ROOT, "src-tauri/tauri.conf.json"), "utf8"));
-  const signingIdentity = process.env.APPLE_SIGNING_IDENTITY ?? tauriConf.bundle?.macOS?.signingIdentity;
+  const signingIdentity = process.env.APPLE_SIGNING_IDENTITY || tauriConf.bundle?.macOS?.signingIdentity;
   if (signingIdentity) {
     const serverDir = path.join(ROOT, "src-tauri/resources/server");
-    const nodeFiles = execSync(`find "${serverDir}" -name "*.node"`, { encoding: "utf8" })
-      .trim().split("\n").filter(Boolean);
-    if (nodeFiles.length > 0) {
-      console.log(`\n▶ Re-signing ${nodeFiles.length} native .node file(s) with timestamp`);
-      for (const f of nodeFiles) {
+    // Sign both .node native addons and .dylib shared libraries (e.g. sharp-libvips)
+    const nativeFiles = execSync(
+      `find "${serverDir}" \\( -name "*.node" -o -name "*.dylib" \\)`,
+      { encoding: "utf8" }
+    ).trim().split("\n").filter(Boolean);
+    if (nativeFiles.length > 0) {
+      console.log(`\n▶ Re-signing ${nativeFiles.length} native file(s) with timestamp`);
+      for (const f of nativeFiles) {
         execSync(`codesign --force --sign "${signingIdentity}" --timestamp "${f}"`, { stdio: "inherit", cwd: ROOT });
         console.log(`  signed: ${path.relative(ROOT, f)}`);
       }
