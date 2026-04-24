@@ -151,8 +151,8 @@ function migrateUserDb(sqlite: Database.Database): void {
 export function getUserDb() {
   if (!_userDb) {
     _userSqlite = new Database(USER_DB_PATH);
-    _userSqlite.pragma("journal_mode = WAL");
     _userSqlite.pragma("busy_timeout = 5000");
+    _userSqlite.pragma("journal_mode = WAL");
     _userSqlite.pragma("synchronous = NORMAL");
     _userSqlite.pragma("foreign_keys = ON");
     migrateUserDb(_userSqlite);
