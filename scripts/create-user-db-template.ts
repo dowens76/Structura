@@ -26,6 +26,15 @@ if (!existsSync(SOURCE_DB)) {
   execSync("npm run db:push", { stdio: "inherit", cwd: ROOT });
 }
 
+// Pre-set WAL mode so concurrent Next.js build workers don't race on the
+// journal_mode pragma. PRAGMA journal_mode = WAL is a no-op (no exclusive
+// lock needed) when the database is already in WAL mode.
+{
+  const preWal = new Database(SOURCE_DB);
+  preWal.pragma("journal_mode = WAL");
+  preWal.close();
+}
+
 console.log("Creating user.db.template from data/user.db ...");
 mkdirSync(DEST_DIR, { recursive: true });
 copyFileSync(SOURCE_DB, DEST_DB);
