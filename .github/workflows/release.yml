@@ -28,14 +28,16 @@ jobs:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
         run: |
+          KEYCHAIN_PATH=$RUNNER_TEMP/build.keychain-db
           echo "$APPLE_CERTIFICATE" | base64 --decode > certificate.p12
-          security create-keychain -p "" build.keychain
-          security default-keychain -s build.keychain
-          security unlock-keychain -p "" build.keychain
-          security import certificate.p12 -k build.keychain \
+          security create-keychain -p "" $KEYCHAIN_PATH
+          security set-keychain-settings -lut 21600 $KEYCHAIN_PATH
+          security unlock-keychain -p "" $KEYCHAIN_PATH
+          security import certificate.p12 -k $KEYCHAIN_PATH \
             -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security list-keychains -d user -s $KEYCHAIN_PATH login.keychain-db
           security set-key-partition-list -S apple-tool:,apple: \
-            -s -k "" build.keychain
+            -s -k "" $KEYCHAIN_PATH
           rm certificate.p12
 
       - name: Build and notarize
@@ -43,10 +45,9 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          KEYCHAIN_PATH: ${{ runner.temp }}/build.keychain-db
         run: |
-          security list-keychains -d user -s build.keychain login.keychain
-          security default-keychain -s build.keychain
-          security unlock-keychain -p "" build.keychain
+          security unlock-keychain -p "" $KEYCHAIN_PATH
           npm run tauri:build
 
       - name: Upload release artifacts
