@@ -114,7 +114,7 @@ if (process.platform === "darwin") {
     ).trim().split("\n").filter(Boolean);
     if (nativeFiles.length > 0) {
       console.log(`\n▶ Re-signing ${nativeFiles.length} native file(s) with timestamp`);
-      const keychainFlag = process.env.KEYCHAIN_PATH ? `-k "${process.env.KEYCHAIN_PATH}"` : "";
+      const keychainFlag = process.env.KEYCHAIN_PATH ? `--keychain "${process.env.KEYCHAIN_PATH}"` : "";
       for (const f of nativeFiles) {
         execSync(`codesign --force --sign "${signingIdentity}" ${keychainFlag} --timestamp "${f}"`, { stdio: "inherit", cwd: ROOT });
         console.log(`  signed: ${path.relative(ROOT, f)}`);
