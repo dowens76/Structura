@@ -41,7 +41,7 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: npm run tauri build
+        run: npx tauri build
 
       - name: Upload release artifacts
         uses: softprops/action-gh-release@v2
