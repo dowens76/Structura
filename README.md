@@ -10,10 +10,6 @@ Structura ships as a Linux, Mac, and Windows app. As of version 0.6.0, Chromeboo
 
 Download the latest release at https://github.com/dowens76/structura/releases/latest.
 
-**Important note for Mac users:** The MacOS will complain that the app is damaged. To get around this security feature, open the terminal and run: 
-
-``xattr -cr /Applications/Structura.app`` 
-
 ### How to Give Feedback
 
 If you want to give feedback about the app, share ideas for new features, or connect about visually analysing Bible passages, click on the Discussions tab above and start or respond to a discussion. You will need a free Github account. 
