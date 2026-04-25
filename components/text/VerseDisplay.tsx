@@ -415,7 +415,10 @@ function AnnotBadge({
           </span>
         )}
         {annotation.description && (
-          <span className={`${badgeTextCls} text-stone-600 dark:text-stone-400 leading-tight min-w-0 break-words`}>
+          <span
+            className="text-stone-600 dark:text-stone-400 leading-tight min-w-0 break-words"
+            style={{ fontSize: presentationMode ? "1rem" : "var(--translation-font-size, 0.875rem)" }}
+          >
             {annotation.description}
           </span>
         )}
