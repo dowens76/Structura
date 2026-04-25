@@ -21,6 +21,7 @@ import SearchPane from "@/components/search/SearchPane";
 import OutlinePane from "@/components/text/OutlinePane";
 import ResizablePane from "@/components/ResizablePane";
 import RstTypeManager from "@/components/controls/RstTypeManager";
+import ToolbarCustomizer, { DEFAULT_TOOLBAR_VIS, type ToolbarVisibility } from "@/components/controls/ToolbarCustomizer";
 import type { ColorRule } from "@/lib/morphology/colorRules";
 import { RELATIONSHIP_TYPES, RELATIONSHIP_MAP } from "@/lib/morphology/clauseRelationships";
 import type { RstTypeEntry } from "@/lib/morphology/clauseRelationships";
@@ -328,6 +329,14 @@ export default function ChapterDisplay({
   // ── Presentation mode ─────────────────────────────────────────────────────
   const [presentationMode, setPresentationMode] = useState(false);
 
+  // ── Toolbar visibility (customizer) ───────────────────────────────────────
+  const [toolbarVis, setToolbarVis] = useState<ToolbarVisibility>(DEFAULT_TOOLBAR_VIS);
+  const [showToolbarCustomizer, setShowToolbarCustomizer] = useState(false);
+  const gearBtnRef = useRef<HTMLButtonElement>(null);
+  function setToolbarItemVis(key: keyof ToolbarVisibility, val: boolean) {
+    setToolbarVis(prev => ({ ...prev, [key]: val }));
+  }
+
   // ── Toolbar tooltip ───────────────────────────────────────────────────────
   const [tbTooltip, setTbTooltip] = useState<{ text: string; x: number; y: number } | null>(null);
 
@@ -491,6 +500,7 @@ export default function ChapterDisplay({
     setGreekFontSize(readLocal<number>("structura:greekFontSize", 1.25));
     setTranslationFontSize(readLocal<number>("structura:translationFontSize", 0.875));
     setHideSourceText(readLocal<boolean>("structura:hideSourceText", false));
+    setToolbarVis({ ...DEFAULT_TOOLBAR_VIS, ...readLocal<Partial<ToolbarVisibility>>("structura:toolbarVisibility", {}) });
   }, []); // empty deps → runs once after first render (client only)
 
   // Snapshot translation data when editing mode is entered so Cancel can revert to it
@@ -507,6 +517,7 @@ export default function ChapterDisplay({
   useEffect(() => { writeLocal("structura:useLinguisticTerms", useLinguisticTerms); }, [useLinguisticTerms]);
   useEffect(() => { writeLocal("structura:hideSourceText", hideSourceText); }, [hideSourceText]);
   useEffect(() => { writeLocal("structura:rstLinked", rstRelationsLinked); }, [rstRelationsLinked]);
+  useEffect(() => { writeLocal("structura:toolbarVisibility", toolbarVis); }, [toolbarVis]);
 
   // ── Load datasets list on mount ───────────────────────────────────────────
   useEffect(() => {
@@ -2503,7 +2514,7 @@ export default function ChapterDisplay({
                   }}
                 />
               )}
-              <button
+              {toolbarVis.tooltips && <button
                 onClick={() => setShowTooltips((v) => !v)}
                 data-tip={showTooltips ? t("toolbar.titleTooltipsOn") : t("toolbar.titleTooltipsOff")}
                 className={[
@@ -2514,10 +2525,10 @@ export default function ChapterDisplay({
                 ].join(" ")}
               >
                 {t("toolbar.tooltips")}
-              </button>
+              </button>}
 
               {/* Linguistic terms toggle — Hebrew only */}
-              {isHebrew && (
+              {isHebrew && toolbarVis.qatal && (
                 <button
                   onClick={() => setUseLinguisticTerms((v) => !v)}
                   data-tip={useLinguisticTerms
@@ -2537,7 +2548,7 @@ export default function ChapterDisplay({
               <div className="h-5 border-l border-[var(--border)]" />
 
               {/* Atnach marker — Hebrew only */}
-              {isHebrew && (
+              {isHebrew && toolbarVis.atnach && (
                 <button
                   onClick={() => setShowAtnachBreaks((v) => !v)}
                   data-tip={showAtnachBreaks
@@ -2555,7 +2566,7 @@ export default function ChapterDisplay({
               )}
 
               {/* Scene / episode break mode */}
-              <button
+              {toolbarVis.scenes && <button
                 onClick={() => { if (editingScenes) { handleExitSceneEditing(); } else { deactivateIncompatible("scenes"); setEditingScenes(true); } }}
                 data-tip={editingScenes
                   ? t("toolbar.titleSectionOn")
@@ -2568,10 +2579,10 @@ export default function ChapterDisplay({
                 ].join(" ")}
               >
                 §
-              </button>
+              </button>}
 
               {/* Outline sidebar toggle */}
-              {(sceneBreakMap.size > 0 || bookSceneBreaks.length > 0) && (
+              {toolbarVis.outline && (sceneBreakMap.size > 0 || bookSceneBreaks.length > 0) && (
                 <button
                   type="button"
                   onClick={() => setOutlineOpen((v) => !v)}
@@ -2588,7 +2599,7 @@ export default function ChapterDisplay({
               )}
 
               {/* Line annotation mode */}
-              <button
+              {toolbarVis.annotations && <button
                 onClick={() => {
                   if (!editingAnnotations) deactivateIncompatible("annotations");
                   setEditingAnnotations((v) => !v);
@@ -2604,10 +2615,10 @@ export default function ChapterDisplay({
                 ].join(" ")}
               >
                 ≡
-              </button>
+              </button>}
 
               {/* ¶ Atnach insert — Hebrew only */}
-              {isHebrew && (
+              {isHebrew && toolbarVis.atnachInsert && (
                 <button
                   onClick={handleAddAtnachParagraphBreaks}
                   data-tip="Insert paragraph breaks at every atnach accent in this chapter"
@@ -2618,7 +2629,7 @@ export default function ChapterDisplay({
               )}
 
               {/* Paragraph edit mode toggle */}
-              <button
+              {toolbarVis.paragraphs && <button
                 onClick={() => { if (!editingParagraphs) deactivateIncompatible("paragraph"); setEditingParagraphs((v) => !v); }}
                 data-tip={editingParagraphs
                   ? t("toolbar.titleParagraphOn")
@@ -2631,10 +2642,10 @@ export default function ChapterDisplay({
                 ].join(" ")}
               >
                 ¶
-              </button>
+              </button>}
 
               {/* Paragraph indent mode */}
-              <button
+              {toolbarVis.indents && <button
                 onClick={() => {
                   if (!editingIndents) deactivateIncompatible("indents");
                   setEditingIndents((v) => !v);
@@ -2650,7 +2661,7 @@ export default function ChapterDisplay({
                 ].join(" ")}
               >
                 ⇥
-              </button>
+              </button>}
 
               {/* Source/translation indent link toggle — visible only in indent mode */}
               {editingIndents && (
@@ -2683,7 +2694,7 @@ export default function ChapterDisplay({
               )}
 
               {/* RST relation mode */}
-              <button
+              {toolbarVis.rst && <button
                 onClick={() => {
                   const entering = !editingRst;
                   if (entering) {
@@ -2708,8 +2719,8 @@ export default function ChapterDisplay({
                 ].join(" ")}
               >
                 ↳
-              </button>
-              {editingRst && (
+              </button>}
+              {toolbarVis.rst && editingRst && (
                 <button
                   onClick={() => setShowRstTypeManager((v) => !v)}
                   data-tip={t("toolbar.titleRstLabels")}
@@ -2723,7 +2734,7 @@ export default function ChapterDisplay({
                   {t("toolbar.rstLabels")}
                 </button>
               )}
-              {editingRst && hasActiveTranslations && (
+              {toolbarVis.rst && editingRst && hasActiveTranslations && (
                 <>
                   <label
                     className="flex items-center gap-1 text-[11px] text-stone-500 dark:text-stone-400 cursor-pointer select-none"
@@ -2773,7 +2784,7 @@ export default function ChapterDisplay({
               )}
 
               {/* Word arrow mode */}
-              <button
+              {toolbarVis.arrows && <button
                 onClick={() => {
                   const entering = !editingArrows;
                   if (entering) {
@@ -2794,12 +2805,12 @@ export default function ChapterDisplay({
                 ].join(" ")}
               >
                 ↷
-              </button>
+              </button>}
 
               <div className="h-5 border-l border-[var(--border)]" />
 
               {/* Bold formatting mode */}
-              <button
+              {toolbarVis.bold && <button
                 onClick={() => {
                   if (!editingBold) deactivateIncompatible("bold");
                   setEditingBold((v) => !v);
@@ -2813,10 +2824,10 @@ export default function ChapterDisplay({
                 ].join(" ")}
               >
                 B
-              </button>
+              </button>}
 
               {/* Italic formatting mode */}
-              <button
+              {toolbarVis.italic && <button
                 onClick={() => {
                   if (!editingItalic) deactivateIncompatible("italic");
                   setEditingItalic((v) => !v);
@@ -2830,10 +2841,10 @@ export default function ChapterDisplay({
                 ].join(" ")}
               >
                 I
-              </button>
+              </button>}
 
               {/* Character reference tag mode */}
-              <button
+              {toolbarVis.refs && <button
                 onClick={() => {
                   if (!editingRefs) deactivateIncompatible("refs");
                   setEditingRefs((v) => !v);
@@ -2847,10 +2858,10 @@ export default function ChapterDisplay({
                 ].join(" ")}
               >
                 👤
-              </button>
+              </button>}
 
               {/* Speech section tag mode */}
-              <button
+              {toolbarVis.speech && <button
                 onClick={() => {
                   if (!editingSpeech) deactivateIncompatible("speech");
                   setEditingSpeech((v) => !v);
@@ -2866,10 +2877,10 @@ export default function ChapterDisplay({
                 ].join(" ")}
               >
                 💬
-              </button>
+              </button>}
 
               {/* Word / concept tag mode */}
-              <button
+              {toolbarVis.wordTags && <button
                 onClick={() => {
                   if (!editingWordTags) deactivateIncompatible("wordTags");
                   setEditingWordTags((v) => !v);
@@ -2885,7 +2896,7 @@ export default function ChapterDisplay({
                 ].join(" ")}
               >
                 🏷
-              </button>
+              </button>}
 
               <div className="h-5 border-l border-[var(--border)]" />
 
@@ -2908,18 +2919,18 @@ export default function ChapterDisplay({
               )}
 
               {/* Clear annotations */}
-              <button
+              {toolbarVis.clear && <button
                 onClick={() => setShowClearDialog(true)}
                 data-tip={t("toolbar.titleClear")}
                 className="px-3 py-1.5 rounded text-[13px] font-medium transition-colors bg-stone-100 dark:bg-stone-800 text-stone-500 dark:text-stone-400 hover:bg-red-100 hover:text-red-600 dark:hover:bg-red-950 dark:hover:text-red-400"
               >
                 🗑
-              </button>
+              </button>}
 
               <div className="h-5 border-l border-[var(--border)]" />
 
               {/* Notes panel toggle */}
-              <button
+              {toolbarVis.notes && <button
                 onClick={() => setNotesOpen((v) => !v)}
                 data-tip={notesOpen ? t("toolbar.titleNotesOn") : t("toolbar.titleNotesOff")}
                 className={[
@@ -2930,10 +2941,10 @@ export default function ChapterDisplay({
                 ].join(" ")}
               >
                 📝
-              </button>
+              </button>}
 
               {/* Search panel toggle */}
-              <button
+              {toolbarVis.search && <button
                 onClick={() => setSearchOpen((v) => !v)}
                 data-tip={searchOpen ? "Close Search" : "Search corpus"}
                 className={[
@@ -2944,12 +2955,12 @@ export default function ChapterDisplay({
                 ].join(" ")}
               >
                 🔍
-              </button>
+              </button>}
 
               <div className="h-5 border-l border-[var(--border)]" />
 
               {/* Translation picker + source visibility toggle + translation edit */}
-              {allAvailableTranslations.length > 0 && (
+              {toolbarVis.translations && allAvailableTranslations.length > 0 && (
                 <div className="flex items-center gap-1">
                   <span className="text-xs text-stone-400 dark:text-stone-500 mr-1 select-none">
                     {t("toolbar.trLabel")}
@@ -3011,6 +3022,31 @@ export default function ChapterDisplay({
                   </div>
                 );
               })()}
+
+              {/* Gear button — toolbar customizer */}
+              <div className="ml-auto">
+                <button
+                  ref={gearBtnRef}
+                  onClick={() => setShowToolbarCustomizer((v) => !v)}
+                  data-tip="Customize toolbar"
+                  className={[
+                    "px-3 py-1.5 rounded text-[13px] font-medium transition-colors",
+                    showToolbarCustomizer
+                      ? "bg-stone-300 dark:bg-stone-600 text-stone-700 dark:text-stone-200"
+                      : "bg-stone-100 dark:bg-stone-800 text-stone-500 dark:text-stone-400 hover:bg-stone-200 dark:hover:bg-stone-700",
+                  ].join(" ")}
+                >
+                  ⚙
+                </button>
+                {showToolbarCustomizer && (
+                  <ToolbarCustomizer
+                    visibility={toolbarVis}
+                    onChange={setToolbarItemVis}
+                    onClose={() => setShowToolbarCustomizer(false)}
+                    anchorRef={gearBtnRef}
+                  />
+                )}
+              </div>
             </>
           )}
         </div>
