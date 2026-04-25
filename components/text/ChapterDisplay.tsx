@@ -328,6 +328,20 @@ export default function ChapterDisplay({
   // ── Presentation mode ─────────────────────────────────────────────────────
   const [presentationMode, setPresentationMode] = useState(false);
 
+  // ── Toolbar tooltip ───────────────────────────────────────────────────────
+  const [tbTooltip, setTbTooltip] = useState<{ text: string; x: number; y: number } | null>(null);
+
+  function handleToolbarMouseMove(e: React.MouseEvent) {
+    const btn = (e.target as Element).closest("[data-tip]") as HTMLElement | null;
+    if (btn) {
+      const text = btn.getAttribute("data-tip") ?? "";
+      if (text) setTbTooltip({ text, x: e.clientX, y: e.clientY });
+      else setTbTooltip(null);
+    } else {
+      setTbTooltip(null);
+    }
+  }
+
   // ── Outline pane ──────────────────────────────────────────────────────────
   const [outlineOpen, setOutlineOpen] = useState(false);
   const [outlineCopied, setOutlineCopied] = useState(false);
@@ -2413,7 +2427,19 @@ export default function ChapterDisplay({
         <div className="sticky top-0 z-20 shrink-0 flex flex-col" style={{ backgroundColor: "var(--background)" }}>
 
         {/* Toolbar */}
-        <div className="border-b border-[var(--border)] px-6 py-3 flex items-center gap-4 flex-wrap">
+        {tbTooltip && (
+          <div
+            className="fixed z-[200] pointer-events-none px-2 py-1 rounded bg-stone-900 dark:bg-stone-100 text-white dark:text-stone-900 text-[15px] max-w-xs shadow-lg"
+            style={{ left: tbTooltip.x + 12, top: tbTooltip.y + 16 }}
+          >
+            {tbTooltip.text}
+          </div>
+        )}
+        <div
+          className="border-b border-[var(--border)] px-6 py-3 flex items-center gap-4 flex-wrap"
+          onMouseMove={handleToolbarMouseMove}
+          onMouseLeave={() => setTbTooltip(null)}
+        >
 
           {/* Presentation mode toggle — always visible */}
           <button
@@ -2442,9 +2468,9 @@ export default function ChapterDisplay({
                 setPanelOpen(false);
               }
             }}
-            title={presentationMode ? t("toolbar.titlePresentationOn") : t("toolbar.titlePresentationOff")}
+            data-tip={presentationMode ? t("toolbar.titlePresentationOn") : t("toolbar.titlePresentationOff")}
             className={[
-              "px-2.5 py-1 rounded text-xs font-medium transition-colors",
+              "px-3 py-1.5 rounded text-[13px] font-medium transition-colors",
               presentationMode
                 ? "bg-sky-600 text-white"
                 : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
@@ -2479,9 +2505,9 @@ export default function ChapterDisplay({
               )}
               <button
                 onClick={() => setShowTooltips((v) => !v)}
-                title={showTooltips ? t("toolbar.titleTooltipsOn") : t("toolbar.titleTooltipsOff")}
+                data-tip={showTooltips ? t("toolbar.titleTooltipsOn") : t("toolbar.titleTooltipsOff")}
                 className={[
-                  "px-2.5 py-1 rounded text-xs font-medium transition-colors",
+                  "px-3 py-1.5 rounded text-[13px] font-medium transition-colors",
                   showTooltips
                     ? "bg-blue-600 text-white"
                     : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
@@ -2490,56 +2516,52 @@ export default function ChapterDisplay({
                 {t("toolbar.tooltips")}
               </button>
 
+              {/* Linguistic terms toggle — Hebrew only */}
               {isHebrew && (
-                <>
-                  <button
-                    onClick={() => setShowAtnachBreaks((v) => !v)}
-                    title={showAtnachBreaks
-                      ? "Hide atnach half-verse markers"
-                      : "Show atnach accent markers (main cantillation accent dividing each verse)"}
-                    className={[
-                      "px-2.5 py-1 rounded text-xs font-medium transition-colors",
-                      showAtnachBreaks
-                        ? "bg-violet-600 text-white"
-                        : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
-                    ].join(" ")}
-                  >
-                    Atnach
-                  </button>
-                  <button
-                    onClick={handleAddAtnachParagraphBreaks}
-                    title="Insert paragraph breaks at every atnach accent in this chapter"
-                    className="px-2.5 py-1 rounded text-xs font-medium transition-colors bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700"
-                  >
-                    ¶ Atnach
-                  </button>
-                </>
+                <button
+                  onClick={() => setUseLinguisticTerms((v) => !v)}
+                  data-tip={useLinguisticTerms
+                    ? t("toolbar.titleLinguisticOn")
+                    : t("toolbar.titleLinguisticOff")}
+                  className={[
+                    "px-3 py-1.5 rounded text-[13px] font-medium transition-colors",
+                    useLinguisticTerms
+                      ? "bg-blue-600 text-white"
+                      : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
+                  ].join(" ")}
+                >
+                  Qatal
+                </button>
               )}
 
-              {/* Paragraph edit mode toggle */}
-              <button
-                onClick={() => { if (!editingParagraphs) deactivateIncompatible("paragraph"); setEditingParagraphs((v) => !v); }}
-                title={editingParagraphs
-                  ? t("toolbar.titleParagraphOn")
-                  : t("toolbar.titleParagraphOff")}
-                className={[
-                  "px-2.5 py-1 rounded text-xs font-medium transition-colors",
-                  editingParagraphs
-                    ? "bg-amber-500 text-white"
-                    : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
-                ].join(" ")}
-              >
-                ¶
-              </button>
+              <div className="h-5 border-l border-[var(--border)]" />
+
+              {/* Atnach marker — Hebrew only */}
+              {isHebrew && (
+                <button
+                  onClick={() => setShowAtnachBreaks((v) => !v)}
+                  data-tip={showAtnachBreaks
+                    ? "Hide atnach half-verse markers"
+                    : "Show atnach accent markers (main cantillation accent dividing each verse)"}
+                  className={[
+                    "px-3 py-1.5 rounded text-[13px] font-medium transition-colors",
+                    showAtnachBreaks
+                      ? "bg-violet-600 text-white"
+                      : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
+                  ].join(" ")}
+                >
+                  Atnach
+                </button>
+              )}
 
               {/* Scene / episode break mode */}
               <button
                 onClick={() => { if (editingScenes) { handleExitSceneEditing(); } else { deactivateIncompatible("scenes"); setEditingScenes(true); } }}
-                title={editingScenes
+                data-tip={editingScenes
                   ? t("toolbar.titleSectionOn")
                   : t("toolbar.titleSectionOff")}
                 className={[
-                  "px-2.5 py-1 rounded text-xs font-medium transition-colors",
+                  "px-3 py-1.5 rounded text-[13px] font-medium transition-colors",
                   editingScenes
                     ? "bg-amber-500 text-white"
                     : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
@@ -2548,17 +2570,34 @@ export default function ChapterDisplay({
                 §
               </button>
 
+              {/* Outline sidebar toggle */}
+              {(sceneBreakMap.size > 0 || bookSceneBreaks.length > 0) && (
+                <button
+                  type="button"
+                  onClick={() => setOutlineOpen((v) => !v)}
+                  className={[
+                    "shrink-0 text-[13px] px-3 py-1.5 rounded transition-colors",
+                    outlineOpen
+                      ? "bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400"
+                      : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
+                  ].join(" ")}
+                  data-tip={t("toolbar.titleCopyOutline")}
+                >
+                  {t("toolbar.outline")}
+                </button>
+              )}
+
               {/* Line annotation mode */}
               <button
                 onClick={() => {
                   if (!editingAnnotations) deactivateIncompatible("annotations");
                   setEditingAnnotations((v) => !v);
                 }}
-                title={editingAnnotations
+                data-tip={editingAnnotations
                   ? t("toolbar.titleAnnotationOn")
                   : t("toolbar.titleAnnotationOff")}
                 className={[
-                  "px-2.5 py-1 rounded text-xs font-medium transition-colors",
+                  "px-3 py-1.5 rounded text-[13px] font-medium transition-colors",
                   editingAnnotations
                     ? "bg-indigo-600 text-white"
                     : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
@@ -2566,79 +2605,45 @@ export default function ChapterDisplay({
               >
                 ≡
               </button>
-            </>
-          )}
 
-          {/* Character reference tag mode — always visible */}
-          <button
-            onClick={() => {
-              if (!editingRefs) deactivateIncompatible("refs");
-              setEditingRefs((v) => !v);
-            }}
-            title={editingRefs ? t("toolbar.titleRefsOn") : t("toolbar.titleRefsOff")}
-            className={[
-              "px-2.5 py-1 rounded text-xs font-medium transition-colors",
-              editingRefs
-                ? "bg-violet-600 text-white"
-                : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
-            ].join(" ")}
-          >
-            👤
-          </button>
+              {/* ¶ Atnach insert — Hebrew only */}
+              {isHebrew && (
+                <button
+                  onClick={handleAddAtnachParagraphBreaks}
+                  data-tip="Insert paragraph breaks at every atnach accent in this chapter"
+                  className="px-3 py-1.5 rounded text-[13px] font-medium transition-colors bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700"
+                >
+                  ¶ Atnach
+                </button>
+              )}
 
-          {!presentationMode && (
-            /* Speech section tag mode */
-            <button
-              onClick={() => {
-                if (!editingSpeech) deactivateIncompatible("speech");
-                setEditingSpeech((v) => !v);
-              }}
-              title={editingSpeech
-                ? t("toolbar.titleSpeechOn")
-                : t("toolbar.titleSpeechOff")}
-              className={[
-                "px-2.5 py-1 rounded text-xs font-medium transition-colors",
-                editingSpeech
-                  ? "bg-violet-600 text-white"
-                  : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
-              ].join(" ")}
-            >
-              💬
-            </button>
-          )}
+              {/* Paragraph edit mode toggle */}
+              <button
+                onClick={() => { if (!editingParagraphs) deactivateIncompatible("paragraph"); setEditingParagraphs((v) => !v); }}
+                data-tip={editingParagraphs
+                  ? t("toolbar.titleParagraphOn")
+                  : t("toolbar.titleParagraphOff")}
+                className={[
+                  "px-3 py-1.5 rounded text-[13px] font-medium transition-colors",
+                  editingParagraphs
+                    ? "bg-amber-500 text-white"
+                    : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
+                ].join(" ")}
+              >
+                ¶
+              </button>
 
-          {/* Word / concept tag mode — always visible */}
-          <button
-            onClick={() => {
-              if (!editingWordTags) deactivateIncompatible("wordTags");
-              setEditingWordTags((v) => !v);
-            }}
-            title={editingWordTags
-              ? t("toolbar.titleWordTagOn")
-              : t("toolbar.titleWordTagOff")}
-            className={[
-              "px-2.5 py-1 rounded text-xs font-medium transition-colors",
-              editingWordTags
-                ? "bg-yellow-500 text-white"
-                : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
-            ].join(" ")}
-          >
-            🏷
-          </button>
-
-          {!presentationMode && (
-            <>
               {/* Paragraph indent mode */}
               <button
                 onClick={() => {
                   if (!editingIndents) deactivateIncompatible("indents");
                   setEditingIndents((v) => !v);
                 }}
-                title={editingIndents
+                data-tip={editingIndents
                   ? t("toolbar.titleIndentOn")
                   : t("toolbar.titleIndentOff")}
                 className={[
-                  "px-2.5 py-1 rounded text-xs font-medium transition-colors",
+                  "px-3 py-1.5 rounded text-[13px] font-medium transition-colors",
                   editingIndents
                     ? "bg-teal-600 text-white"
                     : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
@@ -2651,7 +2656,7 @@ export default function ChapterDisplay({
               {editingIndents && (
                 <label
                   className="flex items-center gap-1 text-[11px] text-stone-500 dark:text-stone-400 cursor-pointer select-none"
-                  title={indentsLinked
+                  data-tip={indentsLinked
                     ? t("toolbar.titleIndentLinked")
                     : t("toolbar.titleIndentUnlinked")}
                 >
@@ -2692,11 +2697,11 @@ export default function ChapterDisplay({
                   }
                   setEditingRst(entering);
                 }}
-                title={editingRst
+                data-tip={editingRst
                   ? t("toolbar.titleRstOn")
                   : t("toolbar.titleRstOff")}
                 className={[
-                  "px-2.5 py-1 rounded text-xs font-medium transition-colors",
+                  "px-3 py-1.5 rounded text-[13px] font-medium transition-colors",
                   editingRst
                     ? "bg-rose-600 text-white"
                     : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
@@ -2707,9 +2712,9 @@ export default function ChapterDisplay({
               {editingRst && (
                 <button
                   onClick={() => setShowRstTypeManager((v) => !v)}
-                  title={t("toolbar.titleRstLabels")}
+                  data-tip={t("toolbar.titleRstLabels")}
                   className={[
-                    "px-2.5 py-1 rounded text-xs font-medium transition-colors",
+                    "px-3 py-1.5 rounded text-[13px] font-medium transition-colors",
                     showRstTypeManager
                       ? "bg-amber-500 text-white"
                       : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
@@ -2722,7 +2727,7 @@ export default function ChapterDisplay({
                 <>
                   <label
                     className="flex items-center gap-1 text-[11px] text-stone-500 dark:text-stone-400 cursor-pointer select-none"
-                    title={rstRelationsLinked ? t("toolbar.titleRstLinked") : t("toolbar.titleRstUnlinked")}
+                    data-tip={rstRelationsLinked ? t("toolbar.titleRstLinked") : t("toolbar.titleRstUnlinked")}
                   >
                     <input
                       type="checkbox"
@@ -2740,9 +2745,9 @@ export default function ChapterDisplay({
                     <div className="flex gap-0.5">
                       <button
                         onClick={() => setRstEditingSide("source")}
-                        title={t("toolbar.titleRstSrcSide")}
+                        data-tip={t("toolbar.titleRstSrcSide")}
                         className={[
-                          "px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors",
+                          "px-2 py-[3px] rounded text-[11px] font-medium transition-colors",
                           rstEditingSide === "source"
                             ? "bg-rose-600 text-white"
                             : "bg-stone-100 dark:bg-stone-800 text-stone-500 dark:text-stone-400 hover:bg-stone-200 dark:hover:bg-stone-700",
@@ -2752,9 +2757,9 @@ export default function ChapterDisplay({
                       </button>
                       <button
                         onClick={() => setRstEditingSide("translation")}
-                        title={t("toolbar.titleRstTransSide")}
+                        data-tip={t("toolbar.titleRstTransSide")}
                         className={[
-                          "px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors",
+                          "px-2 py-[3px] rounded text-[11px] font-medium transition-colors",
                           rstEditingSide === "translation"
                             ? "bg-rose-600 text-white"
                             : "bg-stone-100 dark:bg-stone-800 text-stone-500 dark:text-stone-400 hover:bg-stone-200 dark:hover:bg-stone-700",
@@ -2778,11 +2783,11 @@ export default function ChapterDisplay({
                   }
                   setEditingArrows(entering);
                 }}
-                title={editingArrows
+                data-tip={editingArrows
                   ? t("toolbar.titleArrowOn")
                   : t("toolbar.titleArrowOff")}
                 className={[
-                  "px-2.5 py-1 rounded text-xs font-medium transition-colors",
+                  "px-3 py-1.5 rounded text-[13px] font-medium transition-colors",
                   editingArrows
                     ? "bg-rose-600 text-white"
                     : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
@@ -2791,23 +2796,7 @@ export default function ChapterDisplay({
                 ↷
               </button>
 
-              {/* Undo button */}
-              {undoStack.length > 0 && (
-                <button
-                  onClick={() => {
-                    setUndoStack((prev) => {
-                      if (prev.length === 0) return prev;
-                      const entry = prev[prev.length - 1];
-                      entry.undo();
-                      return prev.slice(0, -1);
-                    });
-                  }}
-                  title={t("toolbar.titleUndo", { label: undoStack[undoStack.length - 1].label })}
-                  className="px-2.5 py-1 rounded text-xs font-medium bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700 transition-colors"
-                >
-                  ↩ {undoStack[undoStack.length - 1].label}
-                </button>
-              )}
+              <div className="h-5 border-l border-[var(--border)]" />
 
               {/* Bold formatting mode */}
               <button
@@ -2815,9 +2804,9 @@ export default function ChapterDisplay({
                   if (!editingBold) deactivateIncompatible("bold");
                   setEditingBold((v) => !v);
                 }}
-                title={editingBold ? t("toolbar.titleBoldOn") : t("toolbar.titleBoldOff")}
+                data-tip={editingBold ? t("toolbar.titleBoldOn") : t("toolbar.titleBoldOff")}
                 className={[
-                  "px-2.5 py-1 rounded text-xs font-bold transition-colors",
+                  "px-3 py-1.5 rounded text-[13px] font-bold transition-colors",
                   editingBold
                     ? "bg-stone-800 text-white dark:bg-stone-200 dark:text-stone-900"
                     : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
@@ -2832,9 +2821,9 @@ export default function ChapterDisplay({
                   if (!editingItalic) deactivateIncompatible("italic");
                   setEditingItalic((v) => !v);
                 }}
-                title={editingItalic ? t("toolbar.titleItalicOn") : t("toolbar.titleItalicOff")}
+                data-tip={editingItalic ? t("toolbar.titleItalicOn") : t("toolbar.titleItalicOff")}
                 className={[
-                  "px-2.5 py-1 rounded text-xs italic transition-colors",
+                  "px-3 py-1.5 rounded text-[13px] italic transition-colors",
                   editingItalic
                     ? "bg-stone-800 text-white dark:bg-stone-200 dark:text-stone-900"
                     : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
@@ -2843,86 +2832,125 @@ export default function ChapterDisplay({
                 I
               </button>
 
-              {/* Clear annotations */}
-              <div className="border-l border-[var(--border)] pl-3 ml-1">
+              {/* Character reference tag mode */}
+              <button
+                onClick={() => {
+                  if (!editingRefs) deactivateIncompatible("refs");
+                  setEditingRefs((v) => !v);
+                }}
+                data-tip={editingRefs ? t("toolbar.titleRefsOn") : t("toolbar.titleRefsOff")}
+                className={[
+                  "px-3 py-1.5 rounded text-[13px] font-medium transition-colors",
+                  editingRefs
+                    ? "bg-violet-600 text-white"
+                    : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
+                ].join(" ")}
+              >
+                👤
+              </button>
+
+              {/* Speech section tag mode */}
+              <button
+                onClick={() => {
+                  if (!editingSpeech) deactivateIncompatible("speech");
+                  setEditingSpeech((v) => !v);
+                }}
+                data-tip={editingSpeech
+                  ? t("toolbar.titleSpeechOn")
+                  : t("toolbar.titleSpeechOff")}
+                className={[
+                  "px-3 py-1.5 rounded text-[13px] font-medium transition-colors",
+                  editingSpeech
+                    ? "bg-violet-600 text-white"
+                    : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
+                ].join(" ")}
+              >
+                💬
+              </button>
+
+              {/* Word / concept tag mode */}
+              <button
+                onClick={() => {
+                  if (!editingWordTags) deactivateIncompatible("wordTags");
+                  setEditingWordTags((v) => !v);
+                }}
+                data-tip={editingWordTags
+                  ? t("toolbar.titleWordTagOn")
+                  : t("toolbar.titleWordTagOff")}
+                className={[
+                  "px-3 py-1.5 rounded text-[13px] font-medium transition-colors",
+                  editingWordTags
+                    ? "bg-yellow-500 text-white"
+                    : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
+                ].join(" ")}
+              >
+                🏷
+              </button>
+
+              <div className="h-5 border-l border-[var(--border)]" />
+
+              {/* Undo button */}
+              {undoStack.length > 0 && (
                 <button
-                  onClick={() => setShowClearDialog(true)}
-                  title={t("toolbar.titleClear")}
-                  className="px-2.5 py-1 rounded text-xs font-medium transition-colors bg-stone-100 dark:bg-stone-800 text-stone-500 dark:text-stone-400 hover:bg-red-100 hover:text-red-600 dark:hover:bg-red-950 dark:hover:text-red-400"
+                  onClick={() => {
+                    setUndoStack((prev) => {
+                      if (prev.length === 0) return prev;
+                      const entry = prev[prev.length - 1];
+                      entry.undo();
+                      return prev.slice(0, -1);
+                    });
+                  }}
+                  data-tip={t("toolbar.titleUndo", { label: undoStack[undoStack.length - 1].label })}
+                  className="px-3 py-1.5 rounded text-[13px] font-medium bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700 transition-colors"
                 >
-                  🗑
+                  ↩ {undoStack[undoStack.length - 1].label}
                 </button>
-              </div>
+              )}
+
+              {/* Clear annotations */}
+              <button
+                onClick={() => setShowClearDialog(true)}
+                data-tip={t("toolbar.titleClear")}
+                className="px-3 py-1.5 rounded text-[13px] font-medium transition-colors bg-stone-100 dark:bg-stone-800 text-stone-500 dark:text-stone-400 hover:bg-red-100 hover:text-red-600 dark:hover:bg-red-950 dark:hover:text-red-400"
+              >
+                🗑
+              </button>
+
+              <div className="h-5 border-l border-[var(--border)]" />
 
               {/* Notes panel toggle */}
-              <div className="border-l border-[var(--border)] pl-3 ml-1">
-                <button
-                  onClick={() => setNotesOpen((v) => !v)}
-                  title={notesOpen ? t("toolbar.titleNotesOn") : t("toolbar.titleNotesOff")}
-                  className={[
-                    "px-2.5 py-1 rounded text-xs font-medium transition-colors",
-                    notesOpen
-                      ? "bg-amber-500 text-white"
-                      : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
-                  ].join(" ")}
-                >
-                  📝
-                </button>
-              </div>
+              <button
+                onClick={() => setNotesOpen((v) => !v)}
+                data-tip={notesOpen ? t("toolbar.titleNotesOn") : t("toolbar.titleNotesOff")}
+                className={[
+                  "px-3 py-1.5 rounded text-[13px] font-medium transition-colors",
+                  notesOpen
+                    ? "bg-amber-500 text-white"
+                    : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
+                ].join(" ")}
+              >
+                📝
+              </button>
 
               {/* Search panel toggle */}
-              <div className="border-l border-[var(--border)] pl-3 ml-1">
-                <button
-                  onClick={() => setSearchOpen((v) => !v)}
-                  title={searchOpen ? "Close Search" : "Search corpus"}
-                  className={[
-                    "px-2.5 py-1 rounded text-xs font-medium transition-colors",
-                    searchOpen
-                      ? "bg-amber-500 text-white"
-                      : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
-                  ].join(" ")}
-                >
-                  🔍
-                </button>
-              </div>
+              <button
+                onClick={() => setSearchOpen((v) => !v)}
+                data-tip={searchOpen ? "Close Search" : "Search corpus"}
+                className={[
+                  "px-3 py-1.5 rounded text-[13px] font-medium transition-colors",
+                  searchOpen
+                    ? "bg-amber-500 text-white"
+                    : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
+                ].join(" ")}
+              >
+                🔍
+              </button>
 
-              {/* Outline sidebar toggle */}
-              {(sceneBreakMap.size > 0 || bookSceneBreaks.length > 0) && (
-                <button
-                  type="button"
-                  onClick={() => setOutlineOpen((v) => !v)}
-                  className="shrink-0 text-xs px-2 py-1 rounded hover:bg-stone-200 dark:hover:bg-stone-700 transition-colors"
-                  style={{
-                    color: outlineOpen ? "var(--accent)" : "var(--text-muted)",
-                    backgroundColor: outlineOpen ? "rgba(200,155,60,0.12)" : "var(--nav-bg)",
-                  }}
-                  title={t("toolbar.titleCopyOutline")}
-                >
-                  {t("toolbar.outline")}
-                </button>
-              )}
-
-              {/* Linguistic terms toggle — Hebrew only */}
-              {isHebrew && (
-                <button
-                  onClick={() => setUseLinguisticTerms((v) => !v)}
-                  title={useLinguisticTerms
-                    ? t("toolbar.titleLinguisticOn")
-                    : t("toolbar.titleLinguisticOff")}
-                  className={[
-                    "px-2.5 py-1 rounded text-xs font-medium transition-colors",
-                    useLinguisticTerms
-                      ? "bg-blue-600 text-white"
-                      : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
-                  ].join(" ")}
-                >
-                  Qatal
-                </button>
-              )}
+              <div className="h-5 border-l border-[var(--border)]" />
 
               {/* Translation picker + source visibility toggle + translation edit */}
               {allAvailableTranslations.length > 0 && (
-                <div className="flex items-center gap-1 border-l border-[var(--border)] pl-4">
+                <div className="flex items-center gap-1">
                   <span className="text-xs text-stone-400 dark:text-stone-500 mr-1 select-none">
                     {t("toolbar.trLabel")}
                   </span>
@@ -2935,9 +2963,9 @@ export default function ChapterDisplay({
                   {hasActiveTranslations && (
                     <button
                       onClick={() => setHideSourceText((v) => !v)}
-                      title={hideSourceText ? t("toolbar.titleShowSource", { source: textSource }) : t("toolbar.titleHideSource", { source: textSource })}
+                      data-tip={hideSourceText ? t("toolbar.titleShowSource", { source: textSource }) : t("toolbar.titleHideSource", { source: textSource })}
                       className={[
-                        "px-2.5 py-1 rounded text-xs font-medium font-mono transition-colors",
+                        "px-3 py-1.5 rounded text-[13px] font-medium font-mono transition-colors",
                         !hideSourceText
                           ? "bg-emerald-600 text-white"
                           : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
@@ -2949,9 +2977,9 @@ export default function ChapterDisplay({
                   {hasActiveTranslations && (
                     <button
                       onClick={() => setEditingTranslation((v) => !v)}
-                      title={editingTranslation ? t("toolbar.titleEditTranslationOn") : t("toolbar.titleEditTranslationOff")}
+                      data-tip={editingTranslation ? t("toolbar.titleEditTranslationOn") : t("toolbar.titleEditTranslationOff")}
                       className={[
-                        "px-2.5 py-1 rounded text-xs font-medium transition-colors",
+                        "px-3 py-1.5 rounded text-[13px] font-medium transition-colors",
                         editingTranslation
                           ? "bg-sky-600 text-white"
                           : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
@@ -2965,19 +2993,19 @@ export default function ChapterDisplay({
 
               {/* Font size controls */}
               {(() => {
-                const sizeBtn = "w-6 h-6 flex items-center justify-center rounded text-xs font-medium bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700 transition-colors select-none";
+                const sizeBtn = "w-[26px] h-[26px] flex items-center justify-center rounded text-[13px] font-medium bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700 transition-colors select-none";
                 return (
                   <div className="flex items-center gap-2 border-l border-[var(--border)] pl-4">
                     <span className="text-xs text-stone-400 dark:text-stone-500 select-none">
                       {isHebrew ? t("toolbar.sourceLabel") : t("toolbar.sourceLabelGk")}
                     </span>
-                    <button className={sizeBtn} onClick={() => adjustFontSize("source", -0.125)} title={t("toolbar.titleDecreaseSource")}>A−</button>
-                    <button className={sizeBtn} onClick={() => adjustFontSize("source", +0.125)} title={t("toolbar.titleIncreaseSource")}>A+</button>
+                    <button className={sizeBtn} onClick={() => adjustFontSize("source", -0.125)} data-tip={t("toolbar.titleDecreaseSource")}>A−</button>
+                    <button className={sizeBtn} onClick={() => adjustFontSize("source", +0.125)} data-tip={t("toolbar.titleIncreaseSource")}>A+</button>
                     {hasActiveTranslations && (
                       <>
                         <span className="text-xs text-stone-400 dark:text-stone-500 select-none ml-1">{t("toolbar.trSizeLabel")}</span>
-                        <button className={sizeBtn} onClick={() => adjustFontSize("translation", -0.0625)} title={t("toolbar.titleDecreaseTr")}>A−</button>
-                        <button className={sizeBtn} onClick={() => adjustFontSize("translation", +0.0625)} title={t("toolbar.titleIncreaseTr")}>A+</button>
+                        <button className={sizeBtn} onClick={() => adjustFontSize("translation", -0.0625)} data-tip={t("toolbar.titleDecreaseTr")}>A−</button>
+                        <button className={sizeBtn} onClick={() => adjustFontSize("translation", +0.0625)} data-tip={t("toolbar.titleIncreaseTr")}>A+</button>
                       </>
                     )}
                   </div>
