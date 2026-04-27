@@ -72,6 +72,9 @@ interface VerseDisplayProps {
   highlightWordTagIds: Set<number>;
   // Temporary search hit highlighting (word IDs in the current chapter)
   searchHits?: Set<string>;
+  // Find-in-page highlighting
+  findHits?: Set<string>;
+  findFocusId?: string | null;
   // Paragraph indentation
   lineIndentMap: Map<string, number>;
   translationIndentMap?: Map<string, number>;
@@ -727,6 +730,8 @@ export default function VerseDisplay({
   editingWordTags,
   highlightWordTagIds,
   searchHits,
+  findHits,
+  findFocusId,
   lineIndentMap,
   translationIndentMap,
   indentsLinked = true,
@@ -1457,12 +1462,21 @@ export default function VerseDisplay({
           showAtnachBreaks &&
           isHebrew &&
           (word.surfaceText ?? "").includes("\u0591");
-        const isSearchHit = searchHits?.has(word.wordId) ?? false;
+        const isSearchHit  = searchHits?.has(word.wordId) ?? false;
+        const isFindHit    = findHits?.has(word.wordId) ?? false;
+        const isFindFocus  = findFocusId != null && findFocusId === word.wordId;
+        const wrapperBg = isFindFocus
+          ? "rgba(251, 146, 60, 0.65)"   // orange — current focus
+          : isFindHit
+            ? "rgba(251, 191, 36, 0.45)" // yellow — other hits
+            : isSearchHit
+              ? "rgba(251, 191, 36, 0.4)"
+              : undefined;
         const isLastInGroup = wi === gWords.length - 1;
         return (
           <span
             key={word.wordId}
-            style={isSearchHit ? { backgroundColor: "rgba(251, 191, 36, 0.4)", borderRadius: "2px" } : undefined}
+            style={wrapperBg ? { backgroundColor: wrapperBg, borderRadius: "2px" } : undefined}
           >
             <WordToken
               word={word}
@@ -1847,17 +1861,25 @@ export default function VerseDisplay({
                       const tvTag = tvTagRef ? wordTagMap.get(tvTagRef.tagId) : null;
                       const isTvTagHighlighted = !!tvTag && highlightWordTagIds.has(tvTag.id);
 
-                      // Background-colour highlight (matches source word group approach)
-                      const tvBgStyle: React.CSSProperties = isTokenHighlighted
-                        ? { backgroundColor: "rgba(253, 224, 71, 0.45)", borderRadius: "3px" }
-                        : tvTag && !isTokenHighlighted
-                          ? {
-                              backgroundColor: isTvTagHighlighted
-                                ? `${tvTag.color}55`
-                                : `${tvTag.color}28`,
-                              borderRadius: "3px",
-                            }
-                          : {};
+                      // Find-in-page highlight takes top priority
+                      const isTvFindFocus = findFocusId != null && findFocusId === wordId;
+                      const isTvFindHit   = !isTvFindFocus && (findHits?.has(wordId) ?? false);
+
+                      // Background-colour highlight (find > char ref > word tag)
+                      const tvBgStyle: React.CSSProperties = isTvFindFocus
+                        ? { backgroundColor: "rgba(251, 146, 60, 0.65)", borderRadius: "3px" }
+                        : isTvFindHit
+                          ? { backgroundColor: "rgba(251, 191, 36, 0.45)", borderRadius: "3px" }
+                          : isTokenHighlighted
+                            ? { backgroundColor: "rgba(253, 224, 71, 0.45)", borderRadius: "3px" }
+                            : tvTag && !isTokenHighlighted
+                              ? {
+                                  backgroundColor: isTvTagHighlighted
+                                    ? `${tvTag.color}55`
+                                    : `${tvTag.color}28`,
+                                  borderRadius: "3px",
+                                }
+                              : {};
 
                       // Within a tvSeg, localWi > 0 could still have a break (defensive)
                       const isMidVerseBreak = localWi > 0 && paragraphBreakIds.has(wordId);

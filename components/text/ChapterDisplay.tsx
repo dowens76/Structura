@@ -5,6 +5,7 @@ import type { Word, Character, CharacterRef, SpeechSection, WordTag, WordTagRef,
 import type { Translation, TranslationVerse } from "@/lib/db/schema";
 import type { DisplayMode, GrammarFilterState, TranslationTextEntry, InterlinearSubMode } from "@/lib/morphology/types";
 import VerseDisplay from "./VerseDisplay";
+import FindBar from "./FindBar";
 import MorphologyPanel from "./MorphologyPanel";
 import GrammarFilter from "@/components/controls/GrammarFilter";
 import DisplayModeToggle from "@/components/controls/DisplayModeToggle";
@@ -30,6 +31,18 @@ import hebrewLemmas from "@/lib/data/hebrew-lemmas.json";
 import { computeSectionRanges } from "@/lib/utils/sectionRanges";
 import { generateOutline } from "@/lib/utils/outlineExport";
 import { useTranslation } from "@/lib/i18n/LocaleContext";
+
+/** Normalize text for diacritic-insensitive find-in-page matching.
+ *  Strips Hebrew cantillation/vowel marks and Greek/Latin combining diacritics
+ *  so users can type bare consonants and still get hits. */
+function normalizeForSearch(text: string): string {
+  return text
+    .normalize("NFD")
+    .replace(/[֑-ׇ]/g, "")  // Hebrew cantillation (U+0591–U+05AF) + niqqud (U+05B0–U+05C7)
+    .replace(/[̀-ͯ]/g, "")  // Greek/Latin combining diacritics
+    .replace(/\//g, "")               // OSHB morpheme separators
+    .toLowerCase();
+}
 
 /** Returns true if the word's surface text is entirely punctuation and should
  *  be skipped during character / word-tag selection. */
@@ -134,6 +147,11 @@ export default function ChapterDisplay({
   const [searchHits, setSearchHits] = useState<Set<string>>(new Set());
   const [searchRequest, setSearchRequest] = useState<{ query: string; source: string; nonce: number } | null>(null);
   const [notesScrollVerse, setNotesScrollVerse] = useState<number | null>(null);
+  // Find-in-page bar
+  const [findOpen, setFindOpen] = useState(false);
+  const [findQuery, setFindQuery] = useState("");
+  const [findFocusIdx, setFindFocusIdx] = useState(0);
+  const findInputRef = useRef<HTMLInputElement>(null);
 
   // Auto-open search pane if a previous search was persisted in sessionStorage
   useEffect(() => {
@@ -463,6 +481,18 @@ export default function ChapterDisplay({
   const [undoStack, setUndoStack] = useState<UndoEntry[]>([]);
   const undoStackRef = useRef<UndoEntry[]>([]);
 
+  // Refs that let the static keydown listener read current state without stale closures
+  const findOpenRef = useRef(false);
+  const findHitIdsRef = useRef<string[]>([]);
+  const findFocusIdRef = useRef<string | null>(null);
+  const editingRefsRef = useRef(false);
+  const editingWordTagsRef = useRef(false);
+  const wordsRef = useRef<Word[]>(words);
+  // handleSelectWord is defined below; we use a ref so the listener can call it
+  const handleSelectWordRef = useRef<(word: Word, shiftHeld?: boolean) => void>(() => {});
+  // tagFocusedFindWord is assigned each render with fresh state closures
+  const tagFocusedFindWordRef = useRef<() => void>(() => {});
+
   function pushUndo(entry: UndoEntry) {
     setUndoStack((prev) => {
       const next = [...prev.slice(-49), entry];
@@ -483,10 +513,52 @@ export default function ChapterDisplay({
         setUndoStack(next);
         entry.undo();
       }
+      // Ctrl/Cmd+F — open find bar
+      if ((e.metaKey || e.ctrlKey) && e.key === "f" && !e.shiftKey) {
+        e.preventDefault();
+        setFindOpen(true);
+        setTimeout(() => findInputRef.current?.select(), 0);
+        return;
+      }
+      // Ctrl/Cmd+G — next hit
+      if ((e.metaKey || e.ctrlKey) && e.key === "g" && !e.shiftKey) {
+        if (!findOpenRef.current || findHitIdsRef.current.length === 0) return;
+        e.preventDefault();
+        setFindFocusIdx((i) => (i + 1) % findHitIdsRef.current.length);
+        return;
+      }
+      // Ctrl/Cmd+Shift+G — previous hit
+      if ((e.metaKey || e.ctrlKey) && e.key === "g" && e.shiftKey) {
+        if (!findOpenRef.current || findHitIdsRef.current.length === 0) return;
+        e.preventDefault();
+        setFindFocusIdx((i) => (i - 1 + findHitIdsRef.current.length) % findHitIdsRef.current.length);
+        return;
+      }
+      // Ctrl/Cmd+E — tag focused word with active annotation tool
+      if ((e.metaKey || e.ctrlKey) && e.key === "e") {
+        if (!findOpenRef.current || !findFocusIdRef.current) return;
+        if (!editingRefsRef.current && !editingWordTagsRef.current) return;
+        e.preventDefault();
+        tagFocusedFindWordRef.current();
+        return;
+      }
+      // Escape — close find bar
+      if (e.key === "Escape" && findOpenRef.current) {
+        setFindOpen(false);
+        setFindQuery("");
+        return;
+      }
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
+
+  // Keep live-value refs in sync for the static keydown listener (non-find ones only;
+  // findHitIds/findFocusId refs are updated below, after those values are declared)
+  useEffect(() => { findOpenRef.current = findOpen; }, [findOpen]);
+  useEffect(() => { editingRefsRef.current = editingRefs; }, [editingRefs]);
+  useEffect(() => { editingWordTagsRef.current = editingWordTags; }, [editingWordTags]);
+  useEffect(() => { wordsRef.current = words; }, [words]);
 
   // Restore all persisted settings after hydration — avoids SSR/client HTML mismatch.
   // Font sizes are included here (not in lazy initializers) for the same reason.
@@ -581,6 +653,19 @@ export default function ChapterDisplay({
     return map;
   }, [words]);
   const verseNums = useMemo(() => [...verseGroups.keys()].sort((a, b) => a - b), [verseGroups]);
+
+  // Find-in-page: source word hits (ordered by position in chapter)
+  // Find-in-page: source word hits (ordered by position in chapter).
+  // TV hits and derived values are computed after activeTranslationVerseMap (declared below).
+  const findHitIds = useMemo<string[]>(() => {
+    if (!findQuery.trim()) return [];
+    const q = normalizeForSearch(findQuery);
+    if (!q) return [];
+    return words
+      .filter((w) => !isPunctuationWord(w))
+      .filter((w) => normalizeForSearch(w.surfaceText ?? "").includes(q))
+      .map((w) => w.wordId);
+  }, [words, findQuery]);
 
   // Flatten sceneBreakMap + book-wide breaks into sorted array for cross-chapter range computation.
   // Current-chapter breaks come from live state (sceneBreakMap); other chapters come from the
@@ -697,6 +782,82 @@ export default function ChapterDisplay({
 
   const hasActiveTranslations = activeTranslationIds.size > 0;
 
+  // ── Find-in-page: TV hits + combined navigation list ──────────────────────
+  // Declared after activeTranslationVerseMap to avoid TDZ errors.
+
+  const findTvHitIds = useMemo<string[]>(() => {
+    if (!findQuery.trim()) return [];
+    const q = normalizeForSearch(findQuery);
+    if (!q) return [];
+    const hits: string[] = [];
+    const verseNums = [...activeTranslationVerseMap.keys()].sort((a, b) => a - b);
+    for (const verseNum of verseNums) {
+      for (const { abbr, text } of activeTranslationVerseMap.get(verseNum) ?? []) {
+        const tokens = text.split(/\s+/).filter(Boolean).flatMap((t) => t.split(/(?<=—)(?=.)/));
+        tokens.forEach((token, wi) => {
+          if (normalizeForSearch(token).includes(q)) {
+            hits.push(`tv:${abbr}:${book}.${chapter}.${verseNum}.${wi}`);
+          }
+        });
+      }
+    }
+    return hits;
+  }, [activeTranslationVerseMap, book, chapter, findQuery]);
+
+  // Combined hit set for highlighting (source + translation)
+  const findHitSet = useMemo(() => {
+    const s = new Set(findHitIds);
+    for (const id of findTvHitIds) s.add(id);
+    return s;
+  }, [findHitIds, findTvHitIds]);
+
+  // Merged navigation list: for each verse, source hits then TV hits
+  const findAllHitIds = useMemo<string[]>(() => {
+    const srcByVerse = new Map<number, string[]>();
+    const findHitIdSet = new Set(findHitIds);
+    for (const w of words) {
+      if (findHitIdSet.has(w.wordId)) {
+        const arr = srcByVerse.get(w.verse) ?? [];
+        arr.push(w.wordId);
+        srcByVerse.set(w.verse, arr);
+      }
+    }
+    const tvByVerse = new Map<number, string[]>();
+    for (const id of findTvHitIds) {
+      const dotParts = id.split(":")[2]?.split(".") ?? [];
+      const verse = parseInt(dotParts[dotParts.length - 2], 10);
+      if (!isNaN(verse)) {
+        const arr = tvByVerse.get(verse) ?? [];
+        arr.push(id);
+        tvByVerse.set(verse, arr);
+      }
+    }
+    const allVerses = [...new Set([...srcByVerse.keys(), ...tvByVerse.keys()])].sort((a, b) => a - b);
+    const result: string[] = [];
+    for (const verse of allVerses) {
+      result.push(...(srcByVerse.get(verse) ?? []));
+      result.push(...(tvByVerse.get(verse) ?? []));
+    }
+    return result;
+  }, [words, findHitIds, findTvHitIds]);
+
+  const findFocusId = findAllHitIds[findFocusIdx] ?? null;
+
+  // Sync find refs (after findAllHitIds/findFocusId are initialized)
+  useEffect(() => { findHitIdsRef.current = findAllHitIds; }, [findAllHitIds]);
+  useEffect(() => { findFocusIdRef.current = findFocusId; }, [findFocusId]);
+
+  // Reset focus index when total hit count changes
+  useEffect(() => { setFindFocusIdx(0); }, [findAllHitIds.length]);
+
+  // Scroll to focused hit whenever it changes
+  useEffect(() => {
+    if (!findFocusId) return;
+    document
+      .querySelector(`[data-word-id="${CSS.escape(findFocusId)}"]`)
+      ?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [findFocusId]);
+
   function toggleTranslation(id: number) {
     const abbr = allAvailableTranslations.find((t) => t.id === id)?.abbreviation;
     if (!abbr) return;
@@ -781,6 +942,23 @@ export default function ChapterDisplay({
     setSelectedWord(word);
     setPanelOpen(true);
   }
+  // Keep the ref current so the static keydown listener can call it
+  handleSelectWordRef.current = handleSelectWord;
+
+  // Directly applies the active annotation to the focused find word, bypassing
+  // handleSelectWord's routing guards (editingSpeech, editingArrows, etc.) so
+  // Ctrl+E always reaches the annotation toggle regardless of other editing modes.
+  tagFocusedFindWordRef.current = function tagFocusedFindWord() {
+    const focusId = findFocusIdRef.current;
+    if (!focusId) return;
+    const abbr = focusId.startsWith("tv:") ? focusId.split(":")[1] : null;
+    const source = abbr ?? textSource;
+    if (editingRefs && activeCharId !== null) {
+      handleToggleCharacterRefById(focusId, source);
+    } else if (editingWordTags && activeWordTagId !== null && !pendingWordTag) {
+      handleToggleWordTagRefById(focusId, source);
+    }
+  };
 
   // Core toggle logic — works for source words (source = textSource) and
   // translation words (source = translation abbreviation, e.g. "KJV").
@@ -3334,6 +3512,8 @@ export default function ChapterDisplay({
                 editingWordTags={editingWordTags}
                 highlightWordTagIds={highlightWordTagIds}
                 searchHits={searchHits}
+                findHits={findHitSet}
+                findFocusId={findFocusId}
                 lineIndentMap={lineIndentMap}
                 translationIndentMap={tvLineIndentMap}
                 indentsLinked={indentsLinked}
@@ -3431,6 +3611,22 @@ export default function ChapterDisplay({
             onClose={() => setOutlineOpen(false)}
           />
         </ResizablePane>
+      )}
+
+      {/* Find-in-page bar */}
+      {findOpen && !presentationMode && (
+        <FindBar
+          query={findQuery}
+          onChange={(q) => setFindQuery(q)}
+          hitCount={findAllHitIds.length}
+          focusIdx={findFocusIdx}
+          onPrev={() => setFindFocusIdx((i) => (i - 1 + Math.max(findAllHitIds.length, 1)) % Math.max(findAllHitIds.length, 1))}
+          onNext={() => setFindFocusIdx((i) => (i + 1) % Math.max(findAllHitIds.length, 1))}
+          onClose={() => { setFindOpen(false); setFindQuery(""); }}
+          inputRef={findInputRef}
+          canTag={editingRefs || editingWordTags}
+          onTag={() => tagFocusedFindWordRef.current()}
+        />
       )}
 
       {/* Morphology panel — flex sibling so it pushes content left instead of overlaying */}
