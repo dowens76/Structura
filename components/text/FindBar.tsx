@@ -10,7 +10,7 @@ interface FindBarProps {
   onPrev: () => void;
   onNext: () => void;
   onClose: () => void;
-  inputRef: React.RefObject<HTMLInputElement>;
+  inputRef: React.RefObject<HTMLInputElement | null>;
   canTag: boolean;
   onTag: () => void;
 }
