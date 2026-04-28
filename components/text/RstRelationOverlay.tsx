@@ -13,6 +13,7 @@ import { buildRstTree } from "@/lib/rst/buildRstTree";
 // ── Layout constants ──────────────────────────────────────────────────────────
 const HANG_PX      = 32;  // must match VerseDisplay HANG_PX
 const LEVEL_WIDTH  = 18;  // px per nesting depth level
+const NUC_TICK     = 10;  // px horizontal step at the nucleus end of a subordinate path
 
 /**
  * LTR texts: minimum left padding added to the container so the tree has room.
@@ -728,7 +729,8 @@ export default function RstRelationOverlay({
               : nucX - LEVEL_WIDTH;
             pathD = `M ${nucX},${lk.y1} H ${outerX} V ${lk.y2} H ${armX2}`;
           } else {
-            pathD = `M ${nucX},${lk.y1} V ${lk.y2} H ${armX2}`;
+            const outerX = (isHebrew && !lk.isTrans) ? nucX + NUC_TICK : nucX - NUC_TICK;
+            pathD = `M ${nucX},${lk.y1} H ${outerX} V ${lk.y2} H ${armX2}`;
           }
         } else {
           pathD = `M ${spineX},${lk.y1} V ${lk.y2} H ${armX2}`;
