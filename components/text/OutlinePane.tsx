@@ -63,6 +63,7 @@ interface OutlinePaneProps {
   bookSceneBreaks: { wordId: string; heading: string | null; level: number; chapter: number; verse: number; thematic: boolean; thematicLetter: string | null }[];
   sectionRanges: Map<string, SectionRangeForOutline>;
   onUpdateCurrentHeading: (wordId: string, level: number, heading: string) => void;
+  onDeleteCurrentBreak: (wordId: string, level: number) => void;
   onClose: () => void;
 }
 
@@ -76,12 +77,15 @@ export default function OutlinePane({
   bookSceneBreaks,
   sectionRanges,
   onUpdateCurrentHeading,
+  onDeleteCurrentBreak,
   onClose,
 }: OutlinePaneProps) {
   const [editKey, setEditKey]       = useState<string | null>(null); // `${wordId}:${level}`
   const [editDraft, setEditDraft]   = useState("");
   // Local overrides for headings edited in other chapters (persisted via API)
   const [headingOverrides, setHeadingOverrides] = useState<Map<string, string | null>>(new Map());
+  // Keys deleted from other chapters (bookSceneBreaks is a static prop, so filter locally)
+  const [deletedKeys, setDeletedKeys] = useState<Set<string>>(new Set());
   const [copied, setCopied]         = useState(false);
 
   const INDENT_PX = 18;
@@ -134,6 +138,19 @@ export default function OutlinePane({
       };
     });
   }, [sortedBreaks, sectionRanges, headingOverrides, chapter]);
+
+  async function handleDelete(item: (typeof items)[number]) {
+    if (item.isCurrent) {
+      onDeleteCurrentBreak(item.wordId, item.level);
+    } else {
+      setDeletedKeys((prev) => { const next = new Set(prev); next.add(item.key); return next; });
+      await fetch("/api/scene-breaks", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ wordId: item.wordId, level: item.level }),
+      });
+    }
+  }
 
   function startEdit(key: string, heading: string | null) {
     setEditKey(key);
@@ -221,7 +238,7 @@ export default function OutlinePane({
           </p>
         ) : (
           <ul className="space-y-0.5">
-            {items.map((item) => {
+            {items.filter(item => !deletedKeys.has(item.key)).map((item) => {
               const isEditing = editKey === item.key;
               const indentPx  = item.thematicIndent !== null ? item.thematicIndent : (item.level - 1) * INDENT_PX;
               const textSize  = item.level === 1 ? "text-sm font-semibold"
@@ -254,11 +271,11 @@ export default function OutlinePane({
                       />
                     </div>
                   ) : (
-                    <div className="group flex items-baseline gap-1.5 rounded px-1 py-0.5 hover:bg-stone-100 dark:hover:bg-stone-800/60 transition-colors">
+                    <div className="group flex items-center gap-1.5 rounded px-1 py-0.5 hover:bg-stone-100 dark:hover:bg-stone-800/60 transition-colors">
                       <span className="shrink-0 text-xs font-mono" style={{ color: "var(--text-muted)", minWidth: "1.5rem" }}>
                         {item.prefix}
                       </span>
-                      {/* Heading text — double-click to edit */}
+                      {/* Heading text — click to edit */}
                       <span
                         className={`flex-1 min-w-0 truncate cursor-pointer ${textSize}`}
                         style={{ color: "var(--foreground)", fontFamily: "Georgia, 'Times New Roman', serif" }}
@@ -287,6 +304,17 @@ export default function OutlinePane({
                           {item.rangeStr}
                         </Link>
                       )}
+                      {/* Delete button — visible on hover */}
+                      <button
+                        onClick={() => handleDelete(item)}
+                        className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity rounded p-0.5 hover:bg-red-100 dark:hover:bg-red-900/40 hover:text-red-600 dark:hover:text-red-400"
+                        style={{ color: "var(--text-muted)" }}
+                        title="Delete section heading"
+                      >
+                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
                     </div>
                   )}
                 </li>

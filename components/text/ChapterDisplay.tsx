@@ -1147,6 +1147,41 @@ export default function ChapterDisplay({
     }
   }
 
+  async function handleDeleteCurrentBreak(wordId: string, level: number) {
+    const existingArr = sceneBreakMap.get(wordId) ?? [];
+    // Optimistic remove from sceneBreakMap
+    setSceneBreakMap((prev) => {
+      const next = new Map(prev);
+      const filtered = (prev.get(wordId) ?? []).filter((b) => b.level !== level);
+      if (filtered.length === 0) next.delete(wordId);
+      else next.set(wordId, filtered);
+      return next;
+    });
+    // Remove paragraph break if this was the only section break at this word
+    if (existingArr.length === 1) {
+      setParagraphBreakIds((prev) => { const next = new Set(prev); next.delete(wordId); return next; });
+    }
+    try {
+      await fetch("/api/scene-breaks", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ wordId, level }),
+      });
+    } catch {
+      // Rollback on error
+      setSceneBreakMap((prev) => {
+        const next = new Map(prev);
+        const arr = [...(prev.get(wordId) ?? []), ...existingArr.filter(b => b.level === level)];
+        arr.sort((a, b) => a.level - b.level);
+        next.set(wordId, arr);
+        return next;
+      });
+      if (existingArr.length === 1) {
+        setParagraphBreakIds((prev) => { const next = new Set(prev); next.add(wordId); return next; });
+      }
+    }
+  }
+
   async function handleChangeSceneBreakLevel(wordId: string, fromLevel: number, toLevel: number, verse: number) {
     const existing = sceneBreakMap.get(wordId)?.find(b => b.level === fromLevel);
     if (!existing) return;
@@ -3644,6 +3679,7 @@ export default function ChapterDisplay({
             bookSceneBreaks={bookSceneBreaks}
             sectionRanges={sectionRanges}
             onUpdateCurrentHeading={handleUpdateSceneHeading}
+            onDeleteCurrentBreak={handleDeleteCurrentBreak}
             onClose={() => setOutlineOpen(false)}
           />
         </ResizablePane>

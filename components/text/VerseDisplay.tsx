@@ -1126,7 +1126,7 @@ export default function VerseDisplay({
                   <input
                     id={`scene-heading-${wordId}-${br.level}`}
                     key={`${wordId}-${br.level}`}
-                    className="flex-1 min-w-0 text-xs font-semibold uppercase tracking-widest text-stone-500 dark:text-stone-400 bg-transparent border-none outline-none focus:ring-0 px-0 placeholder:text-stone-300 dark:placeholder:text-stone-600"
+                    className="flex-1 min-w-0 text-xs font-semibold tracking-widest text-stone-500 dark:text-stone-400 bg-transparent border-none outline-none focus:ring-0 px-0 placeholder:text-stone-300 dark:placeholder:text-stone-600"
                     defaultValue={br.heading ?? ""}
                     placeholder="Section label"
                     onBlur={(e) => onUpdateSceneHeading?.(wordId, br.level, e.target.value)}
