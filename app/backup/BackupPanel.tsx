@@ -110,12 +110,26 @@ export default function BackupPanel() {
           <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--text-muted)" }}>
             {t("backup.fileLabel")}
           </label>
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white transition-opacity hover:opacity-90"
+              style={{ backgroundColor: "var(--accent)" }}
+            >
+              {t("backup.chooseFile")}
+            </button>
+            {selectedFile && (
+              <span className="text-sm truncate max-w-xs" style={{ color: "var(--foreground)" }}>
+                {selectedFile.name}
+              </span>
+            )}
+          </div>
           <input
             ref={fileInputRef}
             type="file"
             accept=".db,application/x-sqlite3,application/octet-stream"
-            className="block text-sm"
-            style={{ color: "var(--foreground)" }}
+            className="sr-only"
             onChange={(e) => {
               setSelectedFile(e.target.files?.[0] ?? null);
               setStatus({ type: "idle" });
