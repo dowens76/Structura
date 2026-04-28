@@ -87,6 +87,7 @@ export const characters = sqliteTable(
     book:        text("book").notNull(),
     name:        text("name").notNull(),
     color:       text("color").notNull(),
+    sortOrder:   integer("sort_order").default(0),
     createdAt:   text("created_at").$defaultFn(() => new Date().toISOString()),
   },
   (t) => [index("char_book_idx").on(t.book)]
@@ -137,6 +138,7 @@ export const wordTags = sqliteTable(
     name:        text("name").notNull(),
     color:       text("color").notNull(),
     type:        text("type").notNull().default("concept"),
+    sortOrder:   integer("sort_order").default(0),
     createdAt:   text("created_at").$defaultFn(() => new Date().toISOString()),
   },
   (t) => [index("wt_book_idx").on(t.book)]

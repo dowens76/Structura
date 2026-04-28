@@ -890,7 +890,7 @@ export default function PassageView({
   ) {
     const tempTag: WordTag = {
       id: -(Date.now()), book: osisBook, name, color, type,
-      createdAt: new Date().toISOString(), workspaceId: 0,
+      createdAt: new Date().toISOString(), workspaceId: 0, sortOrder: null,
     };
     setWordTags((prev) => [...prev, tempTag]);
     setActiveWordTagId(tempTag.id);
@@ -965,6 +965,23 @@ export default function PassageView({
       });
     } catch {
       if (prev) setWordTags((ts) => ts.map((t) => t.id === id ? prev : t));
+    }
+  }
+
+  async function handleReorderWordTags(orderedIds: number[]) {
+    const prev = [...wordTags];
+    setWordTags(orderedIds.map((id, i) => {
+      const t = prev.find((x) => x.id === id)!;
+      return { ...t, sortOrder: i };
+    }));
+    try {
+      await fetch("/api/word-tags/reorder", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ items: orderedIds.map((id, i) => ({ id, sortOrder: i })) }),
+      });
+    } catch {
+      setWordTags(prev);
     }
   }
 
@@ -1134,7 +1151,7 @@ export default function PassageView({
   async function handleCreateCharacter(name: string, color: string) {
     const tempChar: Character = {
       id: -(Date.now()), book: osisBook, name, color,
-      createdAt: new Date().toISOString(), workspaceId: 0,
+      createdAt: new Date().toISOString(), workspaceId: 0, sortOrder: null,
     };
     setCharacters((prev) => [...prev, tempChar]);
     setActiveCharId(tempChar.id);
@@ -1219,6 +1236,23 @@ export default function PassageView({
       });
     } catch {
       if (prev) setCharacters((cs) => cs.map((c) => c.id === id ? prev : c));
+    }
+  }
+
+  async function handleReorderCharacters(orderedIds: number[]) {
+    const prev = [...characters];
+    setCharacters(orderedIds.map((id, i) => {
+      const c = prev.find((x) => x.id === id)!;
+      return { ...c, sortOrder: i };
+    }));
+    try {
+      await fetch("/api/characters/reorder", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ items: orderedIds.map((id, i) => ({ id, sortOrder: i })) }),
+      });
+    } catch {
+      setCharacters(prev);
     }
   }
 
@@ -2162,7 +2196,7 @@ export default function PassageView({
               setEditingWordTags((v) => !v);
               setEditingRefs(false); setEditingSpeech(false);
               setEditingIndents(false); setSpeechRangeStart(null);
-              setPendingWordTag(false);
+              setPendingWordTag(false); setEditingArrows(false); setArrowFromWordId(null);
             }}
             title={editingWordTags ? "Exit word/concept tag mode" : "Tag words or concepts with colour highlights"}
             className={["px-2.5 py-1 rounded text-xs font-medium transition-colors",
@@ -2260,6 +2294,8 @@ export default function PassageView({
               setRstSegB(null);
               setShowRstPicker(false);
               setArrowFromWordId(null);
+              setEditingWordTags(false);
+              setPendingWordTag(false);
             }}
             title={editingArrows ? "Exit word arrow mode" : "Draw free-form arrows between words"}
             className={["px-2.5 py-1 rounded text-xs font-medium transition-colors",
@@ -2445,6 +2481,7 @@ export default function PassageView({
             onCreateCharacter={handleCreateCharacter}
             onDeleteCharacter={handleDeleteCharacter}
             onUpdateCharacter={handleUpdateCharacter}
+            onReorder={handleReorderCharacters}
             highlightedCharIds={highlightCharIds}
             onToggleHighlight={handleToggleHighlight}
           />
@@ -2469,6 +2506,7 @@ export default function PassageView({
             onCreatePendingWordTag={handleCreatePendingWordTag}
             onDeleteTag={handleDeleteWordTag}
             onUpdateTag={handleUpdateWordTag}
+            onReorder={handleReorderWordTags}
             onToggleHighlight={handleToggleWordTagHighlight}
           />
         )}
@@ -2632,6 +2670,11 @@ export default function PassageView({
               "--translation-font-size": `${translationFontSize}rem`,
               "--source-row-height": `${(isHebrew ? hebrewFontSize : greekFontSize) * 2.0}rem`,
             } as React.CSSProperties}
+            onClick={(e) => {
+              if (editingArrows && !(e.target as HTMLElement).closest("[data-word-id]")) {
+                setArrowFromWordId(null);
+              }
+            }}
           >
             {orderedVerses.map((verse, idx) => {
               const isFirstOfChapter = idx === 0 || orderedVerses[idx - 1].ch !== verse.ch;

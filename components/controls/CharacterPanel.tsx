@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import type { Character } from "@/lib/db/schema";
 import { RULE_PALETTE } from "@/lib/morphology/colorRules";
 
@@ -25,6 +25,7 @@ interface CharacterPanelProps {
   onCreateCharacter: (name: string, color: string) => void;
   onDeleteCharacter: (id: number) => void;
   onUpdateCharacter: (id: number, name: string, color: string) => void;
+  onReorder: (ids: number[]) => void;
   highlightedCharIds: Set<number>;
   onToggleHighlight: (id: number) => void;
 }
@@ -37,6 +38,7 @@ export default function CharacterPanel({
   onCreateCharacter,
   onDeleteCharacter,
   onUpdateCharacter,
+  onReorder,
   highlightedCharIds,
   onToggleHighlight,
 }: CharacterPanelProps) {
@@ -48,6 +50,10 @@ export default function CharacterPanel({
   const [editingCharId, setEditingCharId] = useState<number | null>(null);
   const [editName, setEditName] = useState("");
   const [editColor, setEditColor] = useState(CHARACTER_PALETTE[0]);
+  const [showReorder, setShowReorder] = useState(false);
+  // Local drag-ordered list — initialised from props when menu opens
+  const [reorderList, setReorderList] = useState<Character[]>([]);
+  const dragIdx = useRef<number | null>(null);
 
   function handleStartEdit(c: Character) {
     setEditingCharId(c.id);
@@ -71,11 +77,40 @@ export default function CharacterPanel({
     setShowNew(false);
   }
 
+  function openReorder() {
+    setReorderList([...characters]);
+    setShowReorder(true);
+  }
+
+  function handleDragStart(idx: number) {
+    dragIdx.current = idx;
+  }
+
+  function handleDragOver(e: React.DragEvent, idx: number) {
+    e.preventDefault();
+    if (dragIdx.current === null || dragIdx.current === idx) return;
+    const next = [...reorderList];
+    const [moved] = next.splice(dragIdx.current, 1);
+    next.splice(idx, 0, moved);
+    dragIdx.current = idx;
+    setReorderList(next);
+  }
+
+  function handleDragEnd() {
+    dragIdx.current = null;
+  }
+
+  function handleSaveReorder() {
+    onReorder(reorderList.map((c) => c.id));
+    setShowReorder(false);
+  }
+
   return (
     <div
-      className="shrink-0 border-t flex items-center gap-2 px-4 py-2 overflow-x-auto"
+      className="shrink-0 border-t relative"
       style={{ borderColor: "var(--border)", backgroundColor: "var(--surface)" }}
     >
+    <div className="flex items-center gap-2 px-4 py-2 overflow-x-auto">
       {/* Mode label */}
       <span
         className="text-[10px] font-semibold uppercase tracking-wider shrink-0"
@@ -85,6 +120,17 @@ export default function CharacterPanel({
       </span>
 
       <div className="w-px h-4 shrink-0" style={{ backgroundColor: "var(--border)" }} />
+
+      {/* Reorder button */}
+      <button
+        type="button"
+        onClick={openReorder}
+        title="Reorder characters"
+        className="shrink-0 p-1 rounded text-xs transition-colors hover:bg-stone-100 dark:hover:bg-stone-800"
+        style={{ color: "var(--text-muted)" }}
+      >
+        ⇅
+      </button>
 
       {/* Character chips */}
       {characters.map((c) => {
@@ -316,6 +362,67 @@ export default function CharacterPanel({
           >
             Cancel
           </button>
+        </div>
+      )}
+
+    </div>
+
+      {/* Reorder dropdown */}
+      {showReorder && (
+        <div
+          className="absolute top-full left-0 mt-1 z-50 rounded-lg border shadow-lg p-3 min-w-[200px]"
+          style={{ borderColor: "var(--border)", backgroundColor: "var(--surface)" }}
+        >
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-semibold" style={{ color: "var(--foreground)" }}>
+              Reorder Characters
+            </span>
+            <button
+              type="button"
+              onClick={() => setShowReorder(false)}
+              className="text-xs px-1 rounded hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors leading-none"
+              style={{ color: "var(--text-muted)" }}
+            >
+              ✕
+            </button>
+          </div>
+          <ul className="flex flex-col gap-1">
+            {reorderList.map((c, idx) => (
+              <li
+                key={c.id}
+                draggable
+                onDragStart={() => handleDragStart(idx)}
+                onDragOver={(e) => handleDragOver(e, idx)}
+                onDragEnd={handleDragEnd}
+                className="flex items-center gap-2 px-2 py-1.5 rounded cursor-grab active:cursor-grabbing select-none hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors"
+                style={{ color: "var(--foreground)" }}
+              >
+                <span className="text-stone-300 dark:text-stone-600 text-xs leading-none">⠿</span>
+                <span
+                  className="inline-block w-2.5 h-2.5 rounded-full shrink-0"
+                  style={{ backgroundColor: c.color }}
+                />
+                <span className="text-xs flex-1">{c.name}</span>
+              </li>
+            ))}
+          </ul>
+          <div className="flex justify-end gap-2 mt-3 pt-2 border-t" style={{ borderColor: "var(--border)" }}>
+            <button
+              type="button"
+              onClick={() => setShowReorder(false)}
+              className="text-xs px-2 py-1 rounded hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors"
+              style={{ color: "var(--text-muted)" }}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleSaveReorder}
+              className="text-xs font-semibold px-2.5 py-1 rounded bg-blue-600 text-white hover:bg-blue-700 transition-colors"
+            >
+              Save order
+            </button>
+          </div>
         </div>
       )}
     </div>

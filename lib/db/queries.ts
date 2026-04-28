@@ -620,7 +620,13 @@ export async function getCharacters(book: string, workspaceId: number): Promise<
     .select()
     .from(characters)
     .where(and(eq(characters.workspaceId, workspaceId), eq(characters.book, book)))
-    .orderBy(asc(characters.id));
+    .orderBy(asc(characters.sortOrder), asc(characters.id));
+}
+
+export async function reorderCharacters(items: { id: number; sortOrder: number }[]): Promise<void> {
+  for (const { id, sortOrder } of items) {
+    await userDb.update(characters).set({ sortOrder }).where(eq(characters.id, id));
+  }
 }
 
 export async function createCharacter(name: string, color: string, book: string, workspaceId: number): Promise<Character> {
@@ -890,7 +896,13 @@ export async function getWordTags(book: string, workspaceId: number): Promise<Wo
     .select()
     .from(wordTags)
     .where(and(eq(wordTags.workspaceId, workspaceId), eq(wordTags.book, book)))
-    .orderBy(asc(wordTags.id));
+    .orderBy(asc(wordTags.sortOrder), asc(wordTags.id));
+}
+
+export async function reorderWordTags(items: { id: number; sortOrder: number }[]): Promise<void> {
+  for (const { id, sortOrder } of items) {
+    await userDb.update(wordTags).set({ sortOrder }).where(eq(wordTags.id, id));
+  }
 }
 
 export async function createWordTag(

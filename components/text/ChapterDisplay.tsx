@@ -251,7 +251,7 @@ export default function ChapterDisplay({
    *  Injects the new tag into local state and clears temp highlights. */
   const handleSearchSaved = useCallback((tagId: number, name: string, color: string, wordRefs: { wordId: string; book: string; chapter: number; textSource: string }[]) => {
     // Add the new corpus-wide tag to local state
-    const newTag: WordTag = { id: tagId, workspaceId: 1, book: "*", name, color, type: "search", createdAt: new Date().toISOString() };
+    const newTag: WordTag = { id: tagId, workspaceId: 1, book: "*", name, color, type: "search", createdAt: new Date().toISOString(), sortOrder: null };
     setWordTags((prev) => [...prev, newTag]);
 
     // Add refs for the current chapter to the local wordTagRefMap
@@ -1678,7 +1678,7 @@ export default function ChapterDisplay({
   ) {
     const tempTag: WordTag = {
       id: -(Date.now()), book, name, color, type,
-      createdAt: new Date().toISOString(), workspaceId: 0,
+      createdAt: new Date().toISOString(), workspaceId: 0, sortOrder: null,
     };
     setWordTags((prev) => [...prev, tempTag]);
     setActiveWordTagId(tempTag.id);
@@ -1754,6 +1754,23 @@ export default function ChapterDisplay({
       });
     } catch {
       if (prev) setWordTags((ts) => ts.map((t) => t.id === id ? prev : t));
+    }
+  }
+
+  async function handleReorderWordTags(orderedIds: number[]) {
+    const prev = [...wordTags];
+    setWordTags(orderedIds.map((id, i) => {
+      const t = prev.find((x) => x.id === id)!;
+      return { ...t, sortOrder: i };
+    }));
+    try {
+      await fetch("/api/word-tags/reorder", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ items: orderedIds.map((id, i) => ({ id, sortOrder: i })) }),
+      });
+    } catch {
+      setWordTags(prev);
     }
   }
 
@@ -1927,7 +1944,7 @@ export default function ChapterDisplay({
     // Optimistic: add placeholder
     const tempChar: Character = {
       id: -(Date.now()), book, name, color,
-      createdAt: new Date().toISOString(), workspaceId: 0,
+      createdAt: new Date().toISOString(), workspaceId: 0, sortOrder: null,
     };
     setCharacters((prev) => [...prev, tempChar]);
     setActiveCharId(tempChar.id);
@@ -2092,6 +2109,23 @@ export default function ChapterDisplay({
       });
     } catch {
       if (prev) setCharacters((cs) => cs.map((c) => c.id === id ? prev : c));
+    }
+  }
+
+  async function handleReorderCharacters(orderedIds: number[]) {
+    const prev = [...characters];
+    setCharacters(orderedIds.map((id, i) => {
+      const c = prev.find((x) => x.id === id)!;
+      return { ...c, sortOrder: i };
+    }));
+    try {
+      await fetch("/api/characters/reorder", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ items: orderedIds.map((id, i) => ({ id, sortOrder: i })) }),
+      });
+    } catch {
+      setCharacters(prev);
     }
   }
 
@@ -3239,6 +3273,7 @@ export default function ChapterDisplay({
             onCreateCharacter={handleCreateCharacter}
             onDeleteCharacter={handleDeleteCharacter}
             onUpdateCharacter={handleUpdateCharacter}
+            onReorder={handleReorderCharacters}
             highlightedCharIds={highlightCharIds}
             onToggleHighlight={handleToggleHighlight}
           />
@@ -3266,6 +3301,7 @@ export default function ChapterDisplay({
             onCreatePendingWordTag={handleCreatePendingWordTag}
             onDeleteTag={handleDeleteWordTag}
             onUpdateTag={handleUpdateWordTag}
+            onReorder={handleReorderWordTags}
             onToggleHighlight={handleToggleWordTagHighlight}
           />
         )}
