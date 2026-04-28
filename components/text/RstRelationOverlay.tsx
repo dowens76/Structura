@@ -801,18 +801,25 @@ export default function RstRelationOverlay({
         const CHIP_GAP_Y = 3;
         const chipYs: number[] = (() => {
           if (satLink) {
-            if (subNucX !== undefined) {
-              // Subordinate L-shape: chip floats just above/below the 90° corner
-              // where the vertical stroke meets the horizontal arm (satelliteY).
-              const satelliteIsLower = satLink.y2 > satLink.y1;
-              return [satelliteIsLower
-                ? satLink.y2 - CHIP_H / 2 - CHIP_GAP_Y   // corner below → chip above it
-                : satLink.y2 + CHIP_H / 2 + CHIP_GAP_Y]; // corner above → chip below it
-            }
             const satelliteIsLower = satLink.y2 > satLink.y1;
+            if (n.relType === "inference") {
+              // Inference chip: near the nucleus (premise), not the satellite (conclusion).
+              // Use the actual text-bottom/top from posMap so the chip clears the text.
+              const nucLink = layoutLinks.find(
+                lk => lk.parentId === n.id && lk.role === "nucleus" && !!lk.isTrans === !!n.isTrans
+              );
+              const nucPos = nucLink ? posMap.get(nucLink.childId) : undefined;
+              const refEdge = nucPos
+                ? (satelliteIsLower ? nucPos.bottom : nucPos.top)
+                : satLink.y1;
+              return [satelliteIsLower
+                ? refEdge + CHIP_GAP_Y + CHIP_H / 2
+                : refEdge - CHIP_GAP_Y - CHIP_H / 2];
+            }
+            // All other subordinate relations: chip near the satellite arm.
             return [satelliteIsLower
-              ? satLink.y2 - CHIP_H / 2 - CHIP_GAP_Y   // float above arm
-              : satLink.y2 + CHIP_H / 2 + CHIP_GAP_Y]; // float below arm
+              ? satLink.y2 - CHIP_H / 2 - CHIP_GAP_Y
+              : satLink.y2 + CHIP_H / 2 + CHIP_GAP_Y];
           }
           // Coordinate: gather every Y that an arm touches on the spine,
           // sort them, and place a chip at the midpoint of each consecutive pair.
