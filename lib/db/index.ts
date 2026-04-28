@@ -141,11 +141,19 @@ export function getLxxDb(): ReturnType<typeof drizzle<typeof sourceSchema>> | nu
 }
 
 function migrateUserDb(sqlite: Database.Database): void {
-  const cols = (sqlite.prepare("PRAGMA table_info(scene_breaks)").all() as { name: string }[]).map(r => r.name);
-  if (!cols.includes("thematic"))
+  const sceneBreakCols = (sqlite.prepare("PRAGMA table_info(scene_breaks)").all() as { name: string }[]).map(r => r.name);
+  if (!sceneBreakCols.includes("thematic"))
     sqlite.exec("ALTER TABLE scene_breaks ADD COLUMN thematic INTEGER NOT NULL DEFAULT 0");
-  if (!cols.includes("thematic_letter"))
+  if (!sceneBreakCols.includes("thematic_letter"))
     sqlite.exec("ALTER TABLE scene_breaks ADD COLUMN thematic_letter TEXT");
+
+  const charCols = (sqlite.prepare("PRAGMA table_info(characters)").all() as { name: string }[]).map(r => r.name);
+  if (!charCols.includes("sort_order"))
+    sqlite.exec("ALTER TABLE characters ADD COLUMN sort_order INTEGER DEFAULT 0");
+
+  const tagCols = (sqlite.prepare("PRAGMA table_info(word_tags)").all() as { name: string }[]).map(r => r.name);
+  if (!tagCols.includes("sort_order"))
+    sqlite.exec("ALTER TABLE word_tags ADD COLUMN sort_order INTEGER DEFAULT 0");
 }
 
 export function getUserDb() {
