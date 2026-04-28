@@ -123,6 +123,24 @@ jobs:
           rm certificate.p12
           echo "KEYCHAIN_PATH=$KEYCHAIN_PATH" >> "$GITHUB_ENV"
 
+      # ── Source databases ──────────────────────────────────────────────────────
+      - name: Cache source databases
+        id: cache-dbs
+        uses: actions/cache@v4
+        with:
+          path: |
+            data/lxx.db
+            data/ult.db
+          key: source-dbs-${{ hashFiles('scripts/import-lxx.ts', 'scripts/add-lxx-punctuation.ts', 'scripts/import-ult.ts') }}
+
+      - name: Generate LXX database
+        if: steps.cache-dbs.outputs.cache-hit != 'true'
+        run: npm run import:lxx && npm run import:lxx:punct
+
+      - name: Generate ULT database
+        if: steps.cache-dbs.outputs.cache-hit != 'true'
+        run: npm run import:ult
+
       # ── Build ─────────────────────────────────────────────────────────────────
       - name: Build Tauri app
         run: npm run tauri:build
