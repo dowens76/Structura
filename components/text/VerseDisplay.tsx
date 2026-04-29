@@ -405,18 +405,34 @@ function AnnotBadge({
       onClick={editingAnnotations ? (e) => { e.stopPropagation(); setIsEditing(true); } : undefined}
       title={editingAnnotations ? "Click to edit" : undefined}
     >
-      <div className="flex items-start gap-1 px-1.5 py-1">
-        {annotation.outOfSequence && (
-          <span className={`shrink-0 ${badgeTextCls} font-bold text-amber-500 dark:text-amber-400 leading-none mt-0.5`} title="Out of chronological sequence">↩</span>
+      <div className="flex flex-col px-1.5 py-1 gap-0.5">
+        {/* Label row: oos icon + label badge + delete button */}
+        {(annotation.outOfSequence || hasLabel || (editingAnnotations && !!onDelete)) && (
+          <div className="flex items-center gap-1">
+            {annotation.outOfSequence && (
+              <span className={`shrink-0 ${badgeTextCls} font-bold text-amber-500 dark:text-amber-400 leading-none`} title="Out of chronological sequence">↩</span>
+            )}
+            {hasLabel && (
+              <span
+                className={`shrink-0 ${badgeTextCls} font-bold px-1 py-0.5 rounded text-white leading-none`}
+                style={{ backgroundColor: color }}
+              >
+                {annotation.label}
+              </span>
+            )}
+            {editingAnnotations && onDelete && (
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); onDelete(annotation.id); }}
+                className="shrink-0 ml-auto text-stone-300 dark:text-stone-600 hover:text-red-500 dark:hover:text-red-400 text-sm leading-none transition-colors"
+                title="Delete annotation"
+              >
+                ×
+              </button>
+            )}
+          </div>
         )}
-        {hasLabel && (
-          <span
-            className={`shrink-0 ${badgeTextCls} font-bold px-1 py-0.5 rounded text-white leading-none mt-0.5`}
-            style={{ backgroundColor: color }}
-          >
-            {annotation.label}
-          </span>
-        )}
+        {/* Description on its own line below the label */}
         {annotation.description && (
           <span
             className="text-stone-600 dark:text-stone-400 leading-tight min-w-0 break-words"
@@ -424,16 +440,6 @@ function AnnotBadge({
           >
             {annotation.description}
           </span>
-        )}
-        {editingAnnotations && onDelete && (
-          <button
-            type="button"
-            onClick={(e) => { e.stopPropagation(); onDelete(annotation.id); }}
-            className="shrink-0 ml-auto text-stone-300 dark:text-stone-600 hover:text-red-500 dark:hover:text-red-400 text-sm leading-none transition-colors"
-            title="Delete annotation"
-          >
-            ×
-          </button>
         )}
       </div>
       {/* In edit mode show the single-segment +/- at the bottom */}
