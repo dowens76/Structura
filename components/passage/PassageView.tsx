@@ -271,6 +271,9 @@ export default function PassageView({
   const [annotRangeStart, setAnnotRangeStart] = useState<string | null>(null);
   const [annotRangeEnd, setAnnotRangeEnd]     = useState<string | null>(null);
 
+  // ── RST source-pad: dynamically sized so group chips never overlap verse labels ──
+  const [rstSourcePad, setRstSourcePad] = useState(0);
+
   // ── Word formatting (bold / italic) state ──────────────────────────────────
   const [wordFormattingMap, setWordFormattingMap] = useState<Map<string, { isBold: boolean; isItalic: boolean }>>(
     () => new Map(initialWordFormatting.map((f) => [f.wordId, { isBold: f.isBold, isItalic: f.isItalic }]))
@@ -1935,6 +1938,7 @@ export default function PassageView({
           onDeleteGroup={handleDeleteRstGroup}
           customTypes={customRstTypes}
           hideSourceTree={hideSourceText}
+          onRequiredSourcePad={setRstSourcePad}
         />
         {/* Overlay: word-to-word arrows */}
         <WordArrowOverlay
@@ -2765,6 +2769,7 @@ export default function PassageView({
                     editingArrows={editingArrows}
                     onSelectArrowWordById={handleSelectArrowWordById}
                     hideSourceText={hideSourceText}
+                    rstSourcePad={rstSourcePad}
                     onVerseClick={(v) => {
                       setNotesOpen(true);
                       setNotesScrollVerse({ ch: verse.ch, v });

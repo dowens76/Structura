@@ -147,6 +147,9 @@ export default function ChapterDisplay({
   const [searchHits, setSearchHits] = useState<Set<string>>(new Set());
   const [searchRequest, setSearchRequest] = useState<{ query: string; source: string; nonce: number } | null>(null);
   const [notesScrollVerse, setNotesScrollVerse] = useState<number | null>(null);
+  // RST source-pad: dynamically sized so group chips never overlap verse labels
+  const [rstSourcePad, setRstSourcePad] = useState(0);
+
   // Find-in-page bar
   const [findOpen, setFindOpen] = useState(false);
   const [findQuery, setFindQuery] = useState("");
@@ -2668,6 +2671,7 @@ export default function ChapterDisplay({
             onEditGroup={handleEditRstGroup}
             onSelectGroup={handleSelectRstGroup}
             customTypes={customRstTypes}
+            onRequiredSourcePad={setRstSourcePad}
           />
           <WordArrowOverlay
             arrows={wordArrowsState}
@@ -3631,7 +3635,7 @@ export default function ChapterDisplay({
                   setNotesOpen(true);
                   setNotesScrollVerse(v);
                 }}
-                rstSourcePad={(rstRelations.length > 0 || editingRst) ? 48 : 0}
+                rstSourcePad={rstSourcePad}
                 presentationMode={presentationMode}
               />
             );

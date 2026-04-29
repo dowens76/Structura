@@ -1,6 +1,6 @@
 "use client";
 
-import { useLayoutEffect, useMemo, useRef, useState, useCallback, RefObject } from "react";
+import { useLayoutEffect, useEffect, useMemo, useRef, useState, useCallback, RefObject } from "react";
 import { hierarchy } from "d3-hierarchy";
 import type { RstRelation } from "@/lib/db/schema";
 import {
@@ -102,6 +102,13 @@ export interface Props {
   /** Extra element to watch for size changes (e.g. the flex-1 wrapper that shrinks
    *  when a sidebar opens). Triggers remeasurement without affecting coordinates. */
   layoutRef?: RefObject<HTMLDivElement | null>;
+  /**
+   * Called whenever the minimum column gap (px) needed between the verse-label
+   * column and the source-text column changes.  The parent should forward this
+   * value as `rstSourcePad` on every VerseDisplay so that RST group chips never
+   * overlap the verse numbers.  Only fired for LTR (non-Hebrew) layouts.
+   */
+  onRequiredSourcePad?: (pad: number) => void;
 }
 
 // ── DOM measurement ───────────────────────────────────────────────────────────
@@ -497,6 +504,7 @@ export default function RstRelationOverlay({
   editingTranslation = false,
   hideSourceTree = false,
   layoutRef,
+  onRequiredSourcePad,
 }: Props) {
   const relMap = customTypes.length > 0
     ? buildRelationshipMap(customTypes)
@@ -516,18 +524,32 @@ export default function RstRelationOverlay({
   // LTR: left padding grows with depth so deep trees never clip off the left edge.
   // Hebrew 2-col: right padding grows with depth so the tree never overlaps verse labels.
   // (Hebrew 3-col uses the centre column and is already wide enough in practice.)
-  const [requiredLtrGutter, requiredHebGutter] = useMemo(() => {
+  const [requiredLtrGutter, requiredHebGutter, requiredLtrSourcePad] = useMemo(() => {
     const treeRoot = buildRstTree(relations, paragraphFirstWordIds);
     const h = hierarchy(treeRoot, (n: ReturnType<typeof buildRstTree>) => n.children);
     const depth = Math.max(h.height, 1);
     const needed = LEAF_MARGIN + depth * LEVEL_WIDTH + 16;
+    // Minimum column gap between verse-label and source-text so the topmost
+    // group chip (placed furthest from text) clears the verse-label column.
+    // Derivation: chip x = refLeftX − LEAF_MARGIN − (depth−1)×LEVEL_WIDTH
+    //             verse-label right ≈ refLeftX − rstSourcePad
+    //             clearance = rstSourcePad − LEAF_MARGIN − (depth−1)×LEVEL_WIDTH ≥ 8
+    const ltrSourcePad = !isHebrew
+      ? Math.max(0, LEAF_MARGIN + (depth - 1) * LEVEL_WIDTH + 8)
+      : 0;
     return [
       Math.max(LTR_GUTTER_MIN, needed), // LTR left gutter
       needed,                            // Hebrew right gutter (no hard minimum)
+      ltrSourcePad,                      // LTR column gap between verse-label and source-text
     ];
   // paragraphFirstWordIds changes identity each render; join() gives a stable key.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [relations, paragraphFirstWordIds.join(",")]);
+  }, [relations, isHebrew, paragraphFirstWordIds.join(",")]);
+
+  useEffect(() => {
+    if (!isHebrew) onRequiredSourcePad?.(requiredLtrSourcePad);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [requiredLtrSourcePad, isHebrew]);
 
   // ── LTR: add left padding so the source tree has gutter room ─────────────────
   // Applied for all LTR layouts (2-col and 3-col with translation).
