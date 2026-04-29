@@ -101,6 +101,11 @@ export default function ExportTextView({
     [characters]
   );
 
+  // In the export view every word-tag assignment is shown at "highlighted" opacity
+  // so all tag markup is visible. Character highlights are intentionally omitted —
+  // only the per-word underline (rendered by WordToken) is shown for characters.
+  const allWordTagIds = useMemo(() => new Set(wordTags.map((t) => t.id)), [wordTags]);
+
   const characterRefMap = useMemo(
     () => new Map(characterRefs.map((r) => [r.wordId, r])),
     [characterRefs]
@@ -343,7 +348,7 @@ export default function ExportTextView({
               wordTagRefMap={wordTagRefMap}
               wordTagMap={wordTagMap}
               editingWordTags={false}
-              highlightWordTagIds={new Set()}
+              highlightWordTagIds={allWordTagIds}
               lineIndentMap={lineIndentMap}
               wordToParaStart={wordToParaStart}
               editingIndents={false}

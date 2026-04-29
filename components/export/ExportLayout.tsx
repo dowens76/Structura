@@ -110,12 +110,13 @@ export default function ExportLayout({ children, revealHref, filename, backHref,
 
   return (
     <>
-      {/* Print-only CSS — hides toolbar */}
+      {/* Print-only CSS — hides toolbar, preserves background colours */}
       <style>{`
         @media print {
           .export-toolbar { display: none !important; }
           body { background: white !important; }
           @page { margin: 1.5cm; }
+          * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
         }
       `}</style>
 
