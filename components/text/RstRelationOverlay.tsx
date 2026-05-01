@@ -65,6 +65,10 @@ interface LayoutLink {
   relType: string;
   role: string;
   isTrans?: boolean;
+  /** Where a parent coordinate arm meets this child's vertical. */
+  intersectPoint?: "start" | "mid" | "end";
+  /** PK of the rstRelations row — used to persist intersectPoint changes. */
+  dbRowId?: number;
 }
 
 export interface Props {
@@ -109,6 +113,12 @@ export interface Props {
    * overlap the verse numbers.  Only fired for LTR (non-Hebrew) layouts.
    */
   onRequiredSourcePad?: (pad: number) => void;
+  /**
+   * Called when the user clicks a start/mid/end dot on a nested bracket's
+   * vertical line to change where the outer arm connects to it.
+   * `id` is the PK of the rstRelations row that stores this connection.
+   */
+  onUpdateRstIntersectPoint?: (id: number, intersectPoint: "start" | "mid" | "end") => void;
 }
 
 // ── DOM measurement ───────────────────────────────────────────────────────────
@@ -277,6 +287,8 @@ function flattenHierarchy(
           relType: parent.data.relType ?? "",
           role:    d.role ?? "nucleus",
           isTrans,
+          intersectPoint: d.intersectPoint,
+          dbRowId:        d.dbRowId,
         });
       }
     }
@@ -505,6 +517,7 @@ export default function RstRelationOverlay({
   hideSourceTree = false,
   layoutRef,
   onRequiredSourcePad,
+  onUpdateRstIntersectPoint,
 }: Props) {
   const relMap = customTypes.length > 0
     ? buildRelationshipMap(customTypes)
@@ -567,10 +580,12 @@ export default function RstRelationOverlay({
   // Only applies when there are actual RST relations to draw.
   useLayoutEffect(() => {
     const container = containerRef.current;
+    console.log('[RST gutter] container=', !!container, 'isHebrew=', isHebrew, 'hasTranslation=', hasTranslation, 'relations.length=', relations.length, 'requiredHebGutter=', requiredHebGutter);
     if (!container || !isHebrew || hasTranslation || relations.length === 0) return;
     const prev = container.style.paddingRight;
     container.style.paddingRight = `${requiredHebGutter}px`;
-    return () => { container.style.paddingRight = prev; };
+    console.log('[RST gutter] SET paddingRight =', requiredHebGutter, 'prev =', prev);
+    return () => { container.style.paddingRight = prev; console.log('[RST gutter] CLEANUP paddingRight restored to', prev); };
   }, [containerRef, isHebrew, hasTranslation, relations.length, requiredHebGutter]);
 
   const allSegIds = [
@@ -650,6 +665,19 @@ export default function RstRelationOverlay({
       )
     : new Set();
 
+  // ── Pre-compute each group's Y extent (min / max of all child arm Ys) ────
+  // Used to compute start/mid/end intersect points when a coordinate arm
+  // connects to a subordinate group child.
+  const groupYRange = new Map<string, { minY: number; maxY: number }>();
+  for (const lk of layoutLinks) {
+    const key = `${lk.parentId}:${lk.isTrans ? 1 : 0}`;
+    const cur = groupYRange.get(key);
+    groupYRange.set(key, {
+      minY: Math.min(cur?.minY ?? Infinity,  lk.y2),
+      maxY: Math.max(cur?.maxY ?? -Infinity, lk.y2),
+    });
+  }
+
   // ── Pre-compute per-group spine X ─────────────────────────────────────────
   // The spine is placed LEVEL_WIDTH beyond the *innermost* leaf in the group
   // (innermost = closest to the margin, i.e. furthest from the text):
@@ -725,12 +753,28 @@ export default function RstRelationOverlay({
         const isSat  = lk.role === "satellite";
         const key    = `${lk.parentId}:${lk.isTrans ? 1 : 0}`;
         const spineX  = spineXByParent.get(key) ?? lk.x1;
-        // If the child is itself a group, use its actual spine as the arm endpoint
-        // (lk.x2 for group children is depth-based and becomes stale after leaf
-        // positions are overridden for indentation).
         const childSpineKey = `${lk.childId}:${lk.isTrans ? 1 : 0}`;
         const childSpineX   = spineXByParent.get(childSpineKey);
-        const armX2         = childSpineX !== undefined ? childSpineX : lk.x2;
+
+        // When the child is a subordinate group drawn as an L-shape, the child's
+        // visual vertical line sits at nucX ± NUC_TICK — not at its full spine X.
+        // Using the full spine as armX2 creates an 8 px gap (LEVEL_WIDTH − NUC_TICK).
+        // For Z-shape children (nucleus-is-group) outerX = nucX ± LEVEL_WIDTH which
+        // equals the spine, so no adjustment is needed there.
+        const childNucX    = nucleusXByGroup.get(childSpineKey);
+        const childIsSubordL = childNucX !== undefined && !nucleusIsGroup.has(childSpineKey);
+        const armX2 = childIsSubordL
+          ? ((isHebrew && !lk.isTrans) ? childNucX + NUC_TICK : childNucX - NUC_TICK)
+          : childSpineX !== undefined ? childSpineX : lk.x2;
+
+        // For coordinate arms to a subordinate child, use intersectPoint to pick the Y.
+        const childYRange = childIsSubordL ? groupYRange.get(childSpineKey) : undefined;
+        const ip = lk.intersectPoint ?? "mid";
+        const armY = childYRange
+          ? ip === "start" ? childYRange.minY
+          : ip === "end"   ? childYRange.maxY
+          : (childYRange.minY + childYRange.maxY) / 2
+          : lk.y2;
 
         // Subordinate relations avoid the shared-spine bracket:
         //   • Nucleus link  → not drawn (the nucleus dot anchors it visually)
@@ -755,7 +799,7 @@ export default function RstRelationOverlay({
             pathD = `M ${nucX},${lk.y1} H ${outerX} V ${lk.y2} H ${armX2}`;
           }
         } else {
-          pathD = `M ${spineX},${lk.y1} V ${lk.y2} H ${armX2}`;
+          pathD = `M ${spineX},${lk.y1} V ${armY} H ${armX2}`;
         }
         return (
           <path
@@ -769,6 +813,115 @@ export default function RstRelationOverlay({
             style={{ pointerEvents: "none" }}
           />
         );
+      })}
+
+      {/* ── Outer-junction, midpoint anchor dots, and intersect-point picker ── */}
+      {layoutLinks.filter(lk => !hideSourceTree || lk.isTrans).flatMap((lk, i) => {
+        const meta = relMap[lk.relType];
+        const color = meta?.color ?? "#6B7280";
+        const isSat = lk.role === "satellite";
+        const key   = `${lk.parentId}:${lk.isTrans ? 1 : 0}`;
+        const spineX = spineXByParent.get(key) ?? lk.x1;
+        const childSpineKey = `${lk.childId}:${lk.isTrans ? 1 : 0}`;
+
+        // Same gap-fix logic as path rendering:
+        const childNucX    = nucleusXByGroup.get(childSpineKey);
+        const childIsSubordL = childNucX !== undefined && !nucleusIsGroup.has(childSpineKey);
+        const childSpineX  = spineXByParent.get(childSpineKey);
+        const armX2 = childIsSubordL
+          ? ((isHebrew && !lk.isTrans) ? childNucX + NUC_TICK : childNucX - NUC_TICK)
+          : childSpineX !== undefined ? childSpineX : lk.x2;
+
+        const childYRange = childIsSubordL ? groupYRange.get(childSpineKey) : undefined;
+        const ip = lk.intersectPoint ?? "mid";
+        const armY = childYRange
+          ? ip === "start" ? childYRange.minY
+          : ip === "end"   ? childYRange.maxY
+          : (childYRange.minY + childYRange.maxY) / 2
+          : lk.y2;
+
+        const isSubordinate = meta?.category === "subordinate";
+        if (isSubordinate && !isSat) return [];   // nucleus link has no drawn arm
+
+        // Arm-start X: the outer (spine/corner) end of the horizontal arm.
+        let armStartX: number;
+        if (isSubordinate) {
+          const nucX = nucleusXByGroup.get(key) ?? spineX;
+          armStartX = nucleusIsGroup.has(key)
+            ? ((isHebrew && !lk.isTrans) ? nucX + LEVEL_WIDTH : nucX - LEVEL_WIDTH)
+            : ((isHebrew && !lk.isTrans) ? nucX + NUC_TICK    : nucX - NUC_TICK);
+        } else {
+          armStartX = spineX;
+        }
+
+        const midX = (armStartX + armX2) / 2;
+
+        const childNode = layoutNodes.find(n => n.id === lk.childId && !!n.isTrans === !!lk.isTrans);
+        const childIsGroup = childNode?.type === "group";
+        const isInteractive = editing && !lk.isTrans;
+
+        const handleClick = isInteractive ? (e: React.MouseEvent) => {
+          e.stopPropagation();
+          if (childIsGroup) onSelectGroup?.(lk.childId);
+          else onSelectSegment(lk.childId);
+        } : undefined;
+
+        const dots: React.ReactElement[] = [
+          // Outer-junction dot
+          <circle
+            key={`jct-${i}`}
+            cx={armStartX} cy={armY} r={2}
+            fill={color} opacity={0.55}
+            style={isInteractive ? { cursor: "pointer", pointerEvents: "all" } : { pointerEvents: "none" }}
+            onClick={handleClick}
+          />,
+          // Midpoint dot
+          <circle
+            key={`mid-${i}`}
+            cx={midX} cy={armY} r={2}
+            fill={color} opacity={0.55}
+            style={isInteractive ? { cursor: "pointer", pointerEvents: "all" } : { pointerEvents: "none" }}
+            onClick={handleClick}
+          />,
+        ];
+
+        // Intersect-point picker: 3 dots on the child subordinate group's vertical.
+        // Shown in editing mode when this coordinate arm connects to an L-shape
+        // subordinate child and onUpdateRstIntersectPoint is wired up.
+        if (editing && !lk.isTrans && childIsSubordL && childYRange && onUpdateRstIntersectPoint && lk.dbRowId) {
+          const dotCx = armX2; // = childNucX + NUC_TICK = the child's visual vertical X
+          const positions = [
+            { ip: "start" as const, y: childYRange.minY,                                    label: "⊤" },
+            { ip: "mid"   as const, y: (childYRange.minY + childYRange.maxY) / 2,           label: "·" },
+            { ip: "end"   as const, y: childYRange.maxY,                                    label: "⊥" },
+          ];
+          for (const pos of positions) {
+            const isActive = (lk.intersectPoint ?? "mid") === pos.ip;
+            const rowId = lk.dbRowId;
+            dots.push(
+              <g
+                key={`ipt-${i}-${pos.ip}`}
+                style={{ pointerEvents: "all", cursor: "pointer" }}
+                onClick={(e) => { e.stopPropagation(); onUpdateRstIntersectPoint(rowId, pos.ip); }}
+              >
+                <circle
+                  cx={dotCx} cy={pos.y} r={5}
+                  fill={isActive ? color : "white"}
+                  stroke={color} strokeWidth={1.5}
+                  opacity={0.85}
+                />
+                <text
+                  x={dotCx} y={pos.y + 3.5}
+                  textAnchor="middle" fontSize={7}
+                  fill={isActive ? "white" : color}
+                  style={{ userSelect: "none", pointerEvents: "none" }}
+                >{pos.label}</text>
+              </g>
+            );
+          }
+        }
+
+        return dots;
       })}
 
       {/* ── Group nodes (relation-type chips) ─────────────────────────────── */}

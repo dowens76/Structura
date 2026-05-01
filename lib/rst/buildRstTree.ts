@@ -36,6 +36,17 @@ export interface RstNode {
    * "nucleus" | "satellite" for real children; undefined for virtual root.
    */
   role?: string;
+  /**
+   * Where a parent arm connects to this node's vertical line.
+   * Only meaningful when this node is a group (i.e. has its own vertical).
+   * "start" = top, "mid" = middle (default), "end" = bottom.
+   */
+  intersectPoint?: "start" | "mid" | "end";
+  /**
+   * Primary key of the rstRelations DB row that places this node in its
+   * parent group.  Used by the overlay to save intersectPoint changes.
+   */
+  dbRowId?: number;
   children?: RstNode[];
 }
 
@@ -88,6 +99,8 @@ export function buildRstTree(
     const relType = sorted[0].relType;
 
     const children: RstNode[] = sorted.map(m => {
+      const ip = (m.intersectPoint ?? "mid") as "start" | "mid" | "end";
+
       // ── Direct group reference ────────────────────────────────────────────
       // When the user selects an existing group (not an individual paragraph)
       // as an RST endpoint, its groupId is stored directly as segWordId.
@@ -98,6 +111,8 @@ export function buildRstTree(
           type: "group" as const,
           role: m.role,
           relType: byGroup.get(m.segWordId)?.[0]?.relType,
+          intersectPoint: ip,
+          dbRowId: m.id,
         };
       }
 
@@ -113,6 +128,8 @@ export function buildRstTree(
           type: "group" as const,
           role: m.role,
           relType: byGroup.get(childGroupId)?.[0]?.relType,
+          intersectPoint: ip,
+          dbRowId: m.id,
         };
       }
 
@@ -120,6 +137,8 @@ export function buildRstTree(
         id: m.segWordId,
         type: "segment" as const,
         role: m.role,
+        intersectPoint: ip,
+        dbRowId: m.id,
       };
     });
 
@@ -133,7 +152,7 @@ export function buildRstTree(
       if (ch.id.startsWith("__placeholder__")) {
         const childGroupId = ch.id.slice("__placeholder__".length);
         const real = groupNodes.get(childGroupId);
-        if (real) return { ...real, role: ch.role };
+        if (real) return { ...real, role: ch.role, intersectPoint: ch.intersectPoint, dbRowId: ch.dbRowId };
       }
       return ch;
     });

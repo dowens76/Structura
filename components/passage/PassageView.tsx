@@ -1438,6 +1438,15 @@ export default function PassageView({
     setRstRelations((prev) => prev.filter((r) => r.groupId !== groupId));
   }
 
+  async function handleUpdateRstIntersectPoint(id: number, intersectPoint: "start" | "mid" | "end") {
+    await fetch("/api/rst-relations", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, intersectPoint }),
+    });
+    setRstRelations((prev) => prev.map((r) => r.id === id ? { ...r, intersectPoint } : r));
+  }
+
   // ── Word arrow handlers ────────────────────────────────────────────────────
   // Works with any wordId — source words or translation tokens ("tv:ESV:Gen.1.1.0").
   // For translation tokens, chapter is parsed from the ID; for source words, look up
@@ -1921,7 +1930,12 @@ export default function PassageView({
   return (
     <div className="relative h-full min-h-0 flex flex-row">
       {/* Main content + toolbar — takes remaining width; notes pane sits to the right */}
-      <div className="flex-1 overflow-y-auto flex flex-col min-h-0" ref={overlayContainerRef} style={{ position: "relative" }}>
+      <div
+        className="flex-1 overflow-y-auto flex flex-col min-h-0"
+        ref={overlayContainerRef}
+        style={{ position: "relative" }}
+        onClick={editingRst && (rstSegA || rstSegAGroupId) ? () => { setRstSegA(null); setRstSegAGroupId(null); setRstSegB(null); setShowRstPicker(false); } : undefined}
+      >
         {/* Overlay: RST relation lines */}
         <RstRelationOverlay
           relations={rstRelations}
@@ -1936,6 +1950,7 @@ export default function PassageView({
           onSelectSegment={handleSelectRstSegment}
           onSelectGroup={handleSelectRstGroup}
           onDeleteGroup={handleDeleteRstGroup}
+          onUpdateRstIntersectPoint={handleUpdateRstIntersectPoint}
           customTypes={customRstTypes}
           hideSourceTree={hideSourceText}
           onRequiredSourcePad={setRstSourcePad}

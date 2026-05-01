@@ -3,6 +3,7 @@ import {
   getChapterClauseRelationships,
   createClauseRelationship,
   deleteClauseRelationship,
+  updateClauseRelationshipIntersect,
 } from "@/lib/db/queries";
 import { getActiveWorkspaceId } from "@/lib/workspace";
 
@@ -28,6 +29,20 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Missing fields" }, { status: 400 });
   const relationship = await createClauseRelationship(
     fromSegWordId, toSegWordId, relType, book, Number(chapter), source, workspaceId
+  );
+  return NextResponse.json({ relationship });
+}
+
+export async function PATCH(req: NextRequest) {
+  const body = await req.json();
+  const { id, intersectPoint } = body;
+  if (!id || !intersectPoint)
+    return NextResponse.json({ error: "Missing fields" }, { status: 400 });
+  if (!["start", "mid", "end"].includes(intersectPoint))
+    return NextResponse.json({ error: "Invalid intersectPoint" }, { status: 400 });
+  const relationship = await updateClauseRelationshipIntersect(
+    Number(id),
+    intersectPoint as "start" | "mid" | "end",
   );
   return NextResponse.json({ relationship });
 }

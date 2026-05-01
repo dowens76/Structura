@@ -154,6 +154,14 @@ function migrateUserDb(sqlite: Database.Database): void {
   const tagCols = (sqlite.prepare("PRAGMA table_info(word_tags)").all() as { name: string }[]).map(r => r.name);
   if (!tagCols.includes("sort_order"))
     sqlite.exec("ALTER TABLE word_tags ADD COLUMN sort_order INTEGER DEFAULT 0");
+
+  const clrelCols = (sqlite.prepare("PRAGMA table_info(clause_relationships)").all() as { name: string }[]).map(r => r.name);
+  if (!clrelCols.includes("intersect_point"))
+    sqlite.exec("ALTER TABLE clause_relationships ADD COLUMN intersect_point TEXT NOT NULL DEFAULT 'mid'");
+
+  const rstCols = (sqlite.prepare("PRAGMA table_info(rst_relations)").all() as { name: string }[]).map(r => r.name);
+  if (!rstCols.includes("intersect_point"))
+    sqlite.exec("ALTER TABLE rst_relations ADD COLUMN intersect_point TEXT NOT NULL DEFAULT 'mid'");
 }
 
 export function getUserDb() {

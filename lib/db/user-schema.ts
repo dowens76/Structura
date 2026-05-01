@@ -235,6 +235,10 @@ export const clauseRelationships = sqliteTable(
     textSource:    text("text_source").notNull(),
     book:          text("book").notNull(),
     chapter:       integer("chapter").notNull(),
+    // Where the satellite arm connects to the nested bracket's vertical spine
+    // when the satellite segment is itself the nucleus of another bracket.
+    // "start" = top corner, "mid" = midpoint, "end" = bottom corner.
+    intersectPoint: text("intersect_point").notNull().default("mid"),
     createdAt:     text("created_at").$defaultFn(() => new Date().toISOString()),
   },
   (t) => [index("clrel_book_ch_src_idx").on(t.book, t.chapter, t.textSource)]
@@ -250,11 +254,12 @@ export const rstRelations = sqliteTable(
     segWordId:   text("seg_word_id").notNull(),
     role:        text("role").notNull(),
     relType:     text("rel_type").notNull(),
-    sortOrder:   integer("sort_order").notNull().default(0),
-    textSource:  text("text_source").notNull(),
-    book:        text("book").notNull(),
-    chapter:     integer("chapter").notNull(),
-    createdAt:   text("created_at").$defaultFn(() => new Date().toISOString()),
+    sortOrder:      integer("sort_order").notNull().default(0),
+    intersectPoint: text("intersect_point").notNull().default("mid"),
+    textSource:     text("text_source").notNull(),
+    book:           text("book").notNull(),
+    chapter:        integer("chapter").notNull(),
+    createdAt:      text("created_at").$defaultFn(() => new Date().toISOString()),
   },
   (t) => [
     index("rst_book_ch_src_idx").on(t.book, t.chapter, t.textSource),

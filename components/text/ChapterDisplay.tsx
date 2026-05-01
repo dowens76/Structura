@@ -2336,6 +2336,18 @@ export default function ChapterDisplay({
     setTvRstRelations((prev) => prev.filter((r) => r.groupId !== groupId));
   }
 
+  async function handleUpdateRstIntersectPoint(id: number, intersectPoint: "start" | "mid" | "end") {
+    await fetch("/api/rst-relations", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, intersectPoint }),
+    });
+    const apply = (prev: RstRelation[]) =>
+      prev.map((r) => r.id === id ? { ...r, intersectPoint } : r);
+    setRstRelations(apply);
+    setTvRstRelations(apply);
+  }
+
   // ── Word arrow handlers ────────────────────────────────────────────────────
   // Works with any wordId — source words (e.g. "OSHB.1") or translation tokens
   // (e.g. "tv:ESV:Gen.1.1.0"). Called directly for translation words and via
@@ -2670,6 +2682,7 @@ export default function ChapterDisplay({
             onDeleteGroup={handleDeleteRstGroup}
             onEditGroup={handleEditRstGroup}
             onSelectGroup={handleSelectRstGroup}
+            onUpdateRstIntersectPoint={handleUpdateRstIntersectPoint}
             customTypes={customRstTypes}
             onRequiredSourcePad={setRstSourcePad}
           />
@@ -3534,7 +3547,7 @@ export default function ChapterDisplay({
         {/* Chapter text */}
         <div
           className={`py-6 flex-1 ${hasActiveTranslations ? "" : "max-w-3xl mx-auto w-full"}`}
-          onClick={editingRst && rstSegA ? () => { setRstSegA(null); setRstSegB(null); setShowRstPicker(false); } : undefined}
+          onClick={editingRst && (rstSegA || rstSegAGroupId) ? () => { setRstSegA(null); setRstSegAGroupId(null); setRstSegB(null); setShowRstPicker(false); } : undefined}
           style={{
             paddingLeft:  "1.5rem",
             paddingRight: "1.5rem",

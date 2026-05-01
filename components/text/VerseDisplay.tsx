@@ -1659,9 +1659,11 @@ export default function VerseDisplay({
           );
 
           // Grid styles for the innermost box div (or the plain div when no layers).
+          // Always keep at least 1rem between the verse-label column and the text so
+          // Hebrew text (where rstSourcePad stays 0) doesn't press flush against the label.
           const gridStyle: React.CSSProperties = {
             gridTemplateColumns: "auto 1fr",
-            columnGap: rstSourcePad || undefined,
+            columnGap: rstSourcePad || "1rem",
           };
           const gridClass = `grid items-start${editingSpeech ? " cursor-crosshair" : ""}${editingAnnotations ? " cursor-pointer" : ""}${si > 0 && !suppressSeparator ? " mt-1" : ""}`;
 

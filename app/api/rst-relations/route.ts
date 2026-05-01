@@ -5,6 +5,7 @@ import {
   deleteRstRelationGroup,
   deleteRstRelation,
   updateRstRelationGroupType,
+  updateRstRelationIntersectPoint,
 } from "@/lib/db/queries";
 import { getActiveWorkspaceId } from "@/lib/workspace";
 
@@ -48,12 +49,23 @@ export async function POST(req: NextRequest) {
 }
 
 /**
- * PATCH { groupId, relType }
- * Updates the relation type for all members of a group (e.g. change "cause" → "result").
+ * PATCH { groupId, relType }        → update relType for all members of a group
+ * PATCH { id, intersectPoint }      → update intersectPoint for a single row
  */
 export async function PATCH(req: NextRequest) {
   const workspaceId = await getActiveWorkspaceId();
   const body = await req.json();
+
+  if ("id" in body && "intersectPoint" in body) {
+    const { id, intersectPoint } = body as { id: number; intersectPoint: string };
+    if (!id || !intersectPoint)
+      return NextResponse.json({ error: "Missing id or intersectPoint" }, { status: 400 });
+    if (!["start", "mid", "end"].includes(intersectPoint))
+      return NextResponse.json({ error: "Invalid intersectPoint" }, { status: 400 });
+    await updateRstRelationIntersectPoint(Number(id), intersectPoint as "start" | "mid" | "end");
+    return NextResponse.json({ ok: true });
+  }
+
   const { groupId, relType } = body as { groupId: string; relType: string };
   if (!groupId || !relType)
     return NextResponse.json({ error: "Missing groupId or relType" }, { status: 400 });

@@ -1138,6 +1138,18 @@ export async function deleteClauseRelationship(id: number): Promise<void> {
   await userDb.delete(clauseRelationships).where(eq(clauseRelationships.id, id));
 }
 
+export async function updateClauseRelationshipIntersect(
+  id: number,
+  intersectPoint: "start" | "mid" | "end",
+): Promise<ClauseRelationship> {
+  const [row] = await userDb
+    .update(clauseRelationships)
+    .set({ intersectPoint })
+    .where(eq(clauseRelationships.id, id))
+    .returning();
+  return row;
+}
+
 // ── RST Relations ─────────────────────────────────────────────────────────────
 
 export async function getChapterRstRelations(
@@ -1207,6 +1219,16 @@ export async function updateRstRelationGroupType(
     .update(rstRelations)
     .set({ relType: newRelType })
     .where(and(eq(rstRelations.workspaceId, workspaceId), eq(rstRelations.groupId, groupId)));
+}
+
+export async function updateRstRelationIntersectPoint(
+  id: number,
+  intersectPoint: "start" | "mid" | "end",
+): Promise<void> {
+  await userDb
+    .update(rstRelations)
+    .set({ intersectPoint })
+    .where(eq(rstRelations.id, id));
 }
 
 // ── Word Arrows ───────────────────────────────────────────────────────────────

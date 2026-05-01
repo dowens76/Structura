@@ -14,6 +14,8 @@ const LEVEL_STEP = 20;
 // Coordinate bracket: base tick length (shallow — bracket stays compact).
 const BRACKET_BASE = 16;
 
+type IntersectPoint = "start" | "mid" | "end";
+
 interface SegmentPoint {
   wordId: string;
   y: number;
@@ -32,7 +34,14 @@ interface RelGroup {
   groupKey: string;        // `${fromSegWordId}::${relType}`
   fromSegWordId: string;   // nucleus
   relType: string;
-  toSegs: Array<{ wordId: string; id: number }>;  // satellites
+  toSegs: Array<{ wordId: string; id: number; intersectPoint: IntersectPoint }>;
+}
+
+/** Pre-computed geometry for a group (used to extend arms to nested spines). */
+interface GroupGeo {
+  cornerX: number;
+  spanMinY: number;
+  spanMaxY: number;
 }
 
 interface Props {
@@ -47,20 +56,11 @@ interface Props {
   selectedToSegWordId?: string | null;    // satellite selection — shown in amber
   onSelectSegment: (wordId: string) => void;
   onDeleteRelationship: (id: number) => void;
+  onUpdateIntersectPoint?: (id: number, point: IntersectPoint) => void;
 }
 
 /**
  * Compute the position of a paragraph segment in content-relative coordinates.
- *
- * Because this SVG is placed *inside* the scrollable container it scrolls with
- * the content.  Y must therefore be measured relative to the content top
- * (container.scrollTop = 0 → top of content), not the viewport:
- *
- *   y = elem.getBoundingClientRect().top
- *       – container.getBoundingClientRect().top
- *       + container.scrollTop
- *
- * This value is stable regardless of scroll position — no scroll listener needed.
  */
 function getSegmentPos(
   wordId: string,
@@ -68,22 +68,17 @@ function getSegmentPos(
 ): { y: number; labelLeftX: number; labelRightX: number; wordRightX: number; wordLeftX: number; transLeftX: number } | null {
   const wordEl  = container.querySelector(`[data-word-id="${CSS.escape(wordId)}"]`);
   const labelEl = container.querySelector(`[data-seg-label="${CSS.escape(wordId)}"]`);
-  if (!labelEl) return null; // label must always be present
+  if (!labelEl) return null;
 
   const cRect   = container.getBoundingClientRect();
-  // Use source word element when present; fall back to label when source is hidden.
   const posEl   = wordEl ?? labelEl;
   const posRect = posEl.getBoundingClientRect();
   const lRect   = labelEl.getBoundingClientRect();
-  // Word rect for actual text position (tracks indentation); fall back to label rect.
   const wRect   = wordEl ? wordEl.getBoundingClientRect() : lRect;
 
-  // Translation text position: the first <p> inside [data-seg-translation] is shifted by
-  // paddingLeft on its parent, so its left edge correctly reflects the indent level.
   const transEl  = container.querySelector(`[data-seg-translation="${CSS.escape(wordId)}"]`);
   const transPEl = transEl?.querySelector("p") ?? transEl;
   const transPRect = transPEl ? transPEl.getBoundingClientRect() : null;
-  // Fallback: labelRight + ARC_COL = the fixed Col-5 boundary (no indent tracking).
   const transLeftX = transPRect != null
     ? transPRect.left - cRect.left
     : lRect.right + ARC_COL;
@@ -102,7 +97,6 @@ function getSegmentPos(
 
 /**
  * Group relationships by fromSegWordId + relType.
- * All relationships in a group share a nucleus and are rendered as one bracket.
  */
 function buildRelGroups(relationships: ClauseRelationship[]): RelGroup[] {
   const map = new Map<string, RelGroup>();
@@ -116,7 +110,8 @@ function buildRelGroups(relationships: ClauseRelationship[]): RelGroup[] {
         toSegs: [],
       });
     }
-    map.get(key)!.toSegs.push({ wordId: rel.toSegWordId, id: rel.id });
+    const ip = (rel.intersectPoint ?? "mid") as IntersectPoint;
+    map.get(key)!.toSegs.push({ wordId: rel.toSegWordId, id: rel.id, intersectPoint: ip });
   }
   return [...map.values()];
 }
@@ -147,7 +142,6 @@ function assignGroupArcLevels(
     });
   }
 
-  // Sort by span (shorter first = lower/inner level)
   entries.sort((a, b) => (a.maxY - a.minY) - (b.maxY - b.minY));
 
   const levelMap = new Map<string, number>();
@@ -166,9 +160,7 @@ function assignGroupArcLevels(
 }
 
 /**
- * Build a map from each segment word-id to its connected coordinate group
- * (all segments reachable via coordinate relationships).
- * Used to adjust subordinate fromY to the group midpoint and to render midpoint dots.
+ * Build a map from each segment word-id to its connected coordinate group.
  */
 function buildCoordGroups(
   relationships: ClauseRelationship[],
@@ -216,10 +208,11 @@ export default function ClauseRelationshipOverlay({
   selectedToSegWordId,
   onSelectSegment,
   onDeleteRelationship,
+  onUpdateIntersectPoint,
 }: Props) {
   const [points, setPoints]       = useState<SegmentPoint[]>([]);
   const [svgHeight, setSvgHeight] = useState(0);
-  const [hoveredKey, setHoveredKey] = useState<string | null>(null); // groupKey of hovered bracket
+  const [hoveredKey, setHoveredKey] = useState<string | null>(null);
   const frameRef = useRef<number | null>(null);
 
   function measure() {
@@ -269,72 +262,33 @@ export default function ClauseRelationshipOverlay({
 
   if (svgHeight === 0) return null;
 
-  // Arc placement:
-  //   Hebrew 5-col (hasSource + isHebrew + hasTranslation):
-  //     source arc between Hebrew text and label (Col 2); mirror arc between label and translation (Col 4)
-  //   Greek 5-col (hasSource + !isHebrew + hasTranslation):
-  //     source arc on FAR LEFT (Col 1, before Greek text); mirror arc between label and translation (Col 4)
-  //   Single-col Greek (hasSource + !isHebrew + !hasTranslation):
-  //     arc on FAR LEFT (Col 1, before label and Greek text)
-  //   Single-col Hebrew (hasSource + isHebrew + !hasTranslation):
-  //     arc between Hebrew text and label (Col 2)
-  //   Translation-only (!hasSource):
-  //     single arc on RIGHT of verse label (into translation arc col)
-  //
-  // arcGoesLeft: spine is to the LEFT of its anchor landmark.
-  //   true  — source text present; spine left of label
-  //   false — translation-only; spine right of label
+  // ── Arc direction flags ─────────────────────────────────────────────────
   const arcGoesLeft = hasSource;
-
-  // arcFarLeft: single-col Greek — arc col is the leftmost column (before label+text).
-  // Arm tips anchor at the label's left edge (= right edge of the arc col).
-  const arcFarLeft = hasSource && !isHebrew && !hasTranslation;
-
-  // arcFarLeftWithTrans: Greek 5-col — arc col is also far-left (before Greek text).
-  // Arm tips anchor at the left edge of the Greek text (= right edge of the far-left arc col).
-  // Uses wordLeftX (left edge of first Greek word) as the anchor instead of labelLeftX.
+  const arcFarLeft  = hasSource && !isHebrew && !hasTranslation;
   const arcFarLeftWithTrans = hasSource && !isHebrew && hasTranslation;
 
-  // Precompute the minimum wordLeftX across all measured points for the Greek 5-col far-left case.
-  // This is the right boundary of the far-left arc col (≈ where Greek text begins).
-  // Used to cap arm tips so they never extend into the Greek text column even for indented segments.
   const minWordLeftX = arcFarLeftWithTrans
     ? Math.min(...points.map((p) => p.wordLeftX))
     : Infinity;
 
-  // wordNearMap: the edge of each segment closest to the arc column.
-  //   arcFarLeft         → label's left edge     (single-col Greek: arc col right = label left)
-  //   arcFarLeftWithTrans → word's left edge      (Greek 5-col: arc col right ≈ Greek text left)
-  //   arcGoesLeft (Hebrew)→ word's right edge     (Hebrew: arc col is between text and label)
-  //   !arcGoesLeft       → word's left edge       (translation-only: arc col right of label)
   const wordNearMap = new Map(
     points.map((p) => [
       p.wordId,
-      arcFarLeft          ? p.labelLeftX   // Single-col Greek: anchor at label's left edge
-      : arcFarLeftWithTrans ? p.wordLeftX  // Greek 5-col: anchor at Greek text's left edge
-      : arcGoesLeft       ? p.wordRightX   // Hebrew: anchor at source word's right edge
-      : p.wordLeftX                        // Translation-only: anchor at word/label left edge
+      arcFarLeft          ? p.labelLeftX
+      : arcFarLeftWithTrans ? p.wordLeftX
+      : arcGoesLeft       ? p.wordRightX
+      : p.wordLeftX
     ])
   );
 
-  // transNearMap: left edge of each segment's translation text (after indent padding).
-  // Used by the mirror bracket arm tips in 5-col layout to track translation indentation.
   const transNearMap = new Map(points.map((p) => [p.wordId, p.transLeftX]));
 
   const relGroups   = buildRelGroups(relationships);
   const groupLevels = assignGroupArcLevels(relGroups, yMap);
   const coordGroups = buildCoordGroups(relationships);
 
-  /**
-   * anchorX = text-near edge of the arc column.
-   * Computed from ALL member word IDs so the bracket accommodates every arm.
-   *   arcFarLeftWithTrans → leftmost wordLeftX − ARC_COL   (Greek 5-col: left edge of far-left arc col)
-   *   arcGoesLeft (others)→ leftmost labelLeftX − ARC_COL  (Hebrew / single-col Greek)
-   *   !arcGoesLeft        → rightmost labelRightX + ARC_COL (translation-only)
-   */
   function anchorXFor(...wordIds: string[]): number | undefined {
     if (arcFarLeftWithTrans) {
-      // Greek 5-col: the far-left arc col's left edge = min(wordLeftX) − ARC_COL
       const wls = wordIds.map((id) => wordLeftMap.get(id)).filter((x): x is number => x != null);
       if (wls.length === 0) return undefined;
       return Math.min(...wls) - ARC_COL;
@@ -354,11 +308,138 @@ export default function ClauseRelationshipOverlay({
     const ll = labelLeftMap.get(wordId);
     const lr = labelRightMap.get(wordId);
     if (ll == null || lr == null) return undefined;
-    if (arcFarLeft)          return ll - ARC_COL / 2;             // Centre of far-left arc col (single-col Greek)
-    if (arcFarLeftWithTrans) return minWordLeftX - ARC_COL / 2;   // Centre of far-left arc col (Greek 5-col)
+    if (arcFarLeft)          return ll - ARC_COL / 2;
+    if (arcFarLeftWithTrans) return minWordLeftX - ARC_COL / 2;
     return arcGoesLeft ? ll - ARC_COL : lr + ARC_COL;
   }
 
+  const LABEL_GAP = 4;
+
+  function armTipX(wordId: string): number | undefined {
+    const wn = wordNearMap.get(wordId);
+    if (arcGoesLeft) {
+      if (arcFarLeft) {
+        if (wn != null) return wn - LABEL_GAP;
+        const ll = labelLeftMap.get(wordId);
+        return ll != null ? ll - LABEL_GAP : undefined;
+      } else if (arcFarLeftWithTrans) {
+        return minWordLeftX - LABEL_GAP;
+      } else {
+        if (wn != null) return wn + LABEL_GAP;
+        const ll = labelLeftMap.get(wordId);
+        return ll != null ? ll - ARC_COL + LABEL_GAP : undefined;
+      }
+    } else {
+      if (wn != null) return wn - LABEL_GAP;
+      const lr = labelRightMap.get(wordId);
+      return lr != null ? lr + ARC_COL - LABEL_GAP : undefined;
+    }
+  }
+
+  // ── Pre-pass: compute group geometry (cornerX + initial Y span) ─────────
+  // This map lets higher-level brackets find the spine position of lower-level
+  // brackets that are nested at their arm tips, so arms can extend all the way
+  // to the nested bracket's vertical line instead of stopping at the word edge.
+  const groupGeoMap = new Map<string, GroupGeo>();
+
+  for (const group of relGroups) {
+    const { fromSegWordId, toSegs, groupKey, relType } = group;
+    const rt = RELATIONSHIP_MAP[relType];
+    if (!rt) continue;
+    const isSubordinate = rt.category === "subordinate";
+
+    const nucleusY_raw = yMap.get(fromSegWordId);
+    if (nucleusY_raw == null) continue;
+
+    const validToSegs = toSegs.filter((s) => yMap.get(s.wordId) != null);
+    if (validToSegs.length === 0) continue;
+
+    // Nucleus Y: adjust to coordinate-group midpoint for subordinate brackets
+    let nucleusY = nucleusY_raw;
+    if (isSubordinate) {
+      const cg = coordGroups.get(fromSegWordId);
+      if (cg && cg.length > 1) {
+        const cgYs = cg.map((id) => yMap.get(id)).filter((y): y is number => y != null);
+        if (cgYs.length > 1) nucleusY = (Math.min(...cgYs) + Math.max(...cgYs)) / 2;
+      }
+    }
+
+    const satelliteYs = validToSegs.map((s) => yMap.get(s.wordId)!);
+    const allArmYs    = [nucleusY, ...satelliteYs];
+    const spanMinY    = Math.min(...allArmYs);
+    const spanMaxY    = Math.max(...allArmYs);
+    if (spanMinY === spanMaxY) continue;
+
+    const allWordIds  = [fromSegWordId, ...validToSegs.map((s) => s.wordId)];
+    const spineAnchor = anchorXFor(...allWordIds);
+    if (spineAnchor == null) continue;
+
+    const level   = groupLevels.get(groupKey) ?? 0;
+    const depth   = isSubordinate ? BASE_DEPTH + level * LEVEL_STEP : BRACKET_BASE + level * LEVEL_STEP;
+    const cornerX = arcGoesLeft ? spineAnchor + depth : spineAnchor - depth;
+
+    groupGeoMap.set(groupKey, { cornerX, spanMinY, spanMaxY });
+  }
+
+  // segment-id → all geos for brackets that contain this segment.
+  // For subordinate brackets: only the nucleus (fromSeg) is indexed.
+  // For coordinate brackets: all members (fromSeg + toSegs) share the same spine,
+  // so all are indexed — this lets higher-level arms extend to the coordinate spine
+  // even when the satellite is a toSeg rather than the fromSeg of the inner bracket.
+  const segToGeoMap = new Map<string, GroupGeo[]>();
+  for (const group of relGroups) {
+    const geo = groupGeoMap.get(group.groupKey);
+    if (!geo) continue;
+    const rt = RELATIONSHIP_MAP[group.relType];
+    const isCoord = rt?.category === "coordinate";
+
+    const segIds = [group.fromSegWordId];
+    if (isCoord) {
+      for (const s of group.toSegs) segIds.push(s.wordId);
+    }
+
+    for (const segId of segIds) {
+      if (!segToGeoMap.has(segId)) segToGeoMap.set(segId, []);
+      segToGeoMap.get(segId)!.push(geo);
+    }
+  }
+
+  /**
+   * When a segment is itself the nucleus of a bracket, return the shallowest
+   * such bracket's geo — this is the target for an arm extension.
+   * "Shallowest" = spine closest to text (smallest depth into the arc column).
+   */
+  function getNestedGeo(wordId: string): GroupGeo | undefined {
+    const geos = segToGeoMap.get(wordId);
+    if (!geos || geos.length === 0) return undefined;
+    return geos.reduce((best, g) =>
+      arcGoesLeft ? (g.cornerX < best.cornerX ? g : best)
+                  : (g.cornerX > best.cornerX ? g : best)
+    );
+  }
+
+  /**
+   * Effective arm tip X: extend to nested bracket's spine when the segment is
+   * itself a bracket nucleus; otherwise use the word/label edge.
+   */
+  function effectiveTipX(wordId: string): number | undefined {
+    const nested = getNestedGeo(wordId);
+    return nested ? nested.cornerX : armTipX(wordId);
+  }
+
+  /**
+   * Effective arm Y: if the segment is a bracket nucleus, use the intersect
+   * point within that bracket's span; otherwise use the raw segment Y.
+   */
+  function effectiveY(wordId: string, ip: IntersectPoint, fallbackY: number): number {
+    const nested = getNestedGeo(wordId);
+    if (!nested) return fallbackY;
+    if (ip === "start") return nested.spanMinY;
+    if (ip === "end")   return nested.spanMaxY;
+    return (nested.spanMinY + nested.spanMaxY) / 2;
+  }
+
+  // ── Render ──────────────────────────────────────────────────────────────
   return (
     <svg
       style={{
@@ -372,12 +453,11 @@ export default function ClauseRelationshipOverlay({
         zIndex:        5,
       }}
     >
-      {/* ── Arrowhead markers (subordinate types only) ────────────────────── */}
+      {/* ── Arrowhead markers ───────────────────────────────────────────── */}
       <defs>
         {RELATIONSHIP_TYPES
           .filter((rt) => rt.category === "subordinate")
           .flatMap((rt) => [
-            // Standard marker (kept for any future markerEnd usage)
             <marker
               key={rt.key}
               id={`clrel-arrow-${rt.key}`}
@@ -387,9 +467,6 @@ export default function ClauseRelationshipOverlay({
             >
               <polygon points="0 0, 5 2, 0 4" fill={rt.color} />
             </marker>,
-            // Reversed marker: used with markerStart on paths that go spine→text.
-            // orient="auto-start-reverse" flips the orientation 180° at the start
-            // vertex, so the arrowhead points away from the text (into the arc column).
             <marker
               key={`rev-${rt.key}`}
               id={`clrel-arrow-rev-${rt.key}`}
@@ -402,7 +479,7 @@ export default function ClauseRelationshipOverlay({
           ])}
       </defs>
 
-      {/* ── Relationship groups ───────────────────────────────────────────── */}
+      {/* ── Relationship groups ─────────────────────────────────────────── */}
       {relGroups.map((group) => {
         const { fromSegWordId, relType, toSegs, groupKey } = group;
         const rt = RELATIONSHIP_MAP[relType];
@@ -417,34 +494,17 @@ export default function ClauseRelationshipOverlay({
         const validToSegs = toSegs.filter((s) => yMap.get(s.wordId) != null);
         if (validToSegs.length === 0) return null;
 
-        // ── Subordinate fromY adjustment ──────────────────────────────────
-        // If the nucleus belongs to a coordinate group, start from that group's
-        // vertical midpoint so the subordinate arrow originates at the bracket centre.
+        // Nucleus Y: subordinate brackets originate from coordinate-group midpoint
         let nucleusY = nucleusY_raw;
         if (isSubordinate) {
           const cg = coordGroups.get(fromSegWordId);
           if (cg && cg.length > 1) {
             const cgYs = cg.map((id) => yMap.get(id)).filter((y): y is number => y != null);
-            if (cgYs.length > 1) {
-              nucleusY = (Math.min(...cgYs) + Math.max(...cgYs)) / 2;
-            }
+            if (cgYs.length > 1) nucleusY = (Math.min(...cgYs) + Math.max(...cgYs)) / 2;
           }
         }
 
-        const satelliteYs = validToSegs.map((s) => yMap.get(s.wordId)!);
-        const allArmYs    = [nucleusY, ...satelliteYs];
-        const spanMinY    = Math.min(...allArmYs);
-        const spanMaxY    = Math.max(...allArmYs);
-        const span        = spanMaxY - spanMinY;
-
-        if (span === 0) return null; // degenerate — all same Y
-
-        const allWordIds = [fromSegWordId, ...validToSegs.map((s) => s.wordId)];
-
-        // ── Spine position ─────────────────────────────────────────────────
-        // cornerX is the vertical spine, placed at BASE_DEPTH inside the arc column.
-        // We anchor it relative to the most-extreme label in the group so the spine
-        // never overlaps any text label.
+        const allWordIds  = [fromSegWordId, ...validToSegs.map((s) => s.wordId)];
         const spineAnchor = anchorXFor(...allWordIds);
         if (spineAnchor == null) return null;
 
@@ -456,89 +516,62 @@ export default function ClauseRelationshipOverlay({
 
         const strokeWidth = isHov ? 2 : 1.5;
 
-        // ── Label position ─────────────────────────────────────────────────
-        // Sits inside the bracket at the inner corner nearest the extremal satellite
-        // (the satellite farthest from the nucleus). This keeps it inside the bracket
-        // angle where there are no arm lines or arrowheads.
-        const extremalSatY = satelliteYs.reduce((ex, y) =>
-          Math.abs(y - nucleusY) > Math.abs(ex - nucleusY) ? y : ex,
-          satelliteYs[0],
-        );
-        const labelY = extremalSatY > nucleusY
-          ? extremalSatY - 3   // satellite below → just above its arm
-          : extremalSatY + 10; // satellite above → just below its arm
-        // Bracket label sits inside the bracket angle, near the spine:
-        //   Hebrew / Hebrew 5-col (bracket opens leftward): label left of spine → "end"
-        //   Greek far-left single-col or 5-col (bracket opens rightward): label right of spine → "start"
-        //   Translation-only (bracket opens rightward): label right of spine → "start"
-        const bracketOpensLeft = arcGoesLeft && !arcFarLeft && !arcFarLeftWithTrans;
-        const labelX   = bracketOpensLeft ? cornerX - 2 : cornerX + 2;
-        const labelAnc = bracketOpensLeft ? "end"        : "start";
-
-        // ── Per-arm tip positions ──────────────────────────────────────────
-        // Each arm extends from the spine (cornerX) to the near edge of the arc column.
-        const LABEL_GAP = 4; // px gap between arm tip and the arc-column boundary
-
-        function armTipX(wordId: string): number | undefined {
-          const wn = wordNearMap.get(wordId);
-          if (arcGoesLeft) {
-            if (arcFarLeft) {
-              // Single-col Greek far-left: arm tip at right edge of arc col (= label's left − gap).
-              if (wn != null) return wn - LABEL_GAP;
-              const ll = labelLeftMap.get(wordId);
-              return ll != null ? ll - LABEL_GAP : undefined;
-            } else if (arcFarLeftWithTrans) {
-              // Greek 5-col far-left: arm tip at right edge of far-left arc col (= min wordLeftX − gap).
-              // All arms stop at the same x — the col boundary — regardless of word position or indent.
-              return minWordLeftX - LABEL_GAP;
-            } else {
-              // Hebrew: arm points toward Hebrew text on the LEFT.
-              // wn = wordRightX; tip just inside the arc col from the text side.
-              if (wn != null) return wn + LABEL_GAP;
-              const ll = labelLeftMap.get(wordId);
-              return ll != null ? ll - ARC_COL + LABEL_GAP : undefined;
-            }
-          } else {
-            // Translation-only: arm points RIGHT toward translation text.
-            if (wn != null) return wn - LABEL_GAP;
-            const lr = labelRightMap.get(wordId);
-            return lr != null ? lr + ARC_COL - LABEL_GAP : undefined;
-          }
-        }
-
-        // Nucleus arm: label-edge → spine, no arrowhead
-        const nucleusTipX = armTipX(fromSegWordId);
+        // ── Effective nucleus arm ───────────────────────────────────────
+        // Extend to nested bracket's spine when the nucleus is itself a bracket.
+        const nucleusTipX = effectiveTipX(fromSegWordId);
         if (nucleusTipX == null) return null;
-        const nucleusArmPath = `M ${nucleusTipX} ${nucleusY} H ${cornerX}`;
+        // Nucleus always connects at the midpoint of the nested bracket (if any)
+        const effNucleusY = effectiveY(fromSegWordId, "mid", nucleusY);
 
-        // Pre-compute per-satellite data so each loop below can reuse it
+        // ── Effective satellite arms ────────────────────────────────────
         const satData = validToSegs.flatMap((s) => {
-          const sy      = yMap.get(s.wordId);
-          const tipX    = armTipX(s.wordId);
-          if (sy == null || tipX == null) return [];
-          // Subordinate: spine → label-edge (arrowhead at text-proximate end)
-          // Coordinate:  label-edge → spine (no arrowhead; bracket look)
+          const rawSatY = yMap.get(s.wordId);
+          if (rawSatY == null) return [];
+          const sy    = effectiveY(s.wordId, s.intersectPoint, rawSatY);
+          const tipX  = effectiveTipX(s.wordId);
+          if (tipX == null) return [];
+
           const armPath = isSubordinate
             ? `M ${cornerX} ${sy} H ${tipX}`
             : `M ${tipX} ${sy} H ${cornerX}`;
           const delX = (tipX + cornerX) / 2;
-          return [{ s, sy, tipX, armPath, delX }];
+          return [{ s, sy, tipX, armPath, delX, rawSatY }];
         });
 
-        // ── Path segments ──────────────────────────────────────────────────
-        const verticalPath = `M ${cornerX} ${spanMinY} V ${spanMaxY}`;
+        // Spine spans effective Y range of all arms
+        const allEffectiveYs = [effNucleusY, ...satData.map((d) => d.sy)];
+        const spanMinY = Math.min(...allEffectiveYs);
+        const spanMaxY = Math.max(...allEffectiveYs);
+
+        if (spanMinY === spanMaxY) return null;
+
+        const nucleusArmPath = `M ${nucleusTipX} ${effNucleusY} H ${cornerX}`;
+        const verticalPath   = `M ${cornerX} ${spanMinY} V ${spanMaxY}`;
+
+        // ── Label ───────────────────────────────────────────────────────
+        const extremalSatY = satData
+          .map((d) => d.sy)
+          .reduce((ex, y) =>
+            Math.abs(y - effNucleusY) > Math.abs(ex - effNucleusY) ? y : ex,
+            satData[0]?.sy ?? effNucleusY,
+          );
+        const labelY = extremalSatY > effNucleusY
+          ? extremalSatY - 3
+          : extremalSatY + 10;
+
+        const bracketOpensLeft = arcGoesLeft && !arcFarLeft && !arcFarLeftWithTrans;
+        const labelX   = bracketOpensLeft ? cornerX - 2 : cornerX + 2;
+        const labelAnc = bracketOpensLeft ? "end"        : "start";
 
         return (
           <g key={groupKey}>
-            {/* ── Vertical spine ───────────────────────────────────────── */}
+            {/* Vertical spine */}
             <path d={verticalPath} fill="none" stroke={color} strokeWidth={strokeWidth} strokeLinejoin="miter" />
 
-            {/* ── Nucleus arm (no arrowhead) ───────────────────────────── */}
+            {/* Nucleus arm */}
             <path d={nucleusArmPath} fill="none" stroke={color} strokeWidth={strokeWidth} />
 
-            {/* ── Satellite arms ───────────────────────────────────────── */}
-            {/* Subordinate: path goes spine→text edge; markerEnd places the
-                arrowhead at the text end, pointing toward the clause text. */}
+            {/* Satellite arms */}
             {satData.map(({ s, armPath }) => (
               <path
                 key={`arm-${s.id}`}
@@ -550,7 +583,7 @@ export default function ClauseRelationshipOverlay({
               />
             ))}
 
-            {/* ── Label ────────────────────────────────────────────────── */}
+            {/* Label */}
             <text
               x={labelX} y={labelY}
               textAnchor={labelAnc} fontSize={9} fontFamily="monospace"
@@ -559,7 +592,7 @@ export default function ClauseRelationshipOverlay({
               {abbr}
             </text>
 
-            {/* ── Invisible hit-target for vertical spine + nucleus arm ─── */}
+            {/* Hit targets for spine + nucleus arm */}
             <path
               d={verticalPath}
               fill="none" stroke="transparent" strokeWidth={12}
@@ -575,10 +608,9 @@ export default function ClauseRelationshipOverlay({
               onMouseLeave={() => setHoveredKey(null)}
             />
 
-            {/* ── Per-satellite: hit target + delete button ─────────────── */}
+            {/* Per-satellite: hit target + delete button */}
             {satData.map(({ s, sy, armPath, delX }) => (
               <g key={`sat-${s.id}`}>
-                {/* Hit target first so delete button is on top */}
                 <path
                   d={armPath}
                   fill="none" stroke="transparent" strokeWidth={12}
@@ -586,7 +618,6 @@ export default function ClauseRelationshipOverlay({
                   onMouseEnter={() => setHoveredKey(groupKey)}
                   onMouseLeave={() => setHoveredKey(null)}
                 />
-                {/* Delete handle — shown when bracket is hovered */}
                 <g
                   style={{ pointerEvents: "auto", cursor: "pointer", opacity: isHov ? 1 : 0, transition: "opacity 0.15s" }}
                   onMouseEnter={() => setHoveredKey(groupKey)}
@@ -596,10 +627,52 @@ export default function ClauseRelationshipOverlay({
                   <circle cx={delX} cy={sy} r={8} fill="white" stroke={color} strokeWidth={1.5} />
                   <text x={delX} y={sy + 3.5} textAnchor="middle" fontSize={10} fill={color} style={{ userSelect: "none" }}>×</text>
                 </g>
+
+                {/* Intersect-point selector — shown in editing mode when the
+                    satellite arm connects to a nested bracket's spine.
+                    Three dots mark start/mid/end; active dot is filled. */}
+                {editing && onUpdateIntersectPoint && (() => {
+                  const nested = getNestedGeo(s.wordId);
+                  if (!nested) return null;
+                  const positions: Array<{ ip: IntersectPoint; y: number; label: string }> = [
+                    { ip: "start", y: nested.spanMinY, label: "⊤" },
+                    { ip: "mid",   y: (nested.spanMinY + nested.spanMaxY) / 2, label: "·" },
+                    { ip: "end",   y: nested.spanMaxY, label: "⊥" },
+                  ];
+                  const dotCx = nested.cornerX;
+                  return positions.map(({ ip, y: dotY, label }) => {
+                    const isActive = s.intersectPoint === ip;
+                    return (
+                      <g
+                        key={`ipt-${s.id}-${ip}`}
+                        style={{ pointerEvents: "auto", cursor: "pointer" }}
+                        onClick={(e) => { e.stopPropagation(); onUpdateIntersectPoint(s.id, ip); }}
+                        onMouseEnter={() => setHoveredKey(groupKey)}
+                        onMouseLeave={() => setHoveredKey(null)}
+                        title={`Connect at ${ip === "start" ? "top" : ip === "end" ? "bottom" : "middle"} of bracket`}
+                      >
+                        <circle
+                          cx={dotCx} cy={dotY} r={5}
+                          fill={isActive ? color : "white"}
+                          stroke={color} strokeWidth={1.5}
+                          opacity={0.85}
+                        />
+                        <text
+                          x={dotCx} y={dotY + 3.5}
+                          textAnchor="middle" fontSize={7}
+                          fill={isActive ? "white" : color}
+                          style={{ userSelect: "none", pointerEvents: "none" }}
+                        >
+                          {label}
+                        </text>
+                      </g>
+                    );
+                  });
+                })()}
               </g>
             ))}
 
-            {/* ── Mirror bracket on translation side (5-col layout only) ── */}
+            {/* Mirror bracket on translation side (5-col layout only) */}
             {hasTranslation && hasSource && (() => {
               const allLRs = allWordIds
                 .map((id) => labelRightMap.get(id))
@@ -607,23 +680,17 @@ export default function ClauseRelationshipOverlay({
               if (allLRs.length === 0) return null;
               const mSpineAnchor = Math.max(...allLRs) + ARC_COL;
               const mCornerX     = mSpineAnchor - depth;
-              // Mirror label: inside the bracket angle near the extremal satellite's corner.
-              // mCornerX + 2 puts it just right of the spine, inside the bracket opening.
               const mLabelX   = mCornerX + 2;
               const mLabelAnc = "start";
 
-              // Mirror nucleus arm: translation-text-edge → mCornerX (no arrowhead).
-              // Prefer actual translation text left edge (tracks indent); fall back to
-              // label-based arc-col boundary (= Col-5 fixed boundary, no indent tracking).
               const mNucleusLR = labelRightMap.get(fromSegWordId);
               if (mNucleusLR == null) return null;
               const mNucleusTipX = (transNearMap.get(fromSegWordId) ?? mNucleusLR + ARC_COL) - LABEL_GAP;
-              const mNucleusArmPath = `M ${mNucleusTipX} ${nucleusY} H ${mCornerX}`;
+              const mNucleusArmPath = `M ${mNucleusTipX} ${effNucleusY} H ${mCornerX}`;
 
-              // Mirror satellite arms: each extends from mCornerX to the translation text,
-              // arrowhead at the text end.  Prefer actual text left edge (tracks indent).
               const mSatPaths = validToSegs.flatMap((s) => {
-                const sy = yMap.get(s.wordId);
+                const satEntry = satData.find((d) => d.s.id === s.id);
+                const sy = satEntry?.sy ?? yMap.get(s.wordId);
                 const lr = labelRightMap.get(s.wordId);
                 if (sy == null || lr == null) return [];
                 const mTipX = (transNearMap.get(s.wordId) ?? lr + ARC_COL) - LABEL_GAP;
@@ -652,7 +719,6 @@ export default function ClauseRelationshipOverlay({
                   >
                     {abbr}
                   </text>
-                  {/* Hit target for mirror spine */}
                   <path
                     d={`M ${mCornerX} ${spanMinY} V ${spanMaxY}`}
                     fill="none" stroke="transparent" strokeWidth={12}
@@ -668,10 +734,6 @@ export default function ClauseRelationshipOverlay({
       })}
 
       {/* ── Coordinate-group midpoint dots (editing mode) ───────────────── */}
-      {/* One target-style dot per coordinate group, at the vertical midpoint of
-          the bracket. Clicking selects the closest-to-midpoint member as the
-          fromSeg, causing any subsequent subordinate arrow to originate from
-          the middle of this bracket automatically. */}
       {editing && (() => {
         const renderedKeys = new Set<string>();
         return [...coordGroups.entries()].flatMap(([wordId, group]) => {
@@ -689,7 +751,6 @@ export default function ClauseRelationshipOverlay({
           const cx = dotX(wordId);
           if (cx == null) return [];
 
-          // Representative member: the one whose y is closest to groupMidY
           const repId = group.reduce((best, id) => {
             const y     = yMap.get(id) ?? Infinity;
             const bestY = yMap.get(best) ?? Infinity;
@@ -722,7 +783,6 @@ export default function ClauseRelationshipOverlay({
           const isFrom = wordId === selectedSegWordId;
           const isTo   = wordId === selectedToSegWordId;
 
-          // nucleus: violet (larger filled), satellite: amber (smaller filled), others: slate outline
           const dotColor = isFrom ? "#7C3AED" : isTo ? "#D97706" : "#94A3B8";
           const radius   = isFrom ? 7 : isTo ? 6 : 5;
           const filled   = isFrom || isTo;
