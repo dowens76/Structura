@@ -1275,12 +1275,17 @@ export default function VerseDisplay({
       <div
         className={[
           presentationMode ? "w-72" : "w-48",
-          "flex-none pl-3 self-stretch flex flex-col",
+          "flex-none pl-3 block",
           editingAnnotations
             ? "cursor-pointer hover:bg-indigo-50 dark:hover:bg-indigo-950/20 rounded transition-colors"
             : "",
           isHighlighted ? "ring-1 ring-inset ring-indigo-400/60 rounded" : "",
         ].filter(Boolean).join(" ")}
+        // height:0 + overflow:visible takes this column out of the parent flex
+        // row's height calculation so annotations taller than the source-text
+        // row don't introduce vertical gaps.  Content still renders at its
+        // natural size, flowing into the empty space alongside the next row.
+        style={{ height: 0, overflow: "visible" }}
         onClick={
           editingAnnotations
             ? (e) => { e.stopPropagation(); onSelectAnnotationSegment?.(segFirstWordId, e.shiftKey); }
@@ -1673,7 +1678,7 @@ export default function VerseDisplay({
               {/* Separator (scene or regular paragraph break) on a within-verse segment */}
               {si > 0 && !suppressSeparator && renderSegSeparator(seg[0].wordId)}
               {/* Flex wrapper so the annotation column can sit to the right of the text grid */}
-              <div className="flex items-stretch">
+              <div className="flex items-start">
                 <div className="flex-1 min-w-0">
                   {/* 2-column grid: label first, source second. For Hebrew (RTL) dir="rtl"
                       reverses visual column order so label appears on the RIGHT.
@@ -2123,7 +2128,7 @@ export default function VerseDisplay({
             {/* Separator (scene or regular paragraph break) on a within-verse segment */}
             {si > 0 && !suppressSeparator && renderSegSeparator(seg[0].wordId)}
             {/* Flex wrapper so the annotation column can sit to the right of the text grid */}
-            <div className="flex items-stretch">
+            <div className="flex items-start">
               <div className="flex-1 min-w-0">
                 {/* Grid layout: nested speech-box divs wrap from the outside in.
                     The innermost div carries the grid styles; outer divs are borders only. */}
