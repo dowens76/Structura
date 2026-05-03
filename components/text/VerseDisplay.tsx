@@ -398,10 +398,10 @@ function AnnotBadge({
     <div
       className={[
         isEnd ? "rounded" : "rounded-t",
-        "flex-1 flex flex-col overflow-hidden",
+        "flex-1 flex flex-col",
         editingAnnotations ? "cursor-pointer hover:brightness-95 dark:hover:brightness-110" : "",
       ].join(" ")}
-      style={{ borderLeft: `3px solid ${color}`, backgroundColor: `${color}18` }}
+      style={{ position: "relative", borderLeft: `3px solid ${color}`, backgroundColor: `${color}18` }}
       onClick={editingAnnotations ? (e) => { e.stopPropagation(); setIsEditing(true); } : undefined}
       title={editingAnnotations ? "Click to edit" : undefined}
     >
@@ -432,8 +432,10 @@ function AnnotBadge({
             )}
           </div>
         )}
-        {/* Description on its own line below the label */}
-        {annotation.description && (
+        {/* Description: rendered in normal flow for single-segment annotations
+            (isStart && isEnd) — overflowing onto the next, unrelated row would
+            visually clash with a different annotation's colour. */}
+        {annotation.description && isEnd && (
           <span
             className="text-stone-600 dark:text-stone-400 leading-tight min-w-0 break-words"
             style={{ fontSize: presentationMode ? "1rem" : "var(--translation-font-size, 0.875rem)" }}
@@ -442,6 +444,34 @@ function AnnotBadge({
           </span>
         )}
       </div>
+      {/* For multi-segment annotations (start but not end) the description is
+          rendered absolutely so its multi-line height does not contribute to
+          the badge's content height — keeps the parent flex row (and thus the
+          Hebrew text row) at its natural size while the text overflows
+          visually onto the same-coloured continuation bands of the following
+          segments.  pointer-events:none so clicks fall through to the segment
+          beneath. */}
+      {annotation.description && !isEnd && (
+        <div
+          className="px-1.5 pt-0.5"
+          style={{
+            position: "absolute",
+            left: 0,
+            right: 0,
+            top: "100%",
+            overflow: "visible",
+            pointerEvents: "none",
+            zIndex: 1,
+          }}
+        >
+          <span
+            className="text-stone-600 dark:text-stone-400 leading-tight min-w-0 break-words"
+            style={{ fontSize: presentationMode ? "1rem" : "var(--translation-font-size, 0.875rem)" }}
+          >
+            {annotation.description}
+          </span>
+        </div>
+      )}
       {/* In edit mode show the single-segment +/- at the bottom */}
       {editingAnnotations && isEnd && onAdjustRange && (
         <div className="flex items-center gap-0.5 px-1.5 pb-1" onClick={(e) => e.stopPropagation()}>
@@ -1275,17 +1305,12 @@ export default function VerseDisplay({
       <div
         className={[
           presentationMode ? "w-72" : "w-48",
-          "flex-none pl-3 block",
+          "flex-none pl-3 self-stretch flex flex-col",
           editingAnnotations
             ? "cursor-pointer hover:bg-indigo-50 dark:hover:bg-indigo-950/20 rounded transition-colors"
             : "",
           isHighlighted ? "ring-1 ring-inset ring-indigo-400/60 rounded" : "",
         ].filter(Boolean).join(" ")}
-        // height:0 + overflow:visible takes this column out of the parent flex
-        // row's height calculation so annotations taller than the source-text
-        // row don't introduce vertical gaps.  Content still renders at its
-        // natural size, flowing into the empty space alongside the next row.
-        style={{ height: 0, overflow: "visible" }}
         onClick={
           editingAnnotations
             ? (e) => { e.stopPropagation(); onSelectAnnotationSegment?.(segFirstWordId, e.shiftKey); }
@@ -1678,7 +1703,7 @@ export default function VerseDisplay({
               {/* Separator (scene or regular paragraph break) on a within-verse segment */}
               {si > 0 && !suppressSeparator && renderSegSeparator(seg[0].wordId)}
               {/* Flex wrapper so the annotation column can sit to the right of the text grid */}
-              <div className="flex items-start">
+              <div className="flex items-stretch">
                 <div className="flex-1 min-w-0">
                   {/* 2-column grid: label first, source second. For Hebrew (RTL) dir="rtl"
                       reverses visual column order so label appears on the RIGHT.
@@ -2128,7 +2153,7 @@ export default function VerseDisplay({
             {/* Separator (scene or regular paragraph break) on a within-verse segment */}
             {si > 0 && !suppressSeparator && renderSegSeparator(seg[0].wordId)}
             {/* Flex wrapper so the annotation column can sit to the right of the text grid */}
-            <div className="flex items-start">
+            <div className="flex items-stretch">
               <div className="flex-1 min-w-0">
                 {/* Grid layout: nested speech-box divs wrap from the outside in.
                     The innermost div carries the grid styles; outer divs are borders only. */}
