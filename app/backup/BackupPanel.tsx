@@ -19,6 +19,7 @@ export default function BackupPanel() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [status,       setStatus]       = useState<RestoreStatus>({ type: "idle" });
   const [confirmed,    setConfirmed]    = useState(false);
+  const [downloaded,   setDownloaded]   = useState(false);
 
   async function handleRestore() {
     if (!selectedFile || !confirmed || status.type === "loading") return;
@@ -78,11 +79,19 @@ export default function BackupPanel() {
         <a
           href="/api/backup"
           download
+          onClick={() => setDownloaded(true)}
           className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white transition-opacity hover:opacity-90"
           style={{ backgroundColor: "var(--accent)" }}
         >
           {t("backup.downloadBtn")}
         </a>
+
+        {/* Download confirmation */}
+        {downloaded && (
+          <div className="mt-4 rounded-lg border border-emerald-300 dark:border-emerald-700 bg-emerald-50 dark:bg-emerald-950 px-4 py-3 text-sm text-emerald-800 dark:text-emerald-200">
+            <p className="font-medium">{t("backup.downloadSuccess")}</p>
+          </div>
+        )}
       </section>
 
       {/* ── Restore ────────────────────────────────────────────────────────── */}
