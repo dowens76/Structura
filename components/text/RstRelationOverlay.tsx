@@ -13,7 +13,6 @@ import { buildRstTree } from "@/lib/rst/buildRstTree";
 // ── Layout constants ──────────────────────────────────────────────────────────
 const HANG_PX      = 32;  // must match VerseDisplay HANG_PX
 const LEVEL_WIDTH  = 18;  // px per nesting depth level
-const NUC_TICK     = 10;  // px horizontal step at the nucleus end of a subordinate path
 
 /**
  * LTR texts: minimum left padding added to the container so the tree has room.
@@ -757,16 +756,9 @@ export default function RstRelationOverlay({
         const childSpineKey = `${lk.childId}:${lk.isTrans ? 1 : 0}`;
         const childSpineX   = spineXByParent.get(childSpineKey);
 
-        // When the child is a subordinate group drawn as an L-shape, the child's
-        // visual vertical line sits at nucX ± NUC_TICK — not at its full spine X.
-        // Using the full spine as armX2 creates an 8 px gap (LEVEL_WIDTH − NUC_TICK).
-        // For Z-shape children (nucleus-is-group) outerX = nucX ± LEVEL_WIDTH which
-        // equals the spine, so no adjustment is needed there.
         const childNucX    = nucleusXByGroup.get(childSpineKey);
         const childIsSubordL = childNucX !== undefined && !nucleusIsGroup.has(childSpineKey);
-        const armX2 = childIsSubordL
-          ? ((isHebrew && !lk.isTrans) ? childNucX + NUC_TICK : childNucX - NUC_TICK)
-          : childSpineX !== undefined ? childSpineX : lk.x2;
+        const armX2 = childSpineX !== undefined ? childSpineX : lk.x2;
 
         // For coordinate arms to a subordinate child, use intersectPoint to pick the Y.
         const childYRange = childIsSubordL ? groupYRange.get(childSpineKey) : undefined;
@@ -790,15 +782,12 @@ export default function RstRelationOverlay({
         let pathD: string;
         if (isSubordinate) {
           const nucX = nucleusXByGroup.get(key) ?? spineX;
-          if (nucleusIsGroup.has(key)) {
-            const outerX = (isHebrew && !lk.isTrans)
-              ? nucX + LEVEL_WIDTH
-              : nucX - LEVEL_WIDTH;
-            pathD = `M ${nucX},${lk.y1} H ${outerX} V ${lk.y2} H ${armX2}`;
-          } else {
-            const outerX = (isHebrew && !lk.isTrans) ? nucX + NUC_TICK : nucX - NUC_TICK;
-            pathD = `M ${nucX},${lk.y1} H ${outerX} V ${lk.y2} H ${armX2}`;
-          }
+          // outerX: one LEVEL_WIDTH beyond the outermost of nucleus and satellite,
+          // so the vertical segment always clears any bracket at armX2.
+          const outerX = (isHebrew && !lk.isTrans)
+            ? Math.max(nucX, armX2) + LEVEL_WIDTH
+            : Math.min(nucX, armX2) - LEVEL_WIDTH;
+          pathD = `M ${nucX},${lk.y1} H ${outerX} V ${lk.y2} H ${armX2}`;
         } else {
           pathD = `M ${spineX},${lk.y1} V ${armY} H ${armX2}`;
         }
@@ -825,13 +814,10 @@ export default function RstRelationOverlay({
         const spineX = spineXByParent.get(key) ?? lk.x1;
         const childSpineKey = `${lk.childId}:${lk.isTrans ? 1 : 0}`;
 
-        // Same gap-fix logic as path rendering:
         const childNucX    = nucleusXByGroup.get(childSpineKey);
         const childIsSubordL = childNucX !== undefined && !nucleusIsGroup.has(childSpineKey);
         const childSpineX  = spineXByParent.get(childSpineKey);
-        const armX2 = childIsSubordL
-          ? ((isHebrew && !lk.isTrans) ? childNucX + NUC_TICK : childNucX - NUC_TICK)
-          : childSpineX !== undefined ? childSpineX : lk.x2;
+        const armX2 = childSpineX !== undefined ? childSpineX : lk.x2;
 
         const childYRange = childIsSubordL ? groupYRange.get(childSpineKey) : undefined;
         const ip = lk.intersectPoint ?? "mid";
@@ -848,9 +834,9 @@ export default function RstRelationOverlay({
         let armStartX: number;
         if (isSubordinate) {
           const nucX = nucleusXByGroup.get(key) ?? spineX;
-          armStartX = nucleusIsGroup.has(key)
-            ? ((isHebrew && !lk.isTrans) ? nucX + LEVEL_WIDTH : nucX - LEVEL_WIDTH)
-            : ((isHebrew && !lk.isTrans) ? nucX + NUC_TICK    : nucX - NUC_TICK);
+          armStartX = (isHebrew && !lk.isTrans)
+            ? Math.max(nucX, armX2) + LEVEL_WIDTH
+            : Math.min(nucX, armX2) - LEVEL_WIDTH;
         } else {
           armStartX = spineX;
         }
@@ -890,7 +876,7 @@ export default function RstRelationOverlay({
         // Shown in editing mode when this coordinate arm connects to an L-shape
         // subordinate child and onUpdateRstIntersectPoint is wired up.
         if (editing && !lk.isTrans && childIsSubordL && childYRange && onUpdateRstIntersectPoint && lk.dbRowId) {
-          const dotCx = armX2; // = childNucX + NUC_TICK = the child's visual vertical X
+          const dotCx = armX2; // = the child's spine X (corner of its L-shape path)
           const positions = [
             { ip: "start" as const, y: childYRange.minY,                                    label: "⊤" },
             { ip: "mid"   as const, y: (childYRange.minY + childYRange.maxY) / 2,           label: "·" },
@@ -953,12 +939,16 @@ export default function RstRelationOverlay({
         const spineX   = spineXByParent.get(spineKey);
         const isSubordGroup = relMap[n.relType ?? ""]?.category === "subordinate";
         const subNucX = isSubordGroup ? nucleusXByGroup.get(spineKey) : undefined;
-        // Z-shape: chip sits near the *second* corner (outerX, satelliteY).
-        // L-shape: chip sits near the single corner (subNucX, satelliteY).
-        const subOuterX = (subNucX !== undefined && nucleusIsGroup.has(spineKey))
-          ? (isHebrew && !n.isTrans) ? subNucX + LEVEL_WIDTH : subNucX - LEVEL_WIDTH
+        // Corner = max/min(nucX, satellite armX2) ± LEVEL_WIDTH — same formula as path rendering.
+        const satChildKey = satLink ? `${satLink.childId}:${n.isTrans ? 1 : 0}` : undefined;
+        const satArmX2 = satChildKey
+          ? (spineXByParent.get(satChildKey) ?? satLink!.x2)
           : undefined;
-        const subCornerX = subOuterX ?? subNucX; // effective corner for chip placement
+        const subCornerX = (isSubordGroup && subNucX !== undefined && satArmX2 !== undefined)
+          ? ((isHebrew && !n.isTrans)
+              ? Math.max(subNucX, satArmX2) + LEVEL_WIDTH
+              : Math.min(subNucX, satArmX2) - LEVEL_WIDTH)
+          : subNucX;
         const chipX    = subCornerX !== undefined
           ? (isHebrew && !n.isTrans)
             ? subCornerX - CHIP_W / 2 - CHIP_GAP
