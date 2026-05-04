@@ -537,32 +537,33 @@ export default function RstRelationOverlay({
   // LTR: left padding grows with depth so deep trees never clip off the left edge.
   // Hebrew 2-col: right padding grows with depth so the tree never overlaps verse labels.
   // (Hebrew 3-col uses the centre column and is already wide enough in practice.)
-  const [requiredLtrGutter, requiredHebGutter, requiredLtrSourcePad] = useMemo(() => {
+  const [requiredLtrGutter, requiredHebGutter, requiredSourcePad] = useMemo(() => {
     const treeRoot = buildRstTree(relations, paragraphFirstWordIds);
     const h = hierarchy(treeRoot, (n: ReturnType<typeof buildRstTree>) => n.children);
     const depth = Math.max(h.height, 1);
     const needed = LEAF_MARGIN + depth * LEVEL_WIDTH + 16;
     // Minimum column gap between verse-label and source-text so the topmost
     // group chip (placed furthest from text) clears the verse-label column.
-    // Derivation: chip x = refLeftX − LEAF_MARGIN − (depth−1)×LEVEL_WIDTH
-    //             verse-label right ≈ refLeftX − rstSourcePad
-    //             clearance = rstSourcePad − LEAF_MARGIN − (depth−1)×LEVEL_WIDTH ≥ 8
-    const ltrSourcePad = !isHebrew
-      ? Math.max(0, LEAF_MARGIN + (depth - 1) * LEVEL_WIDTH + 8)
+    // The chip extends CHIP_W/2 = 14 px on each side of its center; +8 px keeps
+    // a small clearance from the chip's outer edge to the label.
+    // Same value applies for both LTR (chips left of source) and Hebrew RTL
+    // (chips right of source between text and verse labels).
+    const sourcePad = relations.length > 0
+      ? Math.max(0, LEAF_MARGIN + (depth - 1) * LEVEL_WIDTH + 14 + 8)
       : 0;
     return [
       Math.max(LTR_GUTTER_MIN, needed), // LTR left gutter
       needed,                            // Hebrew right gutter (no hard minimum)
-      ltrSourcePad,                      // LTR column gap between verse-label and source-text
+      sourcePad,                         // column gap between verse-label and source-text (LTR + Hebrew)
     ];
   // paragraphFirstWordIds changes identity each render; join() gives a stable key.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [relations, isHebrew, paragraphFirstWordIds.join(",")]);
 
   useEffect(() => {
-    if (!isHebrew) onRequiredSourcePad?.(requiredLtrSourcePad);
+    onRequiredSourcePad?.(requiredSourcePad);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [requiredLtrSourcePad, isHebrew]);
+  }, [requiredSourcePad]);
 
   // ── LTR: add left padding so the source tree has gutter room ─────────────────
   // Applied for all LTR layouts (2-col and 3-col with translation).
