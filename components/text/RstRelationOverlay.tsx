@@ -580,12 +580,10 @@ export default function RstRelationOverlay({
   // Only applies when there are actual RST relations to draw.
   useLayoutEffect(() => {
     const container = containerRef.current;
-    console.log('[RST gutter] container=', !!container, 'isHebrew=', isHebrew, 'hasTranslation=', hasTranslation, 'relations.length=', relations.length, 'requiredHebGutter=', requiredHebGutter);
     if (!container || !isHebrew || hasTranslation || relations.length === 0) return;
     const prev = container.style.paddingRight;
     container.style.paddingRight = `${requiredHebGutter}px`;
-    console.log('[RST gutter] SET paddingRight =', requiredHebGutter, 'prev =', prev);
-    return () => { container.style.paddingRight = prev; console.log('[RST gutter] CLEANUP paddingRight restored to', prev); };
+    return () => { container.style.paddingRight = prev; };
   }, [containerRef, isHebrew, hasTranslation, relations.length, requiredHebGutter]);
 
   const allSegIds = [
@@ -706,7 +704,6 @@ export default function RstRelationOverlay({
   }
   const spinePass1     = computeSpinePass(new Map());
   const spineXByParent = computeSpinePass(spinePass1);
-
   // ── Subordinate group nucleus-X lookup ───────────────────────────────────
   // Subordinate relations are drawn as an L-shape: a vertical stroke runs from
   // the nucleus leaf position down (or up) to the satellite's Y, then a

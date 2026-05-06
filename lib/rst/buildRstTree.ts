@@ -81,15 +81,26 @@ export function buildRstTree(
   //            group so we can detect nesting ────────────────────────────────
   //
   // Convention: the nucleus member's segWordId "represents" the group as a
-  // whole.  If a parent group's satellite or nucleus segWordId matches a
-  // child group's nucleus segWordId, the child group is nested inside the
-  // parent.
+  // whole.  If a parent group's satellite segWordId matches a child group's
+  // nucleus segWordId, the child group is nested inside the parent.
   //
-  // Build a map: nucleusWordId → groupId
+  // Only include segments that are the nucleus of exactly ONE group.
+  // When multiple groups share the same nucleus segWordId the nesting is
+  // ambiguous — each group is an independent relation starting from that
+  // segment, so we leave the segment as a plain leaf.
+  //
+  // Build a map: nucleusWordId → groupId (uncontested only)
+  const nucleusCount = new Map<string, number>();
+  for (const [, members] of byGroup) {
+    const nucleus = members.find(m => m.role === "nucleus") ?? members[0];
+    nucleusCount.set(nucleus.segWordId, (nucleusCount.get(nucleus.segWordId) ?? 0) + 1);
+  }
   const nucleusToGroup = new Map<string, string>();
   for (const [groupId, members] of byGroup) {
     const nucleus = members.find(m => m.role === "nucleus") ?? members[0];
-    nucleusToGroup.set(nucleus.segWordId, groupId);
+    if ((nucleusCount.get(nucleus.segWordId) ?? 0) === 1) {
+      nucleusToGroup.set(nucleus.segWordId, groupId);
+    }
   }
 
   // ── Step 3: build RstNode objects for each group ──────────────────────────
@@ -152,7 +163,12 @@ export function buildRstTree(
       if (ch.id.startsWith("__placeholder__")) {
         const childGroupId = ch.id.slice("__placeholder__".length);
         const real = groupNodes.get(childGroupId);
-        if (real) return { ...real, role: ch.role, intersectPoint: ch.intersectPoint, dbRowId: ch.dbRowId };
+        if (real) {
+          real.role = ch.role;
+          real.intersectPoint = ch.intersectPoint;
+          real.dbRowId = ch.dbRowId;
+          return real;
+        }
       }
       return ch;
     });
