@@ -337,7 +337,6 @@ function layoutTree(
     yMapSource.set(d.id, cy);
     if (pos.transLeftX !== undefined) yMapTrans.set(d.id, cy);
   }
-
   // ── Reference x values ──────────────────────────────────────────────────────
   let refLeftX = Infinity;
   for (const pos of posMap.values()) refLeftX = Math.min(refLeftX, pos.leftX);
@@ -702,8 +701,11 @@ export default function RstRelationOverlay({
     }
     return inner;
   }
-  const spinePass1     = computeSpinePass(new Map());
-  const spineXByParent = computeSpinePass(spinePass1);
+  // Run enough passes to converge for any practical RST tree depth (depth ≤ 10).
+  let spineXByParent = computeSpinePass(new Map());
+  for (let i = 0; i < 10; i++) {
+    spineXByParent = computeSpinePass(spineXByParent);
+  }
   // ── Subordinate group nucleus-X lookup ───────────────────────────────────
   // Subordinate relations are drawn as an L-shape: a vertical stroke runs from
   // the nucleus leaf position down (or up) to the satellite's Y, then a
@@ -779,11 +781,12 @@ export default function RstRelationOverlay({
         let pathD: string;
         if (isSubordinate) {
           const nucX = nucleusXByGroup.get(key) ?? spineX;
-          // outerX: one LEVEL_WIDTH beyond the outermost of nucleus and satellite,
-          // so the vertical segment always clears any bracket at armX2.
+          // outerX: one LEVEL_WIDTH beyond the nucleus spine — anchoring to the
+          // nucleus prevents the corner from drifting to the far edge of the
+          // gutter when the satellite is more deeply nested than the nucleus.
           const outerX = (isHebrew && !lk.isTrans)
-            ? Math.max(nucX, armX2) + LEVEL_WIDTH
-            : Math.min(nucX, armX2) - LEVEL_WIDTH;
+            ? nucX + LEVEL_WIDTH
+            : nucX - LEVEL_WIDTH;
           pathD = `M ${nucX},${lk.y1} H ${outerX} V ${lk.y2} H ${armX2}`;
         } else {
           pathD = `M ${spineX},${lk.y1} V ${armY} H ${armX2}`;
@@ -832,8 +835,8 @@ export default function RstRelationOverlay({
         if (isSubordinate) {
           const nucX = nucleusXByGroup.get(key) ?? spineX;
           armStartX = (isHebrew && !lk.isTrans)
-            ? Math.max(nucX, armX2) + LEVEL_WIDTH
-            : Math.min(nucX, armX2) - LEVEL_WIDTH;
+            ? nucX + LEVEL_WIDTH
+            : nucX - LEVEL_WIDTH;
         } else {
           armStartX = spineX;
         }
@@ -936,15 +939,14 @@ export default function RstRelationOverlay({
         const spineX   = spineXByParent.get(spineKey);
         const isSubordGroup = relMap[n.relType ?? ""]?.category === "subordinate";
         const subNucX = isSubordGroup ? nucleusXByGroup.get(spineKey) : undefined;
-        // Corner = max/min(nucX, satellite armX2) ± LEVEL_WIDTH — same formula as path rendering.
         const satChildKey = satLink ? `${satLink.childId}:${n.isTrans ? 1 : 0}` : undefined;
         const satArmX2 = satChildKey
           ? (spineXByParent.get(satChildKey) ?? satLink!.x2)
           : undefined;
-        const subCornerX = (isSubordGroup && subNucX !== undefined && satArmX2 !== undefined)
+        const subCornerX = (isSubordGroup && subNucX !== undefined)
           ? ((isHebrew && !n.isTrans)
-              ? Math.max(subNucX, satArmX2) + LEVEL_WIDTH
-              : Math.min(subNucX, satArmX2) - LEVEL_WIDTH)
+              ? subNucX + LEVEL_WIDTH
+              : subNucX - LEVEL_WIDTH)
           : subNucX;
         const chipX    = subCornerX !== undefined
           ? (isHebrew && !n.isTrans)
