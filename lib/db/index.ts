@@ -164,6 +164,70 @@ function migrateUserDb(sqlite: Database.Database): void {
     sqlite.exec("ALTER TABLE rst_relations ADD COLUMN intersect_point TEXT NOT NULL DEFAULT 'mid'");
 
   sqlite.exec(`
+    CREATE TABLE IF NOT EXISTS passages (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      workspace_id INTEGER NOT NULL DEFAULT 1 REFERENCES workspaces(id) ON DELETE CASCADE,
+      book         TEXT    NOT NULL,
+      text_source  TEXT    NOT NULL,
+      label        TEXT    NOT NULL DEFAULT '',
+      start_chapter INTEGER NOT NULL,
+      start_verse   INTEGER NOT NULL,
+      end_book      TEXT,
+      end_chapter   INTEGER NOT NULL,
+      end_verse     INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS passages_book_src_idx ON passages(book, text_source);
+  `);
+
+  const passageCols = (sqlite.prepare("PRAGMA table_info(passages)").all() as { name: string }[]).map(r => r.name);
+  if (!passageCols.includes("end_book"))
+    sqlite.exec("ALTER TABLE passages ADD COLUMN end_book TEXT");
+
+  sqlite.exec(`
+    CREATE TABLE IF NOT EXISTS auto_backup_settings (
+      id               INTEGER PRIMARY KEY,
+      enabled          INTEGER NOT NULL DEFAULT 0,
+      folder_path      TEXT,
+      interval_type    TEXT    NOT NULL DEFAULT 'daily',
+      interval_hours   INTEGER NOT NULL DEFAULT 24,
+      retention_type   TEXT    NOT NULL DEFAULT 'smart',
+      retention_count  INTEGER NOT NULL DEFAULT 10,
+      last_backup_at   TEXT,
+      last_error       TEXT,
+      updated_at       TEXT    NOT NULL DEFAULT (datetime('now'))
+    );
+    INSERT OR IGNORE INTO auto_backup_settings (id) VALUES (1);
+  `);
+
+  sqlite.exec(`
+    CREATE TABLE IF NOT EXISTS paragraph_headings (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      workspace_id INTEGER NOT NULL DEFAULT 1 REFERENCES workspaces(id) ON DELETE CASCADE,
+      book         TEXT    NOT NULL,
+      chapter      INTEGER NOT NULL,
+      verse        INTEGER NOT NULL,
+      heading      TEXT    NOT NULL,
+      created_at   TEXT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS ph_ws_bkchv_idx ON paragraph_headings(workspace_id, book, chapter, verse);
+    CREATE INDEX IF NOT EXISTS ph_book_ch_idx ON paragraph_headings(book, chapter);
+  `);
+
+  sqlite.exec(`
+    CREATE TABLE IF NOT EXISTS constituent_labels (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      workspace_id INTEGER NOT NULL DEFAULT 1 REFERENCES workspaces(id) ON DELETE CASCADE,
+      word_id      TEXT    NOT NULL,
+      label        TEXT    NOT NULL,
+      text_source  TEXT    NOT NULL,
+      book         TEXT    NOT NULL,
+      chapter      INTEGER NOT NULL
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS conlbl_ws_word_idx ON constituent_labels(workspace_id, word_id);
+    CREATE INDEX IF NOT EXISTS conlbl_book_ch_src_idx ON constituent_labels(book, chapter, text_source);
+  `);
+
+  sqlite.exec(`
     CREATE TABLE IF NOT EXISTS app_settings (
       key   TEXT PRIMARY KEY,
       value TEXT NOT NULL
