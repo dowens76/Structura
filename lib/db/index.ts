@@ -162,6 +162,19 @@ function migrateUserDb(sqlite: Database.Database): void {
   const rstCols = (sqlite.prepare("PRAGMA table_info(rst_relations)").all() as { name: string }[]).map(r => r.name);
   if (!rstCols.includes("intersect_point"))
     sqlite.exec("ALTER TABLE rst_relations ADD COLUMN intersect_point TEXT NOT NULL DEFAULT 'mid'");
+
+  sqlite.exec(`
+    CREATE TABLE IF NOT EXISTS book_groupings (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      workspace_id INTEGER NOT NULL DEFAULT 1 REFERENCES workspaces(id) ON DELETE CASCADE,
+      name         TEXT    NOT NULL,
+      books        TEXT    NOT NULL DEFAULT '[]',
+      features     TEXT    NOT NULL DEFAULT '[]',
+      sort_order   INTEGER NOT NULL DEFAULT 0,
+      created_at   TEXT
+    );
+    CREATE INDEX IF NOT EXISTS bg_ws_idx ON book_groupings(workspace_id);
+  `);
 }
 
 export function getUserDb() {
