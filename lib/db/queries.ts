@@ -615,11 +615,15 @@ export function groupWordsByVerse(wordList: Word[]): Map<number, Word[]> {
 
 // ── Characters (book-scoped) ──────────────────────────────────────────────────
 
-export async function getCharacters(book: string, workspaceId: number): Promise<Character[]> {
+export async function getCharacters(books: string | string[], workspaceId: number): Promise<Character[]> {
+  const bookList = Array.isArray(books) ? books : [books];
+  const bookFilter = bookList.length === 1
+    ? eq(characters.book, bookList[0])
+    : inArray(characters.book, bookList);
   return userDb
     .select()
     .from(characters)
-    .where(and(eq(characters.workspaceId, workspaceId), eq(characters.book, book)))
+    .where(and(eq(characters.workspaceId, workspaceId), bookFilter))
     .orderBy(asc(characters.sortOrder), asc(characters.id));
 }
 
@@ -891,11 +895,15 @@ export async function updateSpeechSectionCharacter(
 
 // ── Word / Concept Tags (book-scoped) ─────────────────────────────────────────
 
-export async function getWordTags(book: string, workspaceId: number): Promise<WordTag[]> {
+export async function getWordTags(books: string | string[], workspaceId: number): Promise<WordTag[]> {
+  const bookList = Array.isArray(books) ? books : [books];
+  const bookFilter = bookList.length === 1
+    ? eq(wordTags.book, bookList[0])
+    : inArray(wordTags.book, bookList);
   return userDb
     .select()
     .from(wordTags)
-    .where(and(eq(wordTags.workspaceId, workspaceId), eq(wordTags.book, book)))
+    .where(and(eq(wordTags.workspaceId, workspaceId), bookFilter))
     .orderBy(asc(wordTags.sortOrder), asc(wordTags.id));
 }
 
@@ -1000,14 +1008,18 @@ export async function setLineIndent(
 // ── Passages ──────────────────────────────────────────────────────────────────
 
 export async function getPassagesForBook(
-  book: string,
+  books: string | string[],
   textSource: string,
   workspaceId: number
 ): Promise<Passage[]> {
+  const bookList = Array.isArray(books) ? books : [books];
+  const bookFilter = bookList.length === 1
+    ? eq(passages.book, bookList[0])
+    : inArray(passages.book, bookList);
   return userDb
     .select()
     .from(passages)
-    .where(and(eq(passages.workspaceId, workspaceId), eq(passages.book, book), eq(passages.textSource, textSource)))
+    .where(and(eq(passages.workspaceId, workspaceId), bookFilter, eq(passages.textSource, textSource)))
     .orderBy(asc(passages.startChapter), asc(passages.startVerse));
 }
 
@@ -1026,20 +1038,27 @@ export async function createPassage(
   label: string,
   startChapter: number,
   startVerse: number,
+  endBook: string | null,
   endChapter: number,
   endVerse: number,
   workspaceId: number
 ): Promise<Passage> {
   const result = await userDb
     .insert(passages)
-    .values({ book, textSource, label, startChapter, startVerse, endChapter, endVerse, workspaceId })
+    .values({
+      book, textSource, label,
+      startChapter, startVerse,
+      endBook: endBook && endBook !== book ? endBook : null,
+      endChapter, endVerse,
+      workspaceId,
+    })
     .returning();
   return result[0];
 }
 
 export async function updatePassage(
   id: number,
-  updates: Partial<Pick<Passage, "label" | "startChapter" | "startVerse" | "endChapter" | "endVerse">>
+  updates: Partial<Pick<Passage, "label" | "startChapter" | "startVerse" | "endBook" | "endChapter" | "endVerse">>
 ): Promise<Passage> {
   const result = await userDb
     .update(passages)
@@ -1054,8 +1073,11 @@ export async function deletePassage(id: number): Promise<void> {
 }
 
 /**
- * Fetch all words in a passage range. Handles single-chapter and multi-chapter
- * passages, filtering by chapter/verse boundaries on both ends.
+ * Fetch all words in a passage range. Handles single-chapter, multi-chapter,
+ * and cross-book passages (e.g. 1 Sam → 2 Sam).
+ *
+ * @param osisBook   Start book OSIS code
+ * @param endOsisBook  End book OSIS code — null/undefined means same as osisBook
  */
 export async function getPassageWords(
   osisBook: string,
@@ -1063,38 +1085,87 @@ export async function getPassageWords(
   startChapter: number,
   startVerse: number,
   endChapter: number,
-  endVerse: number
+  endVerse: number,
+  endOsisBook?: string | null
 ): Promise<Word[]> {
-  const book = await getBook(osisBook);
-  if (!book) return [];
+  const effectiveEndBook = (endOsisBook && endOsisBook !== osisBook) ? endOsisBook : osisBook;
+  const isCrossBook = effectiveEndBook !== osisBook;
 
   const isLxx = textSource === "STEPBIBLE_LXX";
   const db = isLxx ? (getLxxDb() ?? sourceDb) : sourceDb;
   const maps = isLxx ? lxxLookups : sourceLookups;
   const tsId = isLxx ? null : (sourceLookups.textSourceByValue[textSource] ?? null);
-  const baseFilter = tsId != null
-    ? and(eq(words.bookId, book.id), eq(words.textSourceId, tsId))
-    : eq(words.bookId, book.id);
 
-  const rangeFilter =
-    startChapter === endChapter
-      ? and(
-          eq(words.chapter, startChapter),
-          gte(words.verse, startVerse),
-          lte(words.verse, endVerse)
-        )
-      : or(
-          and(eq(words.chapter, startChapter), gte(words.verse, startVerse)),
-          and(gt(words.chapter, startChapter), lt(words.chapter, endChapter)),
-          and(eq(words.chapter, endChapter), lte(words.verse, endVerse))
-        );
+  /** Build the chapter/verse filter for a single-book segment. */
+  function buildRangeFilter(
+    sc: number, sv: number, ec: number, ev: number,
+    openEnd: boolean,  // true = all chapters from sc:sv onwards (no upper chapter bound)
+    openStart: boolean // true = all chapters up to ec:ev (no lower chapter bound)
+  ) {
+    if (openEnd) {
+      return or(
+        and(eq(words.chapter, sc), gte(words.verse, sv)),
+        gt(words.chapter, sc)
+      );
+    }
+    if (openStart) {
+      return or(
+        lt(words.chapter, ec),
+        and(eq(words.chapter, ec), lte(words.verse, ev))
+      );
+    }
+    if (sc === ec) {
+      return and(eq(words.chapter, sc), gte(words.verse, sv), lte(words.verse, ev));
+    }
+    return or(
+      and(eq(words.chapter, sc), gte(words.verse, sv)),
+      and(gt(words.chapter, sc), lt(words.chapter, ec)),
+      and(eq(words.chapter, ec), lte(words.verse, ev))
+    );
+  }
 
-  const rows = await db
-    .select()
-    .from(words)
-    .where(and(baseFilter, rangeFilter))
-    .orderBy(asc(words.chapter), asc(words.verse), asc(words.positionInVerse));
-  return rows.map((r) => decodeWord(r, maps));
+  if (!isCrossBook) {
+    const book = await getBook(osisBook);
+    if (!book) return [];
+    const baseFilter = tsId != null
+      ? and(eq(words.bookId, book.id), eq(words.textSourceId, tsId))
+      : eq(words.bookId, book.id);
+    const rangeFilter = buildRangeFilter(startChapter, startVerse, endChapter, endVerse, false, false);
+    const rows = await db
+      .select().from(words)
+      .where(and(baseFilter, rangeFilter))
+      .orderBy(asc(words.chapter), asc(words.verse), asc(words.positionInVerse));
+    return rows.map((r) => decodeWord(r, maps));
+  }
+
+  // Cross-book: fetch start book (startChapter:startVerse → end of book) and
+  // end book (chapter 1:1 → endChapter:endVerse) then concatenate.
+  const [startBookRecord, endBookRecord] = await Promise.all([
+    getBook(osisBook),
+    getBook(effectiveEndBook),
+  ]);
+  if (!startBookRecord || !endBookRecord) return [];
+
+  const startBaseFilter = tsId != null
+    ? and(eq(words.bookId, startBookRecord.id), eq(words.textSourceId, tsId))
+    : eq(words.bookId, startBookRecord.id);
+  const endBaseFilter = tsId != null
+    ? and(eq(words.bookId, endBookRecord.id), eq(words.textSourceId, tsId))
+    : eq(words.bookId, endBookRecord.id);
+
+  const [startRows, endRows] = await Promise.all([
+    db.select().from(words)
+      .where(and(startBaseFilter, buildRangeFilter(startChapter, startVerse, 0, 0, true, false)))
+      .orderBy(asc(words.chapter), asc(words.verse), asc(words.positionInVerse)),
+    db.select().from(words)
+      .where(and(endBaseFilter, buildRangeFilter(0, 0, endChapter, endVerse, false, true)))
+      .orderBy(asc(words.chapter), asc(words.verse), asc(words.positionInVerse)),
+  ]);
+
+  return [
+    ...startRows.map((r) => decodeWord(r, maps)),
+    ...endRows.map((r) => decodeWord(r, maps)),
+  ];
 }
 
 // ── Clause Relationships ──────────────────────────────────────────────────────

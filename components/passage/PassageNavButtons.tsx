@@ -5,6 +5,7 @@ import Link from "next/link";
 import type { Passage } from "@/lib/db/schema";
 import DefinePassageDialog from "./DefinePassageDialog";
 import { useTranslation } from "@/lib/i18n/LocaleContext";
+import { OSIS_BOOK_NAMES, CONTIGUOUS_BOOK_PAIRS, CONTIGUOUS_BOOK_PREV } from "@/lib/utils/osis";
 
 interface Props {
   book: string;         // OSIS book code
@@ -31,16 +32,22 @@ export default function PassageNavButtons({
   const [loading,      setLoading]        = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
+  // The sibling book in the contiguous pair (whichever direction)
+  const siblingBook = CONTIGUOUS_BOOK_PAIRS[book] ?? CONTIGUOUS_BOOK_PREV[book] ?? null;
+
   // Fetch passages whenever the dropdown is opened
   useEffect(() => {
     if (!dropdownOpen) return;
     setLoading(true);
-    fetch(`/api/passages?book=${encodeURIComponent(book)}&source=${textSource}`)
+    const url = siblingBook
+      ? `/api/passages?book=${encodeURIComponent(book)}&book2=${encodeURIComponent(siblingBook)}&source=${textSource}`
+      : `/api/passages?book=${encodeURIComponent(book)}&source=${textSource}`;
+    fetch(url)
       .then((r) => r.json())
       .then((data: { passages?: Passage[] }) => setPassages(data.passages ?? []))
       .catch(() => setPassages([]))
       .finally(() => setLoading(false));
-  }, [dropdownOpen, book, textSource]);
+  }, [dropdownOpen, book, siblingBook, textSource]);
 
   // Close dropdown on outside click
   const handleClickOutside = useCallback((e: MouseEvent) => {
@@ -59,9 +66,15 @@ export default function PassageNavButtons({
   }, [dropdownOpen, handleClickOutside]);
 
   function formatRef(p: Passage) {
-    return p.startChapter === p.endChapter
+    const startPrefix = p.book !== book ? `${OSIS_BOOK_NAMES[p.book] ?? p.book} ` : "";
+    if (p.endBook && p.endBook !== p.book) {
+      const endName = OSIS_BOOK_NAMES[p.endBook] ?? p.endBook;
+      return `${startPrefix}${p.startChapter}:${p.startVerse} – ${endName} ${p.endChapter}:${p.endVerse}`;
+    }
+    const ref = p.startChapter === p.endChapter
       ? `${p.startChapter}:${p.startVerse}–${p.endVerse}`
       : `${p.startChapter}:${p.startVerse} – ${p.endChapter}:${p.endVerse}`;
+    return `${startPrefix}${ref}`;
   }
 
   return (

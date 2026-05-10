@@ -29,6 +29,7 @@ export async function PUT(request: NextRequest, { params }: RouteContext) {
     label?: string;
     startChapter?: number;
     startVerse?: number;
+    endBook?: string | null;
     endChapter?: number;
     endVerse?: number;
   };
@@ -42,11 +43,13 @@ export async function PUT(request: NextRequest, { params }: RouteContext) {
   const existing = await getPassage(id);
   if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-  const sc = body.startChapter ?? existing.startChapter;
-  const sv = body.startVerse   ?? existing.startVerse;
-  const ec = body.endChapter   ?? existing.endChapter;
-  const ev = body.endVerse     ?? existing.endVerse;
-  if (sc > ec || (sc === ec && sv > ev)) {
+  const sc  = body.startChapter ?? existing.startChapter;
+  const sv  = body.startVerse   ?? existing.startVerse;
+  const eb  = "endBook" in body ? body.endBook : existing.endBook;
+  const ec  = body.endChapter   ?? existing.endChapter;
+  const ev  = body.endVerse     ?? existing.endVerse;
+  const isCrossBook = eb && eb !== existing.book;
+  if (!isCrossBook && (sc > ec || (sc === ec && sv > ev))) {
     return NextResponse.json({ error: "Start must not be after end" }, { status: 400 });
   }
 

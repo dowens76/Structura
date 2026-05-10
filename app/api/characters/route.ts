@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCharacters, createCharacter } from "@/lib/db/queries";
 import { getActiveWorkspaceId } from "@/lib/workspace";
+import { canonicalPairBook } from "@/lib/utils/osis";
 
 export const dynamic = "force-dynamic";
 
@@ -31,6 +32,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Missing fields" }, { status: 400 });
   }
 
-  const character = await createCharacter(name, color, book, workspaceId);
+  // Store under the canonical (first) book of a contiguous pair so characters
+  // are shared across both halves (e.g. 1Sam and 2Sam share the same pool).
+  const canonicalBook = canonicalPairBook(book);
+  const character = await createCharacter(name, color, canonicalBook, workspaceId);
   return NextResponse.json({ character });
 }

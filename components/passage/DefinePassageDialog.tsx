@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
+import { CONTIGUOUS_BOOK_PAIRS, OSIS_BOOK_NAMES } from "@/lib/utils/osis";
 
 interface Props {
   book: string;         // OSIS book code
@@ -23,11 +24,28 @@ export default function DefinePassageDialog({
 }: Props) {
   const router = useRouter();
 
-  const [label,        setLabel]        = useState("");
+  // ── Start position ─────────────────────────────────────────────────────────
   const [startChapter, setStartChapter] = useState(currentChapter);
   const [startVerse,   setStartVerse]   = useState(1);
+
+  // ── End position (within the start book) ───────────────────────────────────
   const [endChapter,   setEndChapter]   = useState(currentChapter);
   const [endVerse,     setEndVerse]     = useState(10);
+
+  // ── Cross-book extension ───────────────────────────────────────────────────
+  // continuationBook: the OSIS code of the book that directly follows `book`
+  // (null if there is no continuation pair)
+  const continuationBook = CONTIGUOUS_BOOK_PAIRS[book] ?? null;
+  const continuationBookName = continuationBook ? (OSIS_BOOK_NAMES[continuationBook] ?? continuationBook) : null;
+
+  const [crossBook,         setCrossBook]         = useState(false);
+  const [contChapterCount,  setContChapterCount]  = useState<number | null>(null);
+  const [contEndChapter,    setContEndChapter]    = useState(1);
+  const [contEndVerse,      setContEndVerse]      = useState(1);
+  const [loadingContCount,  setLoadingContCount]  = useState(false);
+
+  // ── Other state ────────────────────────────────────────────────────────────
+  const [label,        setLabel]        = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error,        setError]        = useState<string | null>(null);
 
@@ -47,7 +65,21 @@ export default function DefinePassageDialog({
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
-  // Keep end ≥ start
+  // Fetch continuation book chapter count when the toggle is turned on
+  useEffect(() => {
+    if (!crossBook || !continuationBook) return;
+    if (contChapterCount !== null) return; // already fetched
+    setLoadingContCount(true);
+    fetch(`/api/book-info?book=${encodeURIComponent(continuationBook)}&source=${textSource}`)
+      .then((r) => r.json())
+      .then((d: { chapterCount?: number }) => {
+        setContChapterCount(d.chapterCount ?? 1);
+      })
+      .catch(() => setContChapterCount(24)) // fallback
+      .finally(() => setLoadingContCount(false));
+  }, [crossBook, continuationBook, contChapterCount, textSource]);
+
+  // ── Clamping helpers ───────────────────────────────────────────────────────
   function clampEnd(sc: number, sv: number, ec: number, ev: number) {
     if (ec < sc || (ec === sc && ev < sv)) {
       setEndChapter(sc);
@@ -58,29 +90,45 @@ export default function DefinePassageDialog({
   function handleStartChapterChange(val: number) {
     const sc = Math.max(1, Math.min(chapterCount, val));
     setStartChapter(sc);
-    clampEnd(sc, startVerse, endChapter, endVerse);
+    if (!crossBook) clampEnd(sc, startVerse, endChapter, endVerse);
   }
 
   function handleStartVerseChange(val: number) {
     const sv = Math.max(1, val);
     setStartVerse(sv);
-    clampEnd(startChapter, sv, endChapter, endVerse);
+    if (!crossBook) clampEnd(startChapter, sv, endChapter, endVerse);
   }
 
   function handleEndChapterChange(val: number) {
-    const ec = Math.max(1, Math.min(chapterCount, val));
+    const ec = Math.max(startChapter, Math.min(chapterCount, val));
     setEndChapter(ec);
     clampEnd(startChapter, startVerse, ec, endVerse);
   }
 
+  function handleContEndChapterChange(val: number) {
+    const max = contChapterCount ?? 1;
+    setContEndChapter(Math.max(1, Math.min(max, val)));
+  }
+
+  // ── Preview string ─────────────────────────────────────────────────────────
+  const preview = (() => {
+    if (!crossBook) {
+      return startChapter === endChapter
+        ? `${bookName} ${startChapter}:${startVerse}–${endVerse}`
+        : `${bookName} ${startChapter}:${startVerse} – ${endChapter}:${endVerse}`;
+    }
+    return `${bookName} ${startChapter}:${startVerse} – ${continuationBookName} ${contEndChapter}:${contEndVerse}`;
+  })();
+
+  // ── Submit ─────────────────────────────────────────────────────────────────
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
 
-    if (
+    if (!crossBook && (
       startChapter > endChapter ||
       (startChapter === endChapter && startVerse > endVerse)
-    ) {
+    )) {
       setError("Start reference must not be after end reference.");
       return;
     }
@@ -96,8 +144,9 @@ export default function DefinePassageDialog({
           label: label.trim(),
           startChapter,
           startVerse,
-          endChapter,
-          endVerse,
+          endBook:    crossBook ? continuationBook : null,
+          endChapter: crossBook ? contEndChapter    : endChapter,
+          endVerse:   crossBook ? contEndVerse      : endVerse,
         }),
       });
 
@@ -117,13 +166,7 @@ export default function DefinePassageDialog({
     }
   }
 
-  // Preview reference string
-  const preview =
-    startChapter === endChapter
-      ? `${bookName} ${startChapter}:${startVerse}–${endVerse}`
-      : `${bookName} ${startChapter}:${startVerse} – ${endChapter}:${endVerse}`;
-
-  // Shared number input style
+  // ── Styles ─────────────────────────────────────────────────────────────────
   const numInput = "w-16 px-2 py-1 rounded border text-sm text-center";
   const inputStyle: React.CSSProperties = {
     backgroundColor: "var(--background)",
@@ -132,7 +175,6 @@ export default function DefinePassageDialog({
   };
 
   return (
-    /* Backdrop */
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
       style={{ backgroundColor: "rgba(0,0,0,0.5)" }}
@@ -140,10 +182,7 @@ export default function DefinePassageDialog({
     >
       <div
         className="w-full max-w-md rounded-lg shadow-xl border"
-        style={{
-          backgroundColor: "var(--background)",
-          borderColor: "var(--border)",
-        }}
+        style={{ backgroundColor: "var(--background)", borderColor: "var(--border)" }}
       >
         {/* Header */}
         <div
@@ -177,7 +216,7 @@ export default function DefinePassageDialog({
               type="text"
               value={label}
               onChange={(e) => setLabel(e.target.value)}
-              placeholder="e.g. The Creation Account"
+              placeholder="e.g. David's Reign in Jerusalem"
               className="w-full px-3 py-1.5 rounded border text-sm"
               style={{ ...inputStyle }}
             />
@@ -192,9 +231,11 @@ export default function DefinePassageDialog({
               Range
             </div>
 
-            {/* Start */}
+            {/* ── Start ── */}
             <div className="flex items-center gap-2">
-              <span className="text-sm w-12 shrink-0" style={{ color: "var(--text-muted)" }}>From</span>
+              <span className="text-sm w-12 shrink-0" style={{ color: "var(--text-muted)" }}>
+                {crossBook ? `${bookName}` : "From"}
+              </span>
               <div className="flex items-center gap-1.5">
                 <span className="text-xs" style={{ color: "var(--text-muted)" }}>Ch</span>
                 <input
@@ -218,31 +259,92 @@ export default function DefinePassageDialog({
               </div>
             </div>
 
-            {/* End */}
-            <div className="flex items-center gap-2">
-              <span className="text-sm w-12 shrink-0" style={{ color: "var(--text-muted)" }}>To</span>
-              <div className="flex items-center gap-1.5">
-                <span className="text-xs" style={{ color: "var(--text-muted)" }}>Ch</span>
-                <input
-                  type="number"
-                  min={startChapter}
-                  max={chapterCount}
-                  value={endChapter}
-                  onChange={(e) => handleEndChapterChange(Number(e.target.value))}
-                  className={numInput}
-                  style={inputStyle}
-                />
-                <span className="text-xs" style={{ color: "var(--text-muted)" }}>v</span>
-                <input
-                  type="number"
-                  min={startChapter === endChapter ? startVerse : 1}
-                  value={endVerse}
-                  onChange={(e) => setEndVerse(Math.max(startChapter === endChapter ? startVerse : 1, Number(e.target.value)))}
-                  className={numInput}
-                  style={inputStyle}
-                />
+            {/* ── End — single-book ── */}
+            {!crossBook && (
+              <div className="flex items-center gap-2">
+                <span className="text-sm w-12 shrink-0" style={{ color: "var(--text-muted)" }}>To</span>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs" style={{ color: "var(--text-muted)" }}>Ch</span>
+                  <input
+                    type="number"
+                    min={startChapter}
+                    max={chapterCount}
+                    value={endChapter}
+                    onChange={(e) => handleEndChapterChange(Number(e.target.value))}
+                    className={numInput}
+                    style={inputStyle}
+                  />
+                  <span className="text-xs" style={{ color: "var(--text-muted)" }}>v</span>
+                  <input
+                    type="number"
+                    min={startChapter === endChapter ? startVerse : 1}
+                    value={endVerse}
+                    onChange={(e) =>
+                      setEndVerse(Math.max(startChapter === endChapter ? startVerse : 1, Number(e.target.value)))
+                    }
+                    className={numInput}
+                    style={inputStyle}
+                  />
+                </div>
               </div>
-            </div>
+            )}
+
+            {/* ── End — cross-book ── */}
+            {crossBook && (
+              <div className="flex items-center gap-2">
+                <span className="text-sm w-auto shrink-0 font-medium" style={{ color: "var(--foreground)" }}>
+                  {continuationBookName}
+                </span>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs" style={{ color: "var(--text-muted)" }}>Ch</span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={contChapterCount ?? 999}
+                    value={contEndChapter}
+                    onChange={(e) => handleContEndChapterChange(Number(e.target.value))}
+                    className={numInput}
+                    style={inputStyle}
+                    disabled={loadingContCount}
+                  />
+                  <span className="text-xs" style={{ color: "var(--text-muted)" }}>v</span>
+                  <input
+                    type="number"
+                    min={1}
+                    value={contEndVerse}
+                    onChange={(e) => setContEndVerse(Math.max(1, Number(e.target.value)))}
+                    className={numInput}
+                    style={inputStyle}
+                    disabled={loadingContCount}
+                  />
+                  {loadingContCount && (
+                    <span className="text-[11px]" style={{ color: "var(--text-muted)" }}>…</span>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* ── Cross-book toggle ── */}
+            {continuationBook && (
+              <label className="flex items-center gap-2 cursor-pointer select-none pt-0.5">
+                <input
+                  type="checkbox"
+                  checked={crossBook}
+                  onChange={(e) => {
+                    setCrossBook(e.target.checked);
+                    if (!e.target.checked) {
+                      // Reset end to within the start book
+                      setEndChapter(startChapter);
+                      setEndVerse(startVerse);
+                    }
+                  }}
+                  className="rounded"
+                />
+                <span className="text-xs" style={{ color: "var(--text-muted)" }}>
+                  Extend into <span style={{ color: "var(--foreground)" }}>{continuationBookName}</span>
+                </span>
+              </label>
+            )}
 
             {/* Preview */}
             <p className="text-xs italic" style={{ color: "var(--accent)" }}>
@@ -267,7 +369,7 @@ export default function DefinePassageDialog({
             </button>
             <button
               type="submit"
-              disabled={isSubmitting}
+              disabled={isSubmitting || (crossBook && loadingContCount)}
               className="px-4 py-1.5 rounded text-sm font-medium transition-colors disabled:opacity-50"
               style={{ backgroundColor: "var(--accent)", color: "#fff" }}
             >

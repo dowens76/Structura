@@ -31,6 +31,7 @@ import hebrewLemmas from "@/lib/data/hebrew-lemmas.json";
 import { computeSectionRanges } from "@/lib/utils/sectionRanges";
 import { generateOutline } from "@/lib/utils/outlineExport";
 import { useTranslation } from "@/lib/i18n/LocaleContext";
+import { CONTIGUOUS_BOOK_PAIRS, OSIS_BOOK_NAMES } from "@/lib/utils/osis";
 
 /** Normalize text for diacritic-insensitive find-in-page matching.
  *  Strips Hebrew cantillation/vowel marks and Greek/Latin combining diacritics
@@ -376,6 +377,38 @@ export default function ChapterDisplay({
   const [outlineOpen, setOutlineOpen] = useState(false);
   const [outlineCopied, setOutlineCopied] = useState(false);
 
+  // ── Cross-book outline extension ──────────────────────────────────────────
+  // These live here (not in OutlinePane) so they survive the pane being closed/reopened.
+  const continuationBook     = CONTIGUOUS_BOOK_PAIRS[book] ?? null;
+  const continuationBookName = continuationBook ? (OSIS_BOOK_NAMES[continuationBook] ?? continuationBook) : null;
+  const [outlineExtended,  setOutlineExtended]  = useState(false);
+  const [contBreaks,       setContBreaks]       = useState<{ wordId: string; heading: string | null; level: number; chapter: number; verse: number; thematic: boolean; thematicLetter: string | null }[]>([]);
+  const [contMaxVerses,    setContMaxVerses]    = useState<Map<number, number>>(new Map());
+  const [contDataLoaded,   setContDataLoaded]   = useState(false);
+  const [loadingCont,      setLoadingCont]      = useState(false);
+
+  useEffect(() => {
+    if (!outlineExtended || !continuationBook || contDataLoaded) return;
+    setLoadingCont(true);
+    Promise.all([
+      fetch(`/api/book-scene-breaks?book=${encodeURIComponent(continuationBook)}&source=${encodeURIComponent(textSource)}`).then((r) => r.json()),
+      fetch(`/api/book-info?book=${encodeURIComponent(continuationBook)}&source=${encodeURIComponent(textSource)}`).then((r) => r.json()),
+    ])
+      .then(([breakData, infoData]) => {
+        setContBreaks(breakData.breaks ?? []);
+        const mv = new Map<number, number>();
+        for (const [ch, v] of Object.entries(
+          (infoData.chapterMaxVerses ?? {}) as Record<string, number>
+        )) {
+          mv.set(Number(ch), v);
+        }
+        setContMaxVerses(mv);
+        setContDataLoaded(true);
+      })
+      .catch(() => setContDataLoaded(true))
+      .finally(() => setLoadingCont(false));
+  }, [outlineExtended, continuationBook, contDataLoaded, textSource]);
+
   // ── Translation text editing ───────────────────────────────────────────────
   // Local mutable copy of translationVerseData so edits can be reflected immediately.
   // If ULT base verses are provided, merge them in: user edits (from user.db) take precedence;
@@ -689,6 +722,69 @@ export default function ChapterDisplay({
 
     return computeSectionRanges(allBreaks, bookMaxVerses, book);
   }, [sceneBreakMap, bookSceneBreaks, bookMaxVerses, chapter, book]);
+
+  // When the outline is extended into the continuation book, post-process sectionRanges:
+  // any break whose range ends at the very last verse of this book gets its end extended
+  // into the continuation book (up to the first same-or-higher-level break there, or the
+  // end of the continuation book).
+  const { extendedSectionRanges, crossBookRangeKeys } = useMemo<{
+    extendedSectionRanges: typeof sectionRanges;
+    crossBookRangeKeys: Set<string>;
+  }>(() => {
+    const empty = { extendedSectionRanges: sectionRanges, crossBookRangeKeys: new Set<string>() };
+    if (!outlineExtended || !contDataLoaded) return empty;
+
+    const lastCh    = bookMaxVerses.size ? Math.max(...bookMaxVerses.keys()) : 0;
+    const lastVerse = bookMaxVerses.get(lastCh) ?? 0;
+    if (!lastCh || !lastVerse) return empty;
+
+    const contLastCh    = contMaxVerses.size ? Math.max(...contMaxVerses.keys()) : 0;
+    const contLastVerse = contMaxVerses.get(contLastCh) ?? 0;
+
+    // Continuation breaks sorted by chapter/verse/level for finding the closing break
+    const sortedContBreaks = [...contBreaks].sort((a, b) =>
+      a.chapter !== b.chapter ? a.chapter - b.chapter :
+      a.verse   !== b.verse   ? a.verse   - b.verse   : a.level - b.level
+    );
+
+    const result    = new Map(sectionRanges);
+    const crossKeys = new Set<string>();
+
+    for (const [key, range] of sectionRanges) {
+      if (range.endChapter !== lastCh || range.endVerse !== lastVerse) continue;
+
+      // Extract level from key (format: "${wordId}:${level}", wordIds never contain ':')
+      const lastColon = key.lastIndexOf(":");
+      const level     = parseInt(key.slice(lastColon + 1), 10);
+      if (isNaN(level)) continue;
+
+      // Find the first continuation-book break that closes this section
+      const closing = sortedContBreaks.find((b) => b.level <= level);
+
+      let newEndCh: number;
+      let newEndVerse: number;
+
+      if (closing) {
+        const prev = closing.verse - 1;
+        if (prev < 1) {
+          const prevCh = closing.chapter - 1;
+          newEndCh    = prevCh >= 1 ? prevCh : closing.chapter;
+          newEndVerse = prevCh >= 1 ? (contMaxVerses.get(prevCh) ?? 0) : closing.verse;
+        } else {
+          newEndCh    = closing.chapter;
+          newEndVerse = prev;
+        }
+      } else {
+        newEndCh    = contLastCh;
+        newEndVerse = contLastVerse;
+      }
+
+      result.set(key, { endChapter: newEndCh, endVerse: newEndVerse });
+      crossKeys.add(key);
+    }
+
+    return { extendedSectionRanges: result, crossBookRangeKeys: crossKeys };
+  }, [outlineExtended, contDataLoaded, contBreaks, contMaxVerses, sectionRanges, bookMaxVerses]);
 
   // Character id → Character
   const characterMap = useMemo(
@@ -3694,10 +3790,17 @@ export default function ChapterDisplay({
             textSource={textSource}
             sceneBreakMap={sceneBreakMap}
             bookSceneBreaks={bookSceneBreaks}
-            sectionRanges={sectionRanges}
+            sectionRanges={outlineExtended ? extendedSectionRanges : sectionRanges}
             onUpdateCurrentHeading={handleUpdateSceneHeading}
             onDeleteCurrentBreak={handleDeleteCurrentBreak}
             onClose={() => setOutlineOpen(false)}
+            outlineExtended={outlineExtended}
+            onToggleExtended={setOutlineExtended}
+            continuationBook={continuationBook}
+            continuationBookName={continuationBookName}
+            continuationBreaks={contBreaks}
+            crossBookRangeKeys={crossBookRangeKeys}
+            loadingContinuation={loadingCont}
           />
         </ResizablePane>
       )}

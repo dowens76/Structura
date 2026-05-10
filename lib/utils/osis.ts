@@ -103,6 +103,38 @@ export const OSIS_BOOK_NAMES: Record<string, string> = {
   Odes: "Odes", PsSol: "Psalms of Solomon",
 };
 
+/**
+ * Books that are narrative continuations of the preceding book and may form a
+ * single passage spanning both.  The key is the FIRST book; the value is the
+ * SECOND book that directly follows it.
+ *
+ * Only pairs where the two halves are meaningfully "one book" split across two
+ * scrolls (1–2 Samuel, 1–2 Kings, 1–2 Chronicles, 1–2 Maccabees, etc.) are
+ * listed here.  Epistle pairs (1/2 Cor, 1/2 Pet, …) are intentionally omitted
+ * because passages rarely need to span them.
+ */
+export const CONTIGUOUS_BOOK_PAIRS: Record<string, string> = {
+  "1Sam": "2Sam",
+  "1Kgs": "2Kgs",
+  "1Chr": "2Chr",
+  "1Macc": "2Macc",
+};
+
+/** Reverse map: second book → first book */
+export const CONTIGUOUS_BOOK_PREV: Record<string, string> = Object.fromEntries(
+  Object.entries(CONTIGUOUS_BOOK_PAIRS).map(([a, b]) => [b, a])
+);
+
+/**
+ * Returns the canonical (first) book of a contiguous pair.
+ * Characters, word tags, etc. are stored under this book so both halves
+ * of the pair share the same pool.
+ * e.g. canonicalPairBook("2Sam") === "1Sam", canonicalPairBook("1Sam") === "1Sam"
+ */
+export function canonicalPairBook(book: string): string {
+  return CONTIGUOUS_BOOK_PREV[book] ?? book;
+}
+
 /** Canonical OT books that also exist in the LXX (STEPBIBLE_LXX source).
  *  Used to show the "Parallel LXX" toggle when viewing OSHB. */
 export const OSHB_LXX_PARALLEL_BOOKS = new Set([

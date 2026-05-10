@@ -28,6 +28,7 @@ import type { RstCustomType } from "@/lib/db/schema";
 import hebrewLemmas from "@/lib/data/hebrew-lemmas.json";
 import { computeSectionRanges } from "@/lib/utils/sectionRanges";
 import { generateOutline } from "@/lib/utils/outlineExport";
+import { OSIS_BOOK_NAMES } from "@/lib/utils/osis";
 
 /** Returns true if the word's surface text is entirely punctuation and should
  *  be skipped during character / word-tag selection. */
@@ -390,10 +391,16 @@ export default function PassageView({
   // Uses book-wide breaks (from bookSceneBreaks prop) plus live passage breaks from sceneBreakMap.
   // Chapters covered by the passage come from live state; other chapters from the static prop.
   const passageChapterSet = useMemo(() => {
+    // Cross-book passages span two separate chapter sequences (e.g. 1Sam 31 → 2Sam 1–5).
+    // The simple range loop would produce an empty set when endChapter < startChapter
+    // across books, so derive the set directly from the loaded words instead.
+    if (passage.endBook && passage.endBook !== passage.book) {
+      return new Set(words.map((w) => w.chapter));
+    }
     const s = new Set<number>();
     for (let ch = passage.startChapter; ch <= passage.endChapter; ch++) s.add(ch);
     return s;
-  }, [passage.startChapter, passage.endChapter]);
+  }, [passage.startChapter, passage.endChapter, passage.endBook, passage.book, words]);
 
   const sectionRanges = useMemo(() => {
     // Start with book-wide breaks, excluding chapters covered by the passage (live state overrides)
@@ -433,12 +440,20 @@ export default function PassageView({
       if (!byVerse.has(w.verse)) byVerse.set(w.verse, []);
       byVerse.get(w.verse)!.push(w);
     }
+    // Cross-book passages have two independent chapter sequences (e.g. 1Sam ch31,
+    // then 2Sam ch1–5). Sorting numerically would interleave them incorrectly
+    // (ch1 < ch31). Preserve insertion order instead; within each chapter, verses
+    // are always monotonically increasing so sorting is still safe.
+    const isCrossBook = !!(passage.endBook && passage.endBook !== passage.book);
     const result: { ch: number; v: number; words: Word[] }[] = [];
-    for (const [ch, byVerse] of [...byChapter.entries()].sort(([a], [b]) => a - b))
+    const chapterEntries = isCrossBook
+      ? byChapter.entries()
+      : [...byChapter.entries()].sort(([a], [b]) => a - b);
+    for (const [ch, byVerse] of chapterEntries)
       for (const [v, vWords] of [...byVerse.entries()].sort(([a], [b]) => a - b))
         result.push({ ch, v, words: vWords });
     return result;
-  }, [words]);
+  }, [words, passage.endBook, passage.book]);
 
   // Whether this passage actually spans multiple chapters
   const isMultiChapter = orderedVerses.length > 0 &&
@@ -659,10 +674,16 @@ export default function PassageView({
   }
 
   // ── Reference formatting ──────────────────────────────────────────────────
-  const rangeLabel =
-    startChapter === endChapter
+  const rangeLabel = (() => {
+    if (passage.endBook && passage.endBook !== passage.book) {
+      // Cross-book passage: show both book names
+      const endBkName = OSIS_BOOK_NAMES[passage.endBook] ?? passage.endBook;
+      return `${bookName} ${startChapter}:${startVerse} – ${endBkName} ${endChapter}:${endVerse}`;
+    }
+    return startChapter === endChapter
       ? `${bookName} ${startChapter}:${startVerse}–${endVerse}`
       : `${bookName} ${startChapter}:${startVerse} – ${endChapter}:${endVerse}`;
+  })();
 
   // ── Word selection dispatcher ─────────────────────────────────────────────
   function handleSelectWord(word: Word, shiftHeld = false) {

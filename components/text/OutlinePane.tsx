@@ -4,6 +4,7 @@ import React, { useState, useMemo } from "react";
 import Link from "next/link";
 import type { SectionRangeForOutline } from "@/lib/utils/outlineExport";
 import { generateOutline } from "@/lib/utils/outlineExport";
+import { OSIS_BOOK_NAMES } from "@/lib/utils/osis";
 
 // ── Prefix helpers (mirrors outlineExport.ts) ─────────────────────────────────
 const LOWER = "abcdefghijklmnopqrstuvwxyz";
@@ -53,6 +54,8 @@ interface RawBreak {
   heading: string | null;
   thematic: boolean;
   thematicLetter: string | null;
+  /** Set to the continuation book's OSIS code for cross-book outline items. */
+  bookCode?: string;
 }
 
 interface OutlinePaneProps {
@@ -65,6 +68,16 @@ interface OutlinePaneProps {
   onUpdateCurrentHeading: (wordId: string, level: number, heading: string) => void;
   onDeleteCurrentBreak: (wordId: string, level: number) => void;
   onClose: () => void;
+  // ── Cross-book extension (state lives in ChapterDisplay) ──────────────────
+  outlineExtended: boolean;
+  onToggleExtended: (v: boolean) => void;
+  continuationBook: string | null;
+  continuationBookName: string | null;
+  /** Breaks fetched from the continuation book (already tagged with bookCode). */
+  continuationBreaks: { wordId: string; heading: string | null; level: number; chapter: number; verse: number; thematic: boolean; thematicLetter: string | null }[];
+  /** Keys whose sectionRanges end has been extended into the continuation book. */
+  crossBookRangeKeys: Set<string>;
+  loadingContinuation?: boolean;
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -79,6 +92,13 @@ export default function OutlinePane({
   onUpdateCurrentHeading,
   onDeleteCurrentBreak,
   onClose,
+  outlineExtended,
+  onToggleExtended,
+  continuationBook,
+  continuationBookName,
+  continuationBreaks,
+  crossBookRangeKeys,
+  loadingContinuation = false,
 }: OutlinePaneProps) {
   const [editKey, setEditKey]       = useState<string | null>(null); // `${wordId}:${level}`
   const [editDraft, setEditDraft]   = useState("");
@@ -101,13 +121,22 @@ export default function OutlinePane({
         list.push({ wordId, chapter, verse: br.verse, level: br.level, heading: br.heading, thematic: br.thematic, thematicLetter: br.thematicLetter });
       }
     }
-    list.sort((a, b) =>
-      a.chapter !== b.chapter ? a.chapter - b.chapter :
-      a.verse   !== b.verse   ? a.verse   - b.verse   :
-      a.level   - b.level
-    );
+    if (outlineExtended) {
+      for (const b of continuationBreaks) {
+        list.push({ ...b, bookCode: continuationBook ?? undefined });
+      }
+    }
+    list.sort((a, b) => {
+      // Continuation-book items always sort after current-book items
+      const aIdx = a.bookCode ? 1 : 0;
+      const bIdx = b.bookCode ? 1 : 0;
+      if (aIdx !== bIdx) return aIdx - bIdx;
+      return a.chapter !== b.chapter ? a.chapter - b.chapter :
+             a.verse   !== b.verse   ? a.verse   - b.verse   :
+             a.level   - b.level;
+    });
     return list;
-  }, [bookSceneBreaks, sceneBreakMap, chapter]);
+  }, [bookSceneBreaks, sceneBreakMap, chapter, outlineExtended, continuationBreaks, continuationBook]);
 
   // Compute display items (prefix counters, ranges, heading overrides applied)
   const items = useMemo(() => {
@@ -125,19 +154,27 @@ export default function OutlinePane({
       const thematicIndent = br.thematic && br.thematicLetter
         ? (br.thematicLetter.toUpperCase().charCodeAt(0) - 65 + 1) * INDENT_PX
         : null;
+      const isCrossBookRange = crossBookRangeKeys.has(key);
+      let rangeStr: string;
+      if (range) {
+        const baseRange = formatRange(br.chapter, br.verse, range.endChapter, range.endVerse);
+        rangeStr = isCrossBookRange && continuationBookName
+          ? `${br.chapter}:${br.verse} – ${continuationBookName} ${range.endChapter}:${range.endVerse}`
+          : baseRange;
+      } else {
+        rangeStr = `${br.chapter}:${br.verse}`;
+      }
       return {
         ...br,
         heading,
         key,
         prefix: br.thematic && br.thematicLetter ? br.thematicLetter : formatPrefix(br.level, counters[br.level]),
-        rangeStr: range
-          ? formatRange(br.chapter, br.verse, range.endChapter, range.endVerse)
-          : `${br.chapter}:${br.verse}`,
-        isCurrent: br.chapter === chapter,
+        rangeStr,
+        isCurrent: !br.bookCode && br.chapter === chapter,
         thematicIndent,
       };
     });
-  }, [sortedBreaks, sectionRanges, headingOverrides, chapter]);
+  }, [sortedBreaks, sectionRanges, headingOverrides, chapter, crossBookRangeKeys, continuationBookName]);
 
   async function handleDelete(item: (typeof items)[number]) {
     if (item.isCurrent) {
@@ -230,6 +267,26 @@ export default function OutlinePane({
         </div>
       </div>
 
+      {/* "Extend into [Book]" toggle — only when a contiguous successor book exists */}
+      {continuationBook && (
+        <div
+          className="shrink-0 px-4 py-2 border-b flex items-center gap-2"
+          style={{ borderColor: "var(--border)" }}
+        >
+          <label className="flex items-center gap-2 cursor-pointer select-none text-xs" style={{ color: "var(--text-muted)" }}>
+            <input
+              type="checkbox"
+              checked={outlineExtended}
+              onChange={(e) => onToggleExtended(e.target.checked)}
+              className="rounded"
+            />
+            Extend into{" "}
+            <span style={{ color: "var(--foreground)" }}>{continuationBookName}</span>
+            {loadingContinuation && <span className="opacity-50">…</span>}
+          </label>
+        </div>
+      )}
+
       {/* Body */}
       <div className="flex-1 overflow-y-auto py-3 px-2">
         {items.length === 0 ? (
@@ -296,10 +353,10 @@ export default function OutlinePane({
                         </button>
                       ) : (
                         <Link
-                          href={`/${encodeURIComponent(book)}/${textSource}/${item.chapter}`}
+                          href={`/${encodeURIComponent(item.bookCode ?? book)}/${textSource}/${item.chapter}`}
                           className="shrink-0 text-[10px] hover:underline"
                           style={{ color: "var(--text-muted)" }}
-                          title={`Go to chapter ${item.chapter}, verse ${item.verse}`}
+                          title={`Go to ${item.bookCode ? (OSIS_BOOK_NAMES[item.bookCode] ?? item.bookCode) + " " : ""}chapter ${item.chapter}, verse ${item.verse}`}
                         >
                           {item.rangeStr}
                         </Link>

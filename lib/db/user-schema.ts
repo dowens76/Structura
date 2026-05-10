@@ -217,6 +217,9 @@ export const passages = sqliteTable(
     label:        text("label").notNull().default(""),
     startChapter: integer("start_chapter").notNull(),
     startVerse:   integer("start_verse").notNull(),
+    /** Null (or same as `book`) for single-book passages; set to the
+     *  continuation OSIS code for cross-book passages (e.g. "2Sam"). */
+    endBook:      text("end_book"),
     endChapter:   integer("end_chapter").notNull(),
     endVerse:     integer("end_verse").notNull(),
   },

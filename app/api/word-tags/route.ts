@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getWordTags, createWordTag } from "@/lib/db/queries";
 import { getActiveWorkspaceId } from "@/lib/workspace";
+import { canonicalPairBook } from "@/lib/utils/osis";
 
 export const dynamic = "force-dynamic";
 
@@ -25,6 +26,9 @@ export async function POST(request: NextRequest) {
   if (!name || !color || !type || !book) {
     return NextResponse.json({ error: "Missing fields" }, { status: 400 });
   }
-  const tag = await createWordTag(name, color, type, book, workspaceId);
+  // Store under the canonical (first) book of a contiguous pair so word tags
+  // are shared across both halves (e.g. 1Sam and 2Sam share the same pool).
+  const canonicalBook = canonicalPairBook(book);
+  const tag = await createWordTag(name, color, type, canonicalBook, workspaceId);
   return NextResponse.json({ tag });
 }

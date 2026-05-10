@@ -26,7 +26,7 @@ import {
   getBookChapterMaxVerses,
 } from "@/lib/db/queries";
 import { getActiveWorkspaceId } from "@/lib/workspace";
-import { OSIS_BOOK_NAMES } from "@/lib/utils/osis";
+import { OSIS_BOOK_NAMES, canonicalPairBook } from "@/lib/utils/osis";
 import type { TextSource } from "@/lib/morphology/types";
 import type { TranslationVerse } from "@/lib/db/schema";
 import PassageView from "@/components/passage/PassageView";
@@ -56,11 +56,46 @@ export default async function PassagePage({ params }: PageProps) {
   if (!passage || !bookRecord) notFound();
   if (passage.book !== osisBook || passage.textSource !== textSource) notFound();
 
-  // Build the list of chapters covered by this passage
-  const chapterRange: number[] = [];
-  for (let ch = passage.startChapter; ch <= passage.endChapter; ch++) chapterRange.push(ch);
+  // ── Determine end book ─────────────────────────────────────────────────────
+  const endOsisBook = passage.endBook ?? osisBook;
+  const isCrossBook = endOsisBook !== osisBook;
 
-  // Pre-fetch words and the four max-verse values needed for range navigation.
+  const endBookRecord = isCrossBook ? await getBook(endOsisBook) : bookRecord;
+  if (!endBookRecord) notFound();
+
+  // ── Build chapter entry list (book + chapter) ──────────────────────────────
+  // For a single-book passage: chapters startChapter..endChapter in osisBook.
+  // For a cross-book passage: chapters startChapter..endOfStartBook in osisBook,
+  //   then chapters 1..endChapter in endOsisBook.
+  type ChapterEntry = { book: string; chapter: number };
+  const chapterEntries: ChapterEntry[] = [];
+
+  if (!isCrossBook) {
+    for (let ch = passage.startChapter; ch <= passage.endChapter; ch++) {
+      chapterEntries.push({ book: osisBook, chapter: ch });
+    }
+  } else {
+    const startBookLastCh = bookRecord.chapterCount;
+    for (let ch = passage.startChapter; ch <= startBookLastCh; ch++) {
+      chapterEntries.push({ book: osisBook, chapter: ch });
+    }
+    for (let ch = 1; ch <= passage.endChapter; ch++) {
+      chapterEntries.push({ book: endOsisBook, chapter: ch });
+    }
+  }
+
+  // ── Books to query for characters / word-tags ─────────────────────────────
+  // Always use the canonical (first) book of any contiguous pair so both halves
+  // share the same character/tag pool. Deduplicate when start and end are in the
+  // same pair (e.g. a 1Sam→2Sam cross-book passage).
+  const canonicalStart = canonicalPairBook(osisBook);
+  const canonicalEnd   = isCrossBook ? canonicalPairBook(endOsisBook) : null;
+  const charTagBooks: string | string[] =
+    canonicalEnd && canonicalEnd !== canonicalStart
+      ? [canonicalStart, canonicalEnd]
+      : canonicalStart;
+
+  // ── Pre-fetch words and supporting data ────────────────────────────────────
   const [
     passageWords,
     maxVerseOfStartChapter,
@@ -70,87 +105,120 @@ export default async function PassagePage({ params }: PageProps) {
     characters,
     wordTags,
     bookSceneBreaks,
+    endBookSceneBreaks,
     bookMaxVerses,
+    endBookMaxVerses,
     perChapterResults,
   ] = await Promise.all([
     getPassageWords(
       osisBook, textSource,
       passage.startChapter, passage.startVerse,
-      passage.endChapter,   passage.endVerse
+      passage.endChapter,   passage.endVerse,
+      passage.endBook
     ),
     getChapterMaxVerse(osisBook, passage.startChapter, textSource),
-    getChapterMaxVerse(osisBook, passage.endChapter,   textSource),
+    getChapterMaxVerse(endOsisBook, passage.endChapter, textSource),
     passage.startChapter > 1
       ? getChapterMaxVerse(osisBook, passage.startChapter - 1, textSource)
       : Promise.resolve(0),
     passage.endChapter > 1
-      ? getChapterMaxVerse(osisBook, passage.endChapter - 1, textSource)
+      ? getChapterMaxVerse(endOsisBook, passage.endChapter - 1, textSource)
       : Promise.resolve(0),
-    getCharacters(osisBook, workspaceId),
-    getWordTags(osisBook, workspaceId),
+    // Characters / word-tags: fetch from canonical books so paired books
+    // (e.g. 1Sam+2Sam) share the same pool.
+    getCharacters(charTagBooks, workspaceId),
+    getWordTags(charTagBooks, workspaceId),
     getBookSceneBreaks(osisBook, textSource, workspaceId),
+    isCrossBook ? getBookSceneBreaks(endOsisBook, textSource, workspaceId) : Promise.resolve([]),
     getBookChapterMaxVerses(osisBook, textSource),
+    isCrossBook ? getBookChapterMaxVerses(endOsisBook, textSource) : Promise.resolve(new Map<number, number>()),
+    // Per-chapter editing data — use the correct book for each entry
     Promise.all(
-      chapterRange.map((ch) =>
+      chapterEntries.map(({ book: entryBook, chapter: ch }) =>
         Promise.all([
-          getChapterParagraphBreaks(osisBook, ch, workspaceId),
-          getChapterCharacterRefs(osisBook, ch, workspaceId),
-          getChapterSpeechSections(osisBook, ch, textSource, workspaceId),
-          getChapterWordTagRefs(osisBook, ch, workspaceId),
-          getChapterLineIndents(osisBook, ch, workspaceId),
-          getChapterRstRelations(osisBook, ch, textSource, workspaceId),
-          getChapterWordArrows(osisBook, ch, textSource, workspaceId),
-          getChapterWordFormatting(osisBook, ch, workspaceId),
-          getChapterSceneBreaks(osisBook, ch, workspaceId),
-          getChapterLineAnnotations(osisBook, ch, textSource, workspaceId),
+          getChapterParagraphBreaks(entryBook, ch, workspaceId),
+          getChapterCharacterRefs(entryBook, ch, workspaceId),
+          getChapterSpeechSections(entryBook, ch, textSource, workspaceId),
+          getChapterWordTagRefs(entryBook, ch, workspaceId),
+          getChapterLineIndents(entryBook, ch, workspaceId),
+          getChapterRstRelations(entryBook, ch, textSource, workspaceId),
+          getChapterWordArrows(entryBook, ch, textSource, workspaceId),
+          getChapterWordFormatting(entryBook, ch, workspaceId),
+          getChapterSceneBreaks(entryBook, ch, workspaceId),
+          getChapterLineAnnotations(entryBook, ch, textSource, workspaceId),
         ])
       )
     ),
   ]);
 
-  // Flatten per-chapter editing data
-  const initialParagraphBreakIds     = perChapterResults.flatMap(([p]) => p);
-  const initialCharacterRefs         = perChapterResults.flatMap(([, r]) => r);
-  const initialSpeechSections        = perChapterResults.flatMap(([,, s]) => s);
-  const initialWordTagRefs           = perChapterResults.flatMap(([,,, t]) => t);
-  const initialLineIndents           = perChapterResults.flatMap(([,,,, l]) => l);
-  const initialRstRelations          = perChapterResults.flatMap(([,,,,, cr]) => cr);
-  const initialWordArrows            = perChapterResults.flatMap(([,,,,,, wa]) => wa);
-  const initialWordFormatting        = perChapterResults.flatMap(([,,,,,,, wf]) => wf);
-  const initialSceneBreaks           = perChapterResults.flatMap(([,,,,,,,, sb]) => sb);
-  const initialLineAnnotations       = perChapterResults.flatMap(([,,,,,,,,, la]) => la);
+  // (characters and wordTags already cover all canonical books via charTagBooks)
 
-  // Translations — workspace-independent; fetch verses for all chapters in range
+  // Flatten per-chapter editing data
+  const initialParagraphBreakIds = perChapterResults.flatMap(([p]) => p);
+  const initialCharacterRefs     = perChapterResults.flatMap(([, r]) => r);
+  const initialSpeechSections    = perChapterResults.flatMap(([,, s]) => s);
+  const initialWordTagRefs       = perChapterResults.flatMap(([,,, t]) => t);
+  const initialLineIndents       = perChapterResults.flatMap(([,,,, l]) => l);
+  const initialRstRelations      = perChapterResults.flatMap(([,,,,, cr]) => cr);
+  const initialWordArrows        = perChapterResults.flatMap(([,,,,,, wa]) => wa);
+  const initialWordFormatting    = perChapterResults.flatMap(([,,,,,,, wf]) => wf);
+  const initialSceneBreaks       = perChapterResults.flatMap(([,,,,,,,, sb]) => sb);
+  const initialLineAnnotations   = perChapterResults.flatMap(([,,,,,,,,, la]) => la);
+
+  // Merge cross-book scene breaks and max verses
+  const allBookSceneBreaks = [...bookSceneBreaks, ...endBookSceneBreaks];
+  // For bookMaxVerses, for cross-book we merge start-book and end-book maps.
+  // End-book chapters are offset by startBookLastCh so they sort after.
+  const mergedBookMaxVerses = new Map<number, number>(bookMaxVerses);
+  if (isCrossBook) {
+    const startBookLastCh = bookRecord.chapterCount;
+    for (const [ch, mv] of endBookMaxVerses) {
+      mergedBookMaxVerses.set(ch + startBookLastCh, mv);
+    }
+  }
+
+  // ── Translations ───────────────────────────────────────────────────────────
   const availableTranslations = await getAvailableTranslationsForChapter(osisBook, passage.startChapter);
   const translationVerseData: Record<number, TranslationVerse[]> = {};
   await Promise.all(
     availableTranslations.map(async (t) => {
-      const versesPerChapter = await Promise.all(
-        chapterRange.map((ch) => getTranslationVerses(t.id, osisBook, ch))
+      const versesPerEntry = await Promise.all(
+        chapterEntries.map(({ book: entryBook, chapter: ch }) =>
+          getTranslationVerses(t.id, entryBook, ch)
+        )
       );
-      translationVerseData[t.id] = versesPerChapter.flat();
+      translationVerseData[t.id] = versesPerEntry.flat();
     })
   );
 
-  // ULT: synchronous base text from ult.db for all chapters in the passage
+  // ── ULT ────────────────────────────────────────────────────────────────────
   const ultBaseVerses: { chapter: number; verse: number; text: string }[] = [];
   let ultTranslation: Awaited<ReturnType<typeof getUltTranslation>> = null;
-  for (const ch of chapterRange) {
-    const verses = getUltVerses(osisBook, ch);
+  for (const { book: entryBook, chapter: ch } of chapterEntries) {
+    const verses = getUltVerses(entryBook, ch);
     for (const v of verses) ultBaseVerses.push({ ...v, chapter: ch });
   }
   if (ultBaseVerses.length > 0) {
     ultTranslation = await getUltTranslation();
     if (ultTranslation !== null) {
-      const ultEditsPerChapter = await Promise.all(
-        chapterRange.map((ch) => getTranslationVerses(ultTranslation!.id, osisBook, ch))
+      const ultEditsPerEntry = await Promise.all(
+        chapterEntries.map(({ book: entryBook, chapter: ch }) =>
+          getTranslationVerses(ultTranslation!.id, entryBook, ch)
+        )
       );
-      translationVerseData[ultTranslation.id] = ultEditsPerChapter.flat();
+      translationVerseData[ultTranslation.id] = ultEditsPerEntry.flat();
     }
   }
 
-  const bookName = OSIS_BOOK_NAMES[osisBook] ?? osisBook;
-  const isHebrew = bookRecord.language === "hebrew";
+  // ── Display metadata ───────────────────────────────────────────────────────
+  const bookName    = OSIS_BOOK_NAMES[osisBook] ?? osisBook;
+  const endBookName = OSIS_BOOK_NAMES[endOsisBook] ?? endOsisBook;
+  const isHebrew    = bookRecord.language === "hebrew";
+
+  // Passage reference string shown in the nav bar for cross-book passages
+  const crossBookRef = isCrossBook
+    ? `${bookName} ${passage.startChapter}:${passage.startVerse} – ${endBookName} ${passage.endChapter}:${passage.endVerse}`
+    : null;
 
   return (
     <div className="flex flex-col h-screen" style={{ backgroundColor: "var(--background)" }}>
@@ -173,7 +241,7 @@ export default async function PassagePage({ params }: PageProps) {
         <span style={{ color: "var(--nav-border)" }} className="text-lg select-none">|</span>
 
         <span className="text-sm font-semibold" style={{ color: "var(--nav-fg-muted)" }}>
-          {bookName}
+          {crossBookRef ?? bookName}
         </span>
         <span
           className="text-xs px-1.5 py-0.5 rounded font-mono"
@@ -223,7 +291,7 @@ export default async function PassagePage({ params }: PageProps) {
         </div>
       </nav>
 
-      {/* Passage content — flex-1 min-h-0 lets PassageView manage its own scrolling */}
+      {/* Passage content */}
       <div className="flex-1 min-h-0">
         <PassageView
           key={workspaceId}
@@ -254,8 +322,8 @@ export default async function PassagePage({ params }: PageProps) {
           initialWordFormatting={initialWordFormatting}
           initialSceneBreaks={initialSceneBreaks}
           initialLineAnnotations={initialLineAnnotations}
-          bookSceneBreaks={bookSceneBreaks}
-          bookMaxVerses={bookMaxVerses}
+          bookSceneBreaks={allBookSceneBreaks}
+          bookMaxVerses={mergedBookMaxVerses}
         />
       </div>
     </div>
@@ -273,9 +341,15 @@ export async function generateMetadata({ params }: PageProps) {
       return { title: `${passage.label} — Structura` };
     }
     if (passage) {
-      return {
-        title: `${bookName} ${passage.startChapter}:${passage.startVerse}–${passage.endChapter}:${passage.endVerse} — Structura`,
-      };
+      const endBookName = passage.endBook
+        ? (OSIS_BOOK_NAMES[passage.endBook] ?? passage.endBook)
+        : bookName;
+      const ref = passage.endBook && passage.endBook !== osisBook
+        ? `${bookName} ${passage.startChapter}:${passage.startVerse} – ${endBookName} ${passage.endChapter}:${passage.endVerse}`
+        : passage.startChapter === passage.endChapter
+          ? `${bookName} ${passage.startChapter}:${passage.startVerse}–${passage.endVerse}`
+          : `${bookName} ${passage.startChapter}:${passage.startVerse} – ${passage.endChapter}:${passage.endVerse}`;
+      return { title: `${ref} — Structura` };
     }
   }
   return { title: `${bookName} Passage — Structura` };

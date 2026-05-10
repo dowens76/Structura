@@ -22,7 +22,7 @@ import NavLinks from "@/components/navigation/NavLinks";
 import ThemeToggle from "@/components/ThemeToggle";
 import SettingsButton from "@/components/SettingsButton";
 import WorkspaceSwitcher from "@/components/WorkspaceSwitcher";
-import { OSIS_BOOK_NAMES, OSHB_LXX_PARALLEL_BOOKS } from "@/lib/utils/osis";
+import { OSIS_BOOK_NAMES, OSHB_LXX_PARALLEL_BOOKS, CONTIGUOUS_BOOK_PAIRS, CONTIGUOUS_BOOK_PREV, canonicalPairBook } from "@/lib/utils/osis";
 import { getActiveWorkspaceId } from "@/lib/workspace";
 
 const LXX_SOURCE = "STEPBIBLE_LXX" as TextSource;
@@ -111,6 +111,11 @@ export default async function ChapterPage({ params, searchParams }: PageProps) {
   let ultBaseVerses: { verse: number; text: string }[] = [];
   let ultTranslation: Awaited<ReturnType<typeof getUltTranslation>> = null;
 
+  // Fetch characters/word-tags from both books in a contiguous pair so they
+  // share a single pool regardless of which book is currently being viewed.
+  const _siblingBook = (CONTIGUOUS_BOOK_PAIRS[osisBook] ?? CONTIGUOUS_BOOK_PREV[osisBook]) ?? null;
+  const pairBooks: string | string[] = _siblingBook ? [osisBook, _siblingBook] : osisBook;
+
   if (!parallelMode) {
     [availableTranslations, initialParagraphBreakIds, initialCharacters,
      initialCharacterRefs, initialSpeechSections,
@@ -120,10 +125,10 @@ export default async function ChapterPage({ params, searchParams }: PageProps) {
      bookSceneBreaks, bookMaxVerses] = await Promise.all([
       getAvailableTranslationsForChapter(osisBook, chapter, workspaceId),
       getChapterParagraphBreaks(osisBook, chapter, workspaceId),
-      getCharacters(osisBook, workspaceId),
+      getCharacters(pairBooks, workspaceId),
       getChapterCharacterRefs(osisBook, chapter, workspaceId),
       getChapterSpeechSections(osisBook, chapter, textSource, workspaceId),
-      getWordTags(osisBook, workspaceId),
+      getWordTags(pairBooks, workspaceId),
       getChapterWordTagRefs(osisBook, chapter, workspaceId),
       getChapterLineIndents(osisBook, chapter, workspaceId),
       getChapterRstRelations(osisBook, chapter, textSource, workspaceId),
@@ -155,6 +160,16 @@ export default async function ChapterPage({ params, searchParams }: PageProps) {
   }
 
   const bookName = OSIS_BOOK_NAMES[osisBook] ?? osisBook;
+
+  // ── Cross-book chapter navigation ────────────────────────────────────────
+  // At the last chapter of a first book (e.g. 1 Sam 31), "next" → 2 Sam 1.
+  // At chapter 1 of a second book (e.g. 2 Sam 1),        "prev" → 1 Sam 31.
+  const contNextBook = CONTIGUOUS_BOOK_PAIRS[osisBook] ?? null;
+  const contPrevBook = CONTIGUOUS_BOOK_PREV[osisBook]  ?? null;
+  // We only need the prev book's chapter count when we're actually at chapter 1.
+  const contPrevBookLastChapter = (contPrevBook && chapter === 1)
+    ? await getMaxChapterForSource(contPrevBook, textSource)
+    : null;
 
   // Source-switch link: when on LXX, offer a link to the OSHB version (if it exists).
   // When on OSHB with an LXX parallel available, offer the LXX standalone.
@@ -204,6 +219,9 @@ export default async function ChapterPage({ params, searchParams }: PageProps) {
           lxxHref={lxxHref}
           parallelHref={parallelHref}
           exportHref={`/export/${encodeURIComponent(osisBook)}/${textSource}/${chapter}`}
+          contNextBook={contNextBook}
+          contPrevBook={contPrevBook}
+          contPrevBookLastChapter={contPrevBookLastChapter}
         />
 
         {/* Book selector dropdown */}
