@@ -164,6 +164,13 @@ function migrateUserDb(sqlite: Database.Database): void {
     sqlite.exec("ALTER TABLE rst_relations ADD COLUMN intersect_point TEXT NOT NULL DEFAULT 'mid'");
 
   sqlite.exec(`
+    CREATE TABLE IF NOT EXISTS app_settings (
+      key   TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    );
+  `);
+
+  sqlite.exec(`
     CREATE TABLE IF NOT EXISTS book_groupings (
       id           INTEGER PRIMARY KEY AUTOINCREMENT,
       workspace_id INTEGER NOT NULL DEFAULT 1 REFERENCES workspaces(id) ON DELETE CASCADE,
