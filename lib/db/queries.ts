@@ -1588,10 +1588,15 @@ export async function deleteBookGrouping(id: number, workspaceId: number): Promi
  * character/word-tag pool for books linked by a user-defined grouping.
  */
 export async function getGroupedBooksFor(book: string, workspaceId: number): Promise<string[]> {
-  const rows = await userDb
-    .select({ books: bookGroupings.books })
-    .from(bookGroupings)
-    .where(eq(bookGroupings.workspaceId, workspaceId));
+  let rows: { books: string }[];
+  try {
+    rows = await userDb
+      .select({ books: bookGroupings.books })
+      .from(bookGroupings)
+      .where(eq(bookGroupings.workspaceId, workspaceId));
+  } catch {
+    return [];
+  }
 
   const result = new Set<string>();
   for (const row of rows) {
