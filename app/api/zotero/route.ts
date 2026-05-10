@@ -1,17 +1,25 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getAppSetting } from "@/lib/db/queries";
 
 export const dynamic = "force-dynamic";
 
+const KEY_USER_ID = "zotero:userId";
+const KEY_API_KEY = "zotero:apiKey";
+
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
-  const q      = searchParams.get("q")?.trim()      ?? "";
-  const userId = searchParams.get("userId")?.trim()  ?? "";
-  const apiKey = searchParams.get("apiKey")?.trim()  ?? "";
+  const q = searchParams.get("q")?.trim() ?? "";
+
+  // Load credentials from the database — never from the client request
+  const [userId, apiKey] = await Promise.all([
+    getAppSetting(KEY_USER_ID),
+    getAppSetting(KEY_API_KEY),
+  ]);
 
   if (!userId || !apiKey) {
     return NextResponse.json(
-      { error: "Missing userId or apiKey" },
-      { status: 400 },
+      { error: "Zotero credentials not configured" },
+      { status: 401 },
     );
   }
 

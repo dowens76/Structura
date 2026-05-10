@@ -475,6 +475,15 @@ export const autoBackupSettings = sqliteTable("auto_backup_settings", {
   updatedAt:      text("updated_at").notNull().$defaultFn(() => new Date().toISOString()),
 });
 
+// ─── App Settings (global key-value, not workspace-scoped) ─────────────────
+// Used for things like third-party API credentials that apply to the whole app.
+// Values are stored as plain text; callers are responsible for any encoding.
+
+export const appSettings = sqliteTable("app_settings", {
+  key:   text("key").primaryKey(),
+  value: text("value").notNull(),
+});
+
 // ─── Types ─────────────────────────────────────────────────────────────────
 
 export type User = typeof users.$inferSelect;

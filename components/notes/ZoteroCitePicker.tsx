@@ -7,29 +7,6 @@ import {
   formatItemSummary,
 } from "@/lib/utils/zotero";
 
-// ── localStorage helpers (mirrors pattern in ChapterDisplay.tsx) ──────────────
-
-const LS_API_KEY = "structura:zoteroApiKey";
-const LS_USER_ID = "structura:zoteroUserId";
-
-function readLocal<T>(key: string, fallback: T): T {
-  if (typeof window === "undefined") return fallback;
-  try {
-    const raw = localStorage.getItem(key);
-    return raw === null ? fallback : (JSON.parse(raw) as T);
-  } catch {
-    return fallback;
-  }
-}
-
-function writeLocal<T>(key: string, value: T): void {
-  try {
-    localStorage.setItem(key, JSON.stringify(value));
-  } catch {
-    /* quota exceeded — ignore */
-  }
-}
-
 // ── Component ─────────────────────────────────────────────────────────────────
 
 interface ZoteroCitePickerProps {
@@ -45,16 +22,37 @@ export default function ZoteroCitePicker({
   const searchRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const [apiKey, setApiKey] = useState(() => readLocal<string>(LS_API_KEY, ""));
-  const [userId, setUserId] = useState(() => readLocal<string>(LS_USER_ID, ""));
-  const [showSetup, setShowSetup] = useState(
-    () => !readLocal<string>(LS_API_KEY, "") || !readLocal<string>(LS_USER_ID, ""),
-  );
+  // Credentials state — loaded from server, API key never stored in browser
+  const [userId,    setUserId]    = useState("");
+  const [apiKey,    setApiKey]    = useState("");   // only used in the setup form input
+  const [hasApiKey, setHasApiKey] = useState(false);
+  const [credsLoaded, setCredsLoaded] = useState(false);
+  const [showSetup, setShowSetup] = useState(false);
 
   const [query,   setQuery]   = useState("");
   const [results, setResults] = useState<ZoteroItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error,   setError]   = useState<string | null>(null);
+  const [saving,  setSaving]  = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  // ── Load credentials from server on mount ───────────────────────────────────
+  useEffect(() => {
+    fetch("/api/credentials/zotero")
+      .then(r => r.json())
+      .then((d: { userId?: string; hasApiKey?: boolean }) => {
+        const uid = d.userId ?? "";
+        const has = d.hasApiKey ?? false;
+        setUserId(uid);
+        setHasApiKey(has);
+        setShowSetup(!uid || !has);
+        setCredsLoaded(true);
+      })
+      .catch(() => {
+        setShowSetup(true);
+        setCredsLoaded(true);
+      });
+  }, []);
 
   // ── Click-outside + Escape close ─────────────────────────────────────────────
   useEffect(() => {
@@ -76,57 +74,86 @@ export default function ZoteroCitePicker({
 
   // ── Autofocus search input when in search mode ───────────────────────────────
   useEffect(() => {
-    if (!showSetup) {
-      // rAF ensures the input is visible before we focus it
+    if (credsLoaded && !showSetup) {
       requestAnimationFrame(() => searchRef.current?.focus());
     }
-  }, [showSetup]);
+  }, [showSetup, credsLoaded]);
 
   // ── Debounced search ─────────────────────────────────────────────────────────
-  const search = useCallback(
-    (q: string, uid: string, key: string) => {
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-      if (!q.trim() || !uid || !key) {
-        setResults([]);
-        setError(null);
-        return;
-      }
-      debounceRef.current = setTimeout(async () => {
-        setLoading(true);
-        setError(null);
-        try {
-          const params = new URLSearchParams({ q, userId: uid, apiKey: key });
-          const res  = await fetch(`/api/zotero?${params.toString()}`);
-          const json = await res.json();
-          if (!res.ok) {
-            setError(json.error ?? "Search failed");
-            setResults([]);
-          } else {
-            setResults(json.items ?? []);
-          }
-        } catch {
-          setError("Network error");
+  const search = useCallback((q: string) => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (!q.trim()) {
+      setResults([]);
+      setError(null);
+      return;
+    }
+    debounceRef.current = setTimeout(async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const params = new URLSearchParams({ q });
+        const res  = await fetch(`/api/zotero?${params.toString()}`);
+        const json = await res.json();
+        if (res.status === 401) {
+          // Credentials not configured or expired
+          setShowSetup(true);
           setResults([]);
-        } finally {
-          setLoading(false);
+        } else if (!res.ok) {
+          setError(json.error ?? "Search failed");
+          setResults([]);
+        } else {
+          setResults(json.items ?? []);
         }
-      }, 300);
-    },
-    [],
-  );
+      } catch {
+        setError("Network error");
+        setResults([]);
+      } finally {
+        setLoading(false);
+      }
+    }, 300);
+  }, []);
 
   useEffect(() => {
-    search(query, userId, apiKey);
+    if (!showSetup) search(query);
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
-  }, [query, userId, apiKey, search]);
+  }, [query, showSetup, search]);
 
-  // ── Save credentials ─────────────────────────────────────────────────────────
-  function saveCredentials() {
-    writeLocal(LS_API_KEY, apiKey);
-    writeLocal(LS_USER_ID, userId);
-    setShowSetup(false);
+  // ── Save credentials to server ────────────────────────────────────────────────
+  async function saveCredentials() {
+    if (!userId.trim() || !apiKey.trim()) return;
+    setSaving(true);
+    setSaveError(null);
+    try {
+      const res = await fetch("/api/credentials/zotero", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: userId.trim(), apiKey: apiKey.trim() }),
+      });
+      if (!res.ok) {
+        const d = await res.json();
+        setSaveError(d.error ?? "Failed to save");
+        return;
+      }
+      setHasApiKey(true);
+      setApiKey(""); // clear from UI — not needed anymore
+      setShowSetup(false);
+    } catch {
+      setSaveError("Network error. Please try again.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  // ── Clear credentials ─────────────────────────────────────────────────────────
+  async function clearCredentials() {
+    await fetch("/api/credentials/zotero", { method: "DELETE" });
+    setUserId("");
+    setApiKey("");
+    setHasApiKey(false);
+    setResults([]);
+    setQuery("");
   }
 
   // ── Item-type badge label ─────────────────────────────────────────────────────
@@ -165,7 +192,7 @@ export default function ZoteroCitePicker({
           <button
             type="button"
             onMouseDown={(e) => e.preventDefault()}
-            onClick={() => setShowSetup((v) => !v)}
+            onClick={() => { setSaveError(null); setShowSetup((v) => !v); }}
             title="Zotero settings"
             className={[
               "w-5 h-5 flex items-center justify-center rounded text-xs transition-colors",
@@ -189,7 +216,12 @@ export default function ZoteroCitePicker({
         </div>
       </div>
 
-      {showSetup ? (
+      {!credsLoaded ? (
+        /* ── Loading state ── */
+        <div className="px-3 py-4 text-xs" style={{ color: "var(--text-muted)" }}>
+          Loading…
+        </div>
+      ) : showSetup ? (
         /* ── Setup view ── */
         <div className="p-3 flex flex-col gap-2">
           <p className="text-xs leading-relaxed" style={{ color: "var(--text-muted)" }}>
@@ -208,6 +240,28 @@ export default function ZoteroCitePicker({
               "Your userID for use in API calls is&nbsp;…"
             </span>
           </p>
+
+          {/* Show current userId if already set */}
+          {hasApiKey && userId && (
+            <div
+              className="text-xs px-2 py-1.5 rounded flex items-center justify-between gap-2"
+              style={{ backgroundColor: "rgba(200,155,60,0.10)", color: "var(--foreground)" }}
+            >
+              <span>
+                User ID: <span className="font-mono">{userId}</span>
+                <span className="ml-2" style={{ color: "var(--text-muted)" }}>· API key saved</span>
+              </span>
+              <button
+                type="button"
+                onClick={clearCredentials}
+                className="text-[10px] underline hover:opacity-80"
+                style={{ color: "var(--text-muted)" }}
+              >
+                Clear
+              </button>
+            </div>
+          )}
+
           <input
             type="text"
             value={userId}
@@ -220,21 +274,26 @@ export default function ZoteroCitePicker({
             type="password"
             value={apiKey}
             onChange={(e) => setApiKey(e.target.value)}
-            placeholder="API Key"
+            placeholder={hasApiKey ? "New API key (leave blank to keep current)" : "API Key"}
             className="w-full text-xs px-2 py-1.5 rounded border bg-[var(--background)] text-[var(--foreground)] placeholder-stone-400 dark:placeholder-stone-500 focus:outline-none focus:ring-1 focus:ring-amber-400"
             style={{ borderColor: "var(--border)" }}
             onKeyDown={(e) => {
-              if (e.key === "Enter" && apiKey.trim() && userId.trim())
+              if (e.key === "Enter" && userId.trim() && apiKey.trim())
                 saveCredentials();
             }}
           />
+
+          {saveError && (
+            <p className="text-xs text-red-500">{saveError}</p>
+          )}
+
           <button
             type="button"
             onClick={saveCredentials}
-            disabled={!apiKey.trim() || !userId.trim()}
+            disabled={saving || !userId.trim() || !apiKey.trim()}
             className="w-full text-xs px-2 py-1.5 rounded font-medium bg-stone-700 text-white dark:bg-stone-200 dark:text-stone-900 disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-90 transition-opacity"
           >
-            Save &amp; Search
+            {saving ? "Saving…" : "Save & Search"}
           </button>
         </div>
       ) : (

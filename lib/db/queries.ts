@@ -3,7 +3,7 @@ import { sourceDb, userDb, sourceLookups, lxxLookups, getLxxDb, getUltSqlite } f
 import type { LookupMaps } from "./index";
 import { books, words } from "./source-schema";
 import type { Word, WordRow } from "./source-schema";
-import { translations, translationVerses, paragraphBreaks, paragraphHeadings, characters, characterRefs, speechSections, wordTags, wordTagRefs, lineIndents, sceneBreaks, passages, clauseRelationships, rstRelations, wordArrows, wordFormatting, lineAnnotations, bookGroupings } from "./user-schema";
+import { translations, translationVerses, paragraphBreaks, paragraphHeadings, characters, characterRefs, speechSections, wordTags, wordTagRefs, lineIndents, sceneBreaks, passages, clauseRelationships, rstRelations, wordArrows, wordFormatting, lineAnnotations, bookGroupings, appSettings } from "./user-schema";
 import type { Book, Translation, TranslationVerse, Character, CharacterRef, SpeechSection, WordTag, WordTagRef, Passage, ClauseRelationship, RstRelation, WordArrow, LineAnnotation, BookGrouping } from "./schema";
 import type { TextSource, Testament } from "@/lib/morphology/types";
 
@@ -1602,4 +1602,28 @@ export async function getGroupedBooksFor(book: string, workspaceId: number): Pro
     }
   }
   return [...result];
+}
+
+// ─── App Settings ──────────────────────────────────────────────────────────
+
+/** Read a global app setting by key. Returns null if not found. */
+export async function getAppSetting(key: string): Promise<string | null> {
+  const rows = await userDb
+    .select({ value: appSettings.value })
+    .from(appSettings)
+    .where(eq(appSettings.key, key));
+  return rows[0]?.value ?? null;
+}
+
+/** Upsert a global app setting. */
+export async function setAppSetting(key: string, value: string): Promise<void> {
+  await userDb
+    .insert(appSettings)
+    .values({ key, value })
+    .onConflictDoUpdate({ target: appSettings.key, set: { value } });
+}
+
+/** Delete a global app setting. */
+export async function deleteAppSetting(key: string): Promise<void> {
+  await userDb.delete(appSettings).where(eq(appSettings.key, key));
 }
