@@ -649,8 +649,8 @@ export default function ClauseRelationshipOverlay({
                         onClick={(e) => { e.stopPropagation(); onUpdateIntersectPoint(s.id, ip); }}
                         onMouseEnter={() => setHoveredKey(groupKey)}
                         onMouseLeave={() => setHoveredKey(null)}
-                        title={`Connect at ${ip === "start" ? "top" : ip === "end" ? "bottom" : "middle"} of bracket`}
                       >
+                        <title>{`Connect at ${ip === "start" ? "top" : ip === "end" ? "bottom" : "middle"} of bracket`}</title>
                         <circle
                           cx={dotCx} cy={dotY} r={5}
                           fill={isActive ? color : "white"}
