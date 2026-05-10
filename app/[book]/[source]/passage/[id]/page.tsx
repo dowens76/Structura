@@ -24,9 +24,10 @@ import {
   getChapterLineAnnotations,
   getBookSceneBreaks,
   getBookChapterMaxVerses,
+  getGroupedBooksFor,
 } from "@/lib/db/queries";
 import { getActiveWorkspaceId } from "@/lib/workspace";
-import { OSIS_BOOK_NAMES, canonicalPairBook } from "@/lib/utils/osis";
+import { OSIS_BOOK_NAMES, CONTIGUOUS_BOOK_PAIRS, CONTIGUOUS_BOOK_PREV } from "@/lib/utils/osis";
 import type { TextSource } from "@/lib/morphology/types";
 import type { TranslationVerse } from "@/lib/db/schema";
 import PassageView from "@/components/passage/PassageView";
@@ -85,15 +86,27 @@ export default async function PassagePage({ params }: PageProps) {
   }
 
   // ── Books to query for characters / word-tags ─────────────────────────────
-  // Always use the canonical (first) book of any contiguous pair so both halves
-  // share the same character/tag pool. Deduplicate when start and end are in the
-  // same pair (e.g. a 1Sam→2Sam cross-book passage).
-  const canonicalStart = canonicalPairBook(osisBook);
-  const canonicalEnd   = isCrossBook ? canonicalPairBook(endOsisBook) : null;
-  const charTagBooks: string | string[] =
-    canonicalEnd && canonicalEnd !== canonicalStart
-      ? [canonicalStart, canonicalEnd]
-      : canonicalStart;
+  // Union: hardcoded contiguous-pair canonical books + user-defined grouping
+  // members for each book involved in this passage.
+  const [groupedBooksStart, groupedBooksEnd] = await Promise.all([
+    getGroupedBooksFor(osisBook, workspaceId),
+    isCrossBook ? getGroupedBooksFor(endOsisBook, workspaceId) : Promise.resolve([] as string[]),
+  ]);
+
+  const _siblingStart = (CONTIGUOUS_BOOK_PAIRS[osisBook]    ?? CONTIGUOUS_BOOK_PREV[osisBook])    ?? null;
+  const _siblingEnd   = isCrossBook
+    ? ((CONTIGUOUS_BOOK_PAIRS[endOsisBook] ?? CONTIGUOUS_BOOK_PREV[endOsisBook]) ?? null)
+    : null;
+
+  const charTagSet = new Set<string>([
+    osisBook,
+    ...(_siblingStart ? [_siblingStart] : []),
+    ...groupedBooksStart,
+    ...(isCrossBook ? [endOsisBook] : []),
+    ...(_siblingEnd ? [_siblingEnd] : []),
+    ...groupedBooksEnd,
+  ]);
+  const charTagBooks: string | string[] = charTagSet.size === 1 ? osisBook : [...charTagSet];
 
   // ── Pre-fetch words and supporting data ────────────────────────────────────
   const [
@@ -124,8 +137,8 @@ export default async function PassagePage({ params }: PageProps) {
     passage.endChapter > 1
       ? getChapterMaxVerse(endOsisBook, passage.endChapter - 1, textSource)
       : Promise.resolve(0),
-    // Characters / word-tags: fetch from canonical books so paired books
-    // (e.g. 1Sam+2Sam) share the same pool.
+    // Characters / word-tags: fetch from all grouped+paired books so they
+    // share the same pool (e.g. 1Sam+2Sam, or user-defined Pentateuch group).
     getCharacters(charTagBooks, workspaceId),
     getWordTags(charTagBooks, workspaceId),
     getBookSceneBreaks(osisBook, textSource, workspaceId),

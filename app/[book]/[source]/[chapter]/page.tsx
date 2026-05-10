@@ -9,7 +9,7 @@ import {
   getChapterWordTagRefs, getChapterLineIndents, getChapterRstRelations,
   getChapterWordArrows, getChapterWordFormatting, getChapterSceneBreaks,
   getChapterLineAnnotations, getBookSceneBreaks, getBookChapterMaxVerses,
-  getUltVerses, getUltTranslation,
+  getUltVerses, getUltTranslation, getGroupedBooksFor,
 } from "@/lib/db/queries";
 import type { TranslationVerse } from "@/lib/db/schema";
 import type { TextSource } from "@/lib/morphology/types";
@@ -111,10 +111,13 @@ export default async function ChapterPage({ params, searchParams }: PageProps) {
   let ultBaseVerses: { verse: number; text: string }[] = [];
   let ultTranslation: Awaited<ReturnType<typeof getUltTranslation>> = null;
 
-  // Fetch characters/word-tags from both books in a contiguous pair so they
-  // share a single pool regardless of which book is currently being viewed.
-  const _siblingBook = (CONTIGUOUS_BOOK_PAIRS[osisBook] ?? CONTIGUOUS_BOOK_PREV[osisBook]) ?? null;
-  const pairBooks: string | string[] = _siblingBook ? [osisBook, _siblingBook] : osisBook;
+  // Build the full set of books that share a character/word-tag pool with this
+  // book.  Includes: the hardcoded contiguous sibling (1Sam↔2Sam etc.) PLUS
+  // every book that shares a user-defined Book Grouping with this book.
+  const _siblingBook    = (CONTIGUOUS_BOOK_PAIRS[osisBook] ?? CONTIGUOUS_BOOK_PREV[osisBook]) ?? null;
+  const _groupedBooks   = await getGroupedBooksFor(osisBook, workspaceId);
+  const _allPairSet     = new Set([osisBook, ...(_siblingBook ? [_siblingBook] : []), ..._groupedBooks]);
+  const pairBooks: string | string[] = _allPairSet.size === 1 ? osisBook : [..._allPairSet];
 
   if (!parallelMode) {
     [availableTranslations, initialParagraphBreakIds, initialCharacters,

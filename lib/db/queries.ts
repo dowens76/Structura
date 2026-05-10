@@ -3,8 +3,8 @@ import { sourceDb, userDb, sourceLookups, lxxLookups, getLxxDb, getUltSqlite } f
 import type { LookupMaps } from "./index";
 import { books, words } from "./source-schema";
 import type { Word, WordRow } from "./source-schema";
-import { translations, translationVerses, paragraphBreaks, paragraphHeadings, characters, characterRefs, speechSections, wordTags, wordTagRefs, lineIndents, sceneBreaks, passages, clauseRelationships, rstRelations, wordArrows, wordFormatting, lineAnnotations } from "./user-schema";
-import type { Book, Translation, TranslationVerse, Character, CharacterRef, SpeechSection, WordTag, WordTagRef, Passage, ClauseRelationship, RstRelation, WordArrow, LineAnnotation } from "./schema";
+import { translations, translationVerses, paragraphBreaks, paragraphHeadings, characters, characterRefs, speechSections, wordTags, wordTagRefs, lineIndents, sceneBreaks, passages, clauseRelationships, rstRelations, wordArrows, wordFormatting, lineAnnotations, bookGroupings } from "./user-schema";
+import type { Book, Translation, TranslationVerse, Character, CharacterRef, SpeechSection, WordTag, WordTagRef, Passage, ClauseRelationship, RstRelation, WordArrow, LineAnnotation, BookGrouping } from "./schema";
 import type { TextSource, Testament } from "@/lib/morphology/types";
 
 // ── Decode helpers ────────────────────────────────────────────────────────────
@@ -1530,4 +1530,76 @@ export async function bulkInsertWordTagRefs(
   }
 
   return { inserted };
+}
+
+// ─── Book Groupings ─────────────────────────────────────────────────────────
+
+export async function getBookGroupings(workspaceId: number): Promise<BookGrouping[]> {
+  return userDb
+    .select()
+    .from(bookGroupings)
+    .where(eq(bookGroupings.workspaceId, workspaceId))
+    .orderBy(asc(bookGroupings.sortOrder), asc(bookGroupings.id));
+}
+
+export async function createBookGrouping(
+  workspaceId: number,
+  name: string,
+  books: string[],
+  features: string[]
+): Promise<BookGrouping> {
+  const [row] = await userDb
+    .insert(bookGroupings)
+    .values({
+      workspaceId,
+      name,
+      books:    JSON.stringify(books),
+      features: JSON.stringify(features),
+      sortOrder: 0,
+    })
+    .returning();
+  return row;
+}
+
+export async function updateBookGrouping(
+  id: number,
+  workspaceId: number,
+  name: string,
+  books: string[],
+  features: string[]
+): Promise<BookGrouping | undefined> {
+  const [row] = await userDb
+    .update(bookGroupings)
+    .set({ name, books: JSON.stringify(books), features: JSON.stringify(features) })
+    .where(and(eq(bookGroupings.id, id), eq(bookGroupings.workspaceId, workspaceId)))
+    .returning();
+  return row;
+}
+
+export async function deleteBookGrouping(id: number, workspaceId: number): Promise<void> {
+  await userDb
+    .delete(bookGroupings)
+    .where(and(eq(bookGroupings.id, id), eq(bookGroupings.workspaceId, workspaceId)));
+}
+
+/**
+ * Returns all OSIS book codes that appear alongside `book` in any book grouping
+ * for the given workspace (excluding `book` itself).  Used to build the shared
+ * character/word-tag pool for books linked by a user-defined grouping.
+ */
+export async function getGroupedBooksFor(book: string, workspaceId: number): Promise<string[]> {
+  const rows = await userDb
+    .select({ books: bookGroupings.books })
+    .from(bookGroupings)
+    .where(eq(bookGroupings.workspaceId, workspaceId));
+
+  const result = new Set<string>();
+  for (const row of rows) {
+    let list: string[] = [];
+    try { list = JSON.parse(row.books) as string[]; } catch { continue; }
+    if (list.includes(book)) {
+      list.forEach(b => { if (b !== book) result.add(b); });
+    }
+  }
+  return [...result];
 }

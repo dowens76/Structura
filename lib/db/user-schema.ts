@@ -435,6 +435,29 @@ export const paragraphHeadings = sqliteTable(
   ]
 );
 
+// ─── Book Groupings (workspace-scoped) ─────────────────────────────────────
+
+/**
+ * A named set of books with an optional list of annotation features to show.
+ * Stored as JSON strings so no extra join tables are needed.
+ */
+export const bookGroupings = sqliteTable(
+  "book_groupings",
+  {
+    id:          integer("id").primaryKey({ autoIncrement: true }),
+    workspaceId: integer("workspace_id").notNull().default(1)
+                   .references(() => workspaces.id, { onDelete: "cascade" }),
+    name:        text("name").notNull(),
+    /** JSON-encoded string[]: OSIS book codes, e.g. '["1Sam","2Sam"]' */
+    books:       text("books").notNull().default("[]"),
+    /** JSON-encoded string[]: feature keys, e.g. '["characters","wordTags"]' */
+    features:    text("features").notNull().default("[]"),
+    sortOrder:   integer("sort_order").notNull().default(0),
+    createdAt:   text("created_at").$defaultFn(() => new Date().toISOString()),
+  },
+  (t) => [index("bg_ws_idx").on(t.workspaceId)]
+);
+
 export const autoBackupSettings = sqliteTable("auto_backup_settings", {
   id:             integer("id").primaryKey(),  // always 1
   enabled:        integer("enabled", { mode: "boolean" }).notNull().default(false),
@@ -481,3 +504,4 @@ export type AutoBackupSettings = typeof autoBackupSettings.$inferSelect;
 export type ConstituentLabel = typeof constituentLabels.$inferSelect;
 export type WordDataset = typeof wordDatasets.$inferSelect;
 export type WordDatasetEntry = typeof wordDatasetEntries.$inferSelect;
+export type BookGrouping = typeof bookGroupings.$inferSelect;

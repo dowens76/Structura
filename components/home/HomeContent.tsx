@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import type { Book } from "@/lib/db/schema";
@@ -7,6 +8,7 @@ import SettingsButton from "@/components/SettingsButton";
 import ThemeToggle from "@/components/ThemeToggle";
 import LanguagePicker from "@/components/ui/LanguagePicker";
 import { useTranslation } from "@/lib/i18n/LocaleContext";
+import BookGroupingsDialog from "@/components/home/BookGroupingsDialog";
 
 function BookGrid({
   books,
@@ -56,6 +58,7 @@ interface HomeContentProps {
 export default function HomeContent({ otBooks, ntBooks, lxxBooks }: HomeContentProps) {
   const { t, bookName } = useTranslation();
   const hasData = otBooks.length + ntBooks.length + lxxBooks.length > 0;
+  const [groupingsOpen, setGroupingsOpen] = useState(false);
 
   return (
     <main className="min-h-screen" style={{ backgroundColor: "var(--background)" }}>
@@ -85,6 +88,14 @@ export default function HomeContent({ otBooks, ntBooks, lxxBooks }: HomeContentP
             </div>
           </div>
           <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => setGroupingsOpen(true)}
+              className="text-xs px-3 py-1.5 rounded border transition-colors"
+              style={{ borderColor: "var(--border)", backgroundColor: "var(--surface)", color: "var(--foreground)" }}
+            >
+              Book Groupings
+            </button>
             <Link
               href="/import"
               className="text-xs px-3 py-1.5 rounded border transition-colors"
@@ -132,6 +143,15 @@ export default function HomeContent({ otBooks, ntBooks, lxxBooks }: HomeContentP
           <p>{t("home.footerLxx")}</p>
         </footer>
       </div>
+
+      {groupingsOpen && (
+        <BookGroupingsDialog
+          otBooks={otBooks}
+          ntBooks={ntBooks}
+          lxxBooks={lxxBooks}
+          onClose={() => setGroupingsOpen(false)}
+        />
+      )}
     </main>
   );
 }
