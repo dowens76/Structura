@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { CONTIGUOUS_BOOK_PAIRS, OSIS_BOOK_NAMES } from "@/lib/utils/osis";
+import { useTranslation } from "@/lib/i18n/LocaleContext";
 
 interface Props {
   book: string;         // OSIS book code
@@ -23,6 +24,7 @@ export default function DefinePassageDialog({
   onClose,
 }: Props) {
   const router = useRouter();
+  const { t } = useTranslation();
 
   // ── Start position ─────────────────────────────────────────────────────────
   const [startChapter, setStartChapter] = useState(currentChapter);
@@ -129,7 +131,7 @@ export default function DefinePassageDialog({
       startChapter > endChapter ||
       (startChapter === endChapter && startVerse > endVerse)
     )) {
-      setError("Start reference must not be after end reference.");
+      setError(t("definePassage.errorOrder"));
       return;
     }
 
@@ -152,7 +154,7 @@ export default function DefinePassageDialog({
 
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        setError((data as { error?: string }).error ?? "Failed to create passage.");
+        setError((data as { error?: string }).error ?? t("definePassage.errorCreate"));
         return;
       }
 
@@ -160,7 +162,7 @@ export default function DefinePassageDialog({
       onClose();
       router.push(`/${encodeURIComponent(book)}/${textSource}/passage/${passage.id}?newPassage=true`);
     } catch {
-      setError("Network error. Please try again.");
+      setError(t("definePassage.errorNetwork"));
     } finally {
       setIsSubmitting(false);
     }
@@ -190,14 +192,14 @@ export default function DefinePassageDialog({
           style={{ borderColor: "var(--border)" }}
         >
           <h2 className="text-base font-semibold" style={{ color: "var(--foreground)" }}>
-            📖 Define Passage
+            {t("definePassage.title")}
           </h2>
           <button
             type="button"
             onClick={onClose}
             className="text-xl leading-none opacity-50 hover:opacity-100 transition-opacity"
             style={{ color: "var(--foreground)" }}
-            aria-label="Close"
+            aria-label={t("definePassage.close")}
           >
             ×
           </button>
@@ -209,35 +211,35 @@ export default function DefinePassageDialog({
           {/* Label */}
           <div className="space-y-1">
             <label className="block text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>
-              Label
+              {t("definePassage.labelHeading")}
             </label>
             <input
               ref={firstInputRef}
               type="text"
               value={label}
               onChange={(e) => setLabel(e.target.value)}
-              placeholder="e.g. David's Reign in Jerusalem"
+              placeholder={t("definePassage.labelPlaceholder")}
               className="w-full px-3 py-1.5 rounded border text-sm"
               style={{ ...inputStyle }}
             />
             <p className="text-[11px]" style={{ color: "var(--text-muted)" }}>
-              Optional — you can add or edit this later.
+              {t("definePassage.labelHint")}
             </p>
           </div>
 
           {/* Range */}
           <div className="space-y-3">
             <div className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>
-              Range
+              {t("definePassage.range")}
             </div>
 
             {/* ── Start ── */}
             <div className="flex items-center gap-2">
               <span className="text-sm w-12 shrink-0" style={{ color: "var(--text-muted)" }}>
-                {crossBook ? `${bookName}` : "From"}
+                {crossBook ? bookName : t("definePassage.from")}
               </span>
               <div className="flex items-center gap-1.5">
-                <span className="text-xs" style={{ color: "var(--text-muted)" }}>Ch</span>
+                <span className="text-xs" style={{ color: "var(--text-muted)" }}>{t("definePassage.chAbbr")}</span>
                 <input
                   type="number"
                   min={1}
@@ -247,7 +249,7 @@ export default function DefinePassageDialog({
                   className={numInput}
                   style={inputStyle}
                 />
-                <span className="text-xs" style={{ color: "var(--text-muted)" }}>v</span>
+                <span className="text-xs" style={{ color: "var(--text-muted)" }}>{t("definePassage.vAbbr")}</span>
                 <input
                   type="number"
                   min={1}
@@ -262,9 +264,9 @@ export default function DefinePassageDialog({
             {/* ── End — single-book ── */}
             {!crossBook && (
               <div className="flex items-center gap-2">
-                <span className="text-sm w-12 shrink-0" style={{ color: "var(--text-muted)" }}>To</span>
+                <span className="text-sm w-12 shrink-0" style={{ color: "var(--text-muted)" }}>{t("definePassage.to")}</span>
                 <div className="flex items-center gap-1.5">
-                  <span className="text-xs" style={{ color: "var(--text-muted)" }}>Ch</span>
+                  <span className="text-xs" style={{ color: "var(--text-muted)" }}>{t("definePassage.chAbbr")}</span>
                   <input
                     type="number"
                     min={startChapter}
@@ -274,7 +276,7 @@ export default function DefinePassageDialog({
                     className={numInput}
                     style={inputStyle}
                   />
-                  <span className="text-xs" style={{ color: "var(--text-muted)" }}>v</span>
+                  <span className="text-xs" style={{ color: "var(--text-muted)" }}>{t("definePassage.vAbbr")}</span>
                   <input
                     type="number"
                     min={startChapter === endChapter ? startVerse : 1}
@@ -296,7 +298,7 @@ export default function DefinePassageDialog({
                   {continuationBookName}
                 </span>
                 <div className="flex items-center gap-1.5">
-                  <span className="text-xs" style={{ color: "var(--text-muted)" }}>Ch</span>
+                  <span className="text-xs" style={{ color: "var(--text-muted)" }}>{t("definePassage.chAbbr")}</span>
                   <input
                     type="number"
                     min={1}
@@ -307,7 +309,7 @@ export default function DefinePassageDialog({
                     style={inputStyle}
                     disabled={loadingContCount}
                   />
-                  <span className="text-xs" style={{ color: "var(--text-muted)" }}>v</span>
+                  <span className="text-xs" style={{ color: "var(--text-muted)" }}>{t("definePassage.vAbbr")}</span>
                   <input
                     type="number"
                     min={1}
@@ -341,7 +343,7 @@ export default function DefinePassageDialog({
                   className="rounded"
                 />
                 <span className="text-xs" style={{ color: "var(--text-muted)" }}>
-                  Extend into <span style={{ color: "var(--foreground)" }}>{continuationBookName}</span>
+                  {t("definePassage.extendInto", { bookName: continuationBookName ?? "" })}
                 </span>
               </label>
             )}
@@ -365,7 +367,7 @@ export default function DefinePassageDialog({
               className="px-3 py-1.5 rounded text-sm transition-colors"
               style={{ color: "var(--text-muted)" }}
             >
-              Cancel
+              {t("definePassage.cancel")}
             </button>
             <button
               type="submit"
@@ -373,7 +375,7 @@ export default function DefinePassageDialog({
               className="px-4 py-1.5 rounded text-sm font-medium transition-colors disabled:opacity-50"
               style={{ backgroundColor: "var(--accent)", color: "#fff" }}
             >
-              {isSubmitting ? "Creating…" : "Create Passage"}
+              {isSubmitting ? t("definePassage.creating") : t("definePassage.createPassage")}
             </button>
           </div>
         </form>

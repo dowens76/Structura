@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import type { Book } from "@/lib/db/schema";
 import type { BookGrouping } from "@/lib/db/schema";
 import { OSIS_BOOK_NAMES } from "@/lib/utils/osis";
+import { useTranslation } from "@/lib/i18n/LocaleContext";
 
 // ── Annotation features that can be toggled per grouping ─────────────────────
 
@@ -38,6 +39,7 @@ interface EditorProps {
 }
 
 function GroupingEditor({ otBooks, ntBooks, lxxBooks, initial, onSave, onCancel }: EditorProps) {
+  const { t } = useTranslation();
   const [name,          setName]          = useState(initial?.name ?? "");
   const [selectedBooks, setSelectedBooks] = useState<Set<string>>(
     () => new Set(parseJson<string[]>(initial?.books ?? "[]", []))
@@ -79,13 +81,13 @@ function GroupingEditor({ otBooks, ntBooks, lxxBooks, initial, onSave, onCancel 
   }
 
   async function handleSave() {
-    if (!name.trim()) { setError("Name is required."); return; }
+    if (!name.trim()) { setError(t("bookGroupings.nameRequired")); return; }
     setError(null);
     setSaving(true);
     try {
       await onSave(name.trim(), [...selectedBooks], [...selectedFeats]);
     } catch {
-      setError("Failed to save. Please try again.");
+      setError(t("bookGroupings.errorSave"));
     } finally {
       setSaving(false);
     }
@@ -110,7 +112,7 @@ function GroupingEditor({ otBooks, ntBooks, lxxBooks, initial, onSave, onCancel 
             className="text-[10px] px-1.5 py-0.5 rounded border transition-colors"
             style={{ borderColor: "var(--border)", color: "var(--text-muted)" }}
           >
-            {allOn ? "Deselect all" : "Select all"}
+            {allOn ? t("bookGroupings.deselectAll") : t("bookGroupings.selectAll")}
           </button>
         </div>
         <div className="flex flex-wrap gap-1.5">
@@ -144,7 +146,7 @@ function GroupingEditor({ otBooks, ntBooks, lxxBooks, initial, onSave, onCancel 
       {/* Name */}
       <div className="space-y-1">
         <label className="block text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>
-          Grouping name
+          {t("bookGroupings.groupingName")}
         </label>
         <input
           ref={nameRef}
@@ -152,7 +154,7 @@ function GroupingEditor({ otBooks, ntBooks, lxxBooks, initial, onSave, onCancel 
           value={name}
           onChange={e => setName(e.target.value)}
           onKeyDown={e => { if (e.key === "Enter") handleSave(); if (e.key === "Escape") onCancel(); }}
-          placeholder="e.g. Samuel–Kings, Pentateuch…"
+          placeholder={t("bookGroupings.groupingNamePlaceholder")}
           className="w-full px-3 py-1.5 rounded border text-sm"
           style={inputStyle}
         />
@@ -161,25 +163,25 @@ function GroupingEditor({ otBooks, ntBooks, lxxBooks, initial, onSave, onCancel 
       {/* Books */}
       <div className="space-y-1">
         <div className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: "var(--text-muted)" }}>
-          Books included
+          {t("bookGroupings.booksIncluded")}
         </div>
         <div
           className="rounded border p-3 max-h-52 overflow-y-auto space-y-2"
           style={{ borderColor: "var(--border)", backgroundColor: "var(--surface)" }}
         >
-          <BookSection books={otBooks}  label="Hebrew OT" />
-          <BookSection books={ntBooks}  label="Greek NT" />
-          <BookSection books={lxxBooks} label="LXX" />
+          <BookSection books={otBooks}  label={t("bookGroupings.sectionOt")} />
+          <BookSection books={ntBooks}  label={t("bookGroupings.sectionNt")} />
+          <BookSection books={lxxBooks} label={t("bookGroupings.sectionLxx")} />
         </div>
         <p className="text-[11px]" style={{ color: "var(--text-muted)" }}>
-          {selectedBooks.size} book{selectedBooks.size !== 1 ? "s" : ""} selected
+          {t("bookGroupings.booksSelected", { n: selectedBooks.size, plural: selectedBooks.size !== 1 ? "s" : "" })}
         </p>
       </div>
 
       {/* Features */}
       <div className="space-y-1">
         <div className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: "var(--text-muted)" }}>
-          Annotation features
+          {t("bookGroupings.features")}
         </div>
         <div
           className="rounded border p-3 grid grid-cols-2 gap-x-4 gap-y-2"
@@ -187,6 +189,7 @@ function GroupingEditor({ otBooks, ntBooks, lxxBooks, initial, onSave, onCancel 
         >
           {GROUPING_FEATURES.map(f => {
             const on = selectedFeats.has(f.key);
+            const featureLabel = t(`bookGroupings.feature${f.key.charAt(0).toUpperCase()}${f.key.slice(1)}`);
             return (
               <label key={f.key} className="flex items-center gap-2 cursor-pointer select-none">
                 <input
@@ -195,7 +198,7 @@ function GroupingEditor({ otBooks, ntBooks, lxxBooks, initial, onSave, onCancel 
                   onChange={() => toggleFeature(f.key)}
                   className="rounded"
                 />
-                <span className="text-xs" style={{ color: "var(--foreground)" }}>{f.label}</span>
+                <span className="text-xs" style={{ color: "var(--foreground)" }}>{featureLabel}</span>
               </label>
             );
           })}
@@ -211,7 +214,7 @@ function GroupingEditor({ otBooks, ntBooks, lxxBooks, initial, onSave, onCancel 
           className="px-3 py-1.5 rounded text-sm transition-colors"
           style={{ color: "var(--text-muted)" }}
         >
-          Cancel
+          {t("bookGroupings.cancel")}
         </button>
         <button
           type="button"
@@ -220,7 +223,7 @@ function GroupingEditor({ otBooks, ntBooks, lxxBooks, initial, onSave, onCancel 
           className="px-4 py-1.5 rounded text-sm font-medium transition-colors disabled:opacity-50"
           style={{ backgroundColor: "var(--accent)", color: "#fff" }}
         >
-          {saving ? "Saving…" : initial ? "Save changes" : "Create grouping"}
+          {saving ? t("bookGroupings.saving") : initial ? t("bookGroupings.saveChanges") : t("bookGroupings.createGrouping")}
         </button>
       </div>
     </div>
@@ -237,6 +240,7 @@ interface Props {
 }
 
 export default function BookGroupingsDialog({ otBooks, ntBooks, lxxBooks, onClose }: Props) {
+  const { t } = useTranslation();
   const [groupings,  setGroupings]  = useState<BookGrouping[]>([]);
   const [loading,    setLoading]    = useState(true);
   // null = list view; "new" = create form; number = edit form for that id
@@ -309,16 +313,16 @@ export default function BookGroupingsDialog({ otBooks, ntBooks, lxxBooks, onClos
           style={{ borderColor: "var(--border)" }}
         >
           <h2 className="text-base font-semibold" style={{ color: "var(--foreground)" }}>
-            {editingId === "new" ? "New Book Grouping"
-             : editingGrouping   ? `Edit — ${editingGrouping.name}`
-             : "Book Groupings"}
+            {editingId === "new" ? t("bookGroupings.titleNew")
+             : editingGrouping   ? t("bookGroupings.titleEdit", { name: editingGrouping.name })
+             : t("bookGroupings.titleList")}
           </h2>
           <button
             type="button"
             onClick={editingId !== null ? () => setEditingId(null) : onClose}
             className="text-xl leading-none opacity-50 hover:opacity-100 transition-opacity"
             style={{ color: "var(--foreground)" }}
-            aria-label={editingId !== null ? "Back to list" : "Close"}
+            aria-label={editingId !== null ? t("bookGroupings.ariaBackToList") : t("bookGroupings.ariaClose")}
           >
             {editingId !== null ? "←" : "×"}
           </button>
@@ -340,17 +344,17 @@ export default function BookGroupingsDialog({ otBooks, ntBooks, lxxBooks, onClos
               onCancel={() => setEditingId(null)}
             />
           ) : loading ? (
-            <p className="text-sm" style={{ color: "var(--text-muted)" }}>Loading…</p>
+            <p className="text-sm" style={{ color: "var(--text-muted)" }}>{t("bookGroupings.loading")}</p>
           ) : groupings.length === 0 ? (
             <div className="text-center py-8" style={{ color: "var(--text-muted)" }}>
-              <p className="text-sm mb-4">No book groupings defined yet.</p>
+              <p className="text-sm mb-4">{t("bookGroupings.noGroupings")}</p>
               <button
                 type="button"
                 onClick={() => setEditingId("new")}
                 className="px-4 py-2 rounded text-sm font-medium transition-colors"
                 style={{ backgroundColor: "var(--accent)", color: "#fff" }}
               >
-                + Create first grouping
+                {t("bookGroupings.createFirst")}
               </button>
             </div>
           ) : (
@@ -370,12 +374,12 @@ export default function BookGroupingsDialog({ otBooks, ntBooks, lxxBooks, onClos
                       </p>
                       <p className="text-[11px] mt-0.5 truncate" style={{ color: "var(--text-muted)" }}>
                         {books.length === 0
-                          ? "No books selected"
+                          ? t("bookGroupings.noBooksSelected")
                           : books.map(c => OSIS_BOOK_NAMES[c] ?? c).join(", ")}
                       </p>
                       {features.length > 0 && (
                         <p className="text-[11px] mt-0.5" style={{ color: "var(--text-muted)" }}>
-                          Features: {features.map(k => GROUPING_FEATURES.find(f => f.key === k)?.label ?? k).join(", ")}
+                          {t("bookGroupings.features")}: {features.map(k => t(`bookGroupings.feature${k.charAt(0).toUpperCase()}${k.slice(1)}`)).join(", ")}
                         </p>
                       )}
                     </div>
@@ -386,7 +390,7 @@ export default function BookGroupingsDialog({ otBooks, ntBooks, lxxBooks, onClos
                         className="text-xs px-2 py-1 rounded transition-colors hover:opacity-80"
                         style={{ color: "var(--text-muted)" }}
                       >
-                        Edit
+                        {t("bookGroupings.edit")}
                       </button>
                       <button
                         type="button"
@@ -394,7 +398,7 @@ export default function BookGroupingsDialog({ otBooks, ntBooks, lxxBooks, onClos
                         className="text-xs px-2 py-1 rounded transition-colors hover:text-red-500"
                         style={{ color: "var(--text-muted)" }}
                       >
-                        Delete
+                        {t("bookGroupings.delete")}
                       </button>
                     </div>
                   </div>
@@ -408,7 +412,7 @@ export default function BookGroupingsDialog({ otBooks, ntBooks, lxxBooks, onClos
                   className="text-sm font-medium transition-colors hover:opacity-80"
                   style={{ color: "var(--accent)" }}
                 >
-                  + New grouping
+                  {t("bookGroupings.newGrouping")}
                 </button>
               </div>
             </div>

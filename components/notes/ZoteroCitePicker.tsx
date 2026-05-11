@@ -6,6 +6,7 @@ import {
   formatCitationHtml,
   formatItemSummary,
 } from "@/lib/utils/zotero";
+import { useTranslation } from "@/lib/i18n/LocaleContext";
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
@@ -18,6 +19,7 @@ export default function ZoteroCitePicker({
   onInsert,
   onClose,
 }: ZoteroCitePickerProps) {
+  const { t } = useTranslation();
   const panelRef  = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -99,19 +101,19 @@ export default function ZoteroCitePicker({
           setShowSetup(true);
           setResults([]);
         } else if (!res.ok) {
-          setError(json.error ?? "Search failed");
+          setError(json.error ?? t("zotero.searchFailed"));
           setResults([]);
         } else {
           setResults(json.items ?? []);
         }
       } catch {
-        setError("Network error");
+        setError(t("zotero.searchNetworkError"));
         setResults([]);
       } finally {
         setLoading(false);
       }
     }, 300);
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     if (!showSetup) search(query);
@@ -133,14 +135,14 @@ export default function ZoteroCitePicker({
       });
       if (!res.ok) {
         const d = await res.json();
-        setSaveError(d.error ?? "Failed to save");
+        setSaveError(d.error ?? t("zotero.failedToSave"));
         return;
       }
       setHasApiKey(true);
       setApiKey(""); // clear from UI — not needed anymore
       setShowSetup(false);
     } catch {
-      setSaveError("Network error. Please try again.");
+      setSaveError(t("zotero.networkError"));
     } finally {
       setSaving(false);
     }
@@ -219,13 +221,13 @@ export default function ZoteroCitePicker({
       {!credsLoaded ? (
         /* ── Loading state ── */
         <div className="px-3 py-4 text-xs" style={{ color: "var(--text-muted)" }}>
-          Loading…
+          {t("zotero.loading")}
         </div>
       ) : showSetup ? (
         /* ── Setup view ── */
         <div className="p-3 flex flex-col gap-2">
           <p className="text-xs leading-relaxed" style={{ color: "var(--text-muted)" }}>
-            Both your numeric user ID and API key are at{" "}
+            {t("zotero.setupDescPre")}{" "}
             <a
               href="https://www.zotero.org/settings/keys"
               target="_blank"
@@ -235,9 +237,9 @@ export default function ZoteroCitePicker({
             >
               zotero.org/settings/keys
             </a>
-            . The user ID appears near the top of that page as{" "}
+            {t("zotero.setupDescPost")}{" "}
             <span className="font-mono" style={{ color: "var(--foreground)" }}>
-              "Your userID for use in API calls is&nbsp;…"
+              {t("zotero.setupExample")}
             </span>
           </p>
 
@@ -248,8 +250,8 @@ export default function ZoteroCitePicker({
               style={{ backgroundColor: "rgba(200,155,60,0.10)", color: "var(--foreground)" }}
             >
               <span>
-                User ID: <span className="font-mono">{userId}</span>
-                <span className="ml-2" style={{ color: "var(--text-muted)" }}>· API key saved</span>
+                {t("zotero.userIdStatus", { id: userId })}
+                <span className="ml-2" style={{ color: "var(--text-muted)" }}>{t("zotero.apiKeySaved")}</span>
               </span>
               <button
                 type="button"
@@ -257,7 +259,7 @@ export default function ZoteroCitePicker({
                 className="text-[10px] underline hover:opacity-80"
                 style={{ color: "var(--text-muted)" }}
               >
-                Clear
+                {t("zotero.clear")}
               </button>
             </div>
           )}
@@ -266,7 +268,7 @@ export default function ZoteroCitePicker({
             type="text"
             value={userId}
             onChange={(e) => setUserId(e.target.value)}
-            placeholder="User ID (numeric)"
+            placeholder={t("zotero.userIdPlaceholder")}
             className="w-full text-xs px-2 py-1.5 rounded border bg-[var(--background)] text-[var(--foreground)] placeholder-stone-400 dark:placeholder-stone-500 focus:outline-none focus:ring-1 focus:ring-amber-400"
             style={{ borderColor: "var(--border)" }}
           />
@@ -274,7 +276,7 @@ export default function ZoteroCitePicker({
             type="password"
             value={apiKey}
             onChange={(e) => setApiKey(e.target.value)}
-            placeholder={hasApiKey ? "New API key (leave blank to keep current)" : "API Key"}
+            placeholder={hasApiKey ? t("zotero.apiKeyNewPlaceholder") : t("zotero.apiKeyPlaceholder")}
             className="w-full text-xs px-2 py-1.5 rounded border bg-[var(--background)] text-[var(--foreground)] placeholder-stone-400 dark:placeholder-stone-500 focus:outline-none focus:ring-1 focus:ring-amber-400"
             style={{ borderColor: "var(--border)" }}
             onKeyDown={(e) => {
@@ -293,7 +295,7 @@ export default function ZoteroCitePicker({
             disabled={saving || !userId.trim() || !apiKey.trim()}
             className="w-full text-xs px-2 py-1.5 rounded font-medium bg-stone-700 text-white dark:bg-stone-200 dark:text-stone-900 disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-90 transition-opacity"
           >
-            {saving ? "Saving…" : "Save & Search"}
+            {saving ? t("zotero.saving") : t("zotero.saveAndSearch")}
           </button>
         </div>
       ) : (
@@ -305,7 +307,7 @@ export default function ZoteroCitePicker({
               type="search"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search your Zotero library…"
+              placeholder={t("zotero.searchPlaceholder")}
               className="w-full text-xs px-2 py-1.5 rounded border bg-[var(--background)] text-[var(--foreground)] placeholder-stone-400 dark:placeholder-stone-500 focus:outline-none focus:ring-1 focus:ring-amber-400"
               style={{ borderColor: "var(--border)" }}
             />
@@ -314,7 +316,7 @@ export default function ZoteroCitePicker({
           <div className="overflow-y-auto" style={{ maxHeight: "240px" }}>
             {loading && (
               <div className="px-3 py-3 text-xs" style={{ color: "var(--text-muted)" }}>
-                Searching…
+                {t("zotero.searching")}
               </div>
             )}
 
@@ -326,13 +328,13 @@ export default function ZoteroCitePicker({
 
             {!loading && !error && !query.trim() && (
               <div className="px-3 py-3 text-xs" style={{ color: "var(--text-muted)" }}>
-                Type to search your library
+                {t("zotero.typeToSearch")}
               </div>
             )}
 
             {!loading && !error && query.trim() && results.length === 0 && (
               <div className="px-3 py-3 text-xs" style={{ color: "var(--text-muted)" }}>
-                No results
+                {t("zotero.noResults")}
               </div>
             )}
 
