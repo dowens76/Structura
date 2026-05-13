@@ -73,7 +73,7 @@ interface ChapterDisplayProps {
   initialWordFormatting: { wordId: string; isBold: boolean; isItalic: boolean }[];
   initialSceneBreaks: { wordId: string; heading: string | null; level: number; verse: number; outOfSequence: boolean; extendedThrough: number | null; thematic: boolean; thematicLetter: string | null }[];
   initialLineAnnotations: LineAnnotation[];
-  bookSceneBreaks: { wordId: string; heading: string | null; level: number; chapter: number; verse: number; extendedThrough: number | null; thematic: boolean; thematicLetter: string | null }[];
+  bookSceneBreaks: { wordId: string; heading: string | null; level: number; chapter: number; verse: number; positionInVerse: number; extendedThrough: number | null; thematic: boolean; thematicLetter: string | null }[];
   bookMaxVerses: Map<number, number>;
   /** Base verse text from data/ult.db (empty if not imported). */
   ultBaseVerses?: { verse: number; text: string }[];
@@ -382,7 +382,7 @@ export default function ChapterDisplay({
   const continuationBook     = CONTIGUOUS_BOOK_PAIRS[book] ?? null;
   const continuationBookName = continuationBook ? (OSIS_BOOK_NAMES[continuationBook] ?? continuationBook) : null;
   const [outlineExtended,  setOutlineExtended]  = useState(false);
-  const [contBreaks,       setContBreaks]       = useState<{ wordId: string; heading: string | null; level: number; chapter: number; verse: number; thematic: boolean; thematicLetter: string | null }[]>([]);
+  const [contBreaks,       setContBreaks]       = useState<{ wordId: string; heading: string | null; level: number; chapter: number; verse: number; positionInVerse: number; thematic: boolean; thematicLetter: string | null }[]>([]);
   const [contMaxVerses,    setContMaxVerses]    = useState<Map<number, number>>(new Map());
   const [contDataLoaded,   setContDataLoaded]   = useState(false);
   const [loadingCont,      setLoadingCont]      = useState(false);
@@ -524,6 +524,10 @@ export default function ChapterDisplay({
   const editingRefsRef = useRef(false);
   const editingWordTagsRef = useRef(false);
   const wordsRef = useRef<Word[]>(words);
+  const wordPositionMap = useMemo(
+    () => new Map(words.map((w) => [w.wordId, w.positionInVerse])),
+    [words]
+  );
   // handleSelectWord is defined below; we use a ref so the listener can call it
   const handleSelectWordRef = useRef<(word: Word, shiftHeld?: boolean) => void>(() => {});
   // tagFocusedFindWord is assigned each render with fresh state closures
@@ -3790,6 +3794,7 @@ export default function ChapterDisplay({
             textSource={textSource}
             sceneBreakMap={sceneBreakMap}
             bookSceneBreaks={bookSceneBreaks}
+            wordPositionMap={wordPositionMap}
             sectionRanges={outlineExtended ? extendedSectionRanges : sectionRanges}
             onUpdateCurrentHeading={handleUpdateSceneHeading}
             onDeleteCurrentBreak={handleDeleteCurrentBreak}

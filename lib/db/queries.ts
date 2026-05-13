@@ -360,7 +360,7 @@ export async function getBookSceneBreaks(
   book: string,
   textSource: string,
   workspaceId: number
-): Promise<{ wordId: string; heading: string | null; level: number; chapter: number; verse: number; outOfSequence: boolean; extendedThrough: number | null; thematic: boolean; thematicLetter: string | null }[]> {
+): Promise<{ wordId: string; heading: string | null; level: number; chapter: number; verse: number; positionInVerse: number; outOfSequence: boolean; extendedThrough: number | null; thematic: boolean; thematicLetter: string | null }[]> {
   const rows = await userDb
     .select({
       wordId:          sceneBreaks.wordId,
@@ -376,7 +376,15 @@ export async function getBookSceneBreaks(
     .from(sceneBreaks)
     .where(and(eq(sceneBreaks.workspaceId, workspaceId), eq(sceneBreaks.book, book), eq(sceneBreaks.textSource, textSource)))
     .orderBy(asc(sceneBreaks.chapter), asc(sceneBreaks.verse), asc(sceneBreaks.level));
-  return rows;
+  if (rows.length === 0) return [];
+  const wordIds = rows.map((r) => r.wordId);
+  const db = textSource === "STEPBIBLE_LXX" ? (getLxxDb() ?? sourceDb) : sourceDb;
+  const posRows = await db
+    .select({ wordId: words.wordId, positionInVerse: words.positionInVerse })
+    .from(words)
+    .where(inArray(words.wordId, wordIds));
+  const posMap = new Map(posRows.map((r) => [r.wordId, r.positionInVerse]));
+  return rows.map((r) => ({ ...r, positionInVerse: posMap.get(r.wordId) ?? 1 }));
 }
 
 /**

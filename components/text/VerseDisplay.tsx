@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import type { Word, CharacterRef, Character, SpeechSection, WordTag, WordTagRef, LineAnnotation } from "@/lib/db/schema";
 import type { DisplayMode, GrammarFilterState, TranslationTextEntry, InterlinearSubMode } from "@/lib/morphology/types";
 import type { ColorRule } from "@/lib/morphology/colorRules";
@@ -823,6 +823,26 @@ export default function VerseDisplay({
     ? "text-amber-500"
     : "text-stone-300 dark:text-stone-600";
 
+  // ── Sub-verse letters for section break range labels ────────────────────
+  // Maps each break wordId → sub-verse letter ("", "b", "c", …).
+  // Derived from the verse's words array (already sorted by positionInVerse):
+  // position 1 = verse start (no letter); subsequent mid-verse break positions get b, c, …
+  const breakLetterMap = useMemo(() => {
+    const map = new Map<string, string>();
+    if (!sceneBreakMap) return map;
+    const wordsWithBreaks = words.filter((w) => sceneBreakMap.has(w.wordId));
+    let midIdx = 0;
+    for (const word of wordsWithBreaks) {
+      if (word.positionInVerse === 1) {
+        map.set(word.wordId, "");
+      } else {
+        map.set(word.wordId, String.fromCharCode(97 + 1 + midIdx));
+        midIdx++;
+      }
+    }
+    return map;
+  }, [sceneBreakMap, words]);
+
   // ── Paragraph segments ──────────────────────────────────────────────────
   const sourceSegments = computeSegments(words, paragraphBreakIds);
   const multiSeg = sourceSegments.length > 1;
@@ -1142,12 +1162,14 @@ export default function VerseDisplay({
     function rangeLabel(br: { level: number; verse: number }): string {
       const key = `${wordId}:${br.level}`;
       const range = sectionRanges?.get(key);
-      if (!range) return `(${br.verse})`;
+      const letter = breakLetterMap.get(wordId) ?? "";
+      const startVerseStr = `${br.verse}${letter}`;
+      if (!range) return `(${startVerseStr})`;
       if (chapter === range.endChapter) {
-        if (br.verse === range.endVerse) return `(${br.verse})`;
-        return `(${br.verse}–${range.endVerse})`;
+        if (br.verse === range.endVerse && !letter) return `(${startVerseStr})`;
+        return `(${startVerseStr}–${range.endVerse})`;
       }
-      return `(${chapter}:${br.verse} – ${range.endChapter}:${range.endVerse})`;
+      return `(${chapter}:${startVerseStr} – ${range.endChapter}:${range.endVerse})`;
     }
 
     return (

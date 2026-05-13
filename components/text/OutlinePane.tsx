@@ -33,15 +33,16 @@ function formatPrefix(level: number, counter: number): string {
 }
 
 function formatRange(
-  startChapter: number, startVerse: number,
+  startChapter: number, startVerse: number, startVerseLetter: string,
   endChapter: number,   endVerse: number,
 ): string {
+  const sv = `${startVerse}${startVerseLetter}`;
   if (startChapter === endChapter) {
-    return startVerse === endVerse
-      ? `${startChapter}:${startVerse}`
-      : `${startChapter}:${startVerse}–${endVerse}`;
+    return (startVerse === endVerse && !startVerseLetter)
+      ? `${startChapter}:${sv}`
+      : `${startChapter}:${sv}–${endVerse}`;
   }
-  return `${startChapter}:${startVerse}–${endChapter}:${endVerse}`;
+  return `${startChapter}:${sv}–${endChapter}:${endVerse}`;
 }
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -50,6 +51,7 @@ interface RawBreak {
   wordId: string;
   chapter: number;
   verse: number;
+  positionInVerse: number;
   level: number;
   heading: string | null;
   thematic: boolean;
@@ -63,7 +65,9 @@ interface OutlinePaneProps {
   chapter: number;
   textSource: string;
   sceneBreakMap: Map<string, Array<{ heading: string | null; level: number; verse: number; thematic: boolean; thematicLetter: string | null }>>;
-  bookSceneBreaks: { wordId: string; heading: string | null; level: number; chapter: number; verse: number; thematic: boolean; thematicLetter: string | null }[];
+  bookSceneBreaks: { wordId: string; heading: string | null; level: number; chapter: number; verse: number; positionInVerse: number; thematic: boolean; thematicLetter: string | null }[];
+  /** wordId → positionInVerse for current-chapter words (covers live sceneBreakMap entries). */
+  wordPositionMap: Map<string, number>;
   sectionRanges: Map<string, SectionRangeForOutline>;
   onUpdateCurrentHeading: (wordId: string, level: number, heading: string) => void;
   onDeleteCurrentBreak: (wordId: string, level: number) => void;
@@ -74,7 +78,7 @@ interface OutlinePaneProps {
   continuationBook: string | null;
   continuationBookName: string | null;
   /** Breaks fetched from the continuation book (already tagged with bookCode). */
-  continuationBreaks: { wordId: string; heading: string | null; level: number; chapter: number; verse: number; thematic: boolean; thematicLetter: string | null }[];
+  continuationBreaks: { wordId: string; heading: string | null; level: number; chapter: number; verse: number; positionInVerse: number; thematic: boolean; thematicLetter: string | null }[];
   /** Keys whose sectionRanges end has been extended into the continuation book. */
   crossBookRangeKeys: Set<string>;
   loadingContinuation?: boolean;
@@ -98,6 +102,7 @@ export default function OutlinePane({
   continuationBookName,
   continuationBreaks,
   crossBookRangeKeys,
+  wordPositionMap,
   loadingContinuation = false,
 }: OutlinePaneProps) {
   const [editKey, setEditKey]       = useState<string | null>(null); // `${wordId}:${level}`
@@ -118,7 +123,7 @@ export default function OutlinePane({
     }
     for (const [wordId, arr] of sceneBreakMap) {
       for (const br of arr) {
-        list.push({ wordId, chapter, verse: br.verse, level: br.level, heading: br.heading, thematic: br.thematic, thematicLetter: br.thematicLetter });
+        list.push({ wordId, chapter, verse: br.verse, positionInVerse: wordPositionMap.get(wordId) ?? 1, level: br.level, heading: br.heading, thematic: br.thematic, thematicLetter: br.thematicLetter });
       }
     }
     if (outlineExtended) {
@@ -133,10 +138,38 @@ export default function OutlinePane({
       if (aIdx !== bIdx) return aIdx - bIdx;
       return a.chapter !== b.chapter ? a.chapter - b.chapter :
              a.verse   !== b.verse   ? a.verse   - b.verse   :
+             a.positionInVerse !== b.positionInVerse ? a.positionInVerse - b.positionInVerse :
              a.level   - b.level;
     });
     return list;
-  }, [bookSceneBreaks, sceneBreakMap, chapter, outlineExtended, continuationBreaks, continuationBook]);
+  }, [bookSceneBreaks, sceneBreakMap, chapter, outlineExtended, continuationBreaks, continuationBook, wordPositionMap]);
+
+  // Precompute per-verse sub-verse letters: for each (bookCode,chapter,verse), sort breaks by
+  // positionInVerse and assign "" (pos 1) or "b","c",… (subsequent mid-verse positions).
+  const breakLetterMap = useMemo(() => {
+    const map = new Map<string, string>(); // wordId → letter
+    // Group by (bookCode|""|chapter|verse)
+    const groups = new Map<string, RawBreak[]>();
+    for (const br of sortedBreaks) {
+      const gk = `${br.bookCode ?? ""}|${br.chapter}|${br.verse}`;
+      const g = groups.get(gk) ?? [];
+      if (!g.some((b) => b.wordId === br.wordId)) g.push(br);
+      groups.set(gk, g);
+    }
+    for (const group of groups.values()) {
+      group.sort((a, b) => a.positionInVerse - b.positionInVerse);
+      let midIdx = 0;
+      for (const br of group) {
+        if (br.positionInVerse === 1) {
+          map.set(br.wordId, "");
+        } else {
+          map.set(br.wordId, String.fromCharCode(97 + 1 + midIdx));
+          midIdx++;
+        }
+      }
+    }
+    return map;
+  }, [sortedBreaks]);
 
   // Compute display items (prefix counters, ranges, heading overrides applied)
   const items = useMemo(() => {
@@ -155,14 +188,15 @@ export default function OutlinePane({
         ? (br.thematicLetter.toUpperCase().charCodeAt(0) - 65 + 1) * INDENT_PX
         : null;
       const isCrossBookRange = crossBookRangeKeys.has(key);
+      const letter = breakLetterMap.get(br.wordId) ?? "";
       let rangeStr: string;
       if (range) {
-        const baseRange = formatRange(br.chapter, br.verse, range.endChapter, range.endVerse);
+        const baseRange = formatRange(br.chapter, br.verse, letter, range.endChapter, range.endVerse);
         rangeStr = isCrossBookRange && continuationBookName
-          ? `${br.chapter}:${br.verse} – ${continuationBookName} ${range.endChapter}:${range.endVerse}`
+          ? `${br.chapter}:${br.verse}${letter} – ${continuationBookName} ${range.endChapter}:${range.endVerse}`
           : baseRange;
       } else {
-        rangeStr = `${br.chapter}:${br.verse}`;
+        rangeStr = `${br.chapter}:${br.verse}${letter}`;
       }
       return {
         ...br,
@@ -174,7 +208,7 @@ export default function OutlinePane({
         thematicIndent,
       };
     });
-  }, [sortedBreaks, sectionRanges, headingOverrides, chapter, crossBookRangeKeys, continuationBookName]);
+  }, [sortedBreaks, sectionRanges, headingOverrides, chapter, crossBookRangeKeys, continuationBookName, breakLetterMap]);
 
   async function handleDelete(item: (typeof items)[number]) {
     if (item.isCurrent) {
