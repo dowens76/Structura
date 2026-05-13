@@ -745,6 +745,13 @@ export default function RstRelationOverlay({
       style={{ width: "100%", height: svgH }}
       aria-hidden="true"
     >
+      <defs>
+        <marker id="rst-dep-arrow" markerWidth="6" markerHeight="5"
+                refX="5" refY="2.5" orient="auto">
+          <polygon points="0 0, 6 2.5, 0 5" fill="#6B7280" />
+        </marker>
+      </defs>
+
       {/* ── Tree edges ────────────────────────────────────────────────────── */}
       {layoutLinks.filter(lk => !hideSourceTree || lk.isTrans).map((lk, i) => {
         const meta   = relMap[lk.relType];
@@ -771,12 +778,56 @@ export default function RstRelationOverlay({
         // Subordinate relations avoid the shared-spine bracket:
         //   • Nucleus link  → not drawn (the nucleus dot anchors it visually)
         //   • Satellite link:
+        //       – "dep" type → vertical-only line with arrowhead, no chip
         //       – Nucleus is a single segment → L-shape:
         //           V from nucleus Y to satellite Y, then H to satellite anchor
         //       – Nucleus is a coordinate group → Z-shape:
         //           H out from nucleus spine, V to satellite Y, H to satellite anchor
         const isSubordinate = meta?.category === "subordinate";
         if (isSubordinate && !isSat) return null;
+
+        // dep arrow: vertical line only, from satellite toward nucleus
+        if (isSubordinate && lk.relType === "dep") {
+          const NUC_GAP = 6;
+          const goingDown = lk.y2 > lk.y1;
+          const nucleusNearY = lk.y1 + (goingDown ? NUC_GAP : -NUC_GAP);
+          const midY = (lk.y2 + nucleusNearY) / 2;
+          const isHov = hoveredGroup === lk.parentId;
+          return (
+            <g key={i} style={{ pointerEvents: editing ? "all" : "none" }}
+               onMouseEnter={() => editing && setHoveredGroup(lk.parentId)}
+               onMouseLeave={() => editing && setHoveredGroup(null)}>
+              {/* Visible arrow line */}
+              <path
+                d={`M ${lk.x2},${lk.y2} V ${nucleusNearY}`}
+                fill="none"
+                stroke="#6B7280"
+                strokeWidth={editing ? 2 : 1.5}
+                markerEnd="url(#rst-dep-arrow)"
+                opacity={0.85}
+                style={{ pointerEvents: "none" }}
+              />
+              {/* Transparent hit-target */}
+              <path
+                d={`M ${lk.x2},${lk.y2} V ${nucleusNearY}`}
+                fill="none" stroke="transparent" strokeWidth={12}
+                style={{ pointerEvents: editing ? "all" : "none" }}
+              />
+              {/* Delete button — visible on hover in editing mode */}
+              {editing && (
+                <g
+                  style={{ opacity: isHov ? 1 : 0, transition: "opacity 0.15s",
+                           pointerEvents: isHov ? "all" : "none", cursor: "pointer" }}
+                  onClick={(e) => { e.stopPropagation(); onDeleteGroup(lk.parentId); }}
+                >
+                  <circle cx={lk.x2} cy={midY} r={8} fill="white" stroke="#6B7280" strokeWidth={1.5} />
+                  <text x={lk.x2} y={midY + 3.5} textAnchor="middle" fontSize={10}
+                        fill="#6B7280" style={{ userSelect: "none", pointerEvents: "none" }}>×</text>
+                </g>
+              )}
+            </g>
+          );
+        }
 
         let pathD: string;
         if (isSubordinate) {
@@ -829,6 +880,7 @@ export default function RstRelationOverlay({
 
         const isSubordinate = meta?.category === "subordinate";
         if (isSubordinate && !isSat) return [];   // nucleus link has no drawn arm
+        if (lk.relType === "dep") return [];       // dep arrow has no horizontal arm dots
 
         // Arm-start X: the outer (spine/corner) end of the horizontal arm.
         let armStartX: number;
@@ -913,6 +965,9 @@ export default function RstRelationOverlay({
 
       {/* ── Group nodes (relation-type chips) ─────────────────────────────── */}
       {groupNodes.filter(n => !hideSourceTree || n.isTrans).map((n, i) => {
+        // dep arrows render no chip — the vertical line is the only visual indicator
+        if (n.relType === "dep") return null;
+
         const meta          = relMap[n.relType ?? ""];
         const color         = meta?.color ?? "#6B7280";
         const abbr          = meta?.abbr  ?? (n.relType ?? "?").slice(0, 3);

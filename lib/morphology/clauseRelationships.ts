@@ -35,6 +35,8 @@ export const RELATIONSHIP_TYPES: RstTypeEntry[] = [
   { key: "relative",     label: "Relative",       category: "subordinate", abbr: "Rel", color: "#0284C7", isBuiltIn: true },
   { key: "result",       label: "Result",         category: "subordinate", abbr: "Res", color: "#D97706", isBuiltIn: true },
   { key: "temporal",     label: "Temporal",       category: "subordinate", abbr: "Tmp", color: "#65A30D", isBuiltIn: true },
+  // Unlabeled dependency arrow — vertical line only, no chip
+  { key: "dep",          label: "Dep. arrow",     category: "subordinate", abbr: "",    color: "#6B7280", isBuiltIn: true },
 ];
 
 export type ClauseRelType = string;
