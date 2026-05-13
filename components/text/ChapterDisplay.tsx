@@ -2487,7 +2487,11 @@ export default function ChapterDisplay({
         {tbTooltip && (
           <div
             className="fixed z-[200] pointer-events-none px-2 py-1 rounded bg-stone-900 dark:bg-stone-100 text-white dark:text-stone-900 text-[15px] max-w-xs shadow-lg"
-            style={{ left: tbTooltip.x + 12, top: tbTooltip.y + 16 }}
+            style={
+              tbTooltip.x > window.innerWidth * 0.65
+                ? { right: window.innerWidth - tbTooltip.x + 8, top: tbTooltip.y + 16 }
+                : { left: tbTooltip.x + 12, top: tbTooltip.y + 16 }
+            }
           >
             {tbTooltip.text}
           </div>
@@ -2536,8 +2540,7 @@ export default function ChapterDisplay({
             ⊞
           </button>
 
-          {!presentationMode && (
-            <>
+          <>
               <DisplayModeToggle mode={displayMode} onChange={setDisplayMode} />
               {displayMode === "color" && (
                 <>
@@ -3069,32 +3072,32 @@ export default function ChapterDisplay({
                 );
               })()}
 
-              {/* Gear button — toolbar customizer */}
-              <div className="ml-auto">
-                <button
-                  ref={gearBtnRef}
-                  onClick={() => setShowToolbarCustomizer((v) => !v)}
-                  data-tip="Customize toolbar"
-                  className={[
-                    "px-3 py-1.5 rounded text-[13px] font-medium transition-colors",
-                    showToolbarCustomizer
-                      ? "bg-stone-300 dark:bg-stone-600 text-stone-700 dark:text-stone-200"
-                      : "bg-stone-100 dark:bg-stone-800 text-stone-500 dark:text-stone-400 hover:bg-stone-200 dark:hover:bg-stone-700",
-                  ].join(" ")}
-                >
-                  ⚙
-                </button>
-                {showToolbarCustomizer && (
-                  <ToolbarCustomizer
-                    visibility={toolbarVis}
-                    onChange={setToolbarItemVis}
-                    onClose={() => setShowToolbarCustomizer(false)}
-                    anchorRef={gearBtnRef}
-                  />
-                )}
-              </div>
-            </>
-          )}
+          </>
+
+          {/* Gear button — toolbar customizer, always visible */}
+          <div className="ml-auto">
+            <button
+              ref={gearBtnRef}
+              onClick={() => setShowToolbarCustomizer((v) => !v)}
+              data-tip="Customize toolbar"
+              className={[
+                "px-3 py-1.5 rounded text-[20px] font-medium transition-colors",
+                showToolbarCustomizer
+                  ? "bg-stone-300 dark:bg-stone-600 text-stone-700 dark:text-stone-200"
+                  : "bg-stone-100 dark:bg-stone-800 text-stone-500 dark:text-stone-400 hover:bg-stone-200 dark:hover:bg-stone-700",
+              ].join(" ")}
+            >
+              ⚙
+            </button>
+            {showToolbarCustomizer && (
+              <ToolbarCustomizer
+                visibility={toolbarVis}
+                onChange={setToolbarItemVis}
+                onClose={() => setShowToolbarCustomizer(false)}
+                anchorRef={gearBtnRef}
+              />
+            )}
+          </div>
         </div>
 
         {/* Character palette bar (shows when in ref or speech mode) */}
@@ -3440,7 +3443,7 @@ export default function ChapterDisplay({
       </div> {/* end outerRef wrapper */}
 
       {/* Notes pane */}
-      {notesOpen && !presentationMode && (
+      {notesOpen && (
         <ResizablePane storageKey="pane-notes-width" defaultWidth={320} minWidth={200} maxWidth={700}>
           <NotesPane
             book={book}
@@ -3454,7 +3457,7 @@ export default function ChapterDisplay({
       )}
 
       {/* Search pane */}
-      {searchOpen && !presentationMode && (
+      {searchOpen && (
         <ResizablePane storageKey="pane-search-width" defaultWidth={340} minWidth={260} maxWidth={800}>
           <SearchPane
             book={book}
@@ -3468,7 +3471,7 @@ export default function ChapterDisplay({
       )}
 
       {/* Outline pane */}
-      {outlineOpen && !presentationMode && (
+      {outlineOpen && (
         <ResizablePane storageKey="pane-outline-width" defaultWidth={320} minWidth={220} maxWidth={600}>
           <OutlinePane
             book={book}
@@ -3493,7 +3496,7 @@ export default function ChapterDisplay({
       )}
 
       {/* Find-in-page bar */}
-      {findOpen && !presentationMode && (
+      {findOpen && (
         <FindBar
           query={findQuery}
           onChange={(q) => setFindQuery(q)}
@@ -3509,7 +3512,7 @@ export default function ChapterDisplay({
       )}
 
       {/* Morphology panel — flex sibling so it pushes content left instead of overlaying */}
-      {panelOpen && !presentationMode && (
+      {panelOpen && (
           <ResizablePane storageKey="pane-morphology-width" defaultWidth={288} minWidth={200} maxWidth={700}>
             <div className="flex flex-col h-full bg-[var(--background)] border-l border-[var(--border)] shadow-[-4px_0_16px_rgba(0,0,0,0.1)]">
               <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border)] shrink-0">
