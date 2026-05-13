@@ -16,15 +16,17 @@ import DisplayModeToggle from "@/components/controls/DisplayModeToggle";
 import ColorRulePanel from "@/components/controls/ColorRulePanel";
 import CharacterPanel from "@/components/controls/CharacterPanel";
 import WordTagPanel from "@/components/controls/WordTagPanel";
-import RstRelationOverlay from "@/components/text/RstRelationOverlay";
-import WordArrowOverlay from "@/components/text/WordArrowOverlay";
+import ChapterOverlays from "@/components/text/ChapterOverlays";
 import ClearAnnotationsDialog, { type ClearCategory } from "@/components/controls/ClearAnnotationsDialog";
 import PassageNotesPane from "@/components/notes/PassageNotesPane";
 import ResizablePane from "@/components/ResizablePane";
 import RstTypeManager from "@/components/controls/RstTypeManager";
-import { RELATIONSHIP_TYPES, RELATIONSHIP_MAP } from "@/lib/morphology/clauseRelationships";
+import { RELATIONSHIP_TYPES } from "@/lib/morphology/clauseRelationships";
 import type { RstTypeEntry } from "@/lib/morphology/clauseRelationships";
 import type { RstCustomType } from "@/lib/db/schema";
+import { useWordArrows } from "@/lib/hooks/useWordArrows";
+import { useAnnotationRange } from "@/lib/hooks/useAnnotationRange";
+import { useRstRelations } from "@/lib/hooks/useRstRelations";
 import hebrewLemmas from "@/lib/data/hebrew-lemmas.json";
 import { computeSectionRanges } from "@/lib/utils/sectionRanges";
 import { generateOutline } from "@/lib/utils/outlineExport";
@@ -229,23 +231,70 @@ export default function PassageView({
   const [indentsLinked, setIndentsLinked] = useState(true);
   const [editingIndents, setEditingIndents] = useState(false);
 
-  // ── RST relation state ────────────────────────────────────────────────────
-  const [rstRelations, setRstRelations]       = useState<RstRelation[]>(initialRstRelations);
-  const [editingRst, setEditingRst]           = useState(false);
-  const [rstSegA, setRstSegA]                 = useState<string | null>(null);
-  const [rstSegAGroupId, setRstSegAGroupId]   = useState<string | null>(null);
-  const [rstSegB, setRstSegB]                 = useState<string | null>(null);
-  const [rstRolesSwapped, setRstRolesSwapped] = useState(false);
-  const [showRstPicker, setShowRstPicker]     = useState(false);
-  // Custom RST label types
+  // ── RST relations (hook) ──────────────────────────────────────────────────
+  // getChapterForWord resolves a wordId → chapter number, handling both regular
+  // word IDs (via wordToChapter map) and tv: token IDs (parsed from the ID).
+  // wordToChapter is declared further below (line ~385); since this hook is called
+  // here (before that useMemo), we use a ref pattern so the callbacks always see
+  // the latest map without requiring a reorder of calls.
+  const wordToChapterRef = useRef<Map<string, number>>(new Map());
+  function getChapterForWord(wordId: string): number {
+    let ch = wordToChapterRef.current.get(wordId);
+    if (ch === undefined && wordId.startsWith("tv:")) {
+      const dotParts = wordId.split(":")[2]?.split(".");
+      const parsed = dotParts ? parseInt(dotParts[1]) : NaN;
+      ch = isNaN(parsed) ? passage.startChapter : parsed;
+    }
+    return ch ?? passage.startChapter;
+  }
+
+  const {
+    rstRelations, setRstRelations,
+    // tvRstRelations / linked-mode not used (supportsLinkedTrees = false)
+    editingRst, setEditingRst,
+    rstSegA, setRstSegA,
+    rstSegAGroupId, setRstSegAGroupId,
+    rstSegB, setRstSegB,
+    rstRolesSwapped, setRstRolesSwapped,
+    showRstPicker, setShowRstPicker,
+    rstEditGroupId, setRstEditGroupId,
+    handleSelectRstSegment,
+    handleSelectRstGroup,
+    handleCreateRstRelation,
+    handleCancelRstPicker,
+    handleEditRstGroup,
+    handleUpdateRstGroupType,
+    handleDeleteRstGroup,
+    handleUpdateRstIntersectPoint,
+  } = useRstRelations({
+    initialRstRelations,
+    book: osisBook,
+    textSource,
+    getChapterForWord,
+    supportsLinkedTrees: false,
+  });
+
+  // Custom RST label types (local to PassageView — not part of hook)
   const [customRstTypes, setCustomRstTypes]   = useState<RstCustomType[]>([]);
   const [showRstTypeManager, setShowRstTypeManager] = useState(false);
 
-  // ── Word arrows state ──────────────────────────────────────────────────────
-  const [wordArrowsState, setWordArrowsState] = useState<WordArrow[]>(initialWordArrows);
-  const [editingArrows, setEditingArrows]     = useState(false);
-  const [arrowFromWordId, setArrowFromWordId] = useState<string | null>(null);
+  // ── Word arrows (hook) ────────────────────────────────────────────────────
+  const {
+    wordArrowsState, setWordArrowsState,
+    editingArrows, setEditingArrows,
+    arrowFromWordId, setArrowFromWordId,
+    handleSelectArrowWordById,
+    handleDeleteWordArrow,
+  } = useWordArrows({
+    initialWordArrows,
+    book: osisBook,
+    textSource,
+    getChapterForWord,
+  });
+
   const [showClearDialog, setShowClearDialog] = useState(false);
+
+  // ── Line annotation hook is called below, after paragraphFirstWordIds ─────
 
   // ── Section break state ──────────────────────────────────────────────────────
   const [sceneBreakMap, setSceneBreakMap] = useState<Map<string, Array<{ heading: string | null; level: number; verse: number; outOfSequence: boolean; extendedThrough: number | null; thematic: boolean; thematicLetter: string | null }>>>(
@@ -266,11 +315,7 @@ export default function PassageView({
   const [newPassageLevel, setNewPassageLevel] = useState(1);
   const [newPassageHeading, setNewPassageHeading] = useState("");
 
-  // ── Line annotation state ──────────────────────────────────────────────────
-  const [lineAnnotationsState, setLineAnnotationsState] = useState<LineAnnotation[]>(initialLineAnnotations);
-  const [editingAnnotations, setEditingAnnotations] = useState(false);
-  const [annotRangeStart, setAnnotRangeStart] = useState<string | null>(null);
-  const [annotRangeEnd, setAnnotRangeEnd]     = useState<string | null>(null);
+  // ── Line annotation hook — called below after paragraphFirstWordIds useMemo ─
 
   // ── RST source-pad: dynamically sized so group chips never overlap verse labels ──
   const [rstSourcePad, setRstSourcePad] = useState(0);
@@ -386,6 +431,8 @@ export default function PassageView({
     () => new Map(words.map((w) => [w.wordId, w.chapter])),
     [words]
   );
+  // Keep the ref in sync so hook handlers (getChapterForWord) always see the latest map.
+  wordToChapterRef.current = wordToChapter;
 
   // Precomputed section ranges: key = `${wordId}:${level}` → { endChapter, endVerse }
   // Uses book-wide breaks (from bookSceneBreaks prop) plus live passage breaks from sceneBreakMap.
@@ -517,6 +564,26 @@ export default function PassageView({
       )
       .map((w) => w.wordId);
   }, [words, paragraphBreakIds]);
+
+  // ── Line annotations (hook) ──────────────────────────────────────────────
+  const {
+    lineAnnotations: lineAnnotationsState, setLineAnnotations: setLineAnnotationsState,
+    editingAnnotations, setEditingAnnotations,
+    annotRangeStart, setAnnotRangeStart,
+    annotRangeEnd, setAnnotRangeEnd,
+    handleSelectAnnotationSegment,
+    handleCancelAnnotation,
+    handleSaveAnnotation,
+    handleDeleteAnnotation,
+    handleUpdateAnnotation,
+    handleExpandAnnotationRange,
+  } = useAnnotationRange({
+    initialLineAnnotations,
+    book: osisBook,
+    textSource,
+    getChapterForWord,
+    paragraphFirstWordIds,
+  });
 
   // ── Annotation segment map ────────────────────────────────────────────────
   type SegAnnotationEntry = { annotation: LineAnnotation; isStart: boolean; isEnd: boolean };
@@ -687,7 +754,7 @@ export default function PassageView({
 
   // ── Word selection dispatcher ─────────────────────────────────────────────
   function handleSelectWord(word: Word, shiftHeld = false) {
-    if (editingArrows) { handleSelectArrowWord(word); return; }
+    if (editingArrows) { handleSelectArrowWordById(word.wordId); return; }
     if (editingParagraphs) { handleToggleParagraphBreak(word.wordId); return; }
     if (editingBold || editingItalic) { handleToggleWordFormatting(word); return; }
     if (editingRefs) { if (activeCharId === null) return; handleToggleCharacterRef(word); return; }
@@ -1355,170 +1422,13 @@ export default function PassageView({
     }
   }
 
-  // ── RST relation handlers ─────────────────────────────────────────────────
-  function handleSelectRstSegment(wordId: string) {
-    if (!rstSegA) {
-      setRstSegA(wordId);
-      setRstSegAGroupId(null);
-    } else if (wordId === rstSegA) {
-      setRstSegAGroupId(null);
-      setRstSegA(null);
-    } else {
-      setRstSegB(wordId);
-      setShowRstPicker(true);
-    }
-  }
+  // RST relation handlers (handleSelectRstSegment, handleSelectRstGroup,
+  // handleCreateRstRelation, handleCancelRstPicker, handleEditRstGroup,
+  // handleUpdateRstGroupType, handleDeleteRstGroup, handleUpdateRstIntersectPoint)
+  // are provided by useRstRelations above.
 
-  function handleSelectRstGroup(groupId: string) {
-    if (!rstSegA) {
-      setRstSegA(groupId);
-      setRstSegAGroupId(groupId);
-    } else if (rstSegA === groupId) {
-      setRstSegA(null);
-      setRstSegAGroupId(null);
-      setShowRstPicker(false);
-    } else {
-      setRstSegB(groupId);
-      setRstRolesSwapped(false);
-      setShowRstPicker(true);
-    }
-  }
-
-  async function handleCreateRstRelation(relType: string) {
-    if (!rstSegA || !rstSegB) return;
-    const relMeta  = RELATIONSHIP_MAP[relType];
-    const category = relMeta?.category ?? "subordinate";
-    const isCoord  = category === "coordinate";
-
-    let members: { segWordId: string; role: "nucleus" | "satellite"; sortOrder: number }[];
-    if (isCoord) {
-      const existingGroup = rstRelations.find(
-        (r) => r.segWordId === rstSegA && r.relType === relType && r.role === "nucleus"
-      );
-      if (existingGroup) {
-        const groupId = existingGroup.groupId;
-        const maxOrder = rstRelations
-          .filter((r) => r.groupId === groupId)
-          .reduce((m, r) => Math.max(m, r.sortOrder), 0);
-        const ch = wordToChapter.get(rstSegA) ?? passage.startChapter;
-        const resp = await fetch("/api/rst-relations", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            groupId,
-            members: [{ segWordId: rstSegB, role: "nucleus", sortOrder: maxOrder + 1 }],
-            relType,
-            book: osisBook,
-            chapter: ch,
-            source: textSource,
-          }),
-        });
-        const { relations: newRels } = await resp.json();
-        setRstRelations((prev) => [...prev, ...newRels]);
-        setRstSegB(null);
-        setShowRstPicker(false);
-        return;
-      }
-      members = [
-        { segWordId: rstSegA, role: "nucleus", sortOrder: 0 },
-        { segWordId: rstSegB, role: "nucleus", sortOrder: 1 },
-      ];
-    } else {
-      const nucleusId   = rstRolesSwapped ? rstSegB : rstSegA;
-      const satelliteId = rstRolesSwapped ? rstSegA : rstSegB;
-      members = [
-        { segWordId: nucleusId,   role: "nucleus",   sortOrder: 0 },
-        { segWordId: satelliteId, role: "satellite",  sortOrder: 1 },
-      ];
-    }
-
-    const ch = wordToChapter.get(rstSegA) ?? passage.startChapter;
-    const groupId = crypto.randomUUID();
-    const resp = await fetch("/api/rst-relations", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ groupId, members, relType, book: osisBook, chapter: ch, source: textSource }),
-    });
-    const { relations: newRels } = await resp.json();
-    setRstRelations((prev) => [...prev, ...newRels]);
-    setRstSegB(null);
-    setShowRstPicker(false);
-  }
-
-  function handleCancelRstPicker() {
-    setShowRstPicker(false);
-    setRstSegB(null);
-  }
-
-  async function handleDeleteRstGroup(groupId: string) {
-    await fetch("/api/rst-relations", {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ groupId }),
-    });
-    setRstRelations((prev) => prev.filter((r) => r.groupId !== groupId));
-  }
-
-  async function handleUpdateRstIntersectPoint(id: number, intersectPoint: "start" | "mid" | "end") {
-    await fetch("/api/rst-relations", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id, intersectPoint }),
-    });
-    setRstRelations((prev) => prev.map((r) => r.id === id ? { ...r, intersectPoint } : r));
-  }
-
-  // ── Word arrow handlers ────────────────────────────────────────────────────
-  // Works with any wordId — source words or translation tokens ("tv:ESV:Gen.1.1.0").
-  // For translation tokens, chapter is parsed from the ID; for source words, look up
-  // wordToChapter. Falls back to passage.startChapter if neither resolves.
-  async function handleSelectArrowWordById(wordId: string) {
-    if (!arrowFromWordId) {
-      setArrowFromWordId(wordId);
-      return;
-    }
-    if (arrowFromWordId === wordId) {
-      setArrowFromWordId(null);
-      return;
-    }
-    // Resolve chapter for the "from" word. Translation token IDs have the form
-    // "tv:<abbr>:<book>.<chapter>.<verse>.<wi>", so parse chapter from there.
-    let ch = wordToChapter.get(arrowFromWordId);
-    if (ch === undefined && arrowFromWordId.startsWith("tv:")) {
-      const dotParts = arrowFromWordId.split(":")[2]?.split(".");
-      const parsed = dotParts ? parseInt(dotParts[1]) : NaN;
-      ch = isNaN(parsed) ? passage.startChapter : parsed;
-    }
-    ch = ch ?? passage.startChapter;
-
-    const resp = await fetch("/api/word-arrows", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        fromWordId: arrowFromWordId,
-        toWordId:   wordId,
-        book: osisBook,
-        chapter: ch,
-        source: textSource,
-      }),
-    });
-    const { arrow } = await resp.json();
-    setWordArrowsState((prev) => [...prev, arrow]);
-    setArrowFromWordId(null);
-  }
-
-  function handleSelectArrowWord(word: Word) {
-    handleSelectArrowWordById(word.wordId);
-  }
-
-  async function handleDeleteWordArrow(id: number) {
-    await fetch("/api/word-arrows", {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id }),
-    });
-    setWordArrowsState((prev) => prev.filter((a) => a.id !== id));
-  }
+  // Word arrow handlers (handleSelectArrowWordById, handleDeleteWordArrow)
+  // are provided by useWordArrows above.
 
   // ── Clear annotations handler ─────────────────────────────────────────────
 
@@ -1702,133 +1612,9 @@ export default function PassageView({
     } catch { /* non-critical */ }
   }
 
-  // ── Line annotation handlers ───────────────────────────────────────────────
-
-  function handleSelectAnnotationSegment(segWordId: string, shiftHeld = false) {
-    if (annotRangeEnd !== null) {
-      if (shiftHeld) {
-        setAnnotRangeEnd(segWordId);
-      } else {
-        setAnnotRangeStart(segWordId);
-        setAnnotRangeEnd(null);
-      }
-      return;
-    }
-    if (!annotRangeStart) {
-      setAnnotRangeStart(segWordId);
-      return;
-    }
-    setAnnotRangeEnd(segWordId);
-  }
-
-  function handleCancelAnnotation() {
-    setAnnotRangeStart(null);
-    setAnnotRangeEnd(null);
-  }
-
-  async function handleSaveAnnotation(data: {
-    annotType: string;
-    label: string;
-    color: string;
-    description: string | null;
-    outOfSequence: boolean;
-  }) {
-    if (!annotRangeStart) return;
-    const endWordId = annotRangeEnd ?? annotRangeStart;
-    const segIds = paragraphFirstWordIds;
-    const posMap = new Map(segIds.map((id, i) => [id, i]));
-    const startPos = posMap.get(annotRangeStart) ?? 0;
-    const endPos   = posMap.get(endWordId) ?? 0;
-    const lo = segIds[Math.min(startPos, endPos)] ?? annotRangeStart;
-    const hi = segIds[Math.max(startPos, endPos)] ?? endWordId;
-    const wordChapter = wordToChapter.get(lo) ?? passage.startChapter;
-
-    setAnnotRangeStart(null);
-    setAnnotRangeEnd(null);
-
-    try {
-      const resp = await fetch("/api/line-annotations", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...data,
-          startWordId: lo,
-          endWordId:   hi,
-          book:        osisBook,
-          chapter:     wordChapter,
-          source:      textSource,
-        }),
-      });
-      const { annotation } = await resp.json();
-      setLineAnnotationsState((prev) => [...prev, annotation]);
-    } catch { /* non-critical */ }
-  }
-
-  async function handleDeleteAnnotation(id: number) {
-    setLineAnnotationsState((prev) => prev.filter((a) => a.id !== id));
-    try {
-      await fetch("/api/line-annotations", {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id }),
-      });
-    } catch { /* non-critical */ }
-  }
-
-  async function handleUpdateAnnotation(
-    id: number,
-    updates: { label?: string; color?: string; description?: string | null; outOfSequence?: boolean }
-  ) {
-    setLineAnnotationsState((prev) => prev.map((a) => (a.id === id ? { ...a, ...updates } : a)));
-    try {
-      await fetch("/api/line-annotations", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id, ...updates }),
-      });
-    } catch { /* non-critical */ }
-  }
-
-  async function handleExpandAnnotationRange(
-    id: number,
-    direction: "expand-start" | "shrink-start" | "expand-end" | "shrink-end"
-  ) {
-    const ann = lineAnnotationsState.find((a) => a.id === id);
-    if (!ann) return;
-    const segIds = paragraphFirstWordIds;
-    const posMap = new Map(segIds.map((seg, i) => [seg, i]));
-    const startPos = posMap.get(ann.startWordId) ?? 0;
-    const endPos   = posMap.get(ann.endWordId)   ?? startPos;
-
-    let newStartPos = startPos;
-    let newEndPos   = endPos;
-    switch (direction) {
-      case "expand-start": newStartPos = Math.max(0, startPos - 1); break;
-      case "shrink-start": newStartPos = Math.min(startPos + 1, endPos); break;
-      case "expand-end":   newEndPos   = Math.min(endPos + 1, segIds.length - 1); break;
-      case "shrink-end":   newEndPos   = Math.max(endPos - 1, startPos); break;
-    }
-    if (newStartPos === startPos && newEndPos === endPos) return;
-
-    const newStart = segIds[newStartPos];
-    const newEnd   = segIds[newEndPos];
-    if (!newStart || !newEnd) return;
-
-    setLineAnnotationsState((prev) =>
-      prev.map((a) => a.id === id ? { ...a, startWordId: newStart, endWordId: newEnd } : a)
-    );
-    try {
-      await fetch("/api/line-annotations", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id, startWordId: newStart, endWordId: newEnd }),
-      });
-    } catch {
-      setLineAnnotationsState((prev) =>
-        prev.map((a) => a.id === id ? { ...a, startWordId: ann.startWordId, endWordId: ann.endWordId } : a)
-      );
-    }
-  }
+  // Line annotation handlers (handleSelectAnnotationSegment, handleCancelAnnotation,
+  // handleSaveAnnotation, handleDeleteAnnotation, handleUpdateAnnotation,
+  // handleExpandAnnotationRange) are provided by useAnnotationRange above.
 
   // ── Word formatting (bold / italic) handlers ───────────────────────────────
 
@@ -1957,32 +1743,29 @@ export default function PassageView({
         style={{ position: "relative" }}
         onClick={editingRst && (rstSegA || rstSegAGroupId) ? () => { setRstSegA(null); setRstSegAGroupId(null); setRstSegB(null); setShowRstPicker(false); } : undefined}
       >
-        {/* Overlay: RST relation lines */}
-        <RstRelationOverlay
-          relations={rstRelations}
-          containerRef={overlayContainerRef}
+        <ChapterOverlays
+          rstRelations={rstRelations}
+          editingRst={editingRst}
+          rstSegA={rstSegA}
+          rstSegB={rstSegB}
+          rstSegAGroupId={rstSegAGroupId}
+          rstEditGroupId={rstEditGroupId}
+          paragraphFirstWordIds={paragraphFirstWordIds}
+          customRstTypes={customRstTypes}
           isHebrew={isHebrew}
           hasTranslation={hasActiveTranslations}
-          editing={editingRst}
-          paragraphFirstWordIds={paragraphFirstWordIds}
-          selectedNucleusWordId={rstSegA}
-          selectedSatelliteWordId={rstSegB}
-          selectedNucleusGroupId={rstSegAGroupId}
-          onSelectSegment={handleSelectRstSegment}
-          onSelectGroup={handleSelectRstGroup}
-          onDeleteGroup={handleDeleteRstGroup}
-          onUpdateRstIntersectPoint={handleUpdateRstIntersectPoint}
-          customTypes={customRstTypes}
           hideSourceTree={hideSourceText}
+          onSelectRstSegment={handleSelectRstSegment}
+          onSelectRstGroup={handleSelectRstGroup}
+          onDeleteRstGroup={handleDeleteRstGroup}
+          onEditRstGroup={handleEditRstGroup}
+          onUpdateRstIntersectPoint={handleUpdateRstIntersectPoint}
           onRequiredSourcePad={setRstSourcePad}
-        />
-        {/* Overlay: word-to-word arrows */}
-        <WordArrowOverlay
-          arrows={wordArrowsState}
-          containerRef={overlayContainerRef}
-          editing={editingArrows}
-          selectedFromWordId={arrowFromWordId}
+          wordArrows={wordArrowsState}
+          editingArrows={editingArrows}
+          arrowFromWordId={arrowFromWordId}
           onDeleteArrow={handleDeleteWordArrow}
+          containerRef={overlayContainerRef}
         />
 
         {/* ── Passage header ──────────────────────────────────────────────── */}
@@ -2559,12 +2342,55 @@ export default function PassageView({
         )}
 
         {/* RST relation hint */}
-        {editingRst && !showRstPicker && (
+        {editingRst && !showRstPicker && !rstEditGroupId && (
           <div className="px-6 py-1 text-xs border-b border-[var(--border)] text-stone-500 dark:text-stone-400"
                style={{ backgroundColor: "var(--nav-bg)" }}>
             {rstSegA
               ? "First endpoint selected — click a segment dot or group connector dot to complete the relation"
               : "Click a segment dot (◉) or group connector dot to start an RST relation. Click a label chip to change its type."}
+          </div>
+        )}
+
+        {/* RST group-type edit picker (shown when a chip label is clicked) */}
+        {rstEditGroupId && (
+          <div
+            className="border-b border-[var(--border)] px-4 py-2 flex flex-col gap-1 shrink-0"
+            style={{ backgroundColor: "var(--nav-bg)" }}
+          >
+            <div className="flex flex-wrap gap-1.5 items-center">
+              <span className="text-xs font-medium mr-1" style={{ color: "var(--nav-fg-muted)" }}>
+                Change relation type:
+              </span>
+              <span className="text-xs opacity-50 mr-0.5 select-none">Coord.</span>
+              {allRstTypes.filter((r) => r.category === "coordinate").map((r) => (
+                <button
+                  key={r.key}
+                  onClick={() => handleUpdateRstGroupType(r.key)}
+                  className="px-2 py-0.5 rounded text-xs font-medium text-white transition-opacity hover:opacity-90"
+                  style={{ backgroundColor: r.color }}
+                >
+                  {r.label}
+                </button>
+              ))}
+              <span className="text-xs opacity-30 mx-1 select-none">|</span>
+              <span className="text-xs opacity-50 mr-0.5 select-none">Sub.</span>
+              {allRstTypes.filter((r) => r.category === "subordinate").map((r) => (
+                <button
+                  key={r.key}
+                  onClick={() => handleUpdateRstGroupType(r.key)}
+                  className="px-2 py-0.5 rounded text-xs font-medium text-white transition-opacity hover:opacity-90"
+                  style={{ backgroundColor: r.color }}
+                >
+                  {r.label}
+                </button>
+              ))}
+              <button
+                onClick={() => setRstEditGroupId(null)}
+                className="ml-auto text-xs px-2 py-0.5 rounded bg-stone-200 dark:bg-stone-700 text-stone-600 dark:text-stone-300"
+              >
+                Cancel
+              </button>
+            </div>
           </div>
         )}
 
