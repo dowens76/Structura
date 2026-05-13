@@ -788,9 +788,15 @@ export default function RstRelationOverlay({
 
         // dep arrow: vertical line only, from satellite toward nucleus
         if (isSubordinate && lk.relType === "dep") {
-          const NUC_GAP = 6;
+          const NUC_GAP = 4;
           const goingDown = lk.y2 > lk.y1;
-          const nucleusNearY = lk.y1 + (goingDown ? NUC_GAP : -NUC_GAP);
+          const nucLink = layoutLinks.find(
+            nlk => nlk.parentId === lk.parentId && nlk.role === "nucleus" && !!nlk.isTrans === !!lk.isTrans
+          );
+          const nucPos = nucLink ? posMap.get(nucLink.childId) : undefined;
+          const nucleusNearY = nucPos
+            ? (goingDown ? nucPos.bottom + NUC_GAP : nucPos.top - NUC_GAP)
+            : lk.y1 + (goingDown ? NUC_GAP : -NUC_GAP);
           const midY = (lk.y2 + nucleusNearY) / 2;
           const isHov = hoveredGroup === lk.parentId;
           return (
