@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { eq, and, gte, lte } from "drizzle-orm";
 import { userDb } from "@/lib/db";
 import { translationVerses, translations } from "@/lib/db/user-schema";
-import { getAppSetting, getUltVerses } from "@/lib/db/queries";
+import { getAppSetting, getUltVerses, getVcbVerses } from "@/lib/db/queries";
 
 export const dynamic = "force-dynamic";
 
@@ -89,6 +89,10 @@ async function fetchLocalVerses(
 
   if (trans.abbreviation === "ULT") {
     return fetchUltVerses(parsed);
+  }
+
+  if (trans.abbreviation === "VCB") {
+    return fetchVcbVerses(parsed);
   }
 
   const { book, chapter, verse, endBook, endChapter, endVerse } = parsed;
@@ -186,6 +190,40 @@ function fetchUltVerses(
 
   if (rows.length === 0) return null;
   return { text: rows.map((r) => `${r.verse} ${r.text}`).join(" "), translation: "ULT" };
+}
+
+// ─── VCB (Biblica® Open Vietnamese Contemporary Bible 2015) ───────────────────
+
+function fetchVcbVerses(
+  parsed: ParsedOsisRange
+): { text: string; translation: string } | null {
+  const { book, chapter, verse, endChapter, endVerse } = parsed;
+
+  if (endVerse === undefined) {
+    const chapterVerses = getVcbVerses(book, chapter);
+    if (verse === undefined) {
+      if (chapterVerses.length === 0) return null;
+      return { text: chapterVerses.map((r) => `${r.verse} ${r.text}`).join(" "), translation: "VCB" };
+    }
+    const row = chapterVerses.find((r) => r.verse === verse);
+    if (!row) return null;
+    return { text: row.text, translation: "VCB" };
+  }
+
+  // Range — may span chapters
+  const endCh = endChapter ?? chapter;
+  const rows: { verse: number; text: string }[] = [];
+  for (let ch = chapter; ch <= endCh; ch++) {
+    const chapterVerses = getVcbVerses(book, ch);
+    for (const r of chapterVerses) {
+      const afterStart = ch > chapter || r.verse >= verse!;
+      const beforeEnd  = ch < endCh   || r.verse <= endVerse;
+      if (afterStart && beforeEnd) rows.push(r);
+    }
+  }
+
+  if (rows.length === 0) return null;
+  return { text: rows.map((r) => `${r.verse} ${r.text}`).join(" "), translation: "VCB" };
 }
 
 // ─── fetch.bible ───────────────────────────────────────────────────────────────

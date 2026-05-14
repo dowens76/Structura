@@ -353,6 +353,22 @@ export default function BibleLookupPane({ onClose }: Props) {
             <p className="text-sm leading-relaxed" style={{ color: "var(--foreground)" }}>
               {result.text}
             </p>
+
+            {/* CC BY-SA attribution for VCB */}
+            {result.translation === "VCB" && (
+              <p className="text-xs mt-3 leading-snug" style={{ color: "var(--text-muted)" }}>
+                Vietnamese Contemporary Bible (VCB) Copyright © 1998, 2002, 2015 by Biblica, Inc.®
+                Used with permission. All rights reserved worldwide.{" "}
+                <a
+                  href="https://creativecommons.org/licenses/by-sa/4.0/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{ color: "var(--accent)" }}
+                >
+                  CC BY-SA 4.0
+                </a>
+              </p>
+            )}
           </>
         )}
 

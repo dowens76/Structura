@@ -1,5 +1,5 @@
 import { eq, and, asc, inArray, or, gte, lte, gt, lt, sql, max, like } from "drizzle-orm";
-import { sourceDb, userDb, sourceLookups, lxxLookups, getLxxDb, getUltSqlite } from "./index";
+import { sourceDb, userDb, sourceLookups, lxxLookups, getLxxDb, getUltSqlite, getVcbSqlite } from "./index";
 import type { LookupMaps } from "./index";
 import { books, words } from "./source-schema";
 import type { Word, WordRow } from "./source-schema";
@@ -1507,6 +1507,39 @@ export async function getUltTranslation(_workspaceId?: number): Promise<Translat
     .select()
     .from(translations)
     .where(eq(translations.abbreviation, "ULT"))
+    .limit(1);
+  return result[0] ?? null;
+}
+
+// ── VCB (Biblica® Open Vietnamese Contemporary Bible 2015) ────────────────────
+
+/**
+ * Synchronous — reads verse text for a chapter from data/vcb.db.
+ * Returns an empty array if vcb.db has not been imported yet.
+ */
+export function getVcbVerses(
+  book: string,
+  chapter: number
+): { verse: number; text: string }[] {
+  const db = getVcbSqlite();
+  if (!db) return [];
+  try {
+    return db
+      .prepare("SELECT verse, text FROM vcb_verses WHERE book = ? AND chapter = ? ORDER BY verse")
+      .all(book, chapter) as { verse: number; text: string }[];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Returns the VCB Translation record, or null if VCB has not been imported.
+ */
+export async function getVcbTranslation(_workspaceId?: number): Promise<Translation | null> {
+  const result = await userDb
+    .select()
+    .from(translations)
+    .where(eq(translations.abbreviation, "VCB"))
     .limit(1);
   return result[0] ?? null;
 }

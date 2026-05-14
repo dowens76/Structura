@@ -15,6 +15,7 @@ const SOURCE_DB_PATH  = path.join(RESOURCES_DIR, "source.db");
 const LEXICA_DB_PATH  = path.join(RESOURCES_DIR, "lexica.db");
 const LXX_DB_PATH     = path.join(RESOURCES_DIR, "lxx.db");
 const ULT_DB_PATH     = path.join(RESOURCES_DIR, "ult.db");
+const VCB_DB_PATH     = path.join(RESOURCES_DIR, "vcb.db");
 const USER_DB_PATH    = path.join(USER_DATA_DIR,  "user.db");
 
 // ── Lookup maps ───────────────────────────────────────────────────────────────
@@ -112,6 +113,7 @@ let _lxxDb:       ReturnType<typeof drizzle<typeof sourceSchema>> | null = null;
 let _userDb:      ReturnType<typeof drizzle<typeof userSchema>>   | null = null;
 let _userSqlite:  Database.Database | null = null;
 let _ultSqlite:   Database.Database | null = null;
+let _vcbSqlite:   Database.Database | null = null;
 
 export function getSourceDb() {
   if (!_sourceDb) {
@@ -273,6 +275,14 @@ export function getUltSqlite(): Database.Database | null {
   if (!fs.existsSync(ULT_DB_PATH)) return null;
   _ultSqlite = new Database(ULT_DB_PATH, { readonly: true });
   return _ultSqlite;
+}
+
+/** Read-only better-sqlite3 instance for vcb.db — null if not yet imported. */
+export function getVcbSqlite(): Database.Database | null {
+  if (_vcbSqlite) return _vcbSqlite;
+  if (!fs.existsSync(VCB_DB_PATH)) return null;
+  _vcbSqlite = new Database(VCB_DB_PATH, { readonly: true });
+  return _vcbSqlite;
 }
 
 export const sourceDb     = getSourceDb();
