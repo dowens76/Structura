@@ -24,6 +24,7 @@ If you want to give feedback about the app, share ideas for new features, or con
 | LXX Rahlfs 1935 | Koine Greek (OT) |
 | SBLGNT / MorphGNT | Koine Greek (NT) |
 | ULT (The UnfoldingWord Literal Text) | English |
+| VCB (Biblica® Open Vietnamese Contemporary Bible 2015) | Vietnamese |
 
 ---
 
@@ -44,7 +45,8 @@ If you want to give feedback about the app, share ideas for new features, or con
 
 ### Translation
 
-- **Built-in ULT** — The UnfoldingWord Literal Text (31,102 verses, all 66 books) is bundled as a built-in translation and available in the translation picker
+- **Built-in ULT** — The UnfoldingWord Literal Text (English, 31,102 verses, all 66 books) is bundled and available immediately in the translation picker
+- **Built-in VCB** — The Biblica® Open Vietnamese Contemporary Bible 2015 (Vietnamese, 31,096 verses, all 66 books) is bundled alongside the ULT
 - **Import translations** — Paste any translation with verse numbers and text (one chapter at a time), or import USFM-formatted translation text 
 - **Parallel display** — One or more translations shown alongside the source text in both chapter and passage views
 - **In-place editing** — Edit translation text directly in the view; edits are saved and override the built-in base text
@@ -93,6 +95,28 @@ When display mode is set to Interlinear, a toolbar picker selects what appears b
 - **Clause relations** — Draw  arrows to show relationships between paragraph segments (according to Rhetorical Structure Theory) using 15 relation types across coordinate and subordinate categories (Cause/Reason, Purpose, Concession, Condition, Inference, Temporal, etc.)
 - **Free-form arrows** — Draw directional arrows between any two words across verse boundaries
 - **Line annotations** — Annotate lines or segments of text in one of three ways, identifying plot elements (Background information, Initial Situation, Conflict, Transforming Action, Resolution, etc.), theme labels (A, B, C, etc.), or free-form descriptions
+
+### Bible Lookup
+
+- **Quick Lookup pane** — Open from the toolbar (📖) to look up any passage by reference (e.g. "John 3:16", "Gen 1:1–3"); displays the verse text with a copy button
+- **Scripture tooltips** — Hover over any scripture reference in the notes panel to see a floating tooltip with the verse text
+- **Translation sources** — Three tiers of translation data are available for lookup and tooltips:
+  - *Built-in* — ULT (English) and VCB (Vietnamese) are bundled and work with no configuration
+  - *Imported* — Any translation imported through the Translations panel is available in the picker
+  - *fetch.bible* — Hundreds of free translations in dozens of languages, served from the [fetch.bible](https://fetch.bible) CDN with no API key required; browse and filter by language in the lookup pane
+  - *api.bible* — An optional API key unlocks NASB 2020, NLT, NIV (2011), KJV, and a Vietnamese traditional Bible (Bản Truyền Thống); see setup instructions below
+- **Language filter** — The lookup pane's translation dropdown can be filtered by language
+
+#### Setting up an api.bible key
+
+1. Go to [scripture.api.bible](https://scripture.api.bible) and click **Get Started Free**.
+2. Sign in or create a free account, then create a new app in your dashboard. You can name it anything (e.g. "Structura").
+3. Copy the **API Key** shown for your app.
+4. In Structura, open **Settings** (⚙ in the toolbar) and scroll to the **Bible Lookup** section.
+5. Paste the key into the **api.bible API key** field and click **Save**.
+6. The NASB 2020, NLT, NIV (2011), KJV, and Bản Truyền Thống options will appear in the translation dropdown immediately.
+
+The key is stored locally in the app's database and is never sent anywhere except directly to api.bible when fetching a passage.
 
 ### Export & Backup
 
@@ -143,6 +167,7 @@ npm run import:oshb      # Hebrew OT (requires morphhb package)
 npm run import:morphgnt  # Greek NT (downloads from GitHub)
 npm run import:lxx       # Septuagint (downloads from GitHub)
 npm run import:ult       # UnfoldingWord Literal Text (downloads from git.door43.org)
+npm run import:vcb       # Vietnamese Contemporary Bible 2015 (downloads from open.bible; CC BY-SA)
 ```
 
 ### Import lexicons
@@ -173,7 +198,7 @@ Output locations:
 
 ### User data
 
-On first launch the app creates `~/Library/Application Support/com.structura.app/user.db`. Source databases (OSHB, LXX, SBLGNT, ULT) are bundled read-only inside the app.
+On first launch the app creates `~/Library/Application Support/com.structura.app/user.db`. Source databases (OSHB, LXX, SBLGNT, ULT, VCB) are bundled read-only inside the app.
 
 ### Architecture
 
