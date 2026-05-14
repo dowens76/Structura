@@ -3184,12 +3184,11 @@ export default function ChapterDisplay({
             className="border-b border-[var(--border)] px-4 py-2 flex flex-col gap-2 shrink-0"
             style={{ backgroundColor: "var(--nav-bg)" }}
           >
-            {/* Relation type buttons */}
+            {/* Coordinate row */}
             <div className="flex flex-wrap gap-1.5 items-center">
-              <span className="text-xs font-medium mr-1" style={{ color: "var(--nav-fg-muted)" }}>
-                {t("toolbar.rstRelation")}
+              <span className="text-xs font-medium w-14 shrink-0" style={{ color: "var(--nav-fg-muted)" }}>
+                {t("toolbar.rstCoord")}
               </span>
-              <span className="text-xs opacity-50 mr-0.5 select-none">{t("toolbar.rstCoord")}</span>
               {allRstTypes.filter((r) => r.category === "coordinate").map((r) => (
                 <button
                   key={r.key}
@@ -3200,8 +3199,12 @@ export default function ChapterDisplay({
                   {r.label}
                 </button>
               ))}
-              <span className="text-xs opacity-30 mx-1 select-none">|</span>
-              <span className="text-xs opacity-50 mr-0.5 select-none">{t("toolbar.rstSub")}</span>
+            </div>
+            {/* Subordinate row */}
+            <div className="flex flex-wrap gap-1.5 items-center">
+              <span className="text-xs font-medium w-14 shrink-0" style={{ color: "var(--nav-fg-muted)" }}>
+                {t("toolbar.rstSub")}
+              </span>
               {allRstTypes.filter((r) => r.category === "subordinate").map((r) => (
                 <button
                   key={r.key}
@@ -3222,11 +3225,11 @@ export default function ChapterDisplay({
             {/* Nucleus/satellite swap row (only relevant for subordinate) */}
             <div className="flex items-center gap-2 text-xs text-stone-500 dark:text-stone-400">
               <span>{t("toolbar.rstRoles")}</span>
-              <span className={`px-1.5 py-0.5 rounded font-medium ${!rstRolesSwapped ? "bg-violet-100 dark:bg-violet-900 text-violet-700 dark:text-violet-300" : "bg-stone-100 dark:bg-stone-800"}`}>
+              <span className={`px-1.5 py-0.5 rounded font-medium ${!rstRolesSwapped ? "bg-violet-100 dark:bg-violet-900 text-violet-700 dark:text-violet-300" : "bg-amber-100 dark:bg-amber-900 text-amber-700 dark:text-amber-300"}`}>
                 {t("toolbar.rstSegA")} {rstRolesSwapped ? t("toolbar.rstSatellite") : t("toolbar.rstNucleus")}
               </span>
               <span>→</span>
-              <span className={`px-1.5 py-0.5 rounded font-medium ${rstRolesSwapped ? "bg-violet-100 dark:bg-violet-900 text-violet-700 dark:text-violet-300" : "bg-stone-100 dark:bg-stone-800"}`}>
+              <span className={`px-1.5 py-0.5 rounded font-medium ${rstRolesSwapped ? "bg-violet-100 dark:bg-violet-900 text-violet-700 dark:text-violet-300" : "bg-amber-100 dark:bg-amber-900 text-amber-700 dark:text-amber-300"}`}>
                 {t("toolbar.rstSegB")} {rstRolesSwapped ? t("toolbar.rstNucleus") : t("toolbar.rstSatellite")}
               </span>
               <button
@@ -3242,14 +3245,14 @@ export default function ChapterDisplay({
         {/* RST edit relation type picker bar — shown when a chip label is clicked */}
         {rstEditGroupId && (
           <div
-            className="border-b border-[var(--border)] px-4 py-2 shrink-0"
+            className="border-b border-[var(--border)] px-4 py-2 flex flex-col gap-2 shrink-0"
             style={{ backgroundColor: "var(--nav-bg)" }}
           >
+            {/* Coordinate row */}
             <div className="flex flex-wrap gap-1.5 items-center">
-              <span className="text-xs font-medium mr-1" style={{ color: "var(--nav-fg-muted)" }}>
-                {t("toolbar.rstChangeType")}
+              <span className="text-xs font-medium w-14 shrink-0" style={{ color: "var(--nav-fg-muted)" }}>
+                {t("toolbar.rstCoord")}
               </span>
-              <span className="text-xs opacity-50 mr-0.5 select-none">{t("toolbar.rstCoord")}</span>
               {allRstTypes.filter((r) => r.category === "coordinate").map((r) => (
                 <button
                   key={r.key}
@@ -3260,8 +3263,12 @@ export default function ChapterDisplay({
                   {r.label}
                 </button>
               ))}
-              <span className="text-xs opacity-30 mx-1 select-none">|</span>
-              <span className="text-xs opacity-50 mr-0.5 select-none">{t("toolbar.rstSub")}</span>
+            </div>
+            {/* Subordinate row */}
+            <div className="flex flex-wrap gap-1.5 items-center">
+              <span className="text-xs font-medium w-14 shrink-0" style={{ color: "var(--nav-fg-muted)" }}>
+                {t("toolbar.rstSub")}
+              </span>
               {allRstTypes.filter((r) => r.category === "subordinate").map((r) => (
                 <button
                   key={r.key}
