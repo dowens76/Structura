@@ -1,10 +1,26 @@
 import { NextRequest, NextResponse } from "next/server";
 import { userDb } from "@/lib/db";
 import { translations } from "@/lib/db/schema";
-import { and, eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import { getActiveWorkspaceId } from "@/lib/workspace";
 
 export const dynamic = "force-dynamic";
+
+// GET /api/translations
+// Returns all translations with id, name, abbreviation, and language.
+export async function GET() {
+  const rows = await userDb
+    .select({
+      id: translations.id,
+      name: translations.name,
+      abbreviation: translations.abbreviation,
+      language: translations.language,
+    })
+    .from(translations)
+    .orderBy(asc(translations.abbreviation));
+
+  return NextResponse.json(rows);
+}
 
 // PATCH /api/translations
 // Body: { id: number; language: string | null }

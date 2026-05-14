@@ -58,8 +58,7 @@ function valueToPref(value: string, localTransls: LocalTranslation[]): Translati
   }
   if (value.startsWith("api:")) {
     const bibleId = value.slice(4);
-    const name = Object.values(KNOWN_API_BIBLES).flat().find((b) => b.id === bibleId)?.name;
-    return { source: "api", bibleId, abbr: name };
+    return { source: "api", bibleId };
   }
   return null;
 }

@@ -275,9 +275,6 @@ export default function NoteEditor({
         const ref = el.dataset.scriptureRef;
         if (!ref) return;
         if (leaveTimer.current) clearTimeout(leaveTimer.current);
-        // Only update position/ref when the ref actually changes to avoid
-        // creating new anchorPos objects on every mouse-move sub-event.
-        if (ref === tooltipRef) return;
         const rect = el.getBoundingClientRect();
         setTooltipRef(ref);
         setTooltipPos({ x: rect.left + rect.width / 2, y: rect.bottom + 4 });

@@ -321,3 +321,80 @@ body {
 .dark .search-highlight-match {
   background-color: rgba(161, 98, 7, 0.65);
 }
+
+/* Scripture reference decoration (ProseMirror inline decoration) */
+.scripture-ref {
+  color: var(--accent);
+  border-bottom: 1px dotted var(--accent);
+  cursor: help;
+}
+
+/* Scripture tooltip floating card */
+.scripture-tooltip {
+  z-index: 9999;
+  width: max-content;
+  max-width: min(320px, calc(100vw - 16px));
+  max-height: calc(100vh - 32px);
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 10px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+  font-size: 0.8rem;
+  line-height: 1.5;
+  color: var(--foreground);
+  pointer-events: auto;
+}
+.scripture-tooltip-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+  flex-shrink: 0;
+}
+.scripture-tooltip-ref {
+  font-weight: 600;
+  font-size: 0.75rem;
+}
+.scripture-tooltip-abbr {
+  color: var(--text-muted);
+  font-size: 0.7rem;
+  white-space: nowrap;
+}
+.scripture-tooltip-header-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.scripture-tooltip-copy {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: 3px;
+  transition: color 0.15s, background 0.15s;
+}
+.scripture-tooltip-copy:hover {
+  color: var(--foreground);
+  background: var(--border);
+}
+.scripture-tooltip-body {
+  font-size: 0.8rem;
+  line-height: 1.5;
+  overflow-y: auto;
+  min-height: 0;
+}
+.scripture-tooltip-muted {
+  color: var(--text-muted);
+  font-style: italic;
+}
