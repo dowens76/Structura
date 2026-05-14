@@ -2,8 +2,31 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { parseScriptureRefs } from "@/lib/scripture/reference-parser";
+import type { FetchBibleTranslation } from "@/app/api/fetchbible/route";
 
-const STORAGE_KEY = "structura:bibleLookup:translation";
+const STORAGE_KEY      = "structura:bibleLookup:translation";
+const LANG_STORAGE_KEY = "structura:bibleLookup:lang";
+
+// Common ISO 639-3 → display name mapping (falls back to the code itself)
+const LANG_NAMES: Record<string, string> = {
+  afr:"Afrikaans", aln:"Albanian (Gheg)", arb:"Arabic", arz:"Arabic (Egyptian)",
+  azt:"Aztec (Orizaba)", bul:"Bulgarian", ceb:"Cebuano", ces:"Czech",
+  cmn:"Chinese (Mandarin)", dan:"Danish", deu:"German", ell:"Greek (Modern)",
+  eng:"English", fin:"Finnish", fra:"French", guj:"Gujarati", hat:"Haitian Creole",
+  hau:"Hausa", hbo:"Hebrew (Ancient)", hin:"Hindi", hrv:"Croatian", hun:"Hungarian",
+  ibo:"Igbo", ind:"Indonesian", ita:"Italian", jpn:"Japanese", kan:"Kannada",
+  kor:"Korean", lat:"Latin", lit:"Lithuanian", lug:"Ganda", mal:"Malayalam",
+  mar:"Marathi", mya:"Burmese", nld:"Dutch", nor:"Norwegian", orm:"Oromo",
+  pan:"Punjabi", pol:"Polish", por:"Portuguese", ron:"Romanian", rus:"Russian",
+  sin:"Sinhala", slk:"Slovak", som:"Somali", spa:"Spanish", swa:"Swahili",
+  swe:"Swedish", tam:"Tamil", tel:"Telugu", tha:"Thai", tir:"Tigrinya",
+  tpi:"Tok Pisin", tur:"Turkish", ukr:"Ukrainian", urd:"Urdu", uzb:"Uzbek",
+  vie:"Vietnamese", yor:"Yoruba", zul:"Zulu",
+};
+
+function langLabel(code: string): string {
+  return LANG_NAMES[code] ? `${LANG_NAMES[code]} (${code})` : code;
+}
 
 // Hardcoded api.bible translations (same set as SettingsButton)
 const API_BIBLES = [
@@ -52,16 +75,18 @@ function formatRef(osisRef: string): string {
 
 export default function BibleLookupPane({ onClose }: Props) {
   const [query, setQuery]           = useState("");
-  const [osisRef, setOsisRef]       = useState<string | null>(null);
-  const [localTransls, setLocalTransls] = useState<LocalTranslation[]>([]);
-  const [hasApiKey, setHasApiKey]   = useState(false);
-  const [selected, setSelected]     = useState("");
-  const [status, setStatus]         = useState<Status>("idle");
-  const [result, setResult]         = useState<Result | null>(null);
-  const [copied, setCopied]         = useState(false);
-  const [parseError, setParseError] = useState(false);
-  const fetchCountRef               = useRef(0);
-  const inputRef                    = useRef<HTMLInputElement>(null);
+  const [osisRef, setOsisRef]               = useState<string | null>(null);
+  const [localTransls, setLocalTransls]     = useState<LocalTranslation[]>([]);
+  const [fetchBibleTransls, setFetchBibleTransls] = useState<FetchBibleTranslation[]>([]);
+  const [hasApiKey, setHasApiKey]           = useState(false);
+  const [langFilter, setLangFilter]         = useState("eng");
+  const [selected, setSelected]             = useState("");
+  const [status, setStatus]                 = useState<Status>("idle");
+  const [result, setResult]                 = useState<Result | null>(null);
+  const [copied, setCopied]                 = useState(false);
+  const [parseError, setParseError]         = useState(false);
+  const fetchCountRef                       = useRef(0);
+  const inputRef                            = useRef<HTMLInputElement>(null);
 
   // Load translations + api key on mount
   useEffect(() => {
@@ -73,9 +98,15 @@ export default function BibleLookupPane({ onClose }: Props) {
       .then((r) => r.json())
       .then((d: { hasApiKey?: boolean }) => setHasApiKey(d.hasApiKey ?? false))
       .catch(() => {});
+    fetch("/api/fetchbible")
+      .then((r) => r.json())
+      .then((rows: FetchBibleTranslation[]) => { if (Array.isArray(rows)) setFetchBibleTransls(rows); })
+      .catch(() => {});
     try {
       const stored = localStorage.getItem(STORAGE_KEY);
       if (stored) setSelected(stored);
+      const storedLang = localStorage.getItem(LANG_STORAGE_KEY);
+      if (storedLang) setLangFilter(storedLang);
     } catch { /* ignore */ }
     inputRef.current?.focus();
   }, []);
@@ -83,6 +114,11 @@ export default function BibleLookupPane({ onClose }: Props) {
   function changeTranslation(value: string) {
     setSelected(value);
     try { localStorage.setItem(STORAGE_KEY, value); } catch { /* ignore */ }
+  }
+
+  function changeLang(value: string) {
+    setLangFilter(value);
+    try { localStorage.setItem(LANG_STORAGE_KEY, value); } catch { /* ignore */ }
   }
 
   function handleSubmit(e: React.FormEvent) {
@@ -110,6 +146,11 @@ export default function BibleLookupPane({ onClose }: Props) {
     const params = new URLSearchParams({ ref: osisRef });
     if (selected.startsWith("local:")) {
       params.set("localId", selected.slice(6));
+    } else if (selected.startsWith("fetchbible:")) {
+      const translationId = selected.slice(11);
+      params.set("fetchBibleId", translationId);
+      const abbr = fetchBibleTransls.find((t) => t.id === translationId)?.abbrev;
+      if (abbr) params.set("abbr", abbr);
     } else if (selected.startsWith("api:")) {
       const bibleId = selected.slice(4);
       params.set("bibleId", bibleId);
@@ -135,7 +176,7 @@ export default function BibleLookupPane({ onClose }: Props) {
         }
       })
       .catch(() => { if (fetchCountRef.current === myCount) setStatus("error"); });
-  }, [osisRef, selected]);
+  }, [osisRef, selected, fetchBibleTransls]);
 
   const handleCopy = useCallback(() => {
     if (!result || !osisRef) return;
@@ -200,6 +241,24 @@ export default function BibleLookupPane({ onClose }: Props) {
           </p>
         )}
 
+        {/* Language filter */}
+        {fetchBibleTransls.length > 0 && (() => {
+          const langs = [...new Set(fetchBibleTransls.map((t) => t.lang))].sort();
+          return (
+            <select
+              value={langFilter}
+              onChange={(e) => changeLang(e.target.value)}
+              className="w-full text-xs px-2 py-1 rounded border outline-none mb-1.5"
+              style={{ borderColor: "var(--border)", background: "var(--surface)", color: "var(--foreground)" }}
+            >
+              <option value="">— all languages —</option>
+              {langs.map((lang) => (
+                <option key={lang} value={lang}>{langLabel(lang)}</option>
+              ))}
+            </select>
+          );
+        })()}
+
         {/* Translation selector */}
         <select
           value={selected}
@@ -217,6 +276,21 @@ export default function BibleLookupPane({ onClose }: Props) {
               ))}
             </optgroup>
           )}
+          {fetchBibleTransls.length > 0 && (() => {
+            const filtered = langFilter
+              ? fetchBibleTransls.filter((t) => t.lang === langFilter)
+              : fetchBibleTransls;
+            if (filtered.length === 0) return null;
+            return (
+              <optgroup label="fetch.bible">
+                {filtered.map((t) => (
+                  <option key={t.id} value={`fetchbible:${t.id}`}>
+                    {t.abbrev} — {t.name}
+                  </option>
+                ))}
+              </optgroup>
+            );
+          })()}
           {hasApiKey && (
             <optgroup label="api.bible">
               {API_BIBLES.map((b) => (

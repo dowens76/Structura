@@ -9,6 +9,7 @@ const PREF_KEY = (locale: string) => `scripture:tooltipTranslation:${locale}`;
 
 export type TranslationPref =
   | { source: "local"; id: number; abbr?: string }
+  | { source: "fetchbible"; translationId: string; abbr?: string }
   | { source: "api"; bibleId: string; abbr?: string };
 
 // Reads the stored preference for the given locale
@@ -72,6 +73,9 @@ export default function ScriptureTooltip({
     const params = new URLSearchParams({ ref: osisRef });
     if (pref.source === "local") {
       params.set("localId", String(pref.id));
+    } else if (pref.source === "fetchbible") {
+      params.set("fetchBibleId", pref.translationId);
+      if (pref.abbr) params.set("abbr", pref.abbr);
     } else {
       params.set("bibleId", pref.bibleId);
       if (pref.abbr) params.set("abbr", pref.abbr);

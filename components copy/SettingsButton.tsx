@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "@/lib/i18n/LocaleContext";
 import type { TranslationPref } from "@/components/notes/ScriptureTooltip";
+import type { FetchBibleTranslation } from "@/app/api/fetchbible/route";
 import { LOCALES } from "@/lib/i18n/translations";
 
 export type GreekLexicon  = "AbbottSmith" | "Dodson";
@@ -25,7 +26,8 @@ export function getHebrewLexicon(): HebrewLexicon {
 // Hardcoded well-known api.bible translation IDs per locale
 const KNOWN_API_BIBLES: Record<string, Array<{ id: string; name: string }>> = {
   en: [
-    { id: "de4e12af7f28f599-01", name: "ESV" },
+    { id: "a761ca71e0b3ddcf-01", name: "NASB 2020" },
+    { id: "d6e14a625393b4da-01", name: "NLT" },
     { id: "65eec8e0b60e656b-01", name: "NIV (2011)" },
     { id: "9879dbb7cfe39e4d-04", name: "KJV" },
   ],
@@ -41,24 +43,38 @@ interface LocalTranslation {
   language: string | null;
 }
 
+// ISO 639-1 locale → ISO 639-3 language code used by fetch.bible
+const LOCALE_LANG: Record<string, string> = { en: "eng", vi: "vie" };
+
 // Serialise a pref to the select value string
 function prefToValue(pref: TranslationPref | null): string {
   if (!pref) return "";
   if (pref.source === "local") return `local:${pref.id}`;
+  if (pref.source === "fetchbible") return `fetchbible:${pref.translationId}`;
   return `api:${pref.bibleId}`;
 }
 
 // Deserialise a select value string to a pref
-function valueToPref(value: string, localTransls: LocalTranslation[]): TranslationPref | null {
+function valueToPref(
+  value: string,
+  localTransls: LocalTranslation[],
+  fetchBibleTransls: FetchBibleTranslation[],
+): TranslationPref | null {
   if (!value) return null;
   if (value.startsWith("local:")) {
     const id = parseInt(value.slice(6), 10);
     const tr = localTransls.find((t) => t.id === id);
     return { source: "local", id, abbr: tr?.abbreviation };
   }
+  if (value.startsWith("fetchbible:")) {
+    const translationId = value.slice(11);
+    const abbr = fetchBibleTransls.find((t) => t.id === translationId)?.abbrev;
+    return { source: "fetchbible", translationId, abbr };
+  }
   if (value.startsWith("api:")) {
     const bibleId = value.slice(4);
-    return { source: "api", bibleId };
+    const name = Object.values(KNOWN_API_BIBLES).flat().find((b) => b.id === bibleId)?.name;
+    return { source: "api", bibleId, abbr: name };
   }
   return null;
 }
@@ -71,11 +87,12 @@ export default function SettingsButton() {
   const panelRef                      = useRef<HTMLDivElement>(null);
 
   // Scripture tooltip preferences
-  const [apiBibleKeyInput, setApiBibleKeyInput]   = useState("");
-  const [hasApiBibleKey,   setHasApiBibleKey]     = useState(false);
-  const [savingKey,        setSavingKey]           = useState(false);
-  const [localTransls,     setLocalTransls]        = useState<LocalTranslation[]>([]);
-  const [scripturePrefs,   setScripturePrefs]      = useState<Record<string, string>>({});
+  const [apiBibleKeyInput, setApiBibleKeyInput]       = useState("");
+  const [hasApiBibleKey,   setHasApiBibleKey]         = useState(false);
+  const [savingKey,        setSavingKey]               = useState(false);
+  const [localTransls,     setLocalTransls]            = useState<LocalTranslation[]>([]);
+  const [fetchBibleTransls, setFetchBibleTransls]     = useState<FetchBibleTranslation[]>([]);
+  const [scripturePrefs,   setScripturePrefs]          = useState<Record<string, string>>({});
 
   // Load stored preferences on mount
   useEffect(() => {
@@ -95,7 +112,7 @@ export default function SettingsButton() {
     setScripturePrefs(prefs);
   }, []);
 
-  // Load api.bible key status and local translations when panel opens
+  // Load api.bible key status, local translations, and fetch.bible list when panel opens
   useEffect(() => {
     if (!open) return;
     fetch("/api/credentials/apibible")
@@ -106,7 +123,13 @@ export default function SettingsButton() {
       .then((r) => r.json())
       .then((rows: LocalTranslation[]) => setLocalTransls(Array.isArray(rows) ? rows : []))
       .catch(() => {});
-  }, [open]);
+    if (fetchBibleTransls.length === 0) {
+      fetch("/api/fetchbible")
+        .then((r) => r.json())
+        .then((rows: FetchBibleTranslation[]) => setFetchBibleTransls(Array.isArray(rows) ? rows : []))
+        .catch(() => {});
+    }
+  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Close on outside click
   useEffect(() => {
@@ -155,7 +178,7 @@ export default function SettingsButton() {
 
   function changeScripturePref(locale: string, value: string) {
     setScripturePrefs((prev) => ({ ...prev, [locale]: value }));
-    const pref = valueToPref(value, localTransls);
+    const pref = valueToPref(value, localTransls, fetchBibleTransls);
     if (pref) {
       localStorage.setItem(SCRIPTURE_PREF_KEY(locale), JSON.stringify(pref));
     } else {
@@ -353,6 +376,22 @@ export default function SettingsButton() {
                       ))}
                     </optgroup>
                   )}
+
+                  {(() => {
+                    const lang = LOCALE_LANG[locale];
+                    const filtered = lang
+                      ? fetchBibleTransls.filter((t) => t.lang === lang)
+                      : [];
+                    return filtered.length > 0 ? (
+                      <optgroup label="fetch.bible (free)">
+                        {filtered.map((t) => (
+                          <option key={t.id} value={`fetchbible:${t.id}`}>
+                            {t.abbrev} — {t.name}
+                          </option>
+                        ))}
+                      </optgroup>
+                    ) : null;
+                  })()}
 
                   {hasApiBibleKey && KNOWN_API_BIBLES[locale]?.length > 0 && (
                     <optgroup label={t("settings.tooltipTranslationApi")}>

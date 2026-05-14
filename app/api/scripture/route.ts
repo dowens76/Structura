@@ -10,18 +10,21 @@ export const dynamic = "force-dynamic";
  * GET /api/scripture
  *
  * Query params:
- *   ref      — OSIS ref, e.g. "John.3.16" or "Gen.1.1-Gen.1.3"
- *   localId  — integer ID of a locally-imported translation
- *   bibleId  — api.bible Bible ID (e.g. "de4e12af7f28f599-01")
+ *   ref           — OSIS ref, e.g. "John.3.16" or "Gen.1.1-Gen.1.3"
+ *   localId       — integer ID of a locally-imported translation
+ *   bibleId       — api.bible Bible ID (requires stored api key)
+ *   fetchBibleId  — fetch.bible translation ID, e.g. "eng_bsb" (no key needed)
+ *   abbr          — display abbreviation to use in the response
  *
  * Returns { text, translation } on success, or { error } on failure.
  */
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
-  const ref = searchParams.get("ref");
+  const ref          = searchParams.get("ref");
   const localIdParam = searchParams.get("localId");
-  const bibleId = searchParams.get("bibleId");
-  const abbr = searchParams.get("abbr");
+  const bibleId      = searchParams.get("bibleId");
+  const fetchBibleId = searchParams.get("fetchBibleId");
+  const abbr         = searchParams.get("abbr");
 
   if (!ref) {
     return NextResponse.json({ error: "missing ref" }, { status: 400 });
@@ -33,6 +36,16 @@ export async function GET(request: NextRequest) {
     if (!isNaN(localId)) {
       const result = await fetchLocalVerses(localId, ref);
       if (result) return NextResponse.json(result);
+    }
+  }
+
+  // ── fetch.bible lookup (free, no key) ──────────────────────────────────────
+  if (fetchBibleId) {
+    try {
+      const result = await fetchFromFetchBible(fetchBibleId, ref);
+      if (result) return NextResponse.json({ ...result, translation: abbr ?? result.translation });
+    } catch {
+      return NextResponse.json({ error: "api_error" }, { status: 502 });
     }
   }
 
@@ -173,6 +186,84 @@ function fetchUltVerses(
 
   if (rows.length === 0) return null;
   return { text: rows.map((r) => `${r.verse} ${r.text}`).join(" "), translation: "ULT" };
+}
+
+// ─── fetch.bible ───────────────────────────────────────────────────────────────
+
+// fetch.bible uses lowercase USFM book codes (same as USFM but lowercased)
+// We share the OSIS_TO_USFM map defined below and lowercase the result.
+
+type FetchBibleItem = string | { type: string; contents: string; level?: number };
+
+function extractFetchBibleText(items: FetchBibleItem[]): string {
+  return items
+    .filter((x): x is string => typeof x === "string")
+    .join("")
+    .replace(/\n+/g, " ")
+    .trim();
+}
+
+async function fetchFromFetchBible(
+  translationId: string,
+  osisRef: string
+): Promise<{ text: string; translation: string } | null> {
+  const parsed = parseOsisRange(osisRef);
+  if (!parsed) return null;
+
+  // Convert OSIS book code → lowercase USX (fetch.bible format)
+  const usfm = OSIS_TO_USFM[parsed.book];
+  if (!usfm) return null;
+  const bookCode = usfm.toLowerCase();
+
+  const url = `https://v1.fetch.bible/bibles/${encodeURIComponent(translationId)}/txt/${bookCode}.json`;
+  const res = await fetch(url, { next: { revalidate: 604800 } }); // cache 1 week
+  if (!res.ok) {
+    if (res.status === 404) return null;
+    throw new Error(`fetch.bible responded ${res.status}`);
+  }
+
+  const data = await res.json() as {
+    name?: { abbrev?: string };
+    // contents[chapter][verse] = FetchBibleItem[]
+    // Both chapter and verse are 1-based; index 0 is an empty placeholder.
+    contents: FetchBibleItem[][][];
+  };
+
+  const abbrev = data.name?.abbrev ?? translationId;
+  const contents = data.contents;
+  const { chapter, verse, endChapter, endVerse } = parsed;
+
+  if (verse === undefined) {
+    // Whole chapter
+    const chap = contents[chapter];
+    if (!chap) return null;
+    const parts: string[] = [];
+    for (let v = 1; v < chap.length; v++) {
+      if (chap[v]) parts.push(`${v} ${extractFetchBibleText(chap[v])}`);
+    }
+    return parts.length ? { text: parts.join(" "), translation: abbrev } : null;
+  }
+
+  if (endVerse === undefined) {
+    // Single verse
+    const items = contents[chapter]?.[verse];
+    if (!items) return null;
+    return { text: extractFetchBibleText(items), translation: abbrev };
+  }
+
+  // Range — may span chapters
+  const endCh = endChapter ?? chapter;
+  const parts: string[] = [];
+  for (let ch = chapter; ch <= endCh; ch++) {
+    const chap = contents[ch];
+    if (!chap) continue;
+    const startV = ch === chapter ? verse : 1;
+    const endV   = ch === endCh   ? endVerse : chap.length - 1;
+    for (let v = startV; v <= endV; v++) {
+      if (chap[v]) parts.push(`${v} ${extractFetchBibleText(chap[v])}`);
+    }
+  }
+  return parts.length ? { text: parts.join(" "), translation: abbrev } : null;
 }
 
 // ─── api.bible ─────────────────────────────────────────────────────────────────
