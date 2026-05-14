@@ -19,6 +19,7 @@ import TranslationPicker from "@/components/controls/TranslationPicker";
 import NotesPane from "@/components/notes/NotesPane";
 import SearchPane from "@/components/search/SearchPane";
 import OutlinePane from "@/components/text/OutlinePane";
+import BibleLookupPane from "@/components/bible/BibleLookupPane";
 import ResizablePane from "@/components/ResizablePane";
 import RstTypeManager from "@/components/controls/RstTypeManager";
 import ToolbarCustomizer, { DEFAULT_TOOLBAR_VIS, type ToolbarVisibility } from "@/components/controls/ToolbarCustomizer";
@@ -147,6 +148,7 @@ export default function ChapterDisplay({
   const [panelOpen, setPanelOpen] = useState(false);
   const [notesOpen, setNotesOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [bibleOpen, setBibleOpen] = useState(false);
   const [searchHits, setSearchHits] = useState<Set<string>>(new Set());
   const [searchRequest, setSearchRequest] = useState<{ query: string; source: string; nonce: number } | null>(null);
   const [notesScrollVerse, setNotesScrollVerse] = useState<number | null>(null);
@@ -3006,6 +3008,20 @@ export default function ChapterDisplay({
                 🔍
               </button>}
 
+              {/* Bible lookup panel toggle */}
+              {toolbarVis.bible && <button
+                onClick={() => setBibleOpen((v) => !v)}
+                data-tip={bibleOpen ? "Close Bible Lookup" : "Bible Lookup"}
+                className={[
+                  "px-3 py-1.5 rounded text-[13px] font-medium transition-colors",
+                  bibleOpen
+                    ? "bg-amber-500 text-white"
+                    : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
+                ].join(" ")}
+              >
+                📖
+              </button>}
+
               <div className="h-5 border-l border-[var(--border)]" />
 
               {/* Translation picker + source visibility toggle + translation edit */}
@@ -3467,6 +3483,13 @@ export default function ChapterDisplay({
             onSaveComplete={handleSearchSaved}
             searchRequest={searchRequest}
           />
+        </ResizablePane>
+      )}
+
+      {/* Bible lookup pane */}
+      {bibleOpen && (
+        <ResizablePane storageKey="pane-bible-width" defaultWidth={320} minWidth={240} maxWidth={600}>
+          <BibleLookupPane onClose={() => setBibleOpen(false)} />
         </ResizablePane>
       )}
 

@@ -25,7 +25,8 @@ export function getHebrewLexicon(): HebrewLexicon {
 // Hardcoded well-known api.bible translation IDs per locale
 const KNOWN_API_BIBLES: Record<string, Array<{ id: string; name: string }>> = {
   en: [
-    { id: "de4e12af7f28f599-01", name: "ESV" },
+    { id: "a761ca71e0b3ddcf-01", name: "NASB 2020" },
+    { id: "d6e14a625393b4da-01", name: "NLT" },
     { id: "65eec8e0b60e656b-01", name: "NIV (2011)" },
     { id: "9879dbb7cfe39e4d-04", name: "KJV" },
   ],
