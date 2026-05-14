@@ -1,4 +1,4 @@
-import { integer, sqliteTable, text, index, uniqueIndex } from "drizzle-orm/sqlite-core";
+import { integer, real, sqliteTable, text, index, uniqueIndex } from "drizzle-orm/sqlite-core";
 
 // ─── Users & Workspaces ────────────────────────────────────────────────────
 
@@ -279,6 +279,9 @@ export const wordArrows = sqliteTable(
     fromWordId:  text("from_word_id").notNull(),
     toWordId:    text("to_word_id").notNull(),
     label:       text("label"),
+    color:       text("color"),
+    midpointDx:  real("midpoint_dx"),
+    midpointDy:  real("midpoint_dy"),
     textSource:  text("text_source").notNull(),
     book:        text("book").notNull(),
     chapter:     integer("chapter").notNull(),

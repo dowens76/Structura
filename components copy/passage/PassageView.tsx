@@ -285,6 +285,7 @@ export default function PassageView({
     arrowFromWordId, setArrowFromWordId,
     handleSelectArrowWordById,
     handleDeleteWordArrow,
+    handleUpdateWordArrow,
   } = useWordArrows({
     initialWordArrows,
     book: osisBook,
@@ -1765,6 +1766,7 @@ export default function PassageView({
           editingArrows={editingArrows}
           arrowFromWordId={arrowFromWordId}
           onDeleteArrow={handleDeleteWordArrow}
+          onUpdateArrow={handleUpdateWordArrow}
           containerRef={overlayContainerRef}
         />
 

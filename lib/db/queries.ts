@@ -1351,6 +1351,24 @@ export async function deleteWordArrow(id: number): Promise<void> {
   await userDb.delete(wordArrows).where(eq(wordArrows.id, id));
 }
 
+export async function updateWordArrow(
+  id: number,
+  patch: {
+    color?: string | null;
+    midpointDx?: number | null;
+    midpointDy?: number | null;
+    fromWordId?: string;
+    toWordId?: string;
+  }
+): Promise<WordArrow> {
+  const [row] = await userDb
+    .update(wordArrows)
+    .set(patch)
+    .where(eq(wordArrows.id, id))
+    .returning();
+  return row;
+}
+
 // ── Word Formatting (chapter-scoped) ──────────────────────────────────────────
 
 /** Returns all bold/italic formatting entries for a chapter. */

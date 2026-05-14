@@ -229,6 +229,11 @@ function migrateUserDb(sqlite: Database.Database): void {
     CREATE INDEX IF NOT EXISTS conlbl_book_ch_src_idx ON constituent_labels(book, chapter, text_source);
   `);
 
+  const waCols = (sqlite.prepare("PRAGMA table_info(word_arrows)").all() as { name: string }[]).map(r => r.name);
+  if (!waCols.includes("color"))       sqlite.exec("ALTER TABLE word_arrows ADD COLUMN color TEXT");
+  if (!waCols.includes("midpoint_dx")) sqlite.exec("ALTER TABLE word_arrows ADD COLUMN midpoint_dx REAL");
+  if (!waCols.includes("midpoint_dy")) sqlite.exec("ALTER TABLE word_arrows ADD COLUMN midpoint_dy REAL");
+
   sqlite.exec(`
     CREATE TABLE IF NOT EXISTS app_settings (
       key   TEXT PRIMARY KEY,

@@ -271,6 +271,7 @@ export default function ExportTextView({
         editing={false}
         selectedFromWordId={null}
         onDeleteArrow={noop}
+        onUpdateArrow={async () => {}}
       />
 
       {/* containerRef: content container — ClauseRelationshipOverlay SVG is absolute inside this */}

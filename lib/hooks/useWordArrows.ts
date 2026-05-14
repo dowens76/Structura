@@ -3,6 +3,14 @@ import { useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import type { WordArrow } from "@/lib/db/schema";
 
+export type ArrowPatch = {
+  color?: string | null;
+  midpointDx?: number | null;
+  midpointDy?: number | null;
+  fromWordId?: string;
+  toWordId?: string;
+};
+
 export interface UseWordArrowsOptions {
   initialWordArrows: WordArrow[];
   book: string;
@@ -25,6 +33,7 @@ export interface UseWordArrowsReturn {
   /** Two-click arrow creation. First click sets the origin; second click saves. */
   handleSelectArrowWordById: (wordId: string) => Promise<void>;
   handleDeleteWordArrow: (id: number) => Promise<void>;
+  handleUpdateWordArrow: (id: number, patch: ArrowPatch) => Promise<void>;
 }
 
 export function useWordArrows({
@@ -72,6 +81,16 @@ export function useWordArrows({
     setWordArrowsState((prev) => prev.filter((a) => a.id !== id));
   }
 
+  async function handleUpdateWordArrow(id: number, patch: ArrowPatch) {
+    const resp = await fetch("/api/word-arrows", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, ...patch }),
+    });
+    const { arrow } = await resp.json();
+    setWordArrowsState((prev) => prev.map((a) => (a.id === id ? arrow : a)));
+  }
+
   return {
     wordArrowsState,
     setWordArrowsState,
@@ -81,5 +100,6 @@ export function useWordArrows({
     setArrowFromWordId,
     handleSelectArrowWordById,
     handleDeleteWordArrow,
+    handleUpdateWordArrow,
   };
 }

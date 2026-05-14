@@ -3,6 +3,7 @@ import {
   getChapterWordArrows,
   createWordArrow,
   deleteWordArrow,
+  updateWordArrow,
 } from "@/lib/db/queries";
 import { getActiveWorkspaceId } from "@/lib/workspace";
 
@@ -29,6 +30,20 @@ export async function POST(req: NextRequest) {
   const arrow = await createWordArrow(
     fromWordId, toWordId, book, Number(chapter), source, workspaceId, label ?? undefined
   );
+  return NextResponse.json({ arrow });
+}
+
+export async function PATCH(req: NextRequest) {
+  const body = await req.json();
+  const { id, color, midpointDx, midpointDy, fromWordId, toWordId } = body;
+  if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 });
+  const patch: Record<string, unknown> = {};
+  if ("color"       in body) patch.color       = color       ?? null;
+  if ("midpointDx"  in body) patch.midpointDx  = midpointDx  ?? null;
+  if ("midpointDy"  in body) patch.midpointDy  = midpointDy  ?? null;
+  if ("fromWordId"  in body) patch.fromWordId  = fromWordId;
+  if ("toWordId"    in body) patch.toWordId    = toWordId;
+  const arrow = await updateWordArrow(Number(id), patch);
   return NextResponse.json({ arrow });
 }
 

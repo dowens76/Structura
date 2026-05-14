@@ -349,6 +349,7 @@ export default function ChapterDisplay({
     arrowFromWordId, setArrowFromWordId,
     handleSelectArrowWordById,
     handleDeleteWordArrow,
+    handleUpdateWordArrow,
   } = useWordArrows({
     initialWordArrows,
     book,
@@ -2476,6 +2477,7 @@ export default function ChapterDisplay({
             editingArrows={editingArrows}
             arrowFromWordId={arrowFromWordId}
             onDeleteArrow={handleDeleteWordArrow}
+            onUpdateArrow={handleUpdateWordArrow}
             containerRef={textContainerRef}
             layoutRef={outerRef}
           />

@@ -12,6 +12,7 @@ import type { RefObject } from "react";
 import RstRelationOverlay from "./RstRelationOverlay";
 import WordArrowOverlay from "./WordArrowOverlay";
 import type { RstRelation, WordArrow, RstCustomType } from "@/lib/db/schema";
+import type { ArrowPatch } from "@/lib/hooks/useWordArrows";
 
 export interface ChapterOverlaysProps {
   // ── RST overlay ─────────────────────────────────────────────────────────────
@@ -43,6 +44,7 @@ export interface ChapterOverlaysProps {
   editingArrows: boolean;
   arrowFromWordId: string | null;
   onDeleteArrow: (id: number) => Promise<void>;
+  onUpdateArrow: (id: number, patch: ArrowPatch) => Promise<void>;
 
   // ── Shared layout refs ──────────────────────────────────────────────────────
   /** The scrollable content container — overlays render SVG inside this. */
@@ -79,6 +81,7 @@ export default function ChapterOverlays({
   editingArrows,
   arrowFromWordId,
   onDeleteArrow,
+  onUpdateArrow,
   containerRef,
   layoutRef,
 }: ChapterOverlaysProps) {
@@ -114,6 +117,7 @@ export default function ChapterOverlays({
         editing={editingArrows}
         selectedFromWordId={arrowFromWordId}
         onDeleteArrow={onDeleteArrow}
+        onUpdateArrow={onUpdateArrow}
         isHebrew={isHebrew}
       />
     </>
