@@ -119,6 +119,7 @@ export default function ChapterOverlays({
         onDeleteArrow={onDeleteArrow}
         onUpdateArrow={onUpdateArrow}
         isHebrew={isHebrew}
+        hasTranslation={hasTranslation}
       />
     </>
   );

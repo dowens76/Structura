@@ -15,6 +15,10 @@ interface DrawnArrow {
   arrow: WordArrow;
   fromR: WordRect;
   toR: WordRect;
+  /** Right edge of the [data-rst-src-block] source column (3-col layout only).
+   *  Used to keep the Hebrew gutter inside the source column when a translation
+   *  is active.  null in the 2-column (source-only) layout. */
+  srcBlockRightX: number | null;
 }
 
 interface Props {
@@ -27,6 +31,11 @@ interface Props {
   onDeleteArrow: (id: number) => void;
   onUpdateArrow?: (id: number, patch: ArrowPatch) => Promise<void>;
   isHebrew?: boolean;
+  /** When true, a translation column is active — the layout shifts from the
+   *  narrow centred block to a full-width 3-column grid.  Including this in the
+   *  useLayoutEffect deps guarantees word positions are re-measured after the
+   *  layout change rather than relying solely on the MutationObserver. */
+  hasTranslation?: boolean;
 }
 
 // ── Drag state ─────────────────────────────────────────────────────────────────
@@ -78,6 +87,26 @@ function getWordRect(
     width:  elRect.width,
     height: elRect.height,
   };
+}
+
+/**
+ * Returns the right-edge X of the [data-rst-src-block] ancestor of the given
+ * word, in scroll-canvas coordinates. This element is only present in the
+ * 3-column translation layout. Returns null in the 2-column (source-only)
+ * layout, which falls back to per-word edge gutter positioning.
+ */
+function getSrcBlockRight(
+  wordId: string,
+  innerContainer: HTMLElement,
+  outerContainer: HTMLElement,
+): number | null {
+  const el = innerContainer.querySelector(`[data-word-id="${CSS.escape(wordId)}"]`);
+  if (!el) return null;
+  const block = el.closest<HTMLElement>("[data-rst-src-block]");
+  if (!block) return null;
+  const blockR = block.getBoundingClientRect();
+  const oRect  = outerContainer.getBoundingClientRect();
+  return blockR.right - oRect.left + outerContainer.scrollLeft;
 }
 
 /** Cubic bezier point at parameter t */
@@ -138,6 +167,7 @@ function computeArrowGeometry(
   liveDx: number,
   liveDy: number,
   isHebrew: boolean,
+  srcBlockRightX: number | null = null,
 ): ArrowGeometry {
   const fromCY = fromR.y + fromR.height / 2;
   const toCY   = toR.y  + toR.height  / 2;
@@ -179,7 +209,13 @@ function computeArrowGeometry(
     const fromXEdge = isHebrew ? fromR.x + fromR.width : fromR.x;
     const toXEdge   = isHebrew ? toR.x  + toR.width   : toR.x;
     const defaultGutterX = isHebrew
-      ? Math.max(fromXEdge, toXEdge) + GUTTER_REACH
+      // In the 3-column layout (translation active), pin the gutter to just right
+      // of the source column boundary so the arc stays in the source/label area
+      // rather than bleeding into the translation column.  In the 2-column layout
+      // (srcBlockRightX === null) fall back to the per-word edge, as before.
+      ? (srcBlockRightX !== null
+          ? srcBlockRightX + GUTTER_REACH
+          : Math.max(fromXEdge, toXEdge) + GUTTER_REACH)
       : Math.min(fromXEdge, toXEdge) - GUTTER_REACH;
     const gutterX = defaultGutterX + liveDx / 0.75;
     const cx0 = gutterX, cy0 = fromCY;
@@ -209,6 +245,7 @@ export default function WordArrowOverlay({
   onDeleteArrow,
   onUpdateArrow,
   isHebrew = false,
+  hasTranslation = false,
 }: Props) {
   const [drawn, setDrawn]         = useState<DrawnArrow[]>([]);
   const [svgHeight, setSvgHeight] = useState(0);
@@ -229,7 +266,18 @@ export default function WordArrowOverlay({
     for (const arrow of arrows) {
       const fromR = getWordRect(arrow.fromWordId, container, outer);
       const toR   = getWordRect(arrow.toWordId,   container, outer);
-      if (fromR && toR) newDrawn.push({ arrow, fromR, toR });
+      if (fromR && toR) {
+        // For Hebrew arrows in the 3-column layout, find the source column's
+        // right boundary so the gutter stays within the source area and doesn't
+        // bleed into the translation column.
+        const fromBlockRight = isHebrew ? getSrcBlockRight(arrow.fromWordId, container, outer) : null;
+        const toBlockRight   = isHebrew ? getSrcBlockRight(arrow.toWordId,   container, outer) : null;
+        const srcBlockRightX =
+          fromBlockRight !== null || toBlockRight !== null
+            ? Math.max(fromBlockRight ?? -Infinity, toBlockRight ?? -Infinity)
+            : null;
+        newDrawn.push({ arrow, fromR, toR, srcBlockRightX });
+      }
     }
     setDrawn(newDrawn);
   }
@@ -254,7 +302,7 @@ export default function WordArrowOverlay({
       if (frameRef.current) cancelAnimationFrame(frameRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [arrows, containerRef, effectiveOuterRef, layoutRef]);
+  }, [arrows, containerRef, effectiveOuterRef, layoutRef, hasTranslation]);
 
   // ── Global drag handlers ────────────────────────────────────────────────────
 
@@ -348,7 +396,7 @@ export default function WordArrowOverlay({
         ))}
       </defs>
 
-      {drawn.map(({ arrow, fromR, toR }) => {
+      {drawn.map(({ arrow, fromR, toR, srcBlockRightX }) => {
         const color = effectiveColor(arrow);
 
         // Apply live drag delta for midpoint drag
@@ -361,7 +409,7 @@ export default function WordArrowOverlay({
           : (arrow.midpointDy ?? 0);
 
         const { d, midX, midY, handleDy, labelDy, fromAnchorX, fromAnchorY, toAnchorX, toAnchorY } =
-          computeArrowGeometry(arrow, fromR, toR, liveDx, liveDy, isHebrew);
+          computeArrowGeometry(arrow, fromR, toR, liveDx, liveDy, isHebrew, srcBlockRightX);
 
         const isHovered       = hoveredId === arrow.id;
         const isDraggingThis  = dragState !== null && dragState.id === arrow.id;
@@ -634,7 +682,12 @@ export default function WordArrowOverlay({
         if (!container || !outer) return null;
         const r = getWordRect(selectedFromWordId, container, outer);
         if (!r) return null;
-        const dotX = isHebrew ? r.x + r.width + GUTTER_REACH / 2 : r.x - GUTTER_REACH / 2;
+        // For Hebrew in the 3-column layout, pin the indicator to just right of
+        // the source column boundary (same logic as the gutter).
+        const blockRight = isHebrew ? getSrcBlockRight(selectedFromWordId, container, outer) : null;
+        const dotX = isHebrew
+          ? (blockRight !== null ? blockRight + GUTTER_REACH / 2 : r.x + r.width + GUTTER_REACH / 2)
+          : r.x - GUTTER_REACH / 2;
         const dotY = r.y + r.height / 2;
         return (
           <circle cx={dotX} cy={dotY} r={4} fill={DEFAULT_COLOR} opacity={0.8} />
