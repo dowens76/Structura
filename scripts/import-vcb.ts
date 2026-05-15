@@ -321,6 +321,15 @@ async function main() {
     return;
   }
 
+  // On a fresh CI runner user.db has the schema but empty tables.
+  // Ensure the seed rows expected by the foreign-key constraint exist.
+  userDb.prepare(
+    "INSERT OR IGNORE INTO users (id, name, email) VALUES (1, 'User', 'user@structura.app')"
+  ).run();
+  userDb.prepare(
+    "INSERT OR IGNORE INTO workspaces (id, user_id, name) VALUES (1, 1, 'Default')"
+  ).run();
+
   const existing = userDb.prepare(
     "SELECT id FROM translations WHERE workspace_id = 1 AND abbreviation = 'VCB' LIMIT 1"
   ).get() as { id: number } | undefined;
