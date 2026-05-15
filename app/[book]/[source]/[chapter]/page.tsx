@@ -9,7 +9,7 @@ import {
   getChapterWordTagRefs, getChapterLineIndents, getChapterRstRelations,
   getChapterWordArrows, getChapterWordFormatting, getChapterSceneBreaks,
   getChapterLineAnnotations, getBookSceneBreaks, getBookChapterMaxVerses,
-  getUltVerses, getUltTranslation, getGroupedBooksFor,
+  getUltVerses, getUltTranslation, getVcbVerses, getVcbTranslation, getGroupedBooksFor,
 } from "@/lib/db/queries";
 import type { TranslationVerse } from "@/lib/db/schema";
 import type { TextSource } from "@/lib/morphology/types";
@@ -110,6 +110,8 @@ export default async function ChapterPage({ params, searchParams }: PageProps) {
   let translationVerseData: Record<number, TranslationVerse[]> = {};
   let ultBaseVerses: { verse: number; text: string }[] = [];
   let ultTranslation: Awaited<ReturnType<typeof getUltTranslation>> = null;
+  let vcbBaseVerses: { verse: number; text: string }[] = [];
+  let vcbTranslation: Awaited<ReturnType<typeof getVcbTranslation>> = null;
 
   // Build the full set of books that share a character/word-tag pool with this
   // book.  Includes: the hardcoded contiguous sibling (1Sam↔2Sam etc.) PLUS
@@ -157,6 +159,17 @@ export default async function ChapterPage({ params, searchParams }: PageProps) {
         // Fetch any user edits stored in translation_verses for this chapter
         translationVerseData[ultTranslation.id] = await getTranslationVerses(
           ultTranslation.id, osisBook, chapter, workspaceId
+        );
+      }
+    }
+
+    // VCB: synchronous base text + async user overrides
+    vcbBaseVerses = getVcbVerses(osisBook, chapter);
+    if (vcbBaseVerses.length > 0) {
+      vcbTranslation = await getVcbTranslation(workspaceId);
+      if (vcbTranslation !== null) {
+        translationVerseData[vcbTranslation.id] = await getTranslationVerses(
+          vcbTranslation.id, osisBook, chapter, workspaceId
         );
       }
     }
@@ -305,6 +318,8 @@ export default async function ChapterPage({ params, searchParams }: PageProps) {
             translationVerseData={translationVerseData}
             ultBaseVerses={ultBaseVerses}
             ultTranslation={ultTranslation}
+            vcbBaseVerses={vcbBaseVerses}
+            vcbTranslation={vcbTranslation}
             initialParagraphBreakIds={initialParagraphBreakIds}
             initialCharacters={initialCharacters}
             initialCharacterRefs={initialCharacterRefs}

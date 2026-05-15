@@ -82,6 +82,10 @@ interface ChapterDisplayProps {
   ultBaseVerses?: { verse: number; text: string }[];
   /** The Translation record for ULT in user.db (null if not imported). */
   ultTranslation?: Translation | null;
+  /** Base verse text from data/vcb.db (empty if not imported). */
+  vcbBaseVerses?: { verse: number; text: string }[];
+  /** The Translation record for VCB in user.db (null if not imported). */
+  vcbTranslation?: Translation | null;
   /** Optional heading strip (book title, chapter number, word count) rendered
    *  above the toolbar; hidden automatically in presentation mode. */
   headingSlot?: React.ReactNode;
@@ -131,6 +135,8 @@ export default function ChapterDisplay({
   bookMaxVerses,
   ultBaseVerses = [],
   ultTranslation = null,
+  vcbBaseVerses = [],
+  vcbTranslation = null,
   headingSlot,
 }: ChapterDisplayProps) {
   const { t } = useTranslation();
@@ -432,29 +438,53 @@ export default function ChapterDisplay({
 
   // ── Translation text editing ───────────────────────────────────────────────
   // Local mutable copy of translationVerseData so edits can be reflected immediately.
-  // If ULT base verses are provided, merge them in: user edits (from user.db) take precedence;
-  // verses not yet edited fall back to the immutable base text from ult.db.
+  // If ULT/VCB base verses are provided, merge them in: user edits (from user.db) take
+  // precedence; verses not yet edited fall back to the immutable base text from the source DB.
   const initialTranslationVerseData = useMemo(() => {
-    if (!ultTranslation || ultBaseVerses.length === 0) return translationVerseData;
-    const ultId = ultTranslation.id;
-    const editedMap = new Map(
-      (translationVerseData[ultId] ?? []).map((v) => [v.verse, v])
-    );
-    const merged: TranslationVerse[] = ultBaseVerses.map((base, i) => {
-      return editedMap.get(base.verse) ?? {
-        id: -(i + 1),                    // synthetic — not yet saved to user.db
-        workspaceId: ultTranslation.workspaceId,
-        translationId: ultId,
-        osisRef: `${book}.${chapter}.${base.verse}`,
-        bookId: 0, chapter,
-        verse: base.verse,
-        text: base.text,
-      };
-    });
-    return { ...translationVerseData, [ultId]: merged };
-  // Only recalculate when book/chapter/ultTranslation change (navigation); not on every keystroke.
+    let data = translationVerseData;
+
+    if (ultTranslation && ultBaseVerses.length > 0) {
+      const ultId = ultTranslation.id;
+      const editedMap = new Map(
+        (data[ultId] ?? []).map((v) => [v.verse, v])
+      );
+      const merged: TranslationVerse[] = ultBaseVerses.map((base, i) => {
+        return editedMap.get(base.verse) ?? {
+          id: -(i + 1),                    // synthetic — not yet saved to user.db
+          workspaceId: ultTranslation.workspaceId,
+          translationId: ultId,
+          osisRef: `${book}.${chapter}.${base.verse}`,
+          bookId: 0, chapter,
+          verse: base.verse,
+          text: base.text,
+        };
+      });
+      data = { ...data, [ultId]: merged };
+    }
+
+    if (vcbTranslation && vcbBaseVerses.length > 0) {
+      const vcbId = vcbTranslation.id;
+      const editedMap = new Map(
+        (data[vcbId] ?? []).map((v) => [v.verse, v])
+      );
+      const merged: TranslationVerse[] = vcbBaseVerses.map((base, i) => {
+        return editedMap.get(base.verse) ?? {
+          id: -(i + 1),                    // synthetic — not yet saved to user.db
+          workspaceId: vcbTranslation.workspaceId,
+          translationId: vcbId,
+          osisRef: `${book}.${chapter}.${base.verse}`,
+          bookId: 0, chapter,
+          verse: base.verse,
+          text: base.text,
+        };
+      });
+      data = { ...data, [vcbId]: merged };
+    }
+
+    return data;
+  // Only recalculate when book/chapter/translation IDs change (navigation); not on every keystroke.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [book, chapter, ultTranslation?.id]);
+  }, [book, chapter, ultTranslation?.id, vcbTranslation?.id]);
 
   const [localTranslationVerseData, setLocalTranslationVerseData] = useState(initialTranslationVerseData);
   const [editingTranslation, setEditingTranslation] = useState(false);
@@ -840,18 +870,26 @@ export default function ChapterDisplay({
     [characters]
   );
 
-  // Merge ULT into availableTranslations when it has base verses (it won't appear
-  // in the DB query result if no translation_verses edits exist for this chapter).
+  // Merge ULT and VCB into availableTranslations when they have base verses (they won't
+  // appear in the DB query result if no translation_verses edits exist for this chapter).
   const allAvailableTranslations = useMemo(() => {
-    if (!ultTranslation || ultBaseVerses.length === 0) return availableTranslations;
-    if (availableTranslations.some((t) => t.id === ultTranslation.id)) return availableTranslations;
-    return [ultTranslation, ...availableTranslations];
-  }, [availableTranslations, ultTranslation, ultBaseVerses.length]);
+    let list = availableTranslations;
+    if (ultTranslation && ultBaseVerses.length > 0 && !list.some((t) => t.id === ultTranslation.id)) {
+      list = [ultTranslation, ...list];
+    }
+    if (vcbTranslation && vcbBaseVerses.length > 0 && !list.some((t) => t.id === vcbTranslation.id)) {
+      list = [...list, vcbTranslation];
+    }
+    return list;
+  }, [availableTranslations, ultTranslation, ultBaseVerses.length, vcbTranslation, vcbBaseVerses.length]);
 
   // Set of system translation IDs — shown with a "built-in" badge in the picker
   const systemTranslationIds = useMemo(
-    () => new Set(ultTranslation ? [ultTranslation.id] : []),
-    [ultTranslation]
+    () => new Set([
+      ...(ultTranslation ? [ultTranslation.id] : []),
+      ...(vcbTranslation ? [vcbTranslation.id] : []),
+    ]),
+    [ultTranslation, vcbTranslation]
   );
 
   // Resolve stored abbreviations → numeric IDs for the current chapter's translations
