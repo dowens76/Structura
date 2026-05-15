@@ -55,7 +55,17 @@ run("node scripts/download-node-binary.mjs", "Downloading sidecar Node binary");
 // 3. Build user.db template
 run("npx tsx scripts/create-user-db-template.ts", "Building user.db template");
 
-// 4. Copy source databases into the Tauri resource bundle
+// 4a. Generate any source databases that haven't been imported yet.
+//     On a fresh CI runner these won't exist; locally they're usually cached.
+const sourceDbs = ["vcb.db"];
+for (const db of sourceDbs) {
+  if (!existsSync(path.join(ROOT, "data", db))) {
+    const scriptName = db.replace(".db", "");
+    run(`npm run import:${scriptName}`, `Importing ${db} (not found in data/)`);
+  }
+}
+
+// 4b. Copy source databases into the Tauri resource bundle
 run("node scripts/copy-databases.mjs", "Copying source databases to Tauri resources");
 
 // 5. Build Next.js (beforeBuildCommand).
