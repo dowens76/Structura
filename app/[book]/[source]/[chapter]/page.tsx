@@ -10,8 +10,9 @@ import {
   getChapterWordArrows, getChapterWordFormatting, getChapterSceneBreaks,
   getChapterLineAnnotations, getBookSceneBreaks, getBookChapterMaxVerses,
   getUltVerses, getUltTranslation, getVcbVerses, getVcbTranslation, getGroupedBooksFor,
+  getChapterTranslationFootnotes,
 } from "@/lib/db/queries";
-import type { TranslationVerse } from "@/lib/db/schema";
+import type { TranslationVerse, TranslationFootnote } from "@/lib/db/schema";
 import type { TextSource } from "@/lib/morphology/types";
 import ChapterDisplay from "@/components/text/ChapterDisplay";
 import ParallelChapterView from "@/components/text/ParallelChapterView";
@@ -108,6 +109,7 @@ export default async function ChapterPage({ params, searchParams }: PageProps) {
   let bookSceneBreaks: Awaited<ReturnType<typeof getBookSceneBreaks>> = [];
   let bookMaxVerses: Awaited<ReturnType<typeof getBookChapterMaxVerses>> = new Map();
   let translationVerseData: Record<number, TranslationVerse[]> = {};
+  let initialTranslationFootnotes: Record<number, TranslationFootnote[]> = {};
   let ultBaseVerses: { verse: number; text: string }[] = [];
   let ultTranslation: Awaited<ReturnType<typeof getUltTranslation>> = null;
   let vcbBaseVerses: { verse: number; text: string }[] = [];
@@ -148,6 +150,13 @@ export default async function ChapterPage({ params, searchParams }: PageProps) {
     await Promise.all(
       availableTranslations.map(async (t) => {
         translationVerseData[t.id] = await getTranslationVerses(t.id, osisBook, chapter, workspaceId);
+      })
+    );
+
+    // Footnotes for all available translations
+    await Promise.all(
+      availableTranslations.map(async (t) => {
+        initialTranslationFootnotes[t.id] = await getChapterTranslationFootnotes(t.id, osisBook, chapter);
       })
     );
 
@@ -335,6 +344,8 @@ export default async function ChapterPage({ params, searchParams }: PageProps) {
             initialLineAnnotations={initialLineAnnotations}
             bookSceneBreaks={bookSceneBreaks}
             bookMaxVerses={bookMaxVerses}
+            initialTranslationFootnotes={initialTranslationFootnotes}
+            sortedBooks={sourceBooks.map((b) => b.osisCode)}
             headingSlot={
               <div
                 key="chapter-heading"

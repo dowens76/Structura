@@ -80,6 +80,7 @@ export type ConstituentLabelKey = typeof CONSTITUENT_LABELS[number]["key"];
 export interface TranslationTextEntry {
   abbr: string;
   text: string;
+  translationId: number;
 }
 
 export interface GrammarFilterState {

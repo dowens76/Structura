@@ -1,13 +1,52 @@
 "use client";
 
 import React, { useState, useEffect, useRef, useMemo } from "react";
-import type { Word, CharacterRef, Character, SpeechSection, WordTag, WordTagRef, LineAnnotation } from "@/lib/db/schema";
+import type { Word, CharacterRef, Character, SpeechSection, WordTag, WordTagRef, LineAnnotation, TranslationFootnote } from "@/lib/db/schema";
+import { renderUsfmText } from "@/lib/utils/usfm-renderer";
 import type { DisplayMode, GrammarFilterState, TranslationTextEntry, InterlinearSubMode } from "@/lib/morphology/types";
 import type { ColorRule } from "@/lib/morphology/colorRules";
 import { PLOT_ELEMENTS, ANNOTATION_PALETTE, getPlotElement, getAnnotationColor } from "@/lib/utils/annotations";
 
 /** Width of the hanging-indent space (px). RST lines are drawn inside this space. */
 const HANG_PX = 32;
+
+/** Hebrew Unicode ranges: basic Hebrew block + presentation forms A. */
+const HEBREW_RE = /[֐-׿יִ-ﭏ]+/g;
+
+/**
+ * Renders footnote content with inline Hebrew text displayed using Ezra SIL.
+ * Non-Hebrew runs stay italic (inherited); Hebrew runs switch to upright Ezra SIL
+ * with unicode-bidi:embed so they flow naturally inside an LTR sentence.
+ */
+function renderFootnoteContent(text: string): React.ReactNode {
+  if (!text) return null;
+  const parts: React.ReactNode[] = [];
+  let last = 0;
+  let m: RegExpExecArray | null;
+  HEBREW_RE.lastIndex = 0;
+  while ((m = HEBREW_RE.exec(text)) !== null) {
+    if (m.index > last) parts.push(text.slice(last, m.index));
+    parts.push(
+      <span
+        key={m.index}
+        style={{
+          fontFamily: '"Ezra SIL", "SBL Hebrew", serif',
+          fontStyle: "normal",
+          fontSize: "1.25em",
+          lineHeight: 1,
+          direction: "rtl",
+          unicodeBidi: "embed",
+          display: "inline-block",
+        }}
+      >
+        {m[0]}
+      </span>
+    );
+    last = m.index + m[0].length;
+  }
+  if (last < text.length) parts.push(text.slice(last));
+  return parts.length === 1 ? parts[0] : <>{parts}</>;
+}
 
 /** Split a translation token into leading punctuation, core word text, and trailing
  *  punctuation so that only the core is wrapped in the styled/clickable span. */
@@ -134,6 +173,12 @@ interface VerseDisplayProps {
   rstSourcePad?: number;
   /** When true, doubles font sizes for section headings and annotation labels */
   presentationMode?: boolean;
+  /** Footnotes/cross-references attached to this verse (from USFM import or manual entry). */
+  translationFootnotes?: TranslationFootnote[];
+  /** Called when the user deletes a footnote from the verse. */
+  onDeleteFootnote?: (translationId: number, footnoteId: number) => void;
+  /** Called when the user clicks the edit button on a footnote. */
+  onEditFootnote?: (fn: TranslationFootnote) => void;
 }
 
 // ── Annotation sub-components ────────────────────────────────────────────────
@@ -699,6 +744,7 @@ function TranslationTextarea({ initialText, abbr, verseNum, onSave, onCancel }: 
       <textarea
         value={value}
         onChange={(e) => setValue(e.target.value)}
+        data-translation-textarea="true"
         onBlur={() => {
           if (!savedRef.current) {
             savedRef.current = true;
@@ -814,6 +860,9 @@ export default function VerseDisplay({
   rstSourcePad = 0,
   presentationMode = false,
   showAtnachBreaks = false,
+  translationFootnotes = [] as TranslationFootnote[],
+  onDeleteFootnote,
+  onEditFootnote,
 }: VerseDisplayProps) {
   const firstWordId = words[0]?.wordId;
   const verseStartsNewParagraph = firstWordId ? paragraphBreakIds.has(firstWordId) : false;
@@ -1754,10 +1803,41 @@ export default function VerseDisplay({
 
   type TvSeg = { startIdx: number; tokens: string[] };
 
-  const allTvSegs = translationTexts.map(({ abbr, text }) => {
+  // Encode USFM inline markers as per-token prefixes so word-level annotations work.
+  // e.g. "\\nd the LORD\\nd*" → "ND:the ND:LORD"
+  function encodeUsfmTokens(raw: string): string {
+    let s = raw;
+    s = s.replace(/\\nd\s+([\s\S]*?)\\nd\*/g, (_: string, content: string) =>
+      content.split(/\s+/).filter(Boolean).map((w: string) => `ND:${w}`).join(" ")
+    );
+    s = s.replace(/\\add\s+([\s\S]*?)\\add\*/g, (_: string, content: string) =>
+      content.split(/\s+/).filter(Boolean).map((w: string) => `ADD:${w}`).join(" ")
+    );
+    s = s.replace(/\\wj\s+([\s\S]*?)\\wj\*/g, (_: string, content: string) =>
+      content.split(/\s+/).filter(Boolean).map((w: string) => `WJ:${w}`).join(" ")
+    );
+    // Attach \fn \fn* to the preceding word so the superscript survives tokenisation.
+    // "know \fn \fn* wisdom" → "know«fn» wisdom"
+    s = s.replace(/(\S+)\s+\\fn\s+\\fn\*/g, "$1«fn»");
+    s = s.replace(/\\fn\s+\\fn\*/g, "«fn»"); // fallback: fn at start with no preceding word
+    s = s.replace(/\\[a-z]+\d*\*?\s*/g, "");
+    return s;
+  }
+
+  function decodeUsfmToken(token: string): { display: string; marker: "nd" | "add" | "wj" | "fn" | null } {
+    if (token.startsWith("ND:"))  return { display: token.slice(3),  marker: "nd"  };
+    if (token.startsWith("ADD:")) return { display: token.slice(4), marker: "add" };
+    if (token.startsWith("WJ:"))  return { display: token.slice(3),  marker: "wj"  };
+    if (token.endsWith("«fn»"))   return { display: token.slice(0, -4), marker: "fn" };
+    return { display: token, marker: null };
+  }
+
+  const allTvSegs = translationTexts.map(({ abbr, text, translationId }) => {
+    const encoded = encodeUsfmTokens(text);
+    const embeddedFnCount = (encoded.match(/«fn»/g) ?? []).length;
     // Split on whitespace first, then split each token after any mid-word em-dash
-    // so "bread—purifying" → ["bread—", "purifying"] rather than one joined token.
-    const tokens = text.split(/\s+/).filter(Boolean).flatMap(t =>
+    // so "bread\u2014purifying" → ["bread\u2014", "purifying"] rather than one joined token.
+    const tokens = encoded.split(/\s+/).filter(Boolean).flatMap(t =>
       t.split(/(?<=\u2014)(?=.)/)
     );
     const segs: TvSeg[] = [];
@@ -1772,11 +1852,15 @@ export default function VerseDisplay({
       cur.push(token);
     });
     if (cur.length > 0) segs.push({ startIdx: curStart, tokens: cur });
-    return { abbr, text, tvSegs: segs };
+    return { abbr, text, translationId, embeddedFnCount, tvSegs: segs };
   });
+
+  // Per-translation footnote letter counter (a, b, c…). Mutable during render.
+  const fnCounters: Record<string, number> = {};
 
   return (
     <div
+      id={`verse-${verseNum}`}
       className={`${
         (speechContinuesIntoNext || annotContinuesIntoNext) ? "" : "border-b border-[var(--border)]"
       } ${(speechContinuesFromPrev || annotContinuesFromPrev) ? "pt-0" : "pt-4"} ${
@@ -1802,7 +1886,7 @@ export default function VerseDisplay({
         // Translation content for this row:
         //   • All rows except the last get only tvSegs[si] (if it exists).
         //   • The last source row gets tvSegs[si…end] (all remaining tv paragraphs).
-        const tvRowContent = allTvSegs.map(({ abbr, text: tvFullText, tvSegs }) => {
+        const tvRowContent = allTvSegs.map(({ abbr, text: tvFullText, translationId: tvTranslationId, embeddedFnCount, tvSegs }) => {
           const isLastRow = si === sourceSegments.length - 1;
           const rowSegs: TvSeg[] = si < sourceSegments.length - 1
             ? (tvSegs[si] ? [tvSegs[si]] : [])
@@ -2003,7 +2087,23 @@ export default function VerseDisplay({
                         segIdx === rowSegs.length - 1 &&
                         localWi === tvSeg.tokens.length - 1;
 
-                      const { leading: tokLead, core: tokCore, trailing: tokTrail } = splitTokenPunctuation(token);
+                      // Decode USFM marker prefix applied during preprocessing
+                      const { display: decodedToken, marker: usfmMarker } = decodeUsfmToken(token);
+                      const { leading: tokLead, core: tokCore, trailing: tokTrail } = splitTokenPunctuation(decodedToken);
+
+                      // USFM inline marker styling
+                      const usfmStyle: React.CSSProperties =
+                        usfmMarker === "nd"  ? { fontVariant: "small-caps" } :
+                        usfmMarker === "add" ? { fontStyle: "italic" } : {};
+                      const usfmClassName =
+                        usfmMarker === "wj" ? "text-red-600 dark:text-red-400" : "";
+
+                      // Footnote superscript letter
+                      let fnLetter: string | null = null;
+                      if (usfmMarker === "fn") {
+                        if (fnCounters[abbr] === undefined) fnCounters[abbr] = 0;
+                        fnLetter = String.fromCharCode(97 + (fnCounters[abbr]++ % 26));
+                      }
 
                       return (
                         <span key={globalWi}>
@@ -2029,12 +2129,17 @@ export default function VerseDisplay({
                           {tokLead}
                           <span
                             data-word-id={wordId}
-                            style={{ ...underlineStyle, ...tvBgStyle, ...tvFormattingStyle }}
-                            className={[tokenClassName, isTvRangeStart ? "outline outline-2 outline-violet-400 bg-violet-100 dark:bg-violet-900/40" : ""].filter(Boolean).join(" ")}
+                            style={{ ...underlineStyle, ...tvBgStyle, ...tvFormattingStyle, ...usfmStyle }}
+                            className={[tokenClassName, usfmClassName, isTvRangeStart ? "outline outline-2 outline-violet-400 bg-violet-100 dark:bg-violet-900/40" : ""].filter(Boolean).join(" ")}
                             onClick={handleClick}
                           >
                             {tokCore}
                           </span>
+                          {fnLetter && (
+                            <sup className="text-[0.65em] font-normal leading-none text-stone-400 dark:text-stone-500 select-none">
+                              {fnLetter}
+                            </sup>
+                          )}
                           {tokTrail}
                           {!isLastToken && (
                             tvSpaceStyle
@@ -2045,6 +2150,21 @@ export default function VerseDisplay({
                       );
                     })
                   )}
+                  {/* Orphaned anchors: footnotes without an embedded \fn marker in the verse text */}
+                  {isLastRow && (() => {
+                    const tFns = translationFootnotes.filter((f) => f.translationId === tvTranslationId);
+                    const orphans = tFns.slice(embeddedFnCount);
+                    if (orphans.length === 0) return null;
+                    return orphans.map((_, oi) => {
+                      if (fnCounters[abbr] === undefined) fnCounters[abbr] = 0;
+                      const letter = String.fromCharCode(97 + (fnCounters[abbr]++ % 26));
+                      return (
+                        <sup key={oi} className="text-[0.65em] font-normal leading-none text-stone-400 dark:text-stone-500 select-none ml-0.5">
+                          {letter}
+                        </sup>
+                      );
+                    });
+                  })()}
                 </p>
               )}
             </div>
@@ -2160,6 +2280,38 @@ export default function VerseDisplay({
               }}
             >
               {tvRowContent}
+              {/* Footnotes appear under the translation text, in the last source row only */}
+              {si === sourceSegments.length - 1 && translationFootnotes.length > 0 && (
+                <div className="mt-0.5 space-y-0.5">
+                  {translationFootnotes.map((fn, idx) => {
+                    const label = String.fromCharCode(97 + (idx % 26));
+                    return (
+                      <div key={fn.id} className="flex items-start gap-1">
+                        <p className="flex-1 text-xs italic text-stone-500 dark:text-stone-400 leading-snug">
+                          <sup className="font-normal not-italic mr-0.5 text-stone-400">{label}</sup>
+                          {renderFootnoteContent(fn.content)}
+                        </p>
+                        {onEditFootnote && (
+                          <button
+                            type="button"
+                            onClick={() => onEditFootnote(fn)}
+                            className="text-stone-300 hover:text-sky-500 dark:text-stone-500 dark:hover:text-sky-400 text-xs leading-none mt-0.5 shrink-0"
+                            title="Edit footnote"
+                          >✎</button>
+                        )}
+                        {onDeleteFootnote && (
+                          <button
+                            type="button"
+                            onClick={() => onDeleteFootnote(fn.translationId, fn.id)}
+                            className="text-stone-300 hover:text-red-500 dark:text-stone-500 dark:hover:text-red-400 text-xs leading-none mt-0.5 shrink-0"
+                            title="Delete footnote"
+                          >×</button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </>
         );
@@ -2186,6 +2338,7 @@ export default function VerseDisplay({
           </div>
         );
       })}
+
     </div>
   );
 }

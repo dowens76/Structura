@@ -3,8 +3,8 @@ import { sourceDb, userDb, sourceLookups, lxxLookups, getLxxDb, getUltSqlite, ge
 import type { LookupMaps } from "./index";
 import { books, words } from "./source-schema";
 import type { Word, WordRow } from "./source-schema";
-import { translations, translationVerses, paragraphBreaks, paragraphHeadings, characters, characterRefs, speechSections, wordTags, wordTagRefs, lineIndents, sceneBreaks, passages, clauseRelationships, rstRelations, wordArrows, wordFormatting, lineAnnotations, bookGroupings, appSettings } from "./user-schema";
-import type { Book, Translation, TranslationVerse, Character, CharacterRef, SpeechSection, WordTag, WordTagRef, Passage, ClauseRelationship, RstRelation, WordArrow, LineAnnotation, BookGrouping } from "./schema";
+import { translations, translationVerses, paragraphBreaks, paragraphHeadings, characters, characterRefs, speechSections, wordTags, wordTagRefs, lineIndents, sceneBreaks, passages, clauseRelationships, rstRelations, wordArrows, wordFormatting, lineAnnotations, bookGroupings, appSettings, translationFootnotes, translationVersions } from "./user-schema";
+import type { Book, Translation, TranslationVerse, Character, CharacterRef, SpeechSection, WordTag, WordTagRef, Passage, ClauseRelationship, RstRelation, WordArrow, LineAnnotation, BookGrouping, TranslationFootnote, TranslationVersion } from "./schema";
 import type { TextSource, Testament } from "@/lib/morphology/types";
 
 // ── Decode helpers ────────────────────────────────────────────────────────────
@@ -196,6 +196,23 @@ export async function getAvailableTranslationsForChapter(
     .from(translations)
     .where(inArray(translations.id, ids))
     .orderBy(asc(translations.abbreviation));
+}
+
+/** Returns all translation verses for a full book (used for USFM export). */
+export async function getBookTranslationVerses(
+  translationId: number,
+  osisBook: string,
+): Promise<TranslationVerse[]> {
+  return userDb
+    .select()
+    .from(translationVerses)
+    .where(
+      and(
+        eq(translationVerses.translationId, translationId),
+        like(translationVerses.osisRef, `${osisBook}.%`)
+      )
+    )
+    .orderBy(asc(translationVerses.chapter), asc(translationVerses.verse));
 }
 
 export async function getTranslationVerses(
@@ -1690,4 +1707,110 @@ export async function setAppSetting(key: string, value: string): Promise<void> {
 /** Delete a global app setting. */
 export async function deleteAppSetting(key: string): Promise<void> {
   await userDb.delete(appSettings).where(eq(appSettings.key, key));
+}
+
+// ─── Translation Footnotes ──────────────────────────────────────────────────
+
+export async function getChapterTranslationFootnotes(
+  translationId: number,
+  book: string,
+  chapter: number,
+): Promise<TranslationFootnote[]> {
+  try {
+    return await userDb
+      .select()
+      .from(translationFootnotes)
+      .where(
+        and(
+          eq(translationFootnotes.translationId, translationId),
+          eq(translationFootnotes.book, book),
+          eq(translationFootnotes.chapter, chapter),
+        )
+      );
+  } catch {
+    return [];
+  }
+}
+
+export async function upsertTranslationFootnote(
+  workspaceId: number,
+  translationId: number,
+  osisRef: string,
+  type: string,
+  content: string,
+  wordIndex: number,
+  book: string,
+  chapter: number,
+  verse: number,
+): Promise<TranslationFootnote> {
+  const [row] = await userDb
+    .insert(translationFootnotes)
+    .values({ workspaceId, translationId, osisRef, type, content, wordIndex, book, chapter, verse })
+    .returning();
+  return row;
+}
+
+export async function updateTranslationFootnote(
+  id: number,
+  content: string,
+  type?: string,
+): Promise<void> {
+  await userDb
+    .update(translationFootnotes)
+    .set({ content, ...(type ? { type } : {}) })
+    .where(eq(translationFootnotes.id, id));
+}
+
+export async function deleteTranslationFootnote(id: number): Promise<void> {
+  await userDb.delete(translationFootnotes).where(eq(translationFootnotes.id, id));
+}
+
+// ─── Translation Version History ───────────────────────────────────────────
+
+export async function getTranslationVersions(
+  translationId: number,
+  osisRef: string,
+): Promise<TranslationVersion[]> {
+  try {
+    return await userDb
+      .select()
+      .from(translationVersions)
+      .where(
+        and(
+          eq(translationVersions.translationId, translationId),
+          eq(translationVersions.osisRef, osisRef),
+        )
+      )
+      .orderBy(sql`${translationVersions.createdAt} DESC`);
+  } catch {
+    return [];
+  }
+}
+
+export async function insertTranslationVersion(
+  workspaceId: number,
+  translationId: number,
+  osisRef: string,
+  text: string,
+  label?: string,
+): Promise<TranslationVersion> {
+  const [row] = await userDb
+    .insert(translationVersions)
+    .values({ workspaceId, translationId, osisRef, text, label })
+    .returning();
+  return row;
+}
+
+export async function updateTranslationVersionLabel(
+  id: number,
+  label: string | null,
+): Promise<void> {
+  await userDb
+    .update(translationVersions)
+    .set({ label })
+    .where(eq(translationVersions.id, id));
+}
+
+export async function deleteTranslationVersion(id: number): Promise<void> {
+  await userDb.delete(translationVersions).where(eq(translationVersions.id, id));
 }

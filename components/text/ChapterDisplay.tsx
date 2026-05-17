@@ -1,8 +1,9 @@
 "use client";
 
 import { useMemo, useState, useEffect, useRef, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import type { Word, Character, CharacterRef, SpeechSection, WordTag, WordTagRef, RstRelation, WordArrow, LineAnnotation } from "@/lib/db/schema";
-import type { Translation, TranslationVerse } from "@/lib/db/schema";
+import type { Translation, TranslationVerse, TranslationFootnote } from "@/lib/db/schema";
 import type { DisplayMode, GrammarFilterState, TranslationTextEntry, InterlinearSubMode } from "@/lib/morphology/types";
 import VerseDisplay from "./VerseDisplay";
 import FindBar from "./FindBar";
@@ -89,6 +90,10 @@ interface ChapterDisplayProps {
   /** Optional heading strip (book title, chapter number, word count) rendered
    *  above the toolbar; hidden automatically in presentation mode. */
   headingSlot?: React.ReactNode;
+  /** Footnotes keyed by translationId for the current chapter. */
+  initialTranslationFootnotes?: Record<number, TranslationFootnote[]>;
+  /** Ordered list of OSIS book codes for this text source (for F9 book navigation). */
+  sortedBooks?: string[];
 }
 
 const DEFAULT_FILTER: GrammarFilterState = {
@@ -138,8 +143,34 @@ export default function ChapterDisplay({
   vcbBaseVerses = [],
   vcbTranslation = null,
   headingSlot,
+  initialTranslationFootnotes = {},
+  sortedBooks = [],
 }: ChapterDisplayProps) {
   const { t } = useTranslation();
+  const router = useRouter();
+
+  // Translation footnotes keyed by translationId → verse → footnotes[]
+  const [localFootnotes, setLocalFootnotes] = useState<Record<number, TranslationFootnote[]>>(
+    initialTranslationFootnotes
+  );
+
+  // Footnote dialog state (shared between create and edit)
+  const [fnDialogOpen, setFnDialogOpen] = useState(false);
+  const [fnDialogVerse, setFnDialogVerse] = useState(1);
+  const [fnDialogAbbr, setFnDialogAbbr] = useState("");
+  const [fnDialogType, setFnDialogType] = useState<"f" | "x">("f");
+  const [fnDialogContent, setFnDialogContent] = useState("");
+  const [fnEditId, setFnEditId] = useState<number | null>(null); // null = create, number = edit
+
+  // Footnote visibility
+  const [showFootnotes, setShowFootnotes] = useState(true);
+
+  // Version history panel state
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyAbbr, setHistoryAbbr] = useState("");
+  const [historyVerse, setHistoryVerse] = useState(1);
+  const [historyVersions, setHistoryVersions] = useState<Array<{ id: number; text: string; createdAt: string; label: string | null }>>([]);
+
   // Use fallback defaults for SSR — localStorage values are loaded in useEffect after hydration
   const [displayMode, setDisplayMode] = useState<DisplayMode>("clean");
   const [interlinearSubMode, setInterlinearSubMode] = useState<InterlinearSubMode>("lemma");
@@ -598,6 +629,12 @@ export default function ChapterDisplay({
   const editingRefsRef = useRef(false);
   const editingWordTagsRef = useRef(false);
   const wordsRef = useRef<Word[]>(words);
+  // Navigation refs (props are stable per mount; refs let the static listener read them)
+  const bookRef = useRef(book);
+  const chapterRef = useRef(chapter);
+  const textSourceRef = useRef(textSource);
+  const bookMaxVersesRef = useRef(bookMaxVerses);
+  const sortedBooksRef = useRef(sortedBooks);
   const wordPositionMap = useMemo(
     () => new Map(words.map((w) => [w.wordId, w.positionInVerse])),
     [words]
@@ -662,10 +699,70 @@ export default function ChapterDisplay({
         setFindQuery("");
         return;
       }
+      // Navigation shortcuts — skip when focus is inside a text input
+      const inTextInput =
+        document.activeElement instanceof HTMLTextAreaElement ||
+        document.activeElement instanceof HTMLInputElement;
+      // F8 — next chapter; Ctrl/Cmd+F8 — previous chapter
+      if (e.key === "F8" && !e.altKey) {
+        if (inTextInput) return;
+        e.preventDefault();
+        const bk = bookRef.current;
+        const ch = chapterRef.current;
+        const src = textSourceRef.current;
+        const maxCh = bookMaxVersesRef.current.size > 0
+          ? Math.max(...bookMaxVersesRef.current.keys()) : ch;
+        if (e.metaKey || e.ctrlKey) {
+          if (ch > 1) router.push(`/${encodeURIComponent(bk)}/${src}/${ch - 1}`);
+        } else {
+          if (ch < maxCh) router.push(`/${encodeURIComponent(bk)}/${src}/${ch + 1}`);
+        }
+        return;
+      }
+      // F9 — next book; Ctrl/Cmd+F9 — previous book
+      if (e.key === "F9" && !e.altKey) {
+        if (inTextInput) return;
+        e.preventDefault();
+        const bk = bookRef.current;
+        const src = textSourceRef.current;
+        const books = sortedBooksRef.current;
+        if (books.length > 0) {
+          const idx = books.indexOf(bk);
+          if (e.metaKey || e.ctrlKey) {
+            if (idx > 0) router.push(`/${encodeURIComponent(books[idx - 1])}/${src}/1`);
+          } else {
+            if (idx >= 0 && idx < books.length - 1) router.push(`/${encodeURIComponent(books[idx + 1])}/${src}/1`);
+          }
+        }
+        return;
+      }
+      // Ctrl/Cmd+↓ / Ctrl/Cmd+↑ — next/previous verse
+      if ((e.metaKey || e.ctrlKey) && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
+        if (inTextInput) return;
+        e.preventDefault();
+        const bk = bookRef.current;
+        const ch = chapterRef.current;
+        const src = textSourceRef.current;
+        const maxVerse = bookMaxVersesRef.current.get(ch) ?? 1;
+        const urlParams = new URLSearchParams(window.location.search);
+        const curVerse = parseInt(urlParams.get("v") ?? "1", 10);
+        const nextVerse = Math.max(1, Math.min(
+          e.key === "ArrowDown" ? curVerse + 1 : curVerse - 1,
+          maxVerse
+        ));
+        router.replace(
+          `/${encodeURIComponent(bk)}/${src}/${ch}?v=${nextVerse}`,
+          { scroll: false }
+        );
+        setTimeout(() => {
+          document.getElementById(`verse-${nextVerse}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+        }, 50);
+        return;
+      }
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
+  }, [router]);
 
   // Keep live-value refs in sync for the static keydown listener (non-find ones only;
   // findHitIds/findFocusId refs are updated below, after those values are declared)
@@ -673,6 +770,11 @@ export default function ChapterDisplay({
   useEffect(() => { editingRefsRef.current = editingRefs; }, [editingRefs]);
   useEffect(() => { editingWordTagsRef.current = editingWordTags; }, [editingWordTags]);
   useEffect(() => { wordsRef.current = words; }, [words]);
+  useEffect(() => { bookRef.current = book; }, [book]);
+  useEffect(() => { chapterRef.current = chapter; }, [chapter]);
+  useEffect(() => { textSourceRef.current = textSource; }, [textSource]);
+  useEffect(() => { bookMaxVersesRef.current = bookMaxVerses; }, [bookMaxVerses]);
+  useEffect(() => { sortedBooksRef.current = sortedBooks; }, [sortedBooks]);
 
   // Restore all persisted settings after hydration — avoids SSR/client HTML mismatch.
   // Font sizes are included here (not in lazy initializers) for the same reason.
@@ -937,7 +1039,7 @@ export default function ChapterDisplay({
       const verses = localTranslationVerseData[t.id] ?? [];
       for (const tv of verses) {
         const existing = map.get(tv.verse) ?? [];
-        existing.push({ abbr: t.abbreviation, text: tv.text });
+        existing.push({ abbr: t.abbreviation, text: tv.text, translationId: t.id });
         map.set(tv.verse, existing);
       }
     }
@@ -2405,6 +2507,16 @@ export default function ChapterDisplay({
         label: `Edit translation ${abbr} ${verse}`,
         undo: () => handleUpdateTranslationVerse(abbr, verse, oldText, false),
       });
+      // Fire-and-forget server-side version snapshot
+      fetch("/api/translation-versions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          translationId: translation.id,
+          osisRef: `${book}.${chapter}.${verse}`,
+          text: oldText,
+        }),
+      }).catch(() => {});
     }
 
     // Optimistic update
@@ -2440,6 +2552,128 @@ export default function ChapterDisplay({
     const snapRecord = snapshot[translation.id]?.find((tv) => tv.verse === verse);
     if (!snapRecord) return;
     await handleUpdateTranslationVerse(abbr, verse, snapRecord.text, false);
+  }
+
+  // ── Divine Name marker insertion ──────────────────────────────────────────────
+  // Wraps the current textarea selection with \nd...\nd*
+  function applyNdMarker() {
+    const el = document.activeElement as HTMLTextAreaElement | null;
+    if (!el || el.tagName !== "TEXTAREA" || !el.dataset.translationTextarea) return;
+    const s = el.selectionStart ?? 0;
+    const e = el.selectionEnd ?? 0;
+    if (s === e) return;
+    const val = el.value;
+    const selected = val.slice(s, e);
+    const inserted = `\\nd ${selected}\\nd*`;
+    const newVal = val.slice(0, s) + inserted + val.slice(e);
+    const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value")?.set;
+    nativeSetter?.call(el, newVal);
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+    el.selectionStart = s;
+    el.selectionEnd = s + inserted.length;
+    el.focus();
+  }
+
+  // ── Footnote CRUD ────────────────────────────────────────────────────────────
+  async function handleCreateFootnote() {
+    const translation = allAvailableTranslations.find((t) => t.abbreviation === fnDialogAbbr);
+    if (!translation || !fnDialogContent.trim()) return;
+    try {
+      const res = await fetch("/api/translation-footnotes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          translationId: translation.id,
+          osisRef: `${book}.${chapter}.${fnDialogVerse}`,
+          type: fnDialogType,
+          content: fnDialogContent.trim(),
+          wordIndex: 0,
+          book,
+          chapter,
+          verse: fnDialogVerse,
+        }),
+      });
+      if (res.ok) {
+        const { footnote: created }: { footnote: TranslationFootnote } = await res.json();
+        setLocalFootnotes((prev) => ({
+          ...prev,
+          [translation.id]: [...(prev[translation.id] ?? []), created],
+        }));
+        // Append \fn \fn* anchor to the verse text so the superscript appears in the translation
+        const tvRecord = localTranslationVerseData[translation.id]?.find((tv) => tv.verse === fnDialogVerse);
+        if (tvRecord) {
+          const newText = tvRecord.text.trimEnd() + " \\fn \\fn*";
+          await handleUpdateTranslationVerse(fnDialogAbbr, fnDialogVerse, newText);
+        }
+        setFnDialogOpen(false);
+        setFnDialogContent("");
+      }
+    } catch { /* ignore */ }
+  }
+
+  async function handleUpdateFootnote() {
+    if (fnEditId === null || !fnDialogContent.trim()) return;
+    try {
+      const res = await fetch("/api/translation-footnotes", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: fnEditId, content: fnDialogContent.trim(), type: fnDialogType }),
+      });
+      if (res.ok) {
+        setLocalFootnotes((prev) => {
+          const updated = { ...prev };
+          for (const tid of Object.keys(updated)) {
+            updated[Number(tid)] = (updated[Number(tid)] ?? []).map((fn) =>
+              fn.id === fnEditId ? { ...fn, content: fnDialogContent.trim(), type: fnDialogType } : fn
+            );
+          }
+          return updated;
+        });
+        setFnDialogOpen(false);
+        setFnEditId(null);
+        setFnDialogContent("");
+      }
+    } catch { /* ignore */ }
+  }
+
+  function openEditFootnote(fn: TranslationFootnote) {
+    const translation = allAvailableTranslations.find((t) => t.id === fn.translationId);
+    setFnEditId(fn.id);
+    setFnDialogAbbr(translation?.abbreviation ?? "");
+    setFnDialogVerse(fn.verse);
+    setFnDialogType(fn.type as "f" | "x");
+    setFnDialogContent(fn.content);
+    setFnDialogOpen(true);
+  }
+
+  async function handleDeleteFootnote(translationId: number, fnId: number) {
+    try {
+      await fetch(`/api/translation-footnotes?id=${fnId}`, { method: "DELETE" });
+      setLocalFootnotes((prev) => ({
+        ...prev,
+        [translationId]: (prev[translationId] ?? []).filter((fn) => fn.id !== fnId),
+      }));
+    } catch { /* ignore */ }
+  }
+
+  // ── Version history ──────────────────────────────────────────────────────────
+  async function openHistory(abbr: string, verse: number) {
+    const translation = allAvailableTranslations.find((t) => t.abbreviation === abbr);
+    if (!translation) return;
+    setHistoryAbbr(abbr);
+    setHistoryVerse(verse);
+    setHistoryOpen(true);
+    try {
+      const res = await fetch(
+        `/api/translation-versions?translationId=${translation.id}&osisRef=${encodeURIComponent(`${book}.${chapter}.${verse}`)}`
+      );
+      if (res.ok) setHistoryVersions((await res.json()).versions ?? []);
+    } catch { /* ignore */ }
+  }
+
+  async function handleRestoreVersion(versionText: string) {
+    await handleUpdateTranslationVerse(historyAbbr, historyVerse, versionText, true);
+    setHistoryOpen(false);
   }
 
   // ── Mode mutual-exclusivity ────────────────────────────────────────────────
@@ -3075,6 +3309,7 @@ export default function ChapterDisplay({
                     activeTranslationIds={activeTranslationIds}
                     systemTranslationIds={systemTranslationIds}
                     onToggle={toggleTranslation}
+                    currentBook={book}
                   />
                   {hasActiveTranslations && (
                     <button
@@ -3102,6 +3337,71 @@ export default function ChapterDisplay({
                       ].join(" ")}
                     >
                       ✏
+                    </button>
+                  )}
+                  {/* Translation editing sub-toolbar — only shown when edit mode is active */}
+                  {hasActiveTranslations && editingTranslation && (
+                    <>
+                      {/* Divine Name: wraps textarea selection in \nd...\nd* */}
+                      <button
+                        onMouseDown={(e) => { e.preventDefault(); applyNdMarker(); }}
+                        data-tip="Wrap selection as Divine Name (small caps) — \nd...\nd*"
+                        className="px-2.5 py-1.5 rounded text-[11px] font-bold font-mono tracking-wider transition-colors bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-amber-100 hover:text-amber-700 dark:hover:bg-amber-900 dark:hover:text-amber-300"
+                        style={{ fontVariant: "small-caps" }}
+                      >
+                        nd
+                      </button>
+                      {/* Add Footnote button */}
+                      <button
+                        onClick={() => {
+                          const firstAbbr = [...activeTranslationIds]
+                            .map((id) => allAvailableTranslations.find((tr) => tr.id === id))
+                            .find((tr) => tr)?.abbreviation ?? "";
+                          setFnEditId(null);
+                          setFnDialogAbbr(firstAbbr);
+                          setFnDialogVerse(1);
+                          setFnDialogType("f");
+                          setFnDialogContent("");
+                          setFnDialogOpen(true);
+                        }}
+                        data-tip="Add a footnote or cross-reference to a verse"
+                        className="px-2.5 py-1.5 rounded text-[11px] font-medium transition-colors bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700"
+                      >
+                        fn+
+                      </button>
+                      {/* History button */}
+                      <button
+                        onClick={() => {
+                          const firstAbbr = [...activeTranslationIds]
+                            .map((id) => allAvailableTranslations.find((tr) => tr.id === id))
+                            .find((tr) => tr)?.abbreviation ?? "";
+                          openHistory(firstAbbr, 1);
+                        }}
+                        data-tip="View version history for a verse"
+                        className={[
+                          "px-2.5 py-1.5 rounded text-[11px] font-medium transition-colors",
+                          historyOpen
+                            ? "bg-violet-600 text-white"
+                            : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
+                        ].join(" ")}
+                      >
+                        ⏱
+                      </button>
+                    </>
+                  )}
+                  {/* Show/hide footnotes — visible whenever a translation is active */}
+                  {hasActiveTranslations && (
+                    <button
+                      onClick={() => setShowFootnotes((v) => !v)}
+                      data-tip={showFootnotes ? "Hide footnotes" : "Show footnotes"}
+                      className={[
+                        "px-2.5 py-1.5 rounded text-[11px] font-medium transition-colors",
+                        showFootnotes
+                          ? "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700"
+                          : "bg-stone-300 dark:bg-stone-600 text-stone-500 dark:text-stone-400",
+                      ].join(" ")}
+                    >
+                      fn
                     </button>
                   )}
                 </div>
@@ -3498,12 +3798,113 @@ export default function ChapterDisplay({
                 }}
                 rstSourcePad={rstSourcePad}
                 presentationMode={presentationMode}
+                translationFootnotes={
+                  showFootnotes
+                    ? Object.entries(localFootnotes).flatMap(([tid, fns]) =>
+                        fns.filter((fn) => fn.verse === verseNum && activeTranslationIds.has(Number(tid)))
+                      )
+                    : []
+                }
+                onDeleteFootnote={(translationId, fnId) => handleDeleteFootnote(translationId, fnId)}
+                onEditFootnote={(fn) => openEditFootnote(fn)}
               />
             );
           })}
         </div>
       </div>
       </div> {/* end outerRef wrapper */}
+
+      {/* Footnote create / edit dialog */}
+      {fnDialogOpen && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40" onClick={() => { setFnDialogOpen(false); setFnEditId(null); }}>
+          <div
+            className="rounded-lg shadow-xl border p-5 w-full max-w-md"
+            style={{ backgroundColor: "var(--surface)", borderColor: "var(--border)" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-sm font-semibold mb-3" style={{ color: "var(--foreground)" }}>
+              {fnEditId !== null ? "Edit Footnote" : "Add Footnote / Cross-Reference"}
+            </h3>
+            <div className="flex gap-3 mb-3">
+              {/* Translation picker */}
+              <div className="flex-1">
+                <label className="block text-xs mb-1" style={{ color: "var(--text-muted)" }}>Translation</label>
+                <select
+                  value={fnDialogAbbr}
+                  onChange={(e) => setFnDialogAbbr(e.target.value)}
+                  className="w-full text-xs rounded border px-2 py-1"
+                  style={{ backgroundColor: "var(--surface-muted)", borderColor: "var(--border-muted)", color: "var(--foreground)" }}
+                >
+                  {[...activeTranslationIds].map((id) => {
+                    const tr = allAvailableTranslations.find((t) => t.id === id);
+                    return tr ? <option key={id} value={tr.abbreviation}>{tr.abbreviation}</option> : null;
+                  })}
+                </select>
+              </div>
+              {/* Verse picker */}
+              <div className="w-20">
+                <label className="block text-xs mb-1" style={{ color: "var(--text-muted)" }}>Verse</label>
+                <input
+                  type="number"
+                  min={1}
+                  max={bookMaxVerses.get(chapter) ?? 999}
+                  value={fnDialogVerse}
+                  onChange={(e) => setFnDialogVerse(parseInt(e.target.value) || 1)}
+                  className="w-full text-xs rounded border px-2 py-1"
+                  style={{ backgroundColor: "var(--surface-muted)", borderColor: "var(--border-muted)", color: "var(--foreground)" }}
+                />
+              </div>
+              {/* Type toggle */}
+              <div>
+                <label className="block text-xs mb-1" style={{ color: "var(--text-muted)" }}>Type</label>
+                <div className="flex gap-1">
+                  {(["f", "x"] as const).map((typ) => (
+                    <button
+                      key={typ}
+                      type="button"
+                      onClick={() => setFnDialogType(typ)}
+                      className={[
+                        "px-2 py-1 text-xs rounded border",
+                        fnDialogType === typ
+                          ? "bg-emerald-600 text-white border-emerald-600"
+                          : "border-[var(--border-muted)] text-[var(--text-muted)] hover:bg-[var(--surface-muted)]",
+                      ].join(" ")}
+                    >
+                      {typ === "f" ? "fn" : "xref"}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <textarea
+              value={fnDialogContent}
+              onChange={(e) => setFnDialogContent(e.target.value)}
+              placeholder="Footnote content (USFM inline markers allowed)"
+              rows={4}
+              className="w-full text-xs rounded border px-2 py-1.5 resize-y focus:outline-none focus:ring-1 focus:ring-sky-500"
+              style={{ backgroundColor: "var(--surface-muted)", borderColor: "var(--border-muted)", color: "var(--foreground)" }}
+            />
+            <div className="flex justify-end gap-2 mt-3">
+              <button
+                type="button"
+                onClick={() => { setFnDialogOpen(false); setFnEditId(null); setFnDialogContent(""); }}
+                className="px-3 py-1.5 text-xs rounded border"
+                style={{ borderColor: "var(--border-muted)", color: "var(--text-muted)" }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={fnEditId !== null ? handleUpdateFootnote : handleCreateFootnote}
+                disabled={!fnDialogContent.trim()}
+                className="px-3 py-1.5 text-xs rounded bg-emerald-600 text-white disabled:opacity-50"
+              >
+                {fnEditId !== null ? "Save" : "Add"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Notes pane */}
       {notesOpen && (
@@ -3602,6 +4003,67 @@ export default function ChapterDisplay({
               </div>
             </div>
           </ResizablePane>
+      )}
+
+      {/* Version history panel */}
+      {historyOpen && (
+        <ResizablePane storageKey="pane-history-width" defaultWidth={360} minWidth={260} maxWidth={700}>
+          <div className="flex flex-col h-full border-l" style={{ borderColor: "var(--border)", backgroundColor: "var(--surface)" }}>
+            <div className="flex items-center justify-between px-4 py-2 border-b shrink-0" style={{ borderColor: "var(--border)" }}>
+              <span className="text-sm font-semibold" style={{ color: "var(--foreground)" }}>
+                Version History — {historyAbbr} {chapter}:{historyVerse}
+              </span>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  min={1}
+                  max={bookMaxVerses.get(chapter) ?? 999}
+                  value={historyVerse}
+                  onChange={(e) => openHistory(historyAbbr, parseInt(e.target.value) || 1)}
+                  className="w-14 text-xs rounded border px-1.5 py-0.5"
+                  style={{ backgroundColor: "var(--surface-muted)", borderColor: "var(--border-muted)", color: "var(--foreground)" }}
+                  title="Verse number"
+                />
+                <button
+                  onClick={() => setHistoryOpen(false)}
+                  className="text-stone-400 hover:text-stone-600 dark:hover:text-stone-200 text-lg leading-none"
+                >
+                  ×
+                </button>
+              </div>
+            </div>
+            <div className="flex-1 overflow-y-auto px-3 py-2 space-y-2">
+              {historyVersions.length === 0 ? (
+                <p className="text-xs text-center py-6" style={{ color: "var(--text-muted)" }}>
+                  No saved versions yet. Versions are recorded automatically each time you edit a verse.
+                </p>
+              ) : (
+                historyVersions.map((v) => (
+                  <div key={v.id} className="rounded border p-2.5 text-xs space-y-1.5"
+                    style={{ borderColor: "var(--border-muted)", backgroundColor: "var(--surface-muted)" }}>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-mono" style={{ color: "var(--text-muted)" }}>
+                        {new Date(v.createdAt).toLocaleString()}
+                      </span>
+                      <button
+                        onClick={() => handleRestoreVersion(v.text)}
+                        className="px-2 py-0.5 rounded bg-emerald-600 text-white text-[10px] font-medium hover:bg-emerald-700"
+                      >
+                        Restore
+                      </button>
+                    </div>
+                    {v.label && (
+                      <p className="font-semibold" style={{ color: "var(--foreground)" }}>{v.label}</p>
+                    )}
+                    <p className="leading-snug line-clamp-3" style={{ color: "var(--foreground)" }}>
+                      {v.text}
+                    </p>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </ResizablePane>
       )}
 
       {/* Clear annotations dialog */}

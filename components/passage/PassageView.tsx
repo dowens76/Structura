@@ -635,7 +635,7 @@ export default function PassageView({
       for (const tv of localTranslationVerseData[t.id] ?? []) {
         const key = `${tv.chapter}:${tv.verse}`;
         const existing = map.get(key) ?? [];
-        existing.push({ abbr: t.abbreviation, text: tv.text });
+        existing.push({ abbr: t.abbreviation, text: tv.text, translationId: t.id });
         map.set(key, existing);
       }
     }

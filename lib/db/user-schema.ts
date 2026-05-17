@@ -353,8 +353,9 @@ export const wordFormatting = sqliteTable(
     workspaceId: integer("workspace_id").notNull().default(1)
                    .references(() => workspaces.id, { onDelete: "cascade" }),
     wordId:      text("word_id").notNull(),
-    isBold:      integer("is_bold",   { mode: "boolean" }).notNull().default(false),
-    isItalic:    integer("is_italic", { mode: "boolean" }).notNull().default(false),
+    isBold:        integer("is_bold",       { mode: "boolean" }).notNull().default(false),
+    isItalic:      integer("is_italic",     { mode: "boolean" }).notNull().default(false),
+    isSmallCaps:   integer("is_small_caps", { mode: "boolean" }).notNull().default(false),
     textSource:  text("text_source").notNull(),
     book:        text("book").notNull(),
     chapter:     integer("chapter").notNull(),
@@ -415,6 +416,52 @@ export const wordDatasetEntries = sqliteTable(
   (t) => [
     uniqueIndex("wde_ds_word_idx").on(t.datasetId, t.wordId),
     index("wde_ds_book_ch_idx").on(t.datasetId, t.book, t.chapter, t.textSource),
+  ]
+);
+
+// ─── Translation footnotes & version history ───────────────────────────────
+
+/** Footnotes (\f) and cross-references (\x) extracted from USFM imports. */
+export const translationFootnotes = sqliteTable(
+  "translation_footnotes",
+  {
+    id:            integer("id").primaryKey({ autoIncrement: true }),
+    workspaceId:   integer("workspace_id").notNull().default(1)
+                     .references(() => workspaces.id, { onDelete: "cascade" }),
+    translationId: integer("translation_id").notNull()
+                     .references(() => translations.id, { onDelete: "cascade" }),
+    osisRef:       text("osis_ref").notNull(),
+    type:          text("type").notNull(),         // "f" | "x"
+    content:       text("content").notNull(),      // USFM body of the note
+    wordIndex:     integer("word_index").notNull().default(0),
+    book:          text("book").notNull(),
+    chapter:       integer("chapter").notNull(),
+    verse:         integer("verse").notNull(),
+    createdAt:     text("created_at").$defaultFn(() => new Date().toISOString()),
+  },
+  (t) => [
+    index("tf_trans_book_ch_idx").on(t.translationId, t.book, t.chapter),
+    index("tf_osis_ref_idx").on(t.osisRef),
+  ]
+);
+
+/** Per-verse text snapshots recorded before each save (fine-grained VCS). */
+export const translationVersions = sqliteTable(
+  "translation_versions",
+  {
+    id:            integer("id").primaryKey({ autoIncrement: true }),
+    workspaceId:   integer("workspace_id").notNull().default(1)
+                     .references(() => workspaces.id, { onDelete: "cascade" }),
+    translationId: integer("translation_id").notNull()
+                     .references(() => translations.id, { onDelete: "cascade" }),
+    osisRef:       text("osis_ref").notNull(),
+    text:          text("text").notNull(),
+    label:         text("label"),
+    createdAt:     text("created_at").$defaultFn(() => new Date().toISOString()),
+  },
+  (t) => [
+    index("tv_ver_trans_osis_idx").on(t.translationId, t.osisRef),
+    index("tv_ver_ws_trans_idx").on(t.workspaceId, t.translationId),
   ]
 );
 
@@ -517,3 +564,5 @@ export type ConstituentLabel = typeof constituentLabels.$inferSelect;
 export type WordDataset = typeof wordDatasets.$inferSelect;
 export type WordDatasetEntry = typeof wordDatasetEntries.$inferSelect;
 export type BookGrouping = typeof bookGroupings.$inferSelect;
+export type TranslationFootnote = typeof translationFootnotes.$inferSelect;
+export type TranslationVersion = typeof translationVersions.$inferSelect;
