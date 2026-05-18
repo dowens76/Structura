@@ -401,11 +401,13 @@ function AnnotBadge({
         "flex-1 flex flex-col",
         editingAnnotations ? "cursor-pointer hover:brightness-95 dark:hover:brightness-110" : "",
       ].join(" ")}
-      style={{ position: "relative", borderLeft: `3px solid ${color}`, backgroundColor: `${color}18` }}
+      style={{ borderLeft: `3px solid ${color}`, backgroundColor: `${color}18` }}
       onClick={editingAnnotations ? (e) => { e.stopPropagation(); setIsEditing(true); } : undefined}
       title={editingAnnotations ? "Click to edit" : undefined}
     >
-      <div className="flex flex-col px-1.5 py-1 gap-0.5">
+      {/* position:relative here so the multi-segment description's top:"100%"
+          is relative to just this label-row area, not the full flex-1 badge height. */}
+      <div className="flex flex-col px-1.5 py-1 gap-0.5" style={{ position: "relative" }}>
         {/* Label row: oos icon + label badge + delete button */}
         {(annotation.outOfSequence || hasLabel || (editingAnnotations && !!onDelete)) && (
           <div className="flex items-center gap-1">
@@ -443,35 +445,37 @@ function AnnotBadge({
             {annotation.description}
           </span>
         )}
-      </div>
-      {/* For multi-segment annotations (start but not end) the description is
-          rendered absolutely so its multi-line height does not contribute to
-          the badge's content height — keeps the parent flex row (and thus the
-          Hebrew text row) at its natural size while the text overflows
-          visually onto the same-coloured continuation bands of the following
-          segments.  pointer-events:none so clicks fall through to the segment
-          beneath. */}
-      {annotation.description && !isEnd && (
-        <div
-          className="px-1.5 pt-0.5"
-          style={{
-            position: "absolute",
-            left: 0,
-            right: 0,
-            top: "100%",
-            overflow: "visible",
-            pointerEvents: "none",
-            zIndex: 1,
-          }}
-        >
-          <span
-            className="text-stone-600 dark:text-stone-400 leading-tight min-w-0 break-words"
-            style={{ fontSize: presentationMode ? "1rem" : "var(--translation-font-size, 0.875rem)" }}
+        {/* For multi-segment annotations (start but not end) the description is
+            rendered absolutely so its multi-line height does not contribute to
+            the badge's content height — keeps the parent flex row (and thus the
+            Greek/Hebrew text row) at its natural size while the text overflows
+            visually onto the same-coloured continuation bands of the following
+            segments.  pointer-events:none so clicks fall through to the segment
+            beneath. top:"100%" is relative to this inner div so the description
+            always starts just below the label row (or at the top when there is
+            none), never at the bottom of the tall flex-1 outer badge. */}
+        {annotation.description && !isEnd && (
+          <div
+            className="px-1.5 pt-0.5"
+            style={{
+              position: "absolute",
+              left: 0,
+              right: 0,
+              top: "100%",
+              overflow: "visible",
+              pointerEvents: "none",
+              zIndex: 1,
+            }}
           >
-            {annotation.description}
-          </span>
-        </div>
-      )}
+            <span
+              className="text-stone-600 dark:text-stone-400 leading-tight min-w-0 break-words"
+              style={{ fontSize: presentationMode ? "1rem" : "var(--translation-font-size, 0.875rem)" }}
+            >
+              {annotation.description}
+            </span>
+          </div>
+        )}
+      </div>
       {/* In edit mode show the single-segment +/- at the bottom */}
       {editingAnnotations && isEnd && onAdjustRange && (
         <div className="flex items-center gap-0.5 px-1.5 pb-1" onClick={(e) => e.stopPropagation()}>
