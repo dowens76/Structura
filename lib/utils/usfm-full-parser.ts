@@ -335,8 +335,13 @@ export function parseUsfmFile(raw: string): ParsedUsfmFile {
     }
 
     // ── Section headings ──────────────────────────────────────────────────
-    if ((marker === "s" || marker === "s1" || marker === "s2" || marker === "s3" || marker === "s4" || marker === "ms" || marker === "ms1") && !closing) {
-      const level = marker === "s" || marker === "s1" ? 1 : marker === "s2" ? 2 : 3;
+    if ((marker === "s" || marker === "s1" || marker === "s2" || marker === "s3" || marker === "s4" || marker === "ms" || marker === "ms1" || marker === "ms2") && !closing) {
+      const level = marker === "ms1" || marker === "ms" ? 1
+        : marker === "ms2" ? 2
+        : marker === "s" || marker === "s1" ? 3
+        : marker === "s2" ? 4
+        : marker === "s3" ? 5
+        : 6; // s4
       pendingSection = { heading: text.trim(), level };
       continue;
     }

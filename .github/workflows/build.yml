@@ -5,6 +5,19 @@ on:
     tags:
       - "v*"
   workflow_dispatch:
+    inputs:
+      platforms:
+        description: "Platforms to build"
+        required: false
+        default: "all"
+        type: choice
+        options:
+          - all
+          - mac-only
+          - mac-arm
+          - mac-intel
+          - windows
+          - linux
 
 
 jobs:
@@ -17,25 +30,35 @@ jobs:
             target: aarch64-apple-darwin
             label: macOS (Apple Silicon)
             friendly: Apple_Silicon
+            platform_key: mac-arm
           - os: macos-14
             target: x86_64-apple-darwin
             label: macOS (Intel)
             friendly: Apple_Intel
+            platform_key: mac-intel
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             label: Windows (x64)
             friendly: Windows
+            platform_key: windows
           - os: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
             label: Linux (x64)
             friendly: Linux
+            platform_key: linux
           - os: ubuntu-24.04-arm
             target: aarch64-unknown-linux-gnu
             label: Linux (ARM64)
             friendly: Linux_ARM64
+            platform_key: linux
 
     name: ${{ matrix.label }}
     runs-on: ${{ matrix.os }}
+    if: |
+      inputs.platforms == '' ||
+      inputs.platforms == 'all' ||
+      inputs.platforms == matrix.platform_key ||
+      (inputs.platforms == 'mac-only' && (matrix.platform_key == 'mac-arm' || matrix.platform_key == 'mac-intel'))
     permissions:
       contents: write
     env:

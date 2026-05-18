@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
   getBookTranslationVerses,
+  getTranslationVerses,
   getChapterTranslationFootnotes,
   getBook,
 } from "@/lib/db/queries";
@@ -20,6 +21,8 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const translationId = parseInt(searchParams.get("translationId") ?? "0", 10);
   const book          = searchParams.get("book") ?? "";
+  const chapterParam  = searchParams.get("chapter");
+  const chapter       = chapterParam ? parseInt(chapterParam, 10) : null;
 
   if (!translationId || !book) {
     return NextResponse.json({ error: "translationId and book are required" }, { status: 400 });
@@ -42,32 +45,34 @@ export async function GET(req: NextRequest) {
   }
 
   // Fetch all verses for the book
-  const verses = await getBookTranslationVerses(translationId, book);
-  if (verses.length === 0) {
-    return NextResponse.json({ error: "No verses found for this translation and book" }, { status: 404 });
-  }
-
-  // Fetch all footnotes for the book
-  const allFootnotes = [];
-  const chapters = new Set(verses.map(v => v.chapter));
-  for (const ch of chapters) {
-    const fns = await getChapterTranslationFootnotes(translationId, book, ch);
-    allFootnotes.push(...fns);
-  }
-
-  // Fetch paragraph breaks (tv:{abbr}: prefix)
   const abbr = trans.abbreviation;
-  const tvPrefix = `tv:${abbr}:${book}.`;
+  const tvPrefix = chapter
+    ? `tv:${abbr}:${book}.${chapter}.`
+    : `tv:${abbr}:${book}.`;
+
+  // Fetch verses — whole book or single chapter
+  const verses = chapter
+    ? await getTranslationVerses(translationId, book, chapter)
+    : await getBookTranslationVerses(translationId, book);
+  if (verses.length === 0) {
+    return NextResponse.json({ error: "No verses found" }, { status: 404 });
+  }
+
+  // Fetch footnotes
+  const allFootnotes = [];
+  const chapters = chapter ? [chapter] : [...new Set(verses.map(v => v.chapter))];
+  for (const ch of chapters) {
+    allFootnotes.push(...await getChapterTranslationFootnotes(translationId, book, ch));
+  }
+
+  // Fetch paragraph breaks
   const allParaBreaks = await userDb
     .select()
     .from(paragraphBreaks)
     .where(and(eq(paragraphBreaks.book, book), like(paragraphBreaks.wordId, `${tvPrefix}%`)));
 
   const paraBreakSet = new Set<string>(
-    allParaBreaks.map(pb => {
-      // Extract osisRef from wordId: tv:{abbr}:{osisRef}
-      return pb.wordId.slice(`tv:${abbr}:`.length);
-    })
+    allParaBreaks.map(pb => pb.wordId.slice(`tv:${abbr}:`.length))
   );
 
   // Fetch line indents
@@ -89,10 +94,7 @@ export async function GET(req: NextRequest) {
   const sectionMap = new Map<string, { heading: string; level: number }>(
     allSceneBreaks
       .filter(sb => sb.heading)
-      .map(sb => [
-        sb.wordId.slice(`tv:${abbr}:`.length),
-        { heading: sb.heading!, level: sb.level },
-      ])
+      .map(sb => [sb.wordId.slice(`tv:${abbr}:`.length), { heading: sb.heading!, level: sb.level }])
   );
 
   const exportData: UsfmExportData = {
@@ -107,7 +109,7 @@ export async function GET(req: NextRequest) {
   };
 
   const usfmText = exportToUsfm(exportData);
-  const filename  = `${abbr}_${book}.usfm`;
+  const filename  = chapter ? `${abbr}_${book}_${chapter}.usfm` : `${abbr}_${book}.usfm`;
 
   return new NextResponse(usfmText, {
     status: 200,

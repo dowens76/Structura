@@ -224,11 +224,22 @@ export default function ChapterDisplay({
   // Multiple levels may exist at the same wordId; toggling also mirrors into paragraphBreakIds.
   const [sceneBreakMap, setSceneBreakMap] = useState<Map<string, Array<{ heading: string | null; level: number; verse: number; outOfSequence: boolean; extendedThrough: number | null; thematic: boolean; thematicLetter: string | null }>>>(
     () => {
+      // Build verse → first source word map to resolve tv:-prefixed scene break ids
+      const verseFirstWord = new Map<number, string>();
+      for (const w of words) {
+        if (!verseFirstWord.has(w.verse)) verseFirstWord.set(w.verse, w.wordId);
+      }
       const m = new Map<string, Array<{ heading: string | null; level: number; verse: number; outOfSequence: boolean; extendedThrough: number | null; thematic: boolean; thematicLetter: string | null }>>();
       for (const sb of initialSceneBreaks) {
-        const arr = m.get(sb.wordId) ?? [];
+        let key = sb.wordId;
+        if (key.startsWith("tv:")) {
+          // "tv:ABBR:Book.ch.v" → first source word of that verse
+          const verseNum = parseInt(key.split(".")[2] ?? "0", 10);
+          key = verseFirstWord.get(verseNum) ?? key;
+        }
+        const arr = m.get(key) ?? [];
         arr.push({ heading: sb.heading, level: sb.level, verse: sb.verse, outOfSequence: sb.outOfSequence, extendedThrough: sb.extendedThrough, thematic: sb.thematic, thematicLetter: sb.thematicLetter });
-        m.set(sb.wordId, arr);
+        m.set(key, arr);
       }
       return m;
     }
@@ -519,6 +530,12 @@ export default function ChapterDisplay({
 
   const [localTranslationVerseData, setLocalTranslationVerseData] = useState(initialTranslationVerseData);
   const [editingTranslation, setEditingTranslation] = useState(false);
+  const [editingTranslationSource, setEditingTranslationSource] = useState(false);
+  const [chapterUsfmOpen, setChapterUsfmOpen] = useState(false);
+  const [chapterUsfmText, setChapterUsfmText] = useState("");
+  const [chapterUsfmLoading, setChapterUsfmLoading] = useState(false);
+  const [chapterUsfmSaving, setChapterUsfmSaving] = useState(false);
+  const [chapterUsfmError, setChapterUsfmError] = useState<string | null>(null);
   // Snapshot taken when translation editing mode is entered, used for Cancel
   const translationEditSnapshotRef = useRef(translationVerseData);
 
@@ -738,16 +755,28 @@ export default function ChapterDisplay({
       }
       // Ctrl/Cmd+↓ / Ctrl/Cmd+↑ — next/previous verse
       if ((e.metaKey || e.ctrlKey) && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
-        if (inTextInput) return;
+        const inTranslationTextarea =
+          document.activeElement instanceof HTMLTextAreaElement &&
+          (document.activeElement as HTMLTextAreaElement).dataset.translationTextarea === "true";
+        // Allow when in a translation textarea; block for all other inputs
+        if (inTextInput && !inTranslationTextarea) return;
         e.preventDefault();
         const bk = bookRef.current;
         const ch = chapterRef.current;
         const src = textSourceRef.current;
         const maxVerse = bookMaxVersesRef.current.get(ch) ?? 1;
-        const urlParams = new URLSearchParams(window.location.search);
-        const curVerse = parseInt(urlParams.get("v") ?? "1", 10);
+        // Determine current verse: prefer DOM when inside a textarea (URL param may be stale)
+        let startVerse: number;
+        if (inTranslationTextarea) {
+          const verseEl = (document.activeElement as HTMLElement).closest("[id^='verse-']");
+          startVerse = verseEl ? parseInt(verseEl.id.replace("verse-", ""), 10) : 1;
+          (document.activeElement as HTMLTextAreaElement).blur(); // save
+        } else {
+          const urlParams = new URLSearchParams(window.location.search);
+          startVerse = parseInt(urlParams.get("v") ?? "1", 10);
+        }
         const nextVerse = Math.max(1, Math.min(
-          e.key === "ArrowDown" ? curVerse + 1 : curVerse - 1,
+          e.key === "ArrowDown" ? startVerse + 1 : startVerse - 1,
           maxVerse
         ));
         router.replace(
@@ -755,7 +784,11 @@ export default function ChapterDisplay({
           { scroll: false }
         );
         setTimeout(() => {
-          document.getElementById(`verse-${nextVerse}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+          const verseEl = document.getElementById(`verse-${nextVerse}`);
+          verseEl?.scrollIntoView({ behavior: "smooth", block: "center" });
+          if (inTranslationTextarea) {
+            verseEl?.querySelector<HTMLTextAreaElement>("[data-translation-textarea='true']")?.focus();
+          }
         }, 50);
         return;
       }
@@ -1045,6 +1078,22 @@ export default function ChapterDisplay({
     }
     return map;
   }, [activeTranslationIds, allAvailableTranslations, localTranslationVerseData]);
+
+  // When editing, every verse gets entries for all active translations (empty where no data yet).
+  const editingTranslationVerseMap = useMemo(() => {
+    if (!editingTranslation) return activeTranslationVerseMap;
+    const activeList = allAvailableTranslations.filter((t) => activeTranslationIds.has(t.id));
+    const map = new Map<number, TranslationTextEntry[]>();
+    for (const verseNum of verseNums) {
+      const existing = activeTranslationVerseMap.get(verseNum) ?? [];
+      const existingAbbrs = new Set(existing.map((e) => e.abbr));
+      const empties = activeList
+        .filter((t) => !existingAbbrs.has(t.abbreviation))
+        .map((t) => ({ abbr: t.abbreviation, text: "", translationId: t.id }));
+      map.set(verseNum, [...existing, ...empties]);
+    }
+    return map;
+  }, [editingTranslation, activeTranslationVerseMap, allAvailableTranslations, activeTranslationIds, verseNums]);
 
   // Build abbr → ordered list of TV word IDs for shift-click range selection
   const tvWordIdLists = useMemo(() => {
@@ -2499,7 +2548,35 @@ export default function ChapterDisplay({
     const translation = allAvailableTranslations.find((t) => t.abbreviation === abbr);
     if (!translation) return;
     const tvRecord = localTranslationVerseData[translation.id]?.find((tv) => tv.verse === verse);
-    if (!tvRecord) return;
+
+    // ── Create new record when verse has no existing translation ─────────
+    if (!tvRecord) {
+      if (!newText.trim()) return; // nothing to save
+      try {
+        const res = await fetch("/api/translation-verses", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            translationId: translation.id,
+            book,
+            chapter,
+            verse,
+            text: newText,
+          }),
+        });
+        const { id } = await res.json() as { id: number };
+        setLocalTranslationVerseData((prev) => ({
+          ...prev,
+          [translation.id]: [
+            ...(prev[translation.id] ?? []),
+            { id, workspaceId: 1, translationId: translation.id, osisRef: `${book}.${chapter}.${verse}`, bookId: 0, chapter, verse, text: newText },
+          ],
+        }));
+      } catch {
+        // ignore — verse simply won't appear until next reload
+      }
+      return;
+    }
 
     const oldText = tvRecord.text;
     if (record && newText !== oldText) {
@@ -2644,6 +2721,46 @@ export default function ChapterDisplay({
     setFnDialogType(fn.type as "f" | "x");
     setFnDialogContent(fn.content);
     setFnDialogOpen(true);
+  }
+
+  async function openChapterUsfm() {
+    const t = allAvailableTranslations.find((t) => activeTranslationAbbrs.has(t.abbreviation));
+    if (!t) return;
+    setChapterUsfmOpen(true);
+    setChapterUsfmError(null);
+    setChapterUsfmLoading(true);
+    try {
+      const res = await fetch(`/api/export/usfm?translationId=${t.id}&book=${book}&chapter=${chapter}`);
+      const text = await res.text();
+      setChapterUsfmText(text);
+    } catch {
+      setChapterUsfmError("Failed to load chapter USFM.");
+    } finally {
+      setChapterUsfmLoading(false);
+    }
+  }
+
+  async function saveChapterUsfm() {
+    const t = allAvailableTranslations.find((tr) => activeTranslationAbbrs.has(tr.abbreviation));
+    if (!t) return;
+    setChapterUsfmSaving(true);
+    setChapterUsfmError(null);
+    try {
+      const res = await fetch("/api/chapter-usfm", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ translationId: t.id, book, chapter, usfm: chapterUsfmText }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? "Save failed");
+      setChapterUsfmOpen(false);
+      // Reload the page to reflect updated verse data
+      window.location.reload();
+    } catch (e: unknown) {
+      setChapterUsfmError(e instanceof Error ? e.message : "Save failed");
+    } finally {
+      setChapterUsfmSaving(false);
+    }
   }
 
   async function handleDeleteFootnote(translationId: number, fnId: number) {
@@ -3327,7 +3444,7 @@ export default function ChapterDisplay({
                   )}
                   {hasActiveTranslations && (
                     <button
-                      onClick={() => setEditingTranslation((v) => !v)}
+                      onClick={() => { setEditingTranslation((v) => !v); setEditingTranslationSource(false); }}
                       data-tip={editingTranslation ? t("toolbar.titleEditTranslationOn") : t("toolbar.titleEditTranslationOff")}
                       className={[
                         "px-3 py-1.5 rounded text-[13px] font-medium transition-colors",
@@ -3337,6 +3454,15 @@ export default function ChapterDisplay({
                       ].join(" ")}
                     >
                       ✏
+                    </button>
+                  )}
+                  {hasActiveTranslations && (
+                    <button
+                      onClick={openChapterUsfm}
+                      data-tip="View / edit chapter USFM source"
+                      className="px-2.5 py-1.5 rounded text-[12px] font-mono font-medium transition-colors bg-stone-100 dark:bg-stone-800 text-stone-500 dark:text-stone-400 hover:bg-stone-200 dark:hover:bg-stone-700"
+                    >
+                      {"‹›"}
                     </button>
                   )}
                   {/* Translation editing sub-toolbar — only shown when edit mode is active */}
@@ -3721,7 +3847,7 @@ export default function ChapterDisplay({
                 selectedWordId={selectedWord?.wordId ?? null}
                 isHebrew={isHebrew}
                 showTooltips={showTooltips}
-                translationTexts={activeTranslationVerseMap.get(verseNum) ?? []}
+                translationTexts={editingTranslationVerseMap.get(verseNum) ?? []}
                 useLinguisticTerms={useLinguisticTerms}
                 paragraphBreakIds={paragraphBreakIds}
                 editingParagraphs={editingParagraphs}
@@ -3767,6 +3893,7 @@ export default function ChapterDisplay({
                 onLemmaClick={displayMode === "interlinear" && interlinearSubMode === "lemma" ? handleLemmaClick : undefined}
                 hideSourceText={hideSourceText}
                 editingTranslation={editingTranslation}
+                editingTranslationSource={editingTranslationSource}
                 onUpdateTranslationVerse={handleUpdateTranslationVerse}
                 onCancelTranslationVerse={handleCancelTranslationVerse}
                 editingArrows={editingArrows}
@@ -3813,6 +3940,49 @@ export default function ChapterDisplay({
         </div>
       </div>
       </div> {/* end outerRef wrapper */}
+
+      {/* Chapter USFM source modal */}
+      {chapterUsfmOpen && (
+        <div className="fixed inset-0 z-[200] flex flex-col bg-stone-950/80 backdrop-blur-sm" onClick={(e) => { if (e.target === e.currentTarget) setChapterUsfmOpen(false); }}>
+          <div className="flex flex-col flex-1 m-4 rounded-lg overflow-hidden shadow-2xl border border-stone-700 bg-stone-950">
+            {/* Header */}
+            <div className="flex items-center gap-3 px-4 py-3 border-b border-stone-700 shrink-0">
+              <span className="font-mono text-sm font-semibold text-amber-400">‹› USFM Source</span>
+              <span className="text-stone-400 text-xs">
+                {allAvailableTranslations.find(t => activeTranslationAbbrs.has(t.abbreviation))?.abbreviation} · {book} {chapter}
+              </span>
+              <span className="flex-1" />
+              {chapterUsfmError && (
+                <span className="text-red-400 text-xs">{chapterUsfmError}</span>
+              )}
+              <button
+                onClick={saveChapterUsfm}
+                disabled={chapterUsfmLoading || chapterUsfmSaving}
+                className="px-3 py-1.5 rounded text-xs font-medium bg-amber-500 hover:bg-amber-400 text-white disabled:opacity-50 transition-colors"
+              >
+                {chapterUsfmSaving ? "Saving…" : "Save & Reload"}
+              </button>
+              <button
+                onClick={() => setChapterUsfmOpen(false)}
+                className="px-3 py-1.5 rounded text-xs font-medium bg-stone-700 hover:bg-stone-600 text-stone-200 transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+            {/* Textarea */}
+            {chapterUsfmLoading ? (
+              <div className="flex-1 flex items-center justify-center text-stone-400 text-sm">Loading…</div>
+            ) : (
+              <textarea
+                value={chapterUsfmText}
+                onChange={(e) => setChapterUsfmText(e.target.value)}
+                className="flex-1 w-full resize-none bg-stone-950 text-amber-100 font-mono text-[13px] leading-relaxed p-4 focus:outline-none"
+                spellCheck={false}
+              />
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Footnote create / edit dialog */}
       {fnDialogOpen && (

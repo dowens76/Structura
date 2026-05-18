@@ -106,7 +106,13 @@ export function exportToUsfm(data: UsfmExportData): string {
     // Section heading before this verse
     const section = sections.get(verse.osisRef);
     if (section) {
-      lines.push(`\\s${section.level} ${section.heading}`);
+      const sMarker = section.level === 1 ? "ms1"
+        : section.level === 2 ? "ms2"
+        : section.level === 3 ? "s1"
+        : section.level === 4 ? "s2"
+        : section.level === 5 ? "s3"
+        : "s4";
+      lines.push(`\\${sMarker} ${section.heading}`);
     }
 
     // Paragraph / poetry indent before this verse

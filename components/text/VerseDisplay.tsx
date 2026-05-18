@@ -136,6 +136,7 @@ interface VerseDisplayProps {
   hideSourceText?: boolean;
   // Translation text editing
   editingTranslation?: boolean;
+  editingTranslationSource?: boolean;
   onUpdateTranslationVerse?: (abbr: string, verse: number, newText: string) => void;
   onCancelTranslationVerse?: (abbr: string, verse: number) => void;
   // Free-form arrows (applies to both source and translation words)
@@ -728,32 +729,56 @@ interface TranslationTextareaProps {
   verseNum: number;
   onSave: (abbr: string, verse: number, text: string) => void;
   onCancel: (abbr: string, verse: number) => void;
+  sourceMode?: boolean;
 }
-function TranslationTextarea({ initialText, abbr, verseNum, onSave, onCancel }: TranslationTextareaProps) {
+function TranslationTextarea({ initialText, abbr, verseNum, onSave, onCancel, sourceMode }: TranslationTextareaProps) {
   const [value, setValue] = useState(initialText);
   const savedRef = useRef(false);
+  const valueRef = useRef(value);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // If the parent resets initialText (e.g. after Cancel), mirror it here and allow saving again
   useEffect(() => {
     setValue(initialText);
+    valueRef.current = initialText;
     savedRef.current = false;
+    if (debounceRef.current) clearTimeout(debounceRef.current);
   }, [initialText]);
+
+  function triggerSave(text: string) {
+    if (!savedRef.current) {
+      savedRef.current = true;
+      onSave(abbr, verseNum, text.trim());
+    }
+  }
+
+  function handleChange(e: React.ChangeEvent<HTMLTextAreaElement>) {
+    const next = e.target.value;
+    setValue(next);
+    valueRef.current = next;
+    savedRef.current = false;
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => triggerSave(valueRef.current), 2000);
+  }
 
   return (
     <div>
       <textarea
         value={value}
-        onChange={(e) => setValue(e.target.value)}
+        onChange={handleChange}
         data-translation-textarea="true"
         onBlur={() => {
-          if (!savedRef.current) {
-            savedRef.current = true;
-            onSave(abbr, verseNum, value.trim());
-          }
+          if (debounceRef.current) clearTimeout(debounceRef.current);
+          triggerSave(valueRef.current);
         }}
-        rows={3}
-        className="w-full resize-y rounded border border-stone-300 dark:border-stone-600 bg-stone-50 dark:bg-stone-900 px-2 py-1 focus:outline-none focus:ring-1 focus:ring-sky-500"
-        style={{
+        rows={sourceMode ? 4 : 3}
+        className={[
+          "w-full resize-y rounded border px-2 py-1 focus:outline-none focus:ring-1",
+          sourceMode
+            ? "font-mono text-xs border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/30 focus:ring-amber-400 text-amber-900 dark:text-amber-200"
+            : "border-stone-300 dark:border-stone-600 bg-stone-50 dark:bg-stone-900 focus:ring-sky-500",
+        ].join(" ")}
+        style={sourceMode ? { lineHeight: 1.7 } : {
           color: "var(--foreground)",
           fontSize: "var(--translation-font-size, 0.875rem)",
           lineHeight: 1.6,
@@ -831,6 +856,7 @@ export default function VerseDisplay({
   onLemmaClick,
   hideSourceText = false,
   editingTranslation = false,
+  editingTranslationSource = false,
   onUpdateTranslationVerse,
   onCancelTranslationVerse,
   editingArrows = false,
@@ -1897,22 +1923,33 @@ export default function VerseDisplay({
             && paragraphBreakIds.has(`tv:${abbr}:${book}.${chapter}.${verseNum}.0`);
 
           // ── Translation edit mode: show a plain textarea for direct text editing ──
-          if (editingTranslation) {
+          if (editingTranslation || editingTranslationSource) {
             if (!isLastRow) return null; // only show edit area in the last (or only) row
             return (
               <div key={abbr}>
                 {translationTexts.length > 1 && (
-                  <span className="block text-[10px] font-mono font-semibold text-stone-400 dark:text-stone-500 uppercase tracking-wider mb-0.5">
-                    {abbr}
+                  <span className={[
+                    "block text-[10px] font-mono font-semibold uppercase tracking-wider mb-0.5",
+                    editingTranslationSource
+                      ? "text-amber-500 dark:text-amber-400"
+                      : "text-stone-400 dark:text-stone-500",
+                  ].join(" ")}>
+                    {abbr}{editingTranslationSource ? " · USFM" : ""}
+                  </span>
+                )}
+                {editingTranslationSource && translationTexts.length === 1 && (
+                  <span className="block text-[10px] font-mono font-semibold text-amber-500 dark:text-amber-400 uppercase tracking-wider mb-0.5">
+                    USFM source
                   </span>
                 )}
                 <TranslationTextarea
-                  key={`${abbr}-${verseNum}`}
+                  key={`${abbr}-${verseNum}-${editingTranslationSource ? "src" : "edit"}`}
                   initialText={tvFullText}
                   abbr={abbr}
                   verseNum={verseNum}
                   onSave={(a, v, t) => onUpdateTranslationVerse?.(a, v, t)}
                   onCancel={(a, v) => onCancelTranslationVerse?.(a, v)}
+                  sourceMode={editingTranslationSource}
                 />
               </div>
             );
