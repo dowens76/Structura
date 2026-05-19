@@ -139,7 +139,7 @@ const en = {
     importTranslation: "+ Import translation",
     backup: "Backup & Restore",
     account: "Account & Workspaces",
-    hebrewOt: "Hebrew Old Testament (OSHB)",
+    hebrewOt: "Hebrew Bible (OSHB)",
     greekNt: "Greek New Testament (SBLGNT + MorphGNT)",
     lxx: "Septuagint LXX (Rahlfs-1935)",
     noTexts: "No texts loaded yet",

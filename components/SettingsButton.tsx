@@ -79,11 +79,23 @@ function valueToPref(
   return null;
 }
 
+const ALL_SOURCES = ["OSHB", "SBLGNT", "LXX"] as const;
+type SourceId = typeof ALL_SOURCES[number];
+
+export function getHiddenSources(): SourceId[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = sessionStorage.getItem("structura:hiddenSources");
+    return raw ? JSON.parse(raw) : [];
+  } catch { return []; }
+}
+
 export default function SettingsButton() {
   const { t } = useTranslation();
   const [open, setOpen]               = useState(false);
   const [greekLex, setGreekLex]       = useState<GreekLexicon>("AbbottSmith");
   const [hebrewLex, setHebrewLex]     = useState<HebrewLexicon>("BDB");
+  const [hiddenSources, setHiddenSources] = useState<SourceId[]>([]);
   const panelRef                      = useRef<HTMLDivElement>(null);
 
   // Scripture tooltip preferences
@@ -98,6 +110,14 @@ export default function SettingsButton() {
   useEffect(() => {
     setGreekLex(getGreekLexicon());
     setHebrewLex(getHebrewLexicon());
+    fetch("/api/settings/hidden-sources")
+      .then((r) => r.json())
+      .then((d: { hidden?: string[] }) => {
+        const hidden = (d.hidden ?? []) as SourceId[];
+        setHiddenSources(hidden);
+        sessionStorage.setItem("structura:hiddenSources", JSON.stringify(hidden));
+      })
+      .catch(() => {});
     // Load scripture pref values from localStorage
     const prefs: Record<string, string> = {};
     for (const locale of LOCALES) {
@@ -197,6 +217,20 @@ export default function SettingsButton() {
     setHebrewLex(v);
     localStorage.setItem(HEBREW_LEX_KEY, v);
     window.dispatchEvent(new CustomEvent("structura:settingsChange", { detail: { hebrewLexicon: v } }));
+  }
+
+  async function toggleHiddenSource(src: SourceId, hide: boolean) {
+    const next = hide
+      ? [...hiddenSources.filter((s) => s !== src), src]
+      : hiddenSources.filter((s) => s !== src);
+    setHiddenSources(next);
+    sessionStorage.setItem("structura:hiddenSources", JSON.stringify(next));
+    await fetch("/api/settings/hidden-sources", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ hidden: next }),
+    });
+    window.dispatchEvent(new CustomEvent("structura:hiddenSourcesChange", { detail: { hidden: next } }));
   }
 
   return (
@@ -347,6 +381,32 @@ export default function SettingsButton() {
                   </button>
                 </div>
               )}
+            </div>
+
+            {/* Source Text Visibility */}
+            <div className="pt-3 border-t mb-3" style={{ borderColor: "var(--border)" }}>
+              <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: "var(--text-muted)" }}>
+                Source Texts
+              </p>
+              <div className="flex flex-col gap-1">
+                {(
+                  [
+                    ["OSHB",   "Hebrew Bible (OSHB)"],
+                    ["SBLGNT", "Greek NT (SBLGNT)"],
+                    ["LXX",    "Septuagint (LXX)"],
+                  ] as [SourceId, string][]
+                ).map(([src, label]) => (
+                  <label key={src} className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={!hiddenSources.includes(src)}
+                      onChange={(e) => toggleHiddenSource(src, !e.target.checked)}
+                      className="accent-[var(--accent)]"
+                    />
+                    <span className="text-sm" style={{ color: "var(--foreground)" }}>{label}</span>
+                  </label>
+                ))}
+              </div>
             </div>
 
             {/* Per-locale translation dropdowns */}

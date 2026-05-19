@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import type { Book } from "@/lib/db/schema";
@@ -61,6 +61,28 @@ export default function HomeContent({ otBooks, ntBooks, lxxBooks }: HomeContentP
   const hasData = otBooks.length + ntBooks.length + lxxBooks.length > 0;
   const [groupingsOpen, setGroupingsOpen] = useState(false);
   const [translationsOpen, setTranslationsOpen] = useState(false);
+  const [hiddenSources, setHiddenSources] = useState<string[]>([]);
+
+  useEffect(() => {
+    // Load initial hidden sources from sessionStorage (populated by SettingsButton on mount)
+    // Fall back to fetching from API if not yet cached
+    const cached = sessionStorage.getItem("structura:hiddenSources");
+    if (cached) {
+      try { setHiddenSources(JSON.parse(cached)); } catch { /* ignore */ }
+    } else {
+      fetch("/api/settings/hidden-sources")
+        .then((r) => r.json())
+        .then((d: { hidden?: string[] }) => setHiddenSources(d.hidden ?? []))
+        .catch(() => {});
+    }
+
+    function onHiddenChange(e: Event) {
+      const detail = (e as CustomEvent<{ hidden: string[] }>).detail;
+      setHiddenSources(detail.hidden);
+    }
+    window.addEventListener("structura:hiddenSourcesChange", onHiddenChange);
+    return () => window.removeEventListener("structura:hiddenSourcesChange", onHiddenChange);
+  }, []);
 
   return (
     <main className="min-h-screen" style={{ backgroundColor: "var(--background)" }}>
@@ -139,9 +161,9 @@ export default function HomeContent({ otBooks, ntBooks, lxxBooks }: HomeContentP
 
         {hasData ? (
           <>
-            <BookGrid books={otBooks} title={t("home.hebrewOt")} bookName={bookName} />
-            <BookGrid books={ntBooks} title={t("home.greekNt")} bookName={bookName} />
-            <BookGrid books={lxxBooks} title={t("home.lxx")} linkSource="STEPBIBLE_LXX" bookName={bookName} />
+            {!hiddenSources.includes("OSHB") && <BookGrid books={otBooks} title={t("home.hebrewOt")} bookName={bookName} />}
+            {!hiddenSources.includes("SBLGNT") && <BookGrid books={ntBooks} title={t("home.greekNt")} bookName={bookName} />}
+            {!hiddenSources.includes("LXX") && <BookGrid books={lxxBooks} title={t("home.lxx")} linkSource="STEPBIBLE_LXX" bookName={bookName} />}
           </>
         ) : (
           <div className="text-center py-20" style={{ color: "var(--text-muted)" }}>

@@ -147,7 +147,7 @@ export async function GET(request: NextRequest) {
     const deduped = [...best.values()].slice(0, limit);
     const suggestions: LemmaSuggestion[] = deduped.map((r) => ({
       surfaceNorm: r.lemma!,
-      surfaceText: r.lemma,
+      surfaceText: r.lemma ?? "",
       strongNumber: r.strongNumber,
       lemma: r.lemma,
       gloss: r.shortGloss ?? null,
