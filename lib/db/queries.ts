@@ -3,7 +3,7 @@ import { sourceDb, userDb, sourceLookups, lxxLookups, getLxxDb, getUltSqlite, ge
 import type { LookupMaps } from "./index";
 import { books, words } from "./source-schema";
 import type { Word, WordRow } from "./source-schema";
-import { translations, translationVerses, paragraphBreaks, paragraphHeadings, characters, characterRefs, speechSections, wordTags, wordTagRefs, lineIndents, sceneBreaks, passages, clauseRelationships, rstRelations, wordArrows, wordFormatting, lineAnnotations, bookGroupings, appSettings, translationFootnotes, translationVersions } from "./user-schema";
+import { translations, translationVerses, paragraphBreaks, paragraphHeadings, characters, characterRefs, speechSections, wordTags, wordTagRefs, lineIndents, sceneBreaks, passages, clauseRelationships, rstRelations, wordArrows, wordFormatting, lineAnnotations, bookGroupings, appSettings, translationFootnotes, translationVersions, workspaces } from "./user-schema";
 import type { Book, Translation, TranslationVerse, Character, CharacterRef, SpeechSection, WordTag, WordTagRef, Passage, ClauseRelationship, RstRelation, WordArrow, LineAnnotation, BookGrouping, TranslationFootnote, TranslationVersion } from "./schema";
 import type { TextSource, Testament } from "@/lib/morphology/types";
 
@@ -1646,6 +1646,30 @@ export async function getVcbTranslation(_workspaceId?: number): Promise<Translat
     .where(eq(translations.abbreviation, "VCB"))
     .limit(1);
   return result[0] ?? null;
+}
+
+/** Returns distinct book OSIS codes available in ult.db, or [] if not imported. */
+export function getUltBooks(): string[] {
+  const db = getUltSqlite();
+  if (!db) return [];
+  try {
+    return (db.prepare("SELECT DISTINCT book FROM ult_verses ORDER BY book").all() as { book: string }[]).map(r => r.book);
+  } catch { return []; }
+}
+
+/** Returns distinct book OSIS codes available in vcb.db, or [] if not imported. */
+export function getVcbBooks(): string[] {
+  const db = getVcbSqlite();
+  if (!db) return [];
+  try {
+    return (db.prepare("SELECT DISTINCT book FROM vcb_verses ORDER BY book").all() as { book: string }[]).map(r => r.book);
+  } catch { return []; }
+}
+
+/** Returns a single workspace by ID, or null if not found. */
+export async function getWorkspaceById(id: number) {
+  const rows = await userDb.select().from(workspaces).where(eq(workspaces.id, id)).limit(1);
+  return rows[0] ?? null;
 }
 
 /**

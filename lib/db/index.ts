@@ -254,6 +254,10 @@ function migrateUserDb(sqlite: Database.Database): void {
     CREATE INDEX IF NOT EXISTS bg_ws_idx ON book_groupings(workspace_id);
   `);
 
+  const workspaceCols = (sqlite.prepare("PRAGMA table_info(workspaces)").all() as { name: string }[]).map(r => r.name);
+  if (!workspaceCols.includes("translation_only"))
+    sqlite.exec("ALTER TABLE workspaces ADD COLUMN translation_only INTEGER NOT NULL DEFAULT 0");
+
   // Seed VCB translation record if vcb.db is present but the translations row is missing
   if (fs.existsSync(VCB_DB_PATH)) {
     const existing = sqlite.prepare("SELECT id FROM translations WHERE abbreviation = 'VCB' LIMIT 1").get();

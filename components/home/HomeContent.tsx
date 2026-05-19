@@ -10,6 +10,48 @@ import LanguagePicker from "@/components/ui/LanguagePicker";
 import { useTranslation } from "@/lib/i18n/LocaleContext";
 import BookGroupingsDialog from "@/components/home/BookGroupingsDialog";
 import ManageTranslationsDialog from "@/components/home/ManageTranslationsDialog";
+import { MORPHGNT_BOOK_MAP, OSIS_BOOK_ORDER } from "@/lib/utils/osis";
+
+// Set of NT OSIS codes for link-source determination
+const NT_OSIS_CODES = new Set(Object.values(MORPHGNT_BOOK_MAP));
+
+// Grid for ULT/VCB — books are OSIS code strings, not Book objects
+function TranslationBookGrid({
+  books,
+  title,
+  bookName,
+}: {
+  books: string[];
+  title: string;
+  bookName: (osisCode: string) => string;
+}) {
+  if (books.length === 0) return null;
+  return (
+    <section className="mb-10">
+      <h2 className="text-lg font-semibold text-stone-700 dark:text-stone-300 mb-3 border-b border-stone-200 dark:border-stone-700 pb-2">
+        {title}
+      </h2>
+      <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-2">
+        {books.map((osisCode) => {
+          const src = NT_OSIS_CODES.has(osisCode) ? "SBLGNT" : "OSHB";
+          const displayName = bookName(osisCode);
+          return (
+            <Link
+              key={osisCode}
+              href={`/${encodeURIComponent(osisCode)}/${src}/1`}
+              className="block px-3 py-2 rounded-lg border text-sm transition-colors text-center hover:border-[var(--accent)] hover:bg-[var(--surface-muted)]"
+              style={{ backgroundColor: "var(--surface)", borderColor: "var(--border)", color: "var(--foreground)" }}
+              title={displayName}
+            >
+              <div className="font-medium truncate text-xs">{osisCode}</div>
+              <div className="text-[11px] truncate" style={{ color: "var(--text-muted)" }}>{displayName}</div>
+            </Link>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
 
 function BookGrid({
   books,
@@ -54,14 +96,28 @@ interface HomeContentProps {
   otBooks: Book[];
   ntBooks: Book[];
   lxxBooks: Book[];
+  translationOnly?: boolean;
+  ultBooks?: string[];
+  vcbBooks?: string[];
 }
 
-export default function HomeContent({ otBooks, ntBooks, lxxBooks }: HomeContentProps) {
-  const { t, bookName } = useTranslation();
+export default function HomeContent({ otBooks, ntBooks, lxxBooks, translationOnly = false, ultBooks = [], vcbBooks = [] }: HomeContentProps) {
+  const { t, bookName, locale } = useTranslation();
   const hasData = otBooks.length + ntBooks.length + lxxBooks.length > 0;
   const [groupingsOpen, setGroupingsOpen] = useState(false);
   const [translationsOpen, setTranslationsOpen] = useState(false);
   const [hiddenSources, setHiddenSources] = useState<string[]>([]);
+
+  // In translation-only mode, pick ULT (English) or VCB (Vietnamese) based on locale,
+  // then sort into canonical Bible order
+  const translationBooks = translationOnly
+    ? [...(locale === "vi" ? vcbBooks : ultBooks)].sort(
+        (a, b) => (OSIS_BOOK_ORDER[a] ?? 999) - (OSIS_BOOK_ORDER[b] ?? 999)
+      )
+    : [];
+  const translationLabel = locale === "vi"
+    ? "Vietnamese Contemporary Bible (VCB)"
+    : "UnfoldingWord Literal Text (ULT)";
 
   useEffect(() => {
     // Load initial hidden sources from sessionStorage (populated by SettingsButton on mount)
@@ -159,7 +215,9 @@ export default function HomeContent({ otBooks, ntBooks, lxxBooks }: HomeContentP
           </div>
         </header>
 
-        {hasData ? (
+        {translationOnly && translationBooks.length > 0 ? (
+          <TranslationBookGrid books={translationBooks} title={translationLabel} bookName={bookName} />
+        ) : hasData ? (
           <>
             {!hiddenSources.includes("OSHB") && <BookGrid books={otBooks} title={t("home.hebrewOt")} bookName={bookName} />}
             {!hiddenSources.includes("SBLGNT") && <BookGrid books={ntBooks} title={t("home.greekNt")} bookName={bookName} />}

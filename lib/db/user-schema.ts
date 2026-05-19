@@ -12,10 +12,11 @@ export const users = sqliteTable("users", {
 export const workspaces = sqliteTable(
   "workspaces",
   {
-    id:        integer("id").primaryKey({ autoIncrement: true }),
-    userId:    integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
-    name:      text("name").notNull(),
-    createdAt: text("created_at").$defaultFn(() => new Date().toISOString()),
+    id:              integer("id").primaryKey({ autoIncrement: true }),
+    userId:          integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    name:            text("name").notNull(),
+    translationOnly: integer("translation_only", { mode: "boolean" }).notNull().default(false),
+    createdAt:       text("created_at").$defaultFn(() => new Date().toISOString()),
   },
   (t) => [index("workspaces_user_idx").on(t.userId)]
 );

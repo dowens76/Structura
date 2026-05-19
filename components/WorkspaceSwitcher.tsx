@@ -8,6 +8,7 @@ import { useTranslation } from "@/lib/i18n/LocaleContext";
 interface Workspace {
   id: number;
   name: string;
+  translationOnly: boolean;
 }
 
 interface Props {
@@ -21,8 +22,7 @@ export default function WorkspaceSwitcher({ activeWorkspaceId }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const router = useRouter();
 
-  // Fetch workspaces for the first user (single-user app)
-  useEffect(() => {
+  function fetchWorkspaces() {
     fetch("/api/users")
       .then((r) => r.json())
       .then(async (data) => {
@@ -34,6 +34,10 @@ export default function WorkspaceSwitcher({ activeWorkspaceId }: Props) {
         }
       })
       .catch(() => {});
+  }
+
+  useEffect(() => {
+    fetchWorkspaces();
   }, []);
 
   // Close on outside click
@@ -49,6 +53,20 @@ export default function WorkspaceSwitcher({ activeWorkspaceId }: Props) {
     document.cookie = `structura_active_workspace=${id}; path=/; SameSite=Lax`;
     setOpen(false);
     router.refresh();
+  }
+
+  async function toggleTranslationOnly(ws: Workspace, value: boolean) {
+    // Optimistic update
+    setWorkspaces((prev) => prev.map((w) => w.id === ws.id ? { ...w, translationOnly: value } : w));
+    await fetch(`/api/workspaces/${ws.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ translationOnly: value }),
+    });
+    // If toggling the active workspace, refresh the page so the home screen updates
+    if (ws.id === activeWorkspaceId) {
+      router.refresh();
+    }
   }
 
   const active = workspaces.find((w) => w.id === activeWorkspaceId);
@@ -73,29 +91,52 @@ export default function WorkspaceSwitcher({ activeWorkspaceId }: Props) {
 
       {open && (
         <div
-          className="absolute right-0 top-full mt-1 w-48 rounded-lg shadow-lg z-50 py-1"
+          className="absolute right-0 top-full mt-1 w-56 rounded-lg shadow-lg z-50 py-1"
           style={{ backgroundColor: "var(--surface)", border: "1px solid var(--border)" }}
         >
           <div className="px-3 py-1 text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>
             {t("nav.workspacesHeading")}
           </div>
+
           {workspaces.map((ws) => (
-            <button
-              key={ws.id}
-              type="button"
-              onClick={() => switchWorkspace(ws.id)}
-              className="w-full text-left px-3 py-1.5 text-sm flex items-center gap-2 hover:bg-stone-100 dark:hover:bg-stone-700 transition-colors"
-              style={{ color: "var(--foreground)" }}
-            >
+            <div key={ws.id}>
+              <button
+                type="button"
+                onClick={() => switchWorkspace(ws.id)}
+                className="w-full text-left px-3 py-1.5 text-sm flex items-center gap-2 hover:bg-stone-100 dark:hover:bg-stone-700 transition-colors"
+                style={{ color: "var(--foreground)" }}
+              >
+                {ws.id === activeWorkspaceId ? (
+                  <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" className="shrink-0">
+                    <path d="M2 6L5 9L10 3" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                ) : (
+                  <span className="w-3 shrink-0" />
+                )}
+                <span className="truncate">{ws.name}</span>
+              </button>
+
+              {/* Translation text only toggle — shown under the active workspace */}
               {ws.id === activeWorkspaceId && (
-                <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" className="shrink-0">
-                  <path d="M2 6L5 9L10 3" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
-                </svg>
+                <label
+                  className="flex items-center gap-2 px-3 pb-2 cursor-pointer"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <span className="w-3 shrink-0" />
+                  <input
+                    type="checkbox"
+                    checked={ws.translationOnly}
+                    onChange={(e) => toggleTranslationOnly(ws, e.target.checked)}
+                    className="accent-[var(--accent)]"
+                  />
+                  <span className="text-xs" style={{ color: "var(--text-muted)" }}>
+                    Translation text only
+                  </span>
+                </label>
               )}
-              {ws.id !== activeWorkspaceId && <span className="w-3 shrink-0" />}
-              <span className="truncate">{ws.name}</span>
-            </button>
+            </div>
           ))}
+
           <div className="border-t mt-1 pt-1" style={{ borderColor: "var(--border)" }}>
             <Link
               href="/account"

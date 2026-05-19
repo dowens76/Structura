@@ -9,26 +9,33 @@ interface RouteContext {
   params: Promise<{ id: string }>;
 }
 
-// PATCH /api/workspaces/[id] — rename a workspace
+// PATCH /api/workspaces/[id] — update workspace (name and/or translationOnly)
 export async function PATCH(request: NextRequest, { params }: RouteContext) {
   const { id: idStr } = await params;
   const id = parseInt(idStr, 10);
   if (isNaN(id)) return NextResponse.json({ error: "Invalid id" }, { status: 400 });
 
-  let body: { name?: string };
+  let body: { name?: string; translationOnly?: boolean };
   try {
     body = await request.json();
   } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  if (!body.name?.trim()) {
-    return NextResponse.json({ error: "name is required" }, { status: 400 });
+  const patch: Partial<{ name: string; translationOnly: boolean }> = {};
+  if (body.name !== undefined) patch.name = body.name.trim();
+  if (body.translationOnly !== undefined) patch.translationOnly = body.translationOnly;
+
+  if (Object.keys(patch).length === 0) {
+    return NextResponse.json({ error: "Nothing to update" }, { status: 400 });
+  }
+  if (patch.name !== undefined && !patch.name) {
+    return NextResponse.json({ error: "name cannot be empty" }, { status: 400 });
   }
 
   const [workspace] = await userDb
     .update(workspaces)
-    .set({ name: body.name.trim() })
+    .set(patch)
     .where(eq(workspaces.id, id))
     .returning();
 

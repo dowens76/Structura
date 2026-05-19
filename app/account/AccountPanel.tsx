@@ -18,6 +18,7 @@ interface Workspace {
   id: number;
   userId: number;
   name: string;
+  translationOnly: boolean;
   createdAt: string;
 }
 
@@ -338,6 +339,16 @@ export default function AccountPanel({ activeWorkspaceId: initialActiveId }: Pro
     }
   }
 
+  // ── Workspace translationOnly toggle ──────────────────────────────────────
+  async function toggleTranslationOnly(id: number, value: boolean) {
+    setWorkspaces((prev) => prev.map((w) => w.id === id ? { ...w, translationOnly: value } : w));
+    await fetch(`/api/workspaces/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ translationOnly: value }),
+    });
+  }
+
   // ── Import submit ──────────────────────────────────────────────────────────
   async function submitImport() {
     setImportError("");
@@ -553,12 +564,23 @@ export default function AccountPanel({ activeWorkspaceId: initialActiveId }: Pro
                       </BtnNeutral>
                     </div>
                   ) : (
-                    <span
-                      className={`text-sm ${isActive ? "font-semibold" : "font-normal"}`}
-                      style={fgStyle}
-                    >
-                      {ws.name}
-                    </span>
+                    <div>
+                      <span
+                        className={`text-sm ${isActive ? "font-semibold" : "font-normal"}`}
+                        style={fgStyle}
+                      >
+                        {ws.name}
+                      </span>
+                      <label className="flex items-center gap-1.5 mt-1 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={ws.translationOnly}
+                          onChange={(e) => toggleTranslationOnly(ws.id, e.target.checked)}
+                          className="accent-[var(--accent)]"
+                        />
+                        <span className="text-xs" style={mutedStyle}>Translation text only</span>
+                      </label>
+                    </div>
                   )}
                 </div>
 
