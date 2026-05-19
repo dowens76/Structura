@@ -9,6 +9,7 @@ import ThemeToggle from "@/components/ThemeToggle";
 import LanguagePicker from "@/components/ui/LanguagePicker";
 import { useTranslation } from "@/lib/i18n/LocaleContext";
 import BookGroupingsDialog from "@/components/home/BookGroupingsDialog";
+import ManageTranslationsDialog from "@/components/home/ManageTranslationsDialog";
 
 function BookGrid({
   books,
@@ -59,6 +60,7 @@ export default function HomeContent({ otBooks, ntBooks, lxxBooks }: HomeContentP
   const { t, bookName } = useTranslation();
   const hasData = otBooks.length + ntBooks.length + lxxBooks.length > 0;
   const [groupingsOpen, setGroupingsOpen] = useState(false);
+  const [translationsOpen, setTranslationsOpen] = useState(false);
 
   return (
     <main className="min-h-screen" style={{ backgroundColor: "var(--background)" }}>
@@ -96,12 +98,27 @@ export default function HomeContent({ otBooks, ntBooks, lxxBooks }: HomeContentP
             >
               {t("home.bookGroupings")}
             </button>
+            <button
+              type="button"
+              onClick={() => setTranslationsOpen(true)}
+              className="text-xs px-3 py-1.5 rounded border transition-colors"
+              style={{ borderColor: "var(--border)", backgroundColor: "var(--surface)", color: "var(--foreground)" }}
+            >
+              Manage Translations
+            </button>
             <Link
               href="/import"
               className="text-xs px-3 py-1.5 rounded border transition-colors"
               style={{ borderColor: "var(--border)", backgroundColor: "var(--surface)", color: "var(--foreground)" }}
             >
               {t("home.importTranslation")}
+            </Link>
+            <Link
+              href="/usfm-export"
+              className="text-xs px-3 py-1.5 rounded border transition-colors"
+              style={{ borderColor: "var(--border)", backgroundColor: "var(--surface)", color: "var(--foreground)" }}
+            >
+              Export USFM
             </Link>
             <Link
               href="/backup"
@@ -144,6 +161,9 @@ export default function HomeContent({ otBooks, ntBooks, lxxBooks }: HomeContentP
         </footer>
       </div>
 
+      {translationsOpen && (
+        <ManageTranslationsDialog onClose={() => setTranslationsOpen(false)} />
+      )}
       {groupingsOpen && (
         <BookGroupingsDialog
           otBooks={otBooks}

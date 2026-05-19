@@ -11,7 +11,7 @@ import {
   getChapterWordTagRefs,
   getChapterLineIndents,
   getChapterWordFormatting,
-  getAvailableTranslationsForChapter,
+  getTranslations,
   getTranslationVerses,
   getChapterClauseRelationships,
   getChapterWordArrows,
@@ -80,7 +80,7 @@ export default async function ExportPassagePage({ params }: PageProps) {
         ])
       )
     ),
-    getAvailableTranslationsForChapter(osisBook, passage.startChapter, workspaceId),
+    getTranslations(workspaceId),
   ]);
 
   // Flatten per-chapter data

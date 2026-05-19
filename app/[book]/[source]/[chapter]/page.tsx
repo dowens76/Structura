@@ -3,15 +3,16 @@ import Link from "next/link";
 import Image from "next/image";
 import {
   getChapterWords, getBook, getBooksBySource, getBooksWithWords,
-  getMaxChapterForSource, getAvailableTranslationsForChapter,
+  getMaxChapterForSource, getTranslations,
   getTranslationVerses, getChapterParagraphBreaks, getCharacters,
   getChapterCharacterRefs, getChapterSpeechSections, getWordTags,
   getChapterWordTagRefs, getChapterLineIndents, getChapterRstRelations,
   getChapterWordArrows, getChapterWordFormatting, getChapterSceneBreaks,
   getChapterLineAnnotations, getBookSceneBreaks, getBookChapterMaxVerses,
   getUltVerses, getUltTranslation, getVcbVerses, getVcbTranslation, getGroupedBooksFor,
+  getChapterTranslationFootnotes,
 } from "@/lib/db/queries";
-import type { TranslationVerse } from "@/lib/db/schema";
+import type { TranslationVerse, TranslationFootnote } from "@/lib/db/schema";
 import type { TextSource } from "@/lib/morphology/types";
 import ChapterDisplay from "@/components/text/ChapterDisplay";
 import ParallelChapterView from "@/components/text/ParallelChapterView";
@@ -91,7 +92,7 @@ export default async function ChapterPage({ params, searchParams }: PageProps) {
     : (bookRecord?.chapterCount ?? 1);
 
   // Skip all annotation fetching in parallel mode (read-only clean view).
-  let availableTranslations: Awaited<ReturnType<typeof getAvailableTranslationsForChapter>> = [];
+  let availableTranslations: Awaited<ReturnType<typeof getTranslations>> = [];
   let initialParagraphBreakIds: string[] = [];
   let initialCharacters: Awaited<ReturnType<typeof getCharacters>> = [];
   let initialCharacterRefs: Awaited<ReturnType<typeof getChapterCharacterRefs>> = [];
@@ -108,6 +109,7 @@ export default async function ChapterPage({ params, searchParams }: PageProps) {
   let bookSceneBreaks: Awaited<ReturnType<typeof getBookSceneBreaks>> = [];
   let bookMaxVerses: Awaited<ReturnType<typeof getBookChapterMaxVerses>> = new Map();
   let translationVerseData: Record<number, TranslationVerse[]> = {};
+  let initialTranslationFootnotes: Record<number, TranslationFootnote[]> = {};
   let ultBaseVerses: { verse: number; text: string }[] = [];
   let ultTranslation: Awaited<ReturnType<typeof getUltTranslation>> = null;
   let vcbBaseVerses: { verse: number; text: string }[] = [];
@@ -128,7 +130,7 @@ export default async function ChapterPage({ params, searchParams }: PageProps) {
      initialRstRelations, initialTvRstRelations, initialWordArrows, initialWordFormatting,
      initialSceneBreaks, initialLineAnnotations,
      bookSceneBreaks, bookMaxVerses] = await Promise.all([
-      getAvailableTranslationsForChapter(osisBook, chapter, workspaceId),
+      getTranslations(workspaceId),
       getChapterParagraphBreaks(osisBook, chapter, workspaceId),
       getCharacters(pairBooks, workspaceId),
       getChapterCharacterRefs(osisBook, chapter, workspaceId),
@@ -148,6 +150,13 @@ export default async function ChapterPage({ params, searchParams }: PageProps) {
     await Promise.all(
       availableTranslations.map(async (t) => {
         translationVerseData[t.id] = await getTranslationVerses(t.id, osisBook, chapter, workspaceId);
+      })
+    );
+
+    // Footnotes for all available translations
+    await Promise.all(
+      availableTranslations.map(async (t) => {
+        initialTranslationFootnotes[t.id] = await getChapterTranslationFootnotes(t.id, osisBook, chapter);
       })
     );
 
@@ -335,6 +344,8 @@ export default async function ChapterPage({ params, searchParams }: PageProps) {
             initialLineAnnotations={initialLineAnnotations}
             bookSceneBreaks={bookSceneBreaks}
             bookMaxVerses={bookMaxVerses}
+            initialTranslationFootnotes={initialTranslationFootnotes}
+            sortedBooks={sourceBooks.map((b) => b.osisCode)}
             headingSlot={
               <div
                 key="chapter-heading"

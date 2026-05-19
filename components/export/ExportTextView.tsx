@@ -5,6 +5,7 @@ import type {
   Word, Character, CharacterRef, SpeechSection,
   WordTag, WordTagRef, ClauseRelationship, WordArrow, LineAnnotation, RstRelation, RstCustomType,
 } from "@/lib/db/schema";
+import type { TranslationTextEntry } from "@/lib/morphology/types";
 import type { Translation, TranslationVerse } from "@/lib/db/schema";
 import VerseDisplay from "@/components/text/VerseDisplay";
 import ClauseRelationshipOverlay from "@/components/text/ClauseRelationshipOverlay";
@@ -241,14 +242,14 @@ export default function ExportTextView({
   // After mount we know which abbreviations are active; before mount show nothing
   // (same behaviour as ChapterDisplay which also starts with no active translations).
   const translationVerseMap = useMemo(() => {
-    if (!mounted) return new Map<number, { abbr: string; text: string }[]>();
-    const map = new Map<number, { abbr: string; text: string }[]>();
+    if (!mounted) return new Map<number, TranslationTextEntry[]>();
+    const map = new Map<number, TranslationTextEntry[]>();
     for (const t of availableTranslations) {
       if (!activeAbbrs.has(t.abbreviation)) continue;
       const verses = translationVerseData[t.id] ?? [];
       for (const v of verses) {
         if (!map.has(v.verse)) map.set(v.verse, []);
-        map.get(v.verse)!.push({ abbr: t.abbreviation, text: v.text });
+        map.get(v.verse)!.push({ abbr: t.abbreviation, text: v.text, translationId: t.id });
       }
     }
     return map;
