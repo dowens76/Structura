@@ -455,9 +455,10 @@ export default function AccountPanel({ activeWorkspaceId: initialActiveId }: Pro
           </p>
         ) : editingUser ? (
           <div className="space-y-3">
+            <p className="text-xs" style={mutedStyle}>Name and email are optional and stored only on this device.</p>
             <div>
               <label className="block text-xs font-medium mb-1" style={mutedStyle}>
-                {t("account.name")}
+                {t("account.name")} <span className="font-normal italic">— optional</span>
               </label>
               <input
                 type="text"
@@ -469,7 +470,7 @@ export default function AccountPanel({ activeWorkspaceId: initialActiveId }: Pro
             </div>
             <div>
               <label className="block text-xs font-medium mb-1" style={mutedStyle}>
-                {t("account.email")}
+                {t("account.email")} <span className="font-normal italic">— optional</span>
               </label>
               <input
                 type="email"
