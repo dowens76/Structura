@@ -253,6 +253,22 @@ function migrateUserDb(sqlite: Database.Database): void {
     );
     CREATE INDEX IF NOT EXISTS bg_ws_idx ON book_groupings(workspace_id);
   `);
+
+  // Seed VCB translation record if vcb.db is present but the translations row is missing
+  if (fs.existsSync(VCB_DB_PATH)) {
+    const existing = sqlite.prepare("SELECT id FROM translations WHERE abbreviation = 'VCB' LIMIT 1").get();
+    if (!existing) {
+      sqlite.prepare(
+        "INSERT OR IGNORE INTO users (id, name, email) VALUES (1, 'User', 'user@structura.app')"
+      ).run();
+      sqlite.prepare(
+        "INSERT OR IGNORE INTO workspaces (id, user_id, name) VALUES (1, 1, 'Default')"
+      ).run();
+      sqlite.prepare(
+        "INSERT INTO translations (workspace_id, name, abbreviation, language) VALUES (1, 'Vietnamese Contemporary Bible 2015', 'VCB', 'Vietnamese')"
+      ).run();
+    }
+  }
 }
 
 export function getUserDb() {
