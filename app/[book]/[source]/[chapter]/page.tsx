@@ -3,7 +3,7 @@ import Link from "next/link";
 import Image from "next/image";
 import {
   getChapterWords, getBook, getBooksBySource, getBooksWithWords,
-  getMaxChapterForSource, getAvailableTranslationsForChapter,
+  getMaxChapterForSource, getTranslations,
   getTranslationVerses, getChapterParagraphBreaks, getCharacters,
   getChapterCharacterRefs, getChapterSpeechSections, getWordTags,
   getChapterWordTagRefs, getChapterLineIndents, getChapterRstRelations,
@@ -92,7 +92,7 @@ export default async function ChapterPage({ params, searchParams }: PageProps) {
     : (bookRecord?.chapterCount ?? 1);
 
   // Skip all annotation fetching in parallel mode (read-only clean view).
-  let availableTranslations: Awaited<ReturnType<typeof getAvailableTranslationsForChapter>> = [];
+  let availableTranslations: Awaited<ReturnType<typeof getTranslations>> = [];
   let initialParagraphBreakIds: string[] = [];
   let initialCharacters: Awaited<ReturnType<typeof getCharacters>> = [];
   let initialCharacterRefs: Awaited<ReturnType<typeof getChapterCharacterRefs>> = [];
@@ -130,7 +130,7 @@ export default async function ChapterPage({ params, searchParams }: PageProps) {
      initialRstRelations, initialTvRstRelations, initialWordArrows, initialWordFormatting,
      initialSceneBreaks, initialLineAnnotations,
      bookSceneBreaks, bookMaxVerses] = await Promise.all([
-      getAvailableTranslationsForChapter(osisBook, chapter, workspaceId),
+      getTranslations(workspaceId),
       getChapterParagraphBreaks(osisBook, chapter, workspaceId),
       getCharacters(pairBooks, workspaceId),
       getChapterCharacterRefs(osisBook, chapter, workspaceId),
