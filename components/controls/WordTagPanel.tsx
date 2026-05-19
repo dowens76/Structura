@@ -6,6 +6,10 @@ import type { LemmaSuggestion } from "@/app/api/search/lemma-suggest/route";
 import { RULE_PALETTE } from "@/lib/morphology/colorRules";
 import { OSIS_BOOKS_OT, OSIS_BOOKS_NT, OSIS_BOOKS_LXX, OSIS_BOOK_NAMES } from "@/lib/utils/osis";
 
+const HEBREW_FONT: React.CSSProperties = { fontFamily: '"Ezra SIL", "SBL Hebrew", serif' };
+function isHebrew(s: string): boolean { return /[א-ת]/.test(s); }
+function hebrewStyle(s: string): React.CSSProperties { return isHebrew(s) ? HEBREW_FONT : {}; }
+
 const TAG_PALETTE: string[] = [
   ...RULE_PALETTE,
   "#b91c1c", "#c2410c", "#a16207", "#166534",
@@ -309,7 +313,7 @@ function LemmaPickerInput({ color, lemmas, pickingActive, onAdd, onRemove, onReq
         <div className="flex flex-wrap gap-1">
           {lemmas.map((l) => (
             <span key={l} className="flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded-full border"
-              style={{ borderColor: color, color: "var(--foreground)" }}>
+              style={{ borderColor: color, color: "var(--foreground)", ...hebrewStyle(l) }}>
               {l}
               <button type="button" onClick={() => onRemove(l)}
                 className="ml-0.5 opacity-50 hover:opacity-100 leading-none">×</button>
@@ -342,7 +346,7 @@ function LemmaPickerInput({ color, lemmas, pickingActive, onAdd, onRemove, onReq
                     className="w-full text-left px-3 py-1.5 flex items-center gap-2 transition-colors hover:bg-stone-100 dark:hover:bg-stone-800 disabled:opacity-40"
                     style={{ backgroundColor: idx === activeSuggIdx ? "var(--surface-muted, var(--surface))" : undefined, color: "var(--foreground)" }}
                     disabled={alreadyAdded}>
-                    <span className="text-[11px] shrink-0" style={{ direction: s.language === "hebrew" ? "rtl" : "ltr" }}>{label}</span>
+                    <span className="text-[11px] shrink-0" style={{ direction: s.language === "hebrew" ? "rtl" : "ltr", ...(s.language === "hebrew" ? HEBREW_FONT : {}) }}>{label}</span>
                     {s.strongNumber && (
                       <span className="text-[9px] font-mono opacity-50 shrink-0">{s.strongNumber}</span>
                     )}
@@ -632,7 +636,7 @@ export default function WordTagPanel({
               ) : (
                 <>
                   <span className="inline-block w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: t.color }} />
-                  {t.name}
+                  <span style={hebrewStyle(t.name)}>{t.name}</span>
                   {/* type badge */}
                   <span className="text-[9px] font-bold uppercase tracking-wider opacity-50 ml-0.5" style={{ color: t.color }}>
                     {typeBadge(t)}
@@ -755,7 +759,7 @@ export default function WordTagPanel({
                 style={{ color: "var(--foreground)" }}>
                 <span className="text-stone-300 dark:text-stone-600 text-xs leading-none">⠿</span>
                 <span className="inline-block w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: t.color }} />
-                <span className="text-xs flex-1">{t.name}</span>
+                <span className="text-xs flex-1" style={hebrewStyle(t.name)}>{t.name}</span>
                 <span className="text-[9px] font-bold uppercase opacity-40" style={{ color: t.color }}>
                   {typeBadge(t)}
                 </span>

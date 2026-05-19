@@ -22,6 +22,16 @@ function isHebrew(s: string): boolean {
   return /[א-ת]/.test(s);
 }
 
+// Strip Hebrew niqqud (U+05B0–U+05C7) and cantillation (U+0591–U+05AF)
+function stripVowels(s: string): string {
+  return s.replace(/[֑-ׇ]/g, "");
+}
+
+// True if the string has Hebrew consonants but no niqqud — i.e. a root/consonantal query
+function isConsonantalHebrew(s: string): boolean {
+  return isHebrew(s) && !/[ְ-ׇ]/.test(s);
+}
+
 function isGreek(s: string): boolean {
   return /[Ͱ-Ͽἀ-῿]/.test(s);
 }
@@ -99,29 +109,48 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ suggestions: [suggestion] });
   }
 
-  // ── Hebrew text prefix search ──────────────────────────────────────────────
+  // ── Hebrew text prefix search — query lexicon for dictionary-form lemmas ─────
   if (isHebrew(q)) {
-    const oshbId = sourceLookups.textSourceByValue["OSHB"];
-    if (oshbId == null) return NextResponse.json({ suggestions: [] });
+    if (!lexicaDb) return NextResponse.json({ suggestions: [] });
 
-    const rows = await sourceDb
-      .select({ surfaceNorm: words.surfaceNorm, surfaceText: words.surfaceText, strongNumber: words.strongNumber, lemma: words.lemma })
-      .from(words)
-      .where(and(eq(words.textSourceId, oshbId), like(words.surfaceNorm, `${q}%`)))
-      .groupBy(words.surfaceNorm, words.strongNumber, words.lemma)
-      .orderBy(sql`length(${words.surfaceNorm})`, words.surfaceNorm)
-      .limit(limit);
+    const consonantal = isConsonantalHebrew(q);
+    // For consonantal queries, fetch all entries starting with the first consonant
+    // then filter in JS by comparing stripped lemmas. Prefix with % anchor on first consonant.
+    const firstConsonant = q[0];
+    const dbQuery = consonantal
+      ? like(lexiconEntries.lemma, `${firstConsonant}%`)
+      : like(lexiconEntries.lemma, `${q}%`);
 
-    const filtered = rows.filter((r) => r.surfaceNorm);
-    const strongNums = [...new Set(filtered.map((r) => r.strongNumber).filter(Boolean) as string[])];
-    const glossMap = await fetchGlosses(strongNums, "hebrew");
+    const lexRows = await lexicaDb
+      .select({ strongNumber: lexiconEntries.strongNumber, lemma: lexiconEntries.lemma, shortGloss: lexiconEntries.shortGloss, source: lexiconEntries.source })
+      .from(lexiconEntries)
+      .where(and(eq(lexiconEntries.language, "hebrew"), dbQuery))
+      .orderBy(sql`length(${lexiconEntries.lemma})`, lexiconEntries.lemma)
+      .limit(consonantal ? 500 : limit * 3);
 
-    const suggestions: LemmaSuggestion[] = filtered.map((r) => ({
-      surfaceNorm: r.surfaceNorm!,
-      surfaceText: r.surfaceText,
+    // For consonantal queries, filter by stripping vowels from the lemma
+    const filtered = consonantal
+      ? lexRows.filter((r) => r.lemma && stripVowels(r.lemma).startsWith(q))
+      : lexRows;
+
+    // Deduplicate by strongNumber, preferring BDB then HebrewStrong
+    const priority: Record<string, number> = { BDB: 0, HebrewStrong: 1 };
+    const best = new Map<string, typeof lexRows[0]>();
+    for (const row of filtered) {
+      if (!row.strongNumber || !row.lemma) continue;
+      const existing = best.get(row.strongNumber);
+      const existingP = existing ? (priority[existing.source ?? ""] ?? 99) : Infinity;
+      const thisP = priority[row.source ?? ""] ?? 99;
+      if (!existing || thisP < existingP) best.set(row.strongNumber, row);
+    }
+
+    const deduped = [...best.values()].slice(0, limit);
+    const suggestions: LemmaSuggestion[] = deduped.map((r) => ({
+      surfaceNorm: r.lemma!,
+      surfaceText: r.lemma,
       strongNumber: r.strongNumber,
       lemma: r.lemma,
-      gloss: r.strongNumber ? (glossMap.get(r.strongNumber) ?? null) : null,
+      gloss: r.shortGloss ?? null,
       language: "hebrew",
     }));
     return NextResponse.json({ suggestions });
