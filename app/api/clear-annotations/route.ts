@@ -9,6 +9,7 @@ import {
   wordArrows,
   wordFormatting,
   clauseRelationships,
+  rstRelations,
 } from "@/lib/db/schema";
 import { and, eq, gte, lte, type SQL } from "drizzle-orm";
 import { getActiveWorkspaceId } from "@/lib/workspace";
@@ -24,6 +25,7 @@ const VALID_CATEGORIES = [
   "wordArrows",
   "wordFormatting",
   "clauseRelationships",
+  "rstRelations",
 ] as const;
 type Category = (typeof VALID_CATEGORIES)[number];
 
@@ -98,6 +100,11 @@ export async function POST(req: NextRequest) {
       case "clauseRelationships":
         await userDb.delete(clauseRelationships).where(
           and(eq(clauseRelationships.workspaceId, workspaceId), eq(clauseRelationships.book, book), chapterCond(clauseRelationships.chapter), eq(clauseRelationships.textSource, textSource))
+        );
+        break;
+      case "rstRelations":
+        await userDb.delete(rstRelations).where(
+          and(eq(rstRelations.workspaceId, workspaceId), eq(rstRelations.book, book), chapterCond(rstRelations.chapter), eq(rstRelations.textSource, textSource))
         );
         break;
     }
