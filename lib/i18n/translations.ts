@@ -198,7 +198,7 @@ const en = {
     titleSectionOn: "Exit section break mode",
     titleSectionOff: "Enter section break mode — click any word to start/remove a section break there",
     titleAnnotationOn: "Exit annotation mode",
-    titleAnnotationOff: "Add plot/theme annotations to paragraph segments",
+    titleAnnotationOff: "Add clause/paragraph labels",
     titleRefsOn: "Exit reference tagging",
     titleRefsOff: "Tag words as referring to a character",
     titleSpeechOn: "Exit speech tagging",
