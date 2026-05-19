@@ -170,6 +170,13 @@ export default function PassageView({
   useEffect(() => { writeLocal("structura:useLinguisticTerms", useLinguisticTerms); }, [useLinguisticTerms]);
   useEffect(() => { writeLocal("structura:hideSourceText", hideSourceText); }, [hideSourceText]);
 
+  useEffect(() => {
+    fetch("/api/book-groupings")
+      .then((r) => r.json())
+      .then((d: { groupings?: import("@/lib/db/schema").BookGrouping[] }) => setBookGroupings(d.groupings ?? []))
+      .catch(() => {});
+  }, []);
+
   // Restore all persisted settings after hydration — avoids SSR/client HTML mismatch.
   // Font sizes are included here (not in lazy initializers) for the same reason.
   // Write effects for font sizes were removed; adjustFontSize writes directly instead.
@@ -215,6 +222,8 @@ export default function PassageView({
   const [highlightWordTagIds, setHighlightWordTagIds] = useState<Set<number>>(new Set());
   const [pendingWordTag, setPendingWordTag] = useState(false);
   const [pendingWordTagColor, setPendingWordTagColor] = useState<string | null>(null);
+  const [pendingWordTagCorpusGroupingId, setPendingWordTagCorpusGroupingId] = useState<number | null>(null);
+  const [bookGroupings, setBookGroupings] = useState<import("@/lib/db/schema").BookGrouping[]>([]);
 
   const wordTagMap = useMemo(
     () => new Map(wordTags.map((t) => [t.id, t])),
@@ -963,9 +972,10 @@ export default function PassageView({
             ?? word.surfaceText?.replace(/\//g, "")
             ?? "?")
         : (word.lemma ?? word.surfaceText ?? "?");
-      await handleCreateTag("word", lemma, pendingWordTagColor, word.wordId, textSource, wordChapter);
+      await handleCreateTag("word", lemma, pendingWordTagColor, word.wordId, textSource, wordChapter, pendingWordTagCorpusGroupingId);
       setPendingWordTag(false);
       setPendingWordTagColor(null);
+      setPendingWordTagCorpusGroupingId(null);
       return;
     }
     if (activeWordTagId === null) return;
@@ -978,11 +988,13 @@ export default function PassageView({
     color: string,
     firstWordId?: string,
     firstWordSource?: string,
-    firstWordChapter?: number
+    firstWordChapter?: number,
+    corpusGroupingId?: number | null,
   ) {
     const tempTag: WordTag = {
       id: -(Date.now()), book: osisBook, name, color, type,
       createdAt: new Date().toISOString(), workspaceId: 0, sortOrder: null,
+      corpusGroupingId: corpusGroupingId ?? null, lemmas: null,
     };
     setWordTags((prev) => [...prev, tempTag]);
     setActiveWordTagId(tempTag.id);
@@ -991,7 +1003,7 @@ export default function PassageView({
       const res = await fetch("/api/word-tags", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, color, type, book: osisBook }),
+        body: JSON.stringify({ name, color, type, book: osisBook, corpusGroupingId: corpusGroupingId ?? null }),
       });
       const data = await res.json();
       const realTag: WordTag = data.tag;
@@ -1017,13 +1029,61 @@ export default function PassageView({
     }
   }
 
-  function handleCreateConceptTag(name: string, color: string) {
-    return handleCreateTag("concept", name, color);
+  async function handleCreateClusterTag(
+    name: string,
+    lemmas: string[],
+    color: string,
+    corpusGroupingId: number | null,
+    corpusBooks: string[],
+  ) {
+    const tempTag: WordTag = {
+      id: -(Date.now()), book: osisBook, name, color, type: "cluster",
+      createdAt: new Date().toISOString(), workspaceId: 0, sortOrder: null,
+      corpusGroupingId: corpusGroupingId ?? null, lemmas: JSON.stringify(lemmas),
+    };
+    setWordTags((prev) => [...prev, tempTag]);
+    setActiveWordTagId(tempTag.id);
+
+    try {
+      const res = await fetch("/api/word-tags/cluster", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name, color, book: osisBook, lemmas, corpusBooks,
+          textSource, corpusGroupingId, currentChapter: passage.startChapter,
+        }),
+      });
+      const data = await res.json();
+      const realTag: WordTag = data.tag;
+      setWordTags((prev) => prev.map((t) => t.id === tempTag.id ? realTag : t));
+      setActiveWordTagId(realTag.id);
+
+      const chapterRefs = (data.chapterRefs ?? []) as Array<{ wordId: string; book: string; chapter: number; textSource: string }>;
+      if (chapterRefs.length > 0) {
+        setWordTagRefMap((prev) => {
+          const next = new Map(prev);
+          for (const r of chapterRefs) {
+            if (!next.has(r.wordId)) {
+              next.set(r.wordId, { id: -1, wordId: r.wordId, tagId: realTag.id, textSource: r.textSource, book: r.book, chapter: r.chapter, workspaceId: 0 });
+            }
+          }
+          return next;
+        });
+      }
+    } catch {
+      setWordTags((prev) => prev.filter((t) => t.id !== tempTag.id));
+      setActiveWordTagId(wordTags[0]?.id ?? null);
+    }
   }
 
-  function handleCreatePendingWordTag(color: string) {
+  function handleCreateConceptTag(name: string, color: string, corpusGroupingId: number | null) {
+    return handleCreateTag("concept", name, color, undefined, undefined, undefined, corpusGroupingId);
+  }
+
+  function handleCreatePendingWordTag(color: string, corpusGroupingId: number | null) {
     setPendingWordTag(true);
     setPendingWordTagColor(color);
+    setPendingWordTagCorpusGroupingId(corpusGroupingId);
   }
 
   async function handleDeleteWordTag(id: number) {
@@ -1046,14 +1106,19 @@ export default function PassageView({
     }
   }
 
-  async function handleUpdateWordTag(id: number, name: string, color: string) {
+  async function handleUpdateWordTag(id: number, name: string, color: string, corpusGroupingId?: number | null, lemmas?: string[] | null) {
     const prev = wordTags.find((t) => t.id === id);
-    setWordTags((ts) => ts.map((t) => t.id === id ? { ...t, name, color } : t));
+    const lemmasJson = lemmas?.length ? JSON.stringify(lemmas) : null;
+    setWordTags((ts) => ts.map((t) => t.id === id ? {
+      ...t, name, color,
+      corpusGroupingId: corpusGroupingId !== undefined ? corpusGroupingId : t.corpusGroupingId,
+      lemmas: lemmas !== undefined ? lemmasJson : t.lemmas,
+    } : t));
     try {
       await fetch(`/api/word-tags/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, color }),
+        body: JSON.stringify({ name, color, corpusGroupingId, lemmas }),
       });
     } catch {
       if (prev) setWordTags((ts) => ts.map((t) => t.id === id ? prev : t));
@@ -1084,6 +1149,18 @@ export default function PassageView({
       else next.add(id);
       return next;
     });
+  }
+
+  async function handleCreateBookGrouping(name: string, books: string[], features: string[]): Promise<import("@/lib/db/schema").BookGrouping> {
+    const res = await fetch("/api/book-groupings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, books, features }),
+    });
+    const data = await res.json();
+    const grouping: import("@/lib/db/schema").BookGrouping = data.grouping;
+    setBookGroupings((prev) => [...prev, grouping]);
+    return grouping;
   }
 
   // ── Speech section handlers ───────────────────────────────────────────────
@@ -2326,13 +2403,17 @@ export default function PassageView({
             activeTagId={activeWordTagId}
             highlightedTagIds={highlightWordTagIds}
             pendingWordTag={pendingWordTag}
+            currentBook={osisBook}
+            bookGroupings={bookGroupings}
             onSelectTag={(id) => { setActiveWordTagId(id); setPendingWordTag(false); }}
             onCreateConceptTag={handleCreateConceptTag}
             onCreatePendingWordTag={handleCreatePendingWordTag}
+            onCreateClusterTag={handleCreateClusterTag}
             onDeleteTag={handleDeleteWordTag}
             onUpdateTag={handleUpdateWordTag}
             onReorder={handleReorderWordTags}
             onToggleHighlight={handleToggleWordTagHighlight}
+            onCreateGrouping={handleCreateBookGrouping}
           />
         )}
 

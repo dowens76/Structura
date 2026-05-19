@@ -131,15 +131,19 @@ export const speechSections = sqliteTable(
 export const wordTags = sqliteTable(
   "word_tags",
   {
-    id:          integer("id").primaryKey({ autoIncrement: true }),
-    workspaceId: integer("workspace_id").notNull().default(1)
-                   .references(() => workspaces.id, { onDelete: "cascade" }),
-    book:        text("book").notNull(),
-    name:        text("name").notNull(),
-    color:       text("color").notNull(),
-    type:        text("type").notNull().default("concept"),
-    sortOrder:   integer("sort_order").default(0),
-    createdAt:   text("created_at").$defaultFn(() => new Date().toISOString()),
+    id:                integer("id").primaryKey({ autoIncrement: true }),
+    workspaceId:       integer("workspace_id").notNull().default(1)
+                         .references(() => workspaces.id, { onDelete: "cascade" }),
+    book:              text("book").notNull(),
+    name:              text("name").notNull(),
+    color:             text("color").notNull(),
+    type:              text("type").notNull().default("concept"),
+    sortOrder:         integer("sort_order").default(0),
+    createdAt:         text("created_at").$defaultFn(() => new Date().toISOString()),
+    /** FK to book_groupings.id — plain integer to avoid circular reference in Drizzle */
+    corpusGroupingId:  integer("corpus_grouping_id"),
+    /** JSON-encoded string[] of lemmas for "cluster" type tags */
+    lemmas:            text("lemmas"),
   },
   (t) => [index("wt_book_idx").on(t.book)]
 );

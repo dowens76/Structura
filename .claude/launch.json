@@ -4,7 +4,7 @@
     {
       "name": "structura-dev",
       "runtimeExecutable": "/bin/sh",
-      "runtimeArgs": ["-c", "cd /Users/daniel/Documents/GitHub/Structura-0.8.0 && PATH=/usr/local/bin:$PATH npm run dev"],
+      "runtimeArgs": ["-c", "cd /Users/daniel/Documents/GitHub/Structura && PATH=/usr/local/bin:$PATH npm run dev"],
       "port": 3000,
       "autoPort": true
     }

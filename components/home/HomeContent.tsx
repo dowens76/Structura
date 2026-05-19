@@ -69,7 +69,7 @@ export default function HomeContent({ otBooks, ntBooks, lxxBooks }: HomeContentP
           <div className="flex items-start justify-between gap-4 mb-6">
             <Image
               src="/structura-full-logo.svg"
-              alt="Structura — Visual Bible Analysis"
+              alt="Structura — A Workbench for Scripture Study"
               width={540}
               height={252}
               priority
@@ -77,7 +77,7 @@ export default function HomeContent({ otBooks, ntBooks, lxxBooks }: HomeContentP
             />
             <Image
               src="/structura-full-logo-dark.svg"
-              alt="Structura — Visual Bible Analysis"
+              alt="Structura — A Workbench for Scripture Study"
               width={540}
               height={252}
               priority

@@ -943,16 +943,32 @@ export async function createWordTag(
   color: string,
   type: string,
   book: string,
-  workspaceId: number
+  workspaceId: number,
+  corpusGroupingId?: number | null,
+  lemmas?: string[] | null,
 ): Promise<WordTag> {
-  const result = await userDb.insert(wordTags).values({ name, color, type, book, workspaceId }).returning();
+  const result = await userDb.insert(wordTags).values({
+    name, color, type, book, workspaceId,
+    corpusGroupingId: corpusGroupingId ?? null,
+    lemmas: lemmas?.length ? JSON.stringify(lemmas) : null,
+  }).returning();
   return result[0];
 }
 
-export async function updateWordTag(id: number, name: string, color: string): Promise<WordTag> {
+export async function updateWordTag(
+  id: number,
+  name: string,
+  color: string,
+  corpusGroupingId?: number | null,
+  lemmas?: string[] | null,
+): Promise<WordTag> {
+  const setData: Record<string, unknown> = { name, color };
+  if (corpusGroupingId !== undefined) setData.corpusGroupingId = corpusGroupingId;
+  if (lemmas !== undefined) setData.lemmas = lemmas?.length ? JSON.stringify(lemmas) : null;
   const result = await userDb
     .update(wordTags)
-    .set({ name, color })
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    .set(setData as any)
     .where(eq(wordTags.id, id))
     .returning();
   return result[0];
@@ -990,6 +1006,59 @@ export async function removeWordTagRef(wordId: string, workspaceId: number): Pro
   await userDb.delete(wordTagRefs).where(
     and(eq(wordTagRefs.workspaceId, workspaceId), eq(wordTagRefs.wordId, wordId))
   );
+}
+
+/** Search for words by a list of lemma strings (supports Strong's H/G numbers)
+ *  within a given set of corpus books and text source.
+ *  Returns lightweight refs suitable for bulk word-tag-ref insertion. */
+export async function getWordRefsByLemmas(
+  lemmas: string[],
+  corpusBooks: string[],
+  textSourceName: string,
+): Promise<Array<{ wordId: string; book: string; chapter: number; textSource: string }>> {
+  if (lemmas.length === 0 || corpusBooks.length === 0) return [];
+
+  const isLxx = textSourceName === "STEPBIBLE_LXX" || textSourceName === "LXX";
+
+  function buildLemmaConditions(lemmaList: string[]) {
+    return lemmaList.map((q) => {
+      if (/^[HG]\d+[a-z]?$/.test(q)) return eq(words.strongNumber, q);
+      return like(words.lemma, `%${q}%`);
+    });
+  }
+
+  const refs: Array<{ wordId: string; book: string; chapter: number; textSource: string }> = [];
+
+  if (isLxx) {
+    const lxxDb = getLxxDb();
+    if (!lxxDb) return refs;
+    const bookCond = corpusBooks.length === 1
+      ? eq(books.osisCode, corpusBooks[0])
+      : inArray(books.osisCode, corpusBooks);
+    const lemmaConds = buildLemmaConditions(lemmas);
+    const rows = await lxxDb
+      .select({ wordId: words.wordId, osisCode: books.osisCode, chapter: words.chapter })
+      .from(words)
+      .innerJoin(books, eq(words.bookId, books.id))
+      .where(and(bookCond, lemmaConds.length === 1 ? lemmaConds[0] : or(...lemmaConds)));
+    for (const r of rows) refs.push({ wordId: r.wordId, book: r.osisCode, chapter: r.chapter, textSource: "STEPBIBLE_LXX" });
+  } else {
+    const bookCond = corpusBooks.length === 1
+      ? eq(books.osisCode, corpusBooks[0])
+      : inArray(books.osisCode, corpusBooks);
+    const lemmaConds = buildLemmaConditions(lemmas);
+    const rows = await sourceDb
+      .select({ wordId: words.wordId, osisCode: books.osisCode, chapter: words.chapter, textSourceId: words.textSourceId })
+      .from(words)
+      .innerJoin(books, eq(words.bookId, books.id))
+      .where(and(bookCond, lemmaConds.length === 1 ? lemmaConds[0] : or(...lemmaConds)));
+    for (const r of rows) {
+      const ts = sourceLookups.textSourceById[r.textSourceId] ?? textSourceName;
+      refs.push({ wordId: r.wordId, book: r.osisCode, chapter: r.chapter, textSource: ts });
+    }
+  }
+
+  return refs;
 }
 
 // ── Line Indents (chapter-scoped) ─────────────────────────────────────────────
