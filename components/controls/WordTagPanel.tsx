@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import type { WordTag, BookGrouping } from "@/lib/db/schema";
+import type { LemmaSuggestion } from "@/app/api/search/lemma-suggest/route";
 import { RULE_PALETTE } from "@/lib/morphology/colorRules";
 import { OSIS_BOOKS_OT, OSIS_BOOKS_NT, OSIS_BOOKS_LXX, OSIS_BOOK_NAMES } from "@/lib/utils/osis";
 
@@ -21,6 +22,7 @@ interface WordTagPanelProps {
   pendingWordTag: boolean;
   currentBook: string;
   bookGroupings: BookGrouping[];
+  clusterPickingActive: boolean;
   onSelectTag: (id: number) => void;
   onCreateConceptTag: (name: string, color: string, corpusGroupingId: number | null) => void;
   onCreatePendingWordTag: (color: string, corpusGroupingId: number | null) => void;
@@ -30,6 +32,8 @@ interface WordTagPanelProps {
   onReorder: (ids: number[]) => void;
   onToggleHighlight: (id: number) => void;
   onCreateGrouping: (name: string, books: string[], features: string[]) => Promise<BookGrouping>;
+  onRequestWordClick: (onPicked: (lemma: string) => void) => void;
+  onCancelWordClick: () => void;
 }
 
 // ── Inline Book Grouping creator ─────────────────────────────────────────────
@@ -207,6 +211,172 @@ function CorpusSelector({ currentBook, bookGroupings, corpusMode, corpusGrouping
   );
 }
 
+// ── Lemma Picker Input ────────────────────────────────────────────────────────
+
+interface LemmaPickerInputProps {
+  color: string;
+  lemmas: string[];
+  pickingActive: boolean;
+  onAdd: (lemma: string) => void;
+  onRemove: (lemma: string) => void;
+  onRequestWordClick: (onPicked: (lemma: string) => void) => void;
+  onCancelWordClick: () => void;
+}
+
+function LemmaPickerInput({ color, lemmas, pickingActive, onAdd, onRemove, onRequestWordClick, onCancelWordClick }: LemmaPickerInputProps) {
+  const [inputVal, setInputVal] = useState("");
+  const [suggestions, setSuggestions] = useState<LemmaSuggestion[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [loadingSuggestions, setLoadingSuggestions] = useState(false);
+  const [activeSuggIdx, setActiveSuggIdx] = useState(-1);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function onClickOutside(e: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setShowSuggestions(false);
+      }
+    }
+    document.addEventListener("mousedown", onClickOutside);
+    return () => document.removeEventListener("mousedown", onClickOutside);
+  }, []);
+
+  function handleInput(val: string) {
+    setInputVal(val);
+    setActiveSuggIdx(-1);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (!val.trim()) { setSuggestions([]); setShowSuggestions(false); return; }
+    debounceRef.current = setTimeout(async () => {
+      setLoadingSuggestions(true);
+      try {
+        const res = await fetch(`/api/search/lemma-suggest?q=${encodeURIComponent(val.trim())}&limit=10`);
+        const data = await res.json();
+        setSuggestions(data.suggestions ?? []);
+        setShowSuggestions((data.suggestions ?? []).length > 0);
+      } catch { setSuggestions([]); }
+      finally { setLoadingSuggestions(false); }
+    }, 280);
+  }
+
+  function canonicalId(s: LemmaSuggestion): string {
+    return s.language === "hebrew"
+      ? (s.strongNumber ?? s.surfaceNorm)
+      : (s.lemma ?? s.surfaceNorm);
+  }
+
+  function displayLabel(s: LemmaSuggestion): string {
+    return s.language === "hebrew"
+      ? (s.surfaceText ?? s.surfaceNorm)
+      : (s.lemma ?? s.surfaceNorm);
+  }
+
+  function pickSuggestion(s: LemmaSuggestion) {
+    const id = canonicalId(s);
+    if (id) onAdd(id);
+    setInputVal("");
+    setSuggestions([]);
+    setShowSuggestions(false);
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === "ArrowDown") { e.preventDefault(); setActiveSuggIdx((i) => Math.min(i + 1, suggestions.length - 1)); return; }
+    if (e.key === "ArrowUp") { e.preventDefault(); setActiveSuggIdx((i) => Math.max(i - 1, -1)); return; }
+    if (e.key === "Enter") {
+      e.preventDefault();
+      if (activeSuggIdx >= 0 && suggestions[activeSuggIdx]) {
+        pickSuggestion(suggestions[activeSuggIdx]);
+      } else if (inputVal.trim()) {
+        onAdd(inputVal.trim());
+        setInputVal("");
+        setSuggestions([]);
+        setShowSuggestions(false);
+      }
+      return;
+    }
+    if (e.key === "Escape") { setShowSuggestions(false); setInputVal(""); }
+  }
+
+  function handlePickFromText() {
+    if (pickingActive) { onCancelWordClick(); return; }
+    onRequestWordClick((lemma) => { onAdd(lemma); });
+  }
+
+  return (
+    <div className="space-y-1">
+      <span className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>Lemmas</span>
+      {lemmas.length > 0 && (
+        <div className="flex flex-wrap gap-1">
+          {lemmas.map((l) => (
+            <span key={l} className="flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded-full border"
+              style={{ borderColor: color, color: "var(--foreground)" }}>
+              {l}
+              <button type="button" onClick={() => onRemove(l)}
+                className="ml-0.5 opacity-50 hover:opacity-100 leading-none">×</button>
+            </span>
+          ))}
+        </div>
+      )}
+      <div className="flex gap-1 items-center" ref={containerRef}>
+        <div className="relative flex-1">
+          <input
+            type="text"
+            value={inputVal}
+            onChange={(e) => handleInput(e.target.value)}
+            onKeyDown={handleKeyDown}
+            onFocus={() => suggestions.length > 0 && setShowSuggestions(true)}
+            placeholder="Type lemma or H/G1234…"
+            className="w-full text-[10px] px-1.5 py-0.5 rounded border bg-transparent"
+            style={{ borderColor: "var(--border)", color: "var(--foreground)" }}
+          />
+          {showSuggestions && suggestions.length > 0 && (
+            <div className="absolute top-full left-0 mt-0.5 z-50 rounded-lg border shadow-lg py-1 min-w-[220px] max-h-48 overflow-y-auto"
+              style={{ borderColor: "var(--border)", backgroundColor: "var(--surface)" }}>
+              {suggestions.map((s, idx) => {
+                const id = canonicalId(s);
+                const label = displayLabel(s);
+                const alreadyAdded = lemmas.includes(id);
+                return (
+                  <button key={`${id}-${idx}`} type="button"
+                    onMouseDown={(e) => { e.preventDefault(); if (!alreadyAdded) pickSuggestion(s); }}
+                    className="w-full text-left px-3 py-1.5 flex items-center gap-2 transition-colors hover:bg-stone-100 dark:hover:bg-stone-800 disabled:opacity-40"
+                    style={{ backgroundColor: idx === activeSuggIdx ? "var(--surface-muted, var(--surface))" : undefined, color: "var(--foreground)" }}
+                    disabled={alreadyAdded}>
+                    <span className="text-[11px] shrink-0" style={{ direction: s.language === "hebrew" ? "rtl" : "ltr" }}>{label}</span>
+                    {s.strongNumber && (
+                      <span className="text-[9px] font-mono opacity-50 shrink-0">{s.strongNumber}</span>
+                    )}
+                    {s.gloss && (
+                      <span className="text-[9px] truncate opacity-70 flex-1">{s.gloss}</span>
+                    )}
+                    {alreadyAdded && <span className="text-[9px] opacity-40 ml-auto">✓</span>}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+          {loadingSuggestions && (
+            <span className="absolute right-1 top-0.5 text-[9px] opacity-40" style={{ color: "var(--text-muted)" }}>…</span>
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={handlePickFromText}
+          title={pickingActive ? "Cancel picking" : "Click a word in the text to add its lemma"}
+          className={`text-[10px] px-1.5 py-0.5 rounded border transition-colors shrink-0 ${pickingActive ? "border-amber-400 text-amber-600 dark:text-amber-400" : "border-transparent hover:border-blue-400 hover:text-blue-500"}`}
+          style={{ color: pickingActive ? undefined : "var(--text-muted)" }}>
+          {pickingActive ? "↑ Cancel" : "↑ Text"}
+        </button>
+      </div>
+      {pickingActive && (
+        <p className="text-[9px] italic animate-pulse" style={{ color: "var(--accent)" }}>
+          Click any source word to add its lemma…
+        </p>
+      )}
+    </div>
+  );
+}
+
 // ── Main panel ────────────────────────────────────────────────────────────────
 
 export default function WordTagPanel({
@@ -216,6 +386,7 @@ export default function WordTagPanel({
   pendingWordTag,
   currentBook,
   bookGroupings,
+  clusterPickingActive,
   onSelectTag,
   onCreateConceptTag,
   onCreatePendingWordTag,
@@ -225,13 +396,14 @@ export default function WordTagPanel({
   onReorder,
   onToggleHighlight,
   onCreateGrouping,
+  onRequestWordClick,
+  onCancelWordClick,
 }: WordTagPanelProps) {
   const [showNew, setShowNew] = useState(false);
   const [newType, setNewType] = useState<TagType>("concept");
   const [newName, setNewName] = useState("");
   const [newColor, setNewColor] = useState(TAG_PALETTE[0]);
   const [newLemmas, setNewLemmas] = useState<string[]>([]);
-  const [newLemmaInput, setNewLemmaInput] = useState("");
   const [newCorpusMode, setNewCorpusMode] = useState<CorpusMode>("book");
   const [newCorpusGroupingId, setNewCorpusGroupingId] = useState<number | null>(null);
 
@@ -243,7 +415,6 @@ export default function WordTagPanel({
   const [editCorpusMode, setEditCorpusMode] = useState<CorpusMode>("book");
   const [editCorpusGroupingId, setEditCorpusGroupingId] = useState<number | null>(null);
   const [editLemmas, setEditLemmas] = useState<string[]>([]);
-  const [editLemmaInput, setEditLemmaInput] = useState("");
 
   const [showReorder, setShowReorder] = useState(false);
   const [reorderList, setReorderList] = useState<WordTag[]>([]);
@@ -254,7 +425,6 @@ export default function WordTagPanel({
     setNewColor(TAG_PALETTE[0]);
     setNewType("concept");
     setNewLemmas([]);
-    setNewLemmaInput("");
     setNewCorpusMode("book");
     setNewCorpusGroupingId(null);
   }
@@ -267,7 +437,6 @@ export default function WordTagPanel({
     setEditCorpusMode(t.corpusGroupingId != null ? "grouping" : "book");
     const parsed = t.lemmas ? (() => { try { return JSON.parse(t.lemmas) as string[]; } catch { return []; } })() : [];
     setEditLemmas(parsed);
-    setEditLemmaInput("");
     setConfirmDeleteId(null);
   }
 
@@ -318,13 +487,6 @@ export default function WordTagPanel({
     const g = await onCreateGrouping(name, booksArr, ["wordTags"]);
     setEditCorpusMode("grouping");
     setEditCorpusGroupingId(g.id);
-  }
-
-  function addLemma(input: string, setter: React.Dispatch<React.SetStateAction<string[]>>, clearInput: () => void) {
-    const val = input.trim();
-    if (!val) return;
-    setter((prev) => prev.includes(val) ? prev : [...prev, val]);
-    clearInput();
   }
 
   function openReorder() {
@@ -423,27 +585,15 @@ export default function WordTagPanel({
 
                 {/* Lemma editor for word/cluster */}
                 {isWordOrCluster && (
-                  <div className="space-y-1">
-                    <span className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>Lemmas</span>
-                    <div className="flex flex-wrap gap-1">
-                      {editLemmas.map((l) => (
-                        <span key={l} className="flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded-full border"
-                          style={{ borderColor: editColor, color: "var(--foreground)" }}>
-                          {l}
-                          <button type="button" onClick={() => setEditLemmas((prev) => prev.filter((x) => x !== l))}
-                            className="ml-0.5 opacity-50 hover:opacity-100 leading-none">×</button>
-                        </span>
-                      ))}
-                    </div>
-                    <div className="flex gap-1">
-                      <input type="text" value={editLemmaInput} onChange={(e) => setEditLemmaInput(e.target.value)}
-                        onKeyDown={(e) => { if (e.key === "Enter") { addLemma(editLemmaInput, setEditLemmas, () => setEditLemmaInput("")); e.preventDefault(); } }}
-                        placeholder="Add lemma…" className="flex-1 text-[10px] px-1.5 py-0.5 rounded border bg-transparent"
-                        style={{ borderColor: "var(--border)", color: "var(--foreground)" }} />
-                      <button type="button" onClick={() => addLemma(editLemmaInput, setEditLemmas, () => setEditLemmaInput(""))}
-                        className="text-[10px] px-1.5 py-0.5 rounded bg-stone-200 dark:bg-stone-700 transition-colors">+</button>
-                    </div>
-                  </div>
+                  <LemmaPickerInput
+                    color={editColor}
+                    lemmas={editLemmas}
+                    pickingActive={clusterPickingActive}
+                    onAdd={(lemma) => setEditLemmas((prev) => prev.includes(lemma) ? prev : [...prev, lemma])}
+                    onRemove={(lemma) => setEditLemmas((prev) => prev.filter((x) => x !== lemma))}
+                    onRequestWordClick={onRequestWordClick}
+                    onCancelWordClick={onCancelWordClick}
+                  />
                 )}
 
                 <div className="flex gap-2">
@@ -524,10 +674,10 @@ export default function WordTagPanel({
             <div className="flex items-center gap-1">
               <div className="flex rounded overflow-hidden border text-xs" style={{ borderColor: "var(--border)" }}>
                 {(["concept", "word", "cluster"] as TagType[]).map((tp) => (
-                  <button key={tp} type="button" onClick={() => { setNewType(tp); setNewLemmas([]); setNewLemmaInput(""); }}
+                  <button key={tp} type="button" onClick={() => { setNewType(tp); setNewLemmas([]); }}
                     className="px-2 py-0.5 capitalize transition-colors"
                     style={{ backgroundColor: newType === tp ? "var(--accent)" : "transparent", color: newType === tp ? "#fff" : "var(--text-muted)" }}>
-                    {tp === "cluster" ? "Cluster" : tp}
+                    {tp === "cluster" ? "Set of words" : tp}
                   </button>
                 ))}
               </div>
@@ -537,7 +687,7 @@ export default function WordTagPanel({
             {(newType === "concept" || newType === "cluster") && (
               <input autoFocus={newType === "concept"} type="text" value={newName} onChange={(e) => setNewName(e.target.value)}
                 onKeyDown={(e) => { if (e.key === "Enter" && newType === "concept") handleCreate(); if (e.key === "Escape") { setShowNew(false); resetNew(); } }}
-                placeholder={newType === "cluster" ? "Cluster name" : "Label"}
+                placeholder={newType === "cluster" ? "Set name" : "Label"}
                 className="w-full text-xs bg-transparent outline-none border-b pb-0.5"
                 style={{ borderColor: "var(--border)", color: "var(--foreground)" }} />
             )}
@@ -547,30 +697,15 @@ export default function WordTagPanel({
 
             {/* Lemma inputs for cluster */}
             {newType === "cluster" && (
-              <div className="space-y-1">
-                <span className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>Lemmas</span>
-                {newLemmas.length > 0 && (
-                  <div className="flex flex-wrap gap-1">
-                    {newLemmas.map((l) => (
-                      <span key={l} className="flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded-full border"
-                        style={{ borderColor: newColor, color: "var(--foreground)" }}>
-                        {l}
-                        <button type="button" onClick={() => setNewLemmas((prev) => prev.filter((x) => x !== l))}
-                          className="ml-0.5 opacity-50 hover:opacity-100 leading-none">×</button>
-                      </span>
-                    ))}
-                  </div>
-                )}
-                <div className="flex gap-1">
-                  <input autoFocus type="text" value={newLemmaInput} onChange={(e) => setNewLemmaInput(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === "Enter") { addLemma(newLemmaInput, setNewLemmas, () => setNewLemmaInput("")); e.preventDefault(); } if (e.key === "Escape") { setShowNew(false); resetNew(); } }}
-                    placeholder="Add lemma (Enter to add)…"
-                    className="flex-1 text-[10px] px-1.5 py-0.5 rounded border bg-transparent"
-                    style={{ borderColor: "var(--border)", color: "var(--foreground)" }} />
-                  <button type="button" onClick={() => addLemma(newLemmaInput, setNewLemmas, () => setNewLemmaInput(""))}
-                    className="text-[10px] px-1.5 py-0.5 rounded bg-stone-200 dark:bg-stone-700 transition-colors">+</button>
-                </div>
-              </div>
+              <LemmaPickerInput
+                color={newColor}
+                lemmas={newLemmas}
+                pickingActive={clusterPickingActive}
+                onAdd={(lemma) => setNewLemmas((prev) => prev.includes(lemma) ? prev : [...prev, lemma])}
+                onRemove={(lemma) => setNewLemmas((prev) => prev.filter((x) => x !== lemma))}
+                onRequestWordClick={onRequestWordClick}
+                onCancelWordClick={onCancelWordClick}
+              />
             )}
 
             {/* Color + Corpus row */}

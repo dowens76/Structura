@@ -279,6 +279,8 @@ export default function ChapterDisplay({
   const [pendingWordTag, setPendingWordTag] = useState(false);
   const [pendingWordTagColor, setPendingWordTagColor] = useState<string | null>(null);
   const [pendingWordTagCorpusGroupingId, setPendingWordTagCorpusGroupingId] = useState<number | null>(null);
+  // When set, the next source-word click adds its canonical lemma to a cluster being built
+  const [clusterLemmaCallback, setClusterLemmaCallback] = useState<((lemma: string) => void) | null>(null);
 
   const wordTagMap = useMemo(
     () => new Map(wordTags.map((t) => [t.id, t])),
@@ -1877,19 +1879,31 @@ export default function ChapterDisplay({
 
   async function handleToggleWordTagRef(word: Word, shiftHeld = false) {
     if (isPunctuationWord(word)) return;
+    // Cluster lemma pick mode: route click to callback without creating/toggling a tag
+    if (clusterLemmaCallback !== null) {
+      const canonicalLemma = word.language === "hebrew"
+        ? (word.strongNumber ?? word.lemma ?? word.surfaceText?.replace(/\//g, "") ?? "?")
+        : (word.lemma ?? word.surfaceText ?? "?");
+      clusterLemmaCallback(canonicalLemma);
+      return;
+    }
     if (pendingWordTag && pendingWordTagColor !== null) {
-      // "Word" type: create a new tag named after the lemma and immediately tag this word.
-      // For Hebrew words use the lexicon lookup (same as the interlinear label); for Greek
-      // word.lemma already holds the Greek text.
-      const lemma = word.language === "hebrew"
+      // "Word" type: create a tag named after the lemma and auto-tag ALL matching words
+      // in the current chapter via the cluster endpoint.
+      const displayName = word.language === "hebrew"
         ? ((hebrewLemmas as Record<string, string>)[word.strongNumber ?? ""]
             ?? word.surfaceText?.replace(/\//g, "")
             ?? "?")
         : (word.lemma ?? word.surfaceText ?? "?");
-      await handleCreateTag("word", lemma, pendingWordTagColor, word.wordId, textSource, pendingWordTagCorpusGroupingId);
+      const canonicalLemma = word.language === "hebrew"
+        ? (word.strongNumber ?? word.lemma ?? word.surfaceText?.replace(/\//g, "") ?? "?")
+        : (word.lemma ?? word.surfaceText ?? "?");
+      const color = pendingWordTagColor;
+      const corpusGroupingId = pendingWordTagCorpusGroupingId;
       setPendingWordTag(false);
       setPendingWordTagColor(null);
       setPendingWordTagCorpusGroupingId(null);
+      await handleCreateClusterTag(displayName, [canonicalLemma], color, corpusGroupingId, [book], "word");
       return;
     }
     if (activeWordTagId === null) return;
@@ -1964,9 +1978,10 @@ export default function ChapterDisplay({
     color: string,
     corpusGroupingId: number | null,
     corpusBooks: string[],
+    type: "cluster" | "word" = "cluster",
   ) {
     const tempTag: WordTag = {
-      id: -(Date.now()), book, name, color, type: "cluster",
+      id: -(Date.now()), book, name, color, type,
       createdAt: new Date().toISOString(), workspaceId: 0, sortOrder: null,
       corpusGroupingId: corpusGroupingId ?? null, lemmas: JSON.stringify(lemmas),
     };
@@ -1979,7 +1994,7 @@ export default function ChapterDisplay({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name, color, book, lemmas, corpusBooks,
-          textSource, corpusGroupingId, currentChapter: chapter,
+          textSource, corpusGroupingId, currentChapter: chapter, type,
         }),
       });
       const data = await res.json();
@@ -2014,6 +2029,14 @@ export default function ChapterDisplay({
     setPendingWordTag(true);
     setPendingWordTagColor(color);
     setPendingWordTagCorpusGroupingId(corpusGroupingId);
+  }
+
+  function handleRequestWordClick(cb: (lemma: string) => void) {
+    setClusterLemmaCallback(() => cb);
+  }
+
+  function handleCancelWordClick() {
+    setClusterLemmaCallback(null);
   }
 
   async function handleDeleteWordTag(id: number) {
@@ -3693,6 +3716,7 @@ export default function ChapterDisplay({
             pendingWordTag={pendingWordTag}
             currentBook={book}
             bookGroupings={bookGroupings}
+            clusterPickingActive={clusterLemmaCallback !== null}
             onSelectTag={(id) => {
               setActiveWordTagId(id);
               setPendingWordTag(false);
@@ -3705,6 +3729,8 @@ export default function ChapterDisplay({
             onReorder={handleReorderWordTags}
             onToggleHighlight={handleToggleWordTagHighlight}
             onCreateGrouping={handleCreateBookGrouping}
+            onRequestWordClick={handleRequestWordClick}
+            onCancelWordClick={handleCancelWordClick}
           />
         )}
 

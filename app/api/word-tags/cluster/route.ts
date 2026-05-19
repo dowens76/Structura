@@ -20,18 +20,20 @@ export async function POST(request: NextRequest) {
     textSource?: string;
     corpusGroupingId?: number | null;
     currentChapter?: number;
+    type?: string;
   };
   try { body = await request.json(); } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
   const { name, color, book, lemmas, corpusBooks, textSource, corpusGroupingId, currentChapter } = body;
+  const tagType = body.type === "word" ? "word" : "cluster";
   if (!name || !color || !book || !lemmas?.length || !corpusBooks?.length || !textSource) {
     return NextResponse.json({ error: "Missing fields" }, { status: 400 });
   }
 
   const canonicalBook = canonicalPairBook(book);
-  const tag = await createWordTag(name, color, "cluster", canonicalBook, workspaceId, corpusGroupingId, lemmas);
+  const tag = await createWordTag(name, color, tagType, canonicalBook, workspaceId, corpusGroupingId, lemmas);
 
   const allRefs = await getWordRefsByLemmas(lemmas, corpusBooks, textSource);
   const { inserted } = await bulkInsertWordTagRefs(tag.id, allRefs, workspaceId);

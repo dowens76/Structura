@@ -223,6 +223,7 @@ export default function PassageView({
   const [pendingWordTag, setPendingWordTag] = useState(false);
   const [pendingWordTagColor, setPendingWordTagColor] = useState<string | null>(null);
   const [pendingWordTagCorpusGroupingId, setPendingWordTagCorpusGroupingId] = useState<number | null>(null);
+  const [clusterLemmaCallback, setClusterLemmaCallback] = useState<((lemma: string) => void) | null>(null);
   const [bookGroupings, setBookGroupings] = useState<import("@/lib/db/schema").BookGrouping[]>([]);
 
   const wordTagMap = useMemo(
@@ -965,17 +966,29 @@ export default function PassageView({
 
   async function handleToggleWordTagRef(word: Word) {
     if (isPunctuationWord(word)) return;
+    if (clusterLemmaCallback !== null) {
+      const canonicalLemma = word.language === "hebrew"
+        ? (word.strongNumber ?? word.lemma ?? word.surfaceText?.replace(/\//g, "") ?? "?")
+        : (word.lemma ?? word.surfaceText ?? "?");
+      clusterLemmaCallback(canonicalLemma);
+      return;
+    }
     const wordChapter = wordToChapter.get(word.wordId) ?? passage.startChapter;
     if (pendingWordTag && pendingWordTagColor !== null) {
-      const lemma = word.language === "hebrew"
+      const displayName = word.language === "hebrew"
         ? ((hebrewLemmas as Record<string, string>)[word.strongNumber ?? ""]
             ?? word.surfaceText?.replace(/\//g, "")
             ?? "?")
         : (word.lemma ?? word.surfaceText ?? "?");
-      await handleCreateTag("word", lemma, pendingWordTagColor, word.wordId, textSource, wordChapter, pendingWordTagCorpusGroupingId);
+      const canonicalLemma = word.language === "hebrew"
+        ? (word.strongNumber ?? word.lemma ?? word.surfaceText?.replace(/\//g, "") ?? "?")
+        : (word.lemma ?? word.surfaceText ?? "?");
+      const color = pendingWordTagColor;
+      const corpusGroupingId = pendingWordTagCorpusGroupingId;
       setPendingWordTag(false);
       setPendingWordTagColor(null);
       setPendingWordTagCorpusGroupingId(null);
+      await handleCreateClusterTag(displayName, [canonicalLemma], color, corpusGroupingId, [osisBook], "word");
       return;
     }
     if (activeWordTagId === null) return;
@@ -1035,9 +1048,10 @@ export default function PassageView({
     color: string,
     corpusGroupingId: number | null,
     corpusBooks: string[],
+    type: "cluster" | "word" = "cluster",
   ) {
     const tempTag: WordTag = {
-      id: -(Date.now()), book: osisBook, name, color, type: "cluster",
+      id: -(Date.now()), book: osisBook, name, color, type,
       createdAt: new Date().toISOString(), workspaceId: 0, sortOrder: null,
       corpusGroupingId: corpusGroupingId ?? null, lemmas: JSON.stringify(lemmas),
     };
@@ -1050,7 +1064,7 @@ export default function PassageView({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name, color, book: osisBook, lemmas, corpusBooks,
-          textSource, corpusGroupingId, currentChapter: passage.startChapter,
+          textSource, corpusGroupingId, currentChapter: passage.startChapter, type,
         }),
       });
       const data = await res.json();
@@ -1084,6 +1098,14 @@ export default function PassageView({
     setPendingWordTag(true);
     setPendingWordTagColor(color);
     setPendingWordTagCorpusGroupingId(corpusGroupingId);
+  }
+
+  function handleRequestWordClick(cb: (lemma: string) => void) {
+    setClusterLemmaCallback(() => cb);
+  }
+
+  function handleCancelWordClick() {
+    setClusterLemmaCallback(null);
   }
 
   async function handleDeleteWordTag(id: number) {
@@ -2405,6 +2427,7 @@ export default function PassageView({
             pendingWordTag={pendingWordTag}
             currentBook={osisBook}
             bookGroupings={bookGroupings}
+            clusterPickingActive={clusterLemmaCallback !== null}
             onSelectTag={(id) => { setActiveWordTagId(id); setPendingWordTag(false); }}
             onCreateConceptTag={handleCreateConceptTag}
             onCreatePendingWordTag={handleCreatePendingWordTag}
@@ -2414,6 +2437,8 @@ export default function PassageView({
             onReorder={handleReorderWordTags}
             onToggleHighlight={handleToggleWordTagHighlight}
             onCreateGrouping={handleCreateBookGrouping}
+            onRequestWordClick={handleRequestWordClick}
+            onCancelWordClick={handleCancelWordClick}
           />
         )}
 
