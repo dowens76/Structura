@@ -20,13 +20,7 @@ function splitTokenPunctuation(token: string): { leading: string; core: string; 
   return { leading, core: rest.slice(0, rest.length - trailing.length), trailing };
 }
 
-const SPEECH_ACTS = [
-  "Acceptance", "Advice", "Apology", "Command", "Declaration",
-  "Evaluation", "Expression of feeling", "Farewell", "Greeting",
-  "Offer", "Permission", "Prohibition", "Promise", "Question",
-  "Refusal", "Request", "Statement/assertion", "Suggestion",
-  "Thanks", "Warning", "Wish",
-] as const;
+import { SpeechActPicker, getSpeechActLeafLabel } from "./SpeechActPicker";
 import WordToken from "./WordToken";
 
 interface VerseDisplayProps {
@@ -288,7 +282,7 @@ function AnnotBadge({
               className="shrink-0 text-[10px] font-bold px-1 py-0.5 rounded text-white leading-none"
               style={{ backgroundColor: color }}
             >
-              {annotation.label}
+              {getSpeechActLeafLabel(annotation.label)}
             </span>
           )}
           <button
@@ -329,17 +323,7 @@ function AnnotBadge({
         {/* Speech act — desc annotations only */}
         {annotation.annotType === "desc" && (
           <div className="px-1.5 pb-1">
-            <select
-              value={draftSpeechAct}
-              onChange={(e) => setDraftSpeechAct(e.target.value)}
-              onMouseDown={(e) => e.stopPropagation()}
-              className="w-full px-1 py-0.5 border border-stone-300 dark:border-stone-600 rounded bg-white dark:bg-stone-900 text-[10px] text-stone-700 dark:text-stone-300"
-            >
-              <option value="">— Speech act —</option>
-              {SPEECH_ACTS.map((act) => (
-                <option key={act} value={act}>{act}</option>
-              ))}
-            </select>
+            <SpeechActPicker value={draftSpeechAct} onChange={setDraftSpeechAct} />
           </div>
         )}
 
@@ -419,7 +403,7 @@ function AnnotBadge({
                 className={`shrink-0 ${badgeTextCls} font-bold px-1 py-0.5 rounded text-white leading-none`}
                 style={{ backgroundColor: color }}
               >
-                {annotation.label}
+                {getSpeechActLeafLabel(annotation.label)}
               </span>
             )}
             {editingAnnotations && onDelete && (
@@ -605,17 +589,7 @@ function AnnotCreationForm({
       {annotType === "desc" && (
         <div className="mb-2 flex flex-col gap-1.5">
           <ColorPalette value={color} onChange={setColor} />
-          <select
-            value={speechAct}
-            onChange={(e) => setSpeechAct(e.target.value)}
-            className="w-full px-1.5 py-0.5 border border-stone-300 dark:border-stone-600 rounded bg-transparent text-[10px] text-stone-700 dark:text-stone-300"
-            onKeyDown={(e) => e.stopPropagation()}
-          >
-            <option value="">— Speech act (optional) —</option>
-            {SPEECH_ACTS.map((act) => (
-              <option key={act} value={act}>{act}</option>
-            ))}
-          </select>
+          <SpeechActPicker value={speechAct} onChange={setSpeechAct} />
         </div>
       )}
 
