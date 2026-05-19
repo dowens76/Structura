@@ -5,34 +5,51 @@ on:
     tags:
       - "v*"
   workflow_dispatch:
+    inputs:
+      platforms:
+        description: "Platforms to build"
+        required: false
+        default: "all"
+        type: choice
+        options:
+          - all
+          - mac-only
+          - mac-arm
+          - mac-intel
+          - windows
+          - linux
 
 
 jobs:
+  setup:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.matrix.outputs.value }}
+    steps:
+      - id: matrix
+        run: |
+          MAC_ARM='{"os":"macos-latest","target":"aarch64-apple-darwin","label":"macOS (Apple Silicon)","friendly":"Apple_Silicon"}'
+          MAC_INTEL='{"os":"macos-14","target":"x86_64-apple-darwin","label":"macOS (Intel)","friendly":"Apple_Intel"}'
+          WINDOWS='{"os":"windows-latest","target":"x86_64-pc-windows-msvc","label":"Windows (x64)","friendly":"Windows"}'
+          LINUX='{"os":"ubuntu-22.04","target":"x86_64-unknown-linux-gnu","label":"Linux (x64)","friendly":"Linux"}'
+          LINUX_ARM='{"os":"ubuntu-24.04-arm","target":"aarch64-unknown-linux-gnu","label":"Linux (ARM64)","friendly":"Linux_ARM64"}'
+
+          case "${{ inputs.platforms }}" in
+            mac-arm)   ENTRIES="[$MAC_ARM]" ;;
+            mac-intel) ENTRIES="[$MAC_INTEL]" ;;
+            mac-only)  ENTRIES="[$MAC_ARM,$MAC_INTEL]" ;;
+            windows)   ENTRIES="[$WINDOWS]" ;;
+            linux)     ENTRIES="[$LINUX,$LINUX_ARM]" ;;
+            *)         ENTRIES="[$MAC_ARM,$MAC_INTEL,$WINDOWS,$LINUX,$LINUX_ARM]" ;;
+          esac
+
+          echo "value={\"include\":$ENTRIES}" >> "$GITHUB_OUTPUT"
+
   build:
+    needs: setup
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - os: macos-latest
-            target: aarch64-apple-darwin
-            label: macOS (Apple Silicon)
-            friendly: Apple_Silicon
-          - os: macos-14
-            target: x86_64-apple-darwin
-            label: macOS (Intel)
-            friendly: Apple_Intel
-          - os: windows-latest
-            target: x86_64-pc-windows-msvc
-            label: Windows (x64)
-            friendly: Windows
-          - os: ubuntu-22.04
-            target: x86_64-unknown-linux-gnu
-            label: Linux (x64)
-            friendly: Linux
-          - os: ubuntu-24.04-arm
-            target: aarch64-unknown-linux-gnu
-            label: Linux (ARM64)
-            friendly: Linux_ARM64
+      matrix: ${{ fromJSON(needs.setup.outputs.matrix) }}
 
     name: ${{ matrix.label }}
     runs-on: ${{ matrix.os }}

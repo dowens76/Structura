@@ -85,7 +85,8 @@ export function parseBibleComText(raw: string): ParseResult {
  *
  * - Strips footnotes: \f + ... \f* and endnotes \fe + ... \fe*
  * - Converts poetry paragraph markers (\q, \q1, \q2, …) to line breaks
- * - Strips all remaining backslash markers
+ * - Preserves \nd...\nd*, \add...\add*, \wj...\wj* inline markers
+ * - Strips all other backslash markers
  * - Detects chapter from \c N and book name from \mt / \h markers
  */
 function parseUSFM(raw: string): ParseResult {
@@ -129,11 +130,24 @@ function parseUSFM(raw: string): ParseResult {
     // Poetry/quote paragraph markers → line break (handles \q \q1 \q2 \q3 etc.)
     chunk = chunk.replace(/\\q\d*\s*/g, "\n");
 
+    // Preserve \nd...\nd*, \add...\add*, \wj...\wj* — temporarily encode them
+    // so the generic strip pass below doesn't remove them.
+    chunk = chunk
+      .replace(/\\nd\s+([\s\S]*?)\\nd\*/g,   "§ND§$1§ND*§")
+      .replace(/\\add\s+([\s\S]*?)\\add\*/g, "§ADD§$1§ADD*§")
+      .replace(/\\wj\s+([\s\S]*?)\\wj\*/g,   "§WJ§$1§WJ*§");
+
     // Strip remaining closing inline markers: \word* (e.g. \wj* \nd*)
     chunk = chunk.replace(/\\[a-z]+\d*\*/g, "");
 
     // Strip remaining opening markers (optionally \+ prefixed): \word or \+word
     chunk = chunk.replace(/\\[+]?[a-z]+\d*\s*/g, "");
+
+    // Restore preserved markers
+    chunk = chunk
+      .replace(/§ND§([\s\S]*?)§ND\*§/g,   "\\nd $1\\nd*")
+      .replace(/§ADD§([\s\S]*?)§ADD\*§/g, "\\add $1\\add*")
+      .replace(/§WJ§([\s\S]*?)§WJ\*§/g,   "\\wj $1\\wj*");
 
     // Normalise: trim each line, drop empties, rejoin with preserved breaks
     const cleaned = chunk

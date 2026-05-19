@@ -1,0 +1,291 @@
+"use client";
+
+import { useState, useEffect, useRef } from "react";
+
+interface TranslationRow {
+  id: number;
+  name: string;
+  abbreviation: string;
+  language: string | null;
+}
+
+const LANGUAGES: { code: string; label: string }[] = [
+  { code: "", label: "— unset —" },
+  { code: "af", label: "Afrikaans" },
+  { code: "sq", label: "Albanian" },
+  { code: "am", label: "Amharic" },
+  { code: "ar", label: "Arabic" },
+  { code: "hy", label: "Armenian" },
+  { code: "az", label: "Azerbaijani" },
+  { code: "eu", label: "Basque" },
+  { code: "be", label: "Belarusian" },
+  { code: "bn", label: "Bengali" },
+  { code: "bs", label: "Bosnian" },
+  { code: "bg", label: "Bulgarian" },
+  { code: "ca", label: "Catalan" },
+  { code: "zh", label: "Chinese" },
+  { code: "hr", label: "Croatian" },
+  { code: "cs", label: "Czech" },
+  { code: "da", label: "Danish" },
+  { code: "nl", label: "Dutch" },
+  { code: "en", label: "English" },
+  { code: "eo", label: "Esperanto" },
+  { code: "et", label: "Estonian" },
+  { code: "fi", label: "Finnish" },
+  { code: "fr", label: "French" },
+  { code: "ka", label: "Georgian" },
+  { code: "de", label: "German" },
+  { code: "el", label: "Greek" },
+  { code: "gu", label: "Gujarati" },
+  { code: "he", label: "Hebrew" },
+  { code: "hi", label: "Hindi" },
+  { code: "hu", label: "Hungarian" },
+  { code: "id", label: "Indonesian" },
+  { code: "ga", label: "Irish" },
+  { code: "it", label: "Italian" },
+  { code: "ja", label: "Japanese" },
+  { code: "kn", label: "Kannada" },
+  { code: "kk", label: "Kazakh" },
+  { code: "ko", label: "Korean" },
+  { code: "lv", label: "Latvian" },
+  { code: "lt", label: "Lithuanian" },
+  { code: "mk", label: "Macedonian" },
+  { code: "ms", label: "Malay" },
+  { code: "ml", label: "Malayalam" },
+  { code: "mt", label: "Maltese" },
+  { code: "mr", label: "Marathi" },
+  { code: "mn", label: "Mongolian" },
+  { code: "ne", label: "Nepali" },
+  { code: "no", label: "Norwegian" },
+  { code: "fa", label: "Persian" },
+  { code: "pl", label: "Polish" },
+  { code: "pt", label: "Portuguese" },
+  { code: "pa", label: "Punjabi" },
+  { code: "ro", label: "Romanian" },
+  { code: "ru", label: "Russian" },
+  { code: "sr", label: "Serbian" },
+  { code: "si", label: "Sinhala" },
+  { code: "sk", label: "Slovak" },
+  { code: "sl", label: "Slovenian" },
+  { code: "so", label: "Somali" },
+  { code: "es", label: "Spanish" },
+  { code: "sw", label: "Swahili" },
+  { code: "sv", label: "Swedish" },
+  { code: "tl", label: "Tagalog" },
+  { code: "ta", label: "Tamil" },
+  { code: "te", label: "Telugu" },
+  { code: "th", label: "Thai" },
+  { code: "tr", label: "Turkish" },
+  { code: "uk", label: "Ukrainian" },
+  { code: "ur", label: "Urdu" },
+  { code: "uz", label: "Uzbek" },
+  { code: "vi", label: "Vietnamese" },
+  { code: "cy", label: "Welsh" },
+  { code: "xh", label: "Xhosa" },
+  { code: "zu", label: "Zulu" },
+];
+
+interface Props {
+  onClose: () => void;
+}
+
+export default function ManageTranslationsDialog({ onClose }: Props) {
+  const [rows, setRows] = useState<TranslationRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState<number | null>(null);
+  const [creating, setCreating] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [newAbbr, setNewAbbr] = useState("");
+  const [newLang, setNewLang] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    fetch("/api/translations")
+      .then((r) => r.json())
+      .then((data: TranslationRow[]) => { setRows(data); setLoading(false); })
+      .catch(() => setLoading(false));
+  }, []);
+
+  // Close on backdrop click
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) { if (e.key === "Escape") onClose(); }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  async function patchField(id: number, patch: Partial<Pick<TranslationRow, "name" | "abbreviation" | "language">>) {
+    setSaving(id);
+    await fetch("/api/translations", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, ...patch }),
+    });
+    setRows((prev) => prev.map((r) => r.id === id ? { ...r, ...patch } : r));
+    setSaving(null);
+  }
+
+  async function handleCreate() {
+    const name = newName.trim();
+    const abbreviation = newAbbr.trim().toUpperCase();
+    if (!name || !abbreviation) { setError("Name and abbreviation are required."); return; }
+    setError(null);
+    setCreating(true);
+    const res = await fetch("/api/translations", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, abbreviation, language: newLang || null }),
+    });
+    if (!res.ok) {
+      const { error: msg } = await res.json();
+      setError(msg ?? "Failed to create translation.");
+    } else {
+      const { id } = await res.json();
+      setRows((prev) => [...prev, { id, name, abbreviation, language: newLang || null }]);
+      setNewName(""); setNewAbbr(""); setNewLang("");
+    }
+    setCreating(false);
+  }
+
+  const inputCls = "w-full text-sm px-2 py-1 rounded border border-stone-300 dark:border-stone-600 bg-stone-50 dark:bg-stone-900 focus:outline-none focus:ring-1 focus:ring-sky-500";
+  const labelCls = "text-[10px] font-semibold uppercase tracking-wider text-stone-400 dark:text-stone-500 mb-0.5 block";
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
+      onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div
+        ref={dialogRef}
+        className="relative w-full max-w-2xl max-h-[85vh] flex flex-col rounded-xl shadow-2xl overflow-hidden"
+        style={{ backgroundColor: "var(--background)", color: "var(--foreground)" }}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b" style={{ borderColor: "var(--border)" }}>
+          <h2 className="text-base font-semibold">Manage Translations</h2>
+          <button onClick={onClose} className="text-stone-400 hover:text-stone-600 dark:hover:text-stone-300 text-xl leading-none transition-colors">×</button>
+        </div>
+
+        {/* Scrollable list */}
+        <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
+          {loading && <p className="text-sm text-stone-400">Loading…</p>}
+          {!loading && rows.length === 0 && (
+            <p className="text-sm text-stone-400 dark:text-stone-500">No translations yet. Create one below.</p>
+          )}
+          {rows.map((row) => (
+            <TranslationEditor
+              key={row.id}
+              row={row}
+              saving={saving === row.id}
+              onSave={(patch) => patchField(row.id, patch)}
+            />
+          ))}
+        </div>
+
+        {/* Create new */}
+        <div className="border-t px-6 py-4 space-y-3" style={{ borderColor: "var(--border)" }}>
+          <p className="text-xs font-semibold uppercase tracking-wider text-stone-400 dark:text-stone-500">New Translation</p>
+          <div className="grid grid-cols-3 gap-3">
+            <div>
+              <label className={labelCls}>Name</label>
+              <input
+                className={inputCls}
+                placeholder="e.g. My Translation"
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") handleCreate(); }}
+              />
+            </div>
+            <div>
+              <label className={labelCls}>Abbreviation</label>
+              <input
+                className={inputCls}
+                placeholder="e.g. MT"
+                maxLength={12}
+                value={newAbbr}
+                onChange={(e) => setNewAbbr(e.target.value.toUpperCase())}
+                onKeyDown={(e) => { if (e.key === "Enter") handleCreate(); }}
+              />
+            </div>
+            <div>
+              <label className={labelCls}>Language</label>
+              <select
+                className={inputCls}
+                value={newLang}
+                onChange={(e) => setNewLang(e.target.value)}
+              >
+                {LANGUAGES.map((l) => (
+                  <option key={l.code} value={l.code}>{l.label}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+          {error && <p className="text-xs text-red-500">{error}</p>}
+          <button
+            onClick={handleCreate}
+            disabled={creating}
+            className="px-4 py-1.5 rounded text-sm font-medium bg-sky-600 hover:bg-sky-700 text-white disabled:opacity-40 transition-colors"
+          >
+            {creating ? "Creating…" : "+ Create Translation"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TranslationEditor({
+  row,
+  saving,
+  onSave,
+}: {
+  row: TranslationRow;
+  saving: boolean;
+  onSave: (patch: Partial<Pick<TranslationRow, "name" | "abbreviation" | "language">>) => void;
+}) {
+  const [name, setName] = useState(row.name);
+  const [abbr, setAbbr] = useState(row.abbreviation);
+  const [lang, setLang] = useState(row.language ?? "");
+
+  const inputCls = "w-full text-sm px-2 py-1 rounded border border-stone-300 dark:border-stone-600 bg-stone-50 dark:bg-stone-900 focus:outline-none focus:ring-1 focus:ring-sky-500";
+  const labelCls = "text-[10px] font-semibold uppercase tracking-wider text-stone-400 dark:text-stone-500 mb-0.5 block";
+
+  return (
+    <div className="rounded-lg border p-3 space-y-2" style={{ borderColor: "var(--border)" }}>
+      <div className="grid grid-cols-3 gap-3">
+        <div>
+          <label className={labelCls}>Name</label>
+          <input
+            className={inputCls}
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            onBlur={() => { if (name.trim() && name.trim() !== row.name) onSave({ name: name.trim() }); }}
+          />
+        </div>
+        <div>
+          <label className={labelCls}>Abbreviation</label>
+          <input
+            className={inputCls}
+            value={abbr}
+            maxLength={12}
+            onChange={(e) => setAbbr(e.target.value.toUpperCase())}
+            onBlur={() => { if (abbr.trim() && abbr.trim() !== row.abbreviation) onSave({ abbreviation: abbr.trim() }); }}
+          />
+        </div>
+        <div>
+          <label className={labelCls}>Language</label>
+          <select
+            className={inputCls}
+            value={lang}
+            onChange={(e) => { setLang(e.target.value); onSave({ language: e.target.value || null }); }}
+          >
+            {LANGUAGES.map((l) => (
+              <option key={l.code} value={l.code}>{l.label}</option>
+            ))}
+          </select>
+        </div>
+      </div>
+      {saving && <p className="text-[10px] text-stone-400">Saving…</p>}
+    </div>
+  );
+}

@@ -23,6 +23,8 @@ interface TranslationPickerProps {
    *  instead of the language selector. */
   systemTranslationIds?: Set<number>;
   onToggle: (id: number) => void;
+  /** Current book OSIS code, used for USFM export link. */
+  currentBook?: string;
 }
 
 export default function TranslationPicker({
@@ -30,6 +32,7 @@ export default function TranslationPicker({
   activeTranslationIds,
   systemTranslationIds,
   onToggle,
+  currentBook,
 }: TranslationPickerProps) {
   const [open, setOpen] = useState(false);
   const [alignLeft, setAlignLeft] = useState(false);
@@ -233,6 +236,20 @@ export default function TranslationPicker({
                           <option key={l} value={l}>{l}</option>
                         ))}
                       </select>
+                    )}
+
+                    {/* Export USFM (user translations only) */}
+                    {!systemTranslationIds?.has(t.id) && currentBook && (
+                      <a
+                        href={`/api/export/usfm?translationId=${t.id}&book=${encodeURIComponent(currentBook)}`}
+                        download
+                        onClick={(e) => e.stopPropagation()}
+                        title={`Export ${t.abbreviation} — ${currentBook} as USFM`}
+                        className="flex-shrink-0 text-[10px] px-1.5 py-0.5 rounded border transition-colors hover:bg-stone-100 dark:hover:bg-stone-700"
+                        style={{ color: "var(--text-muted)", borderColor: "var(--border-muted)" }}
+                      >
+                        ↓ USFM
+                      </a>
                     )}
                   </div>
                 );

@@ -896,7 +896,7 @@ export default function ChapterDisplay({
       const verses = localTranslationVerseData[t.id] ?? [];
       for (const tv of verses) {
         const existing = map.get(tv.verse) ?? [];
-        existing.push({ abbr: t.abbreviation, text: tv.text });
+        existing.push({ abbr: t.abbreviation, text: tv.text, translationId: t.id });
         map.set(tv.verse, existing);
       }
     }
