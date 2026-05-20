@@ -5,7 +5,7 @@ import { parseUsfmFile } from "@/lib/utils/usfm-full-parser";
 import { upsertTranslation, getBook } from "@/lib/db/queries";
 import { userDb } from "@/lib/db";
 import { translations, translationVerses, translationFootnotes, paragraphBreaks, lineIndents, sceneBreaks } from "@/lib/db/schema";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { formatOsisRef } from "@/lib/utils/osis";
 
 export interface ImportState {
@@ -119,11 +119,16 @@ export interface ImportUsfmState {
   redirectTo: string | null;
 }
 
-/** Import a single parsed USFM file into the database. Returns verse count. */
+/**
+ * Import a single parsed USFM file into the database.
+ * @param chaptersToProcess - null means import all chapters (overwrite);
+ *   a Set means import only those chapter numbers (skipping others that exist).
+ */
 async function importSingleUsfmFile(
   parsed: Awaited<ReturnType<typeof parseUsfmFile>>,
   translationId: number,
   abbreviation: string,
+  chaptersToProcess: Set<number> | null,
 ): Promise<{ count: number; error?: string }> {
   if (!parsed.detectedBook) return { count: 0, error: "No \\id marker detected." };
   if (parsed.verses.length === 0) return { count: 0, error: "No verses found." };
@@ -132,79 +137,145 @@ async function importSingleUsfmFile(
   if (!book) return { count: 0, error: `Book "${parsed.detectedBook}" not found in source database.` };
 
   const BATCH = 500;
+  const osisBook = parsed.detectedBook;
+  const textSource = book.textSource;
+  const tvPrefix = `tv:${abbreviation}:${osisBook}.`;
 
-  // Delete existing data for this translation + book before re-importing
-  await userDb.delete(translationVerses).where(
-    and(eq(translationVerses.translationId, translationId), eq(translationVerses.bookId, book.id))
-  );
-  await userDb.delete(translationFootnotes).where(
-    and(eq(translationFootnotes.translationId, translationId), eq(translationFootnotes.book, parsed.detectedBook))
-  );
+  const shouldProcess = (ch: number) => chaptersToProcess === null || chaptersToProcess.has(ch);
 
-  const tvPrefix = `tv:${abbreviation}:${parsed.detectedBook}.`;
-  const allParaBreaks = await userDb.select().from(paragraphBreaks).where(eq(paragraphBreaks.book, parsed.detectedBook));
-  for (const pb of allParaBreaks.filter(pb => pb.wordId.startsWith(tvPrefix))) {
-    await userDb.delete(paragraphBreaks).where(eq(paragraphBreaks.id, pb.id));
+  // ── Delete existing data for the chapters we're about to (re)import ──────────
+  if (chaptersToProcess === null) {
+    // Overwrite all: wholesale book-level delete
+    await userDb.delete(translationVerses).where(
+      and(eq(translationVerses.translationId, translationId), eq(translationVerses.bookId, book.id))
+    );
+    await userDb.delete(translationFootnotes).where(
+      and(eq(translationFootnotes.translationId, translationId), eq(translationFootnotes.book, osisBook))
+    );
+
+    const allParaBreaks = await userDb
+      .select({ id: paragraphBreaks.id, wordId: paragraphBreaks.wordId })
+      .from(paragraphBreaks).where(eq(paragraphBreaks.book, osisBook));
+    const pbIds = allParaBreaks.filter(pb => pb.wordId.startsWith(tvPrefix)).map(pb => pb.id);
+    if (pbIds.length > 0) await userDb.delete(paragraphBreaks).where(inArray(paragraphBreaks.id, pbIds));
+
+    const allLineIndentsRows = await userDb
+      .select({ id: lineIndents.id, wordId: lineIndents.wordId })
+      .from(lineIndents).where(eq(lineIndents.book, osisBook));
+    const liIds = allLineIndentsRows.filter(li => li.wordId.startsWith(tvPrefix)).map(li => li.id);
+    if (liIds.length > 0) await userDb.delete(lineIndents).where(inArray(lineIndents.id, liIds));
+
+    const allSceneBreaks = await userDb
+      .select({ id: sceneBreaks.id, wordId: sceneBreaks.wordId })
+      .from(sceneBreaks).where(eq(sceneBreaks.book, osisBook));
+    const sbIds = allSceneBreaks.filter(sb => sb.wordId.startsWith(tvPrefix)).map(sb => sb.id);
+    if (sbIds.length > 0) await userDb.delete(sceneBreaks).where(inArray(sceneBreaks.id, sbIds));
+  } else {
+    // Selective: delete only the chapters we're overwriting
+    const chapterList = [...chaptersToProcess];
+    if (chapterList.length > 0) {
+      await userDb.delete(translationVerses).where(
+        and(eq(translationVerses.translationId, translationId), eq(translationVerses.bookId, book.id),
+          inArray(translationVerses.chapter, chapterList))
+      );
+      await userDb.delete(translationFootnotes).where(
+        and(eq(translationFootnotes.translationId, translationId), eq(translationFootnotes.book, osisBook),
+          inArray(translationFootnotes.chapter, chapterList))
+      );
+
+      const chParaBreaks = await userDb
+        .select({ id: paragraphBreaks.id, wordId: paragraphBreaks.wordId })
+        .from(paragraphBreaks)
+        .where(and(eq(paragraphBreaks.book, osisBook), inArray(paragraphBreaks.chapter, chapterList)));
+      const pbIds = chParaBreaks.filter(pb => pb.wordId.startsWith(tvPrefix)).map(pb => pb.id);
+      if (pbIds.length > 0) await userDb.delete(paragraphBreaks).where(inArray(paragraphBreaks.id, pbIds));
+
+      const chLineIndents = await userDb
+        .select({ id: lineIndents.id, wordId: lineIndents.wordId })
+        .from(lineIndents)
+        .where(and(eq(lineIndents.book, osisBook), inArray(lineIndents.chapter, chapterList)));
+      const liIds = chLineIndents.filter(li => li.wordId.startsWith(tvPrefix)).map(li => li.id);
+      if (liIds.length > 0) await userDb.delete(lineIndents).where(inArray(lineIndents.id, liIds));
+
+      const chSceneBreaks = await userDb
+        .select({ id: sceneBreaks.id, wordId: sceneBreaks.wordId })
+        .from(sceneBreaks)
+        .where(and(eq(sceneBreaks.book, osisBook), inArray(sceneBreaks.chapter, chapterList)));
+      const sbIds = chSceneBreaks.filter(sb => sb.wordId.startsWith(tvPrefix)).map(sb => sb.id);
+      if (sbIds.length > 0) await userDb.delete(sceneBreaks).where(inArray(sceneBreaks.id, sbIds));
+    }
   }
-  const allLineIndentsRows = await userDb.select().from(lineIndents).where(eq(lineIndents.book, parsed.detectedBook));
-  for (const li of allLineIndentsRows.filter(li => li.wordId.startsWith(tvPrefix))) {
-    await userDb.delete(lineIndents).where(eq(lineIndents.id, li.id));
-  }
 
-  // Insert verses
-  const verseRows = parsed.verses.map((v) => ({
-    workspaceId: 1, translationId, osisRef: v.osisRef,
-    bookId: book.id, chapter: v.chapter, verse: v.verse, text: v.text,
-  }));
+  // ── Insert verses ────────────────────────────────────────────────────────────
+  const verseRows = parsed.verses
+    .filter(v => shouldProcess(v.chapter))
+    .map((v) => ({
+      workspaceId: 1, translationId, osisRef: v.osisRef,
+      bookId: book.id, chapter: v.chapter, verse: v.verse, text: v.text,
+    }));
   for (let i = 0; i < verseRows.length; i += BATCH) {
     await userDb.insert(translationVerses).values(verseRows.slice(i, i + BATCH));
   }
 
-  // Insert footnotes
-  if (parsed.footnotes.length > 0) {
-    const fnRows = parsed.footnotes.map((fn) => ({
+  // ── Insert footnotes ─────────────────────────────────────────────────────────
+  const fnRows = parsed.footnotes
+    .filter(fn => shouldProcess(fn.chapter))
+    .map((fn) => ({
       workspaceId: 1, translationId, osisRef: fn.osisRef,
       type: fn.type, content: fn.content, wordIndex: fn.wordIndex,
       book: fn.book, chapter: fn.chapter, verse: fn.verse,
     }));
+  if (fnRows.length > 0) {
     for (let i = 0; i < fnRows.length; i += BATCH) {
       await userDb.insert(translationFootnotes).values(fnRows.slice(i, i + BATCH));
     }
   }
 
-  const textSource = book.textSource;
-
-  // Insert paragraph breaks
-  if (parsed.paragraphBreaks.length > 0) {
-    const pbRows = parsed.paragraphBreaks.map((pb) => {
-      const [, ch] = pb.osisRef.split(".");
-      return { workspaceId: 1, wordId: `tv:${abbreviation}:${pb.osisRef}`, textSource, book: parsed.detectedBook!, chapter: parseInt(ch, 10) };
+  // ── Insert paragraph breaks ──────────────────────────────────────────────────
+  const pbFiltered = parsed.paragraphBreaks.filter(pb => {
+    const ch = parseInt(pb.osisRef.split(".")[1] ?? "0", 10);
+    return shouldProcess(ch);
+  });
+  if (pbFiltered.length > 0) {
+    const pbRows = pbFiltered.map((pb) => {
+      const ch = parseInt(pb.osisRef.split(".")[1] ?? "0", 10);
+      return { workspaceId: 1, wordId: `tv:${abbreviation}:${pb.osisRef}`, textSource, book: osisBook, chapter: ch };
     });
     for (let i = 0; i < pbRows.length; i += BATCH) {
       await userDb.insert(paragraphBreaks).values(pbRows.slice(i, i + BATCH)).onConflictDoNothing();
     }
   }
 
-  // Insert line indents
-  if (parsed.lineIndents.length > 0) {
-    const liRows = parsed.lineIndents.map((li) => {
-      const [, ch] = li.osisRef.split(".");
-      return { workspaceId: 1, wordId: `tv:${abbreviation}:${li.osisRef}`, indentLevel: li.level, textSource, book: parsed.detectedBook!, chapter: parseInt(ch, 10) };
+  // ── Insert line indents ──────────────────────────────────────────────────────
+  const liFiltered = parsed.lineIndents.filter(li => {
+    const ch = parseInt(li.osisRef.split(".")[1] ?? "0", 10);
+    return shouldProcess(ch);
+  });
+  if (liFiltered.length > 0) {
+    const liRows = liFiltered.map((li) => {
+      const ch = parseInt(li.osisRef.split(".")[1] ?? "0", 10);
+      return { workspaceId: 1, wordId: `tv:${abbreviation}:${li.osisRef}`, indentLevel: li.level, textSource, book: osisBook, chapter: ch };
     });
     for (let i = 0; i < liRows.length; i += BATCH) {
       await userDb.insert(lineIndents).values(liRows.slice(i, i + BATCH)).onConflictDoNothing();
     }
   }
 
-  // Insert section breaks
-  if (parsed.sectionBreaks.length > 0) {
-    const sbRows = parsed.sectionBreaks.map((sb) => {
-      const [, ch, v] = sb.osisRef.split(".");
+  // ── Insert section breaks ────────────────────────────────────────────────────
+  const sbFiltered = parsed.sectionBreaks.filter(sb => {
+    const ch = parseInt(sb.osisRef.split(".")[1] ?? "0", 10);
+    return shouldProcess(ch);
+  });
+  if (sbFiltered.length > 0) {
+    const sbRows = sbFiltered.map((sb) => {
+      const parts = sb.osisRef.split(".");
+      const ch = parseInt(parts[1] ?? "0", 10);
+      const v = parseInt(parts[2] ?? "1", 10);
       return {
         workspaceId: 1, wordId: `tv:${abbreviation}:${sb.osisRef}`, heading: sb.heading,
-        level: sb.level, verse: parseInt(v ?? "1", 10), outOfSequence: false,
+        level: sb.level, verse: v, outOfSequence: false,
         extendedThrough: null, thematic: false, thematicLetter: null,
-        textSource, book: parsed.detectedBook!, chapter: parseInt(ch, 10),
+        textSource, book: osisBook, chapter: ch,
       };
     });
     for (let i = 0; i < sbRows.length; i += BATCH) {
@@ -212,7 +283,7 @@ async function importSingleUsfmFile(
     }
   }
 
-  return { count: parsed.verses.length };
+  return { count: verseRows.length };
 }
 
 const USFM_EXTENSIONS = new Set([".usfm", ".sfm", ".SFM", ".USFM"]);
@@ -227,6 +298,11 @@ export async function importUsfmFileAction(
   const validFiles   = files.filter(f => f.size > 0 && (
     USFM_EXTENSIONS.has("." + f.name.split(".").pop()) || f.type === "text/plain"
   ));
+
+  // Optional: JSON map of { [osisBook]: number[] } — chapters to process per book.
+  // Absent or null entry = process all chapters (overwrite mode).
+  const chaptersJson = formData.get("chaptersToProcess") as string | null;
+  const chaptersMap: Record<string, number[]> | null = chaptersJson ? JSON.parse(chaptersJson) : null;
 
   if (!name || !abbreviation) {
     return { success: false, error: "Translation name and abbreviation are required.", count: 0, detectedBook: null, booksImported: [], redirectTo: null };
@@ -258,7 +334,10 @@ export async function importUsfmFileAction(
       continue;
     }
 
-    const result = await importSingleUsfmFile(parsed, translationId, abbreviation);
+    const bookChapters = chaptersMap?.[parsed.detectedBook];
+    const chaptersToProcess = bookChapters ? new Set(bookChapters) : null;
+
+    const result = await importSingleUsfmFile(parsed, translationId, abbreviation, chaptersToProcess);
     if (result.error) {
       errors.push(`${file.name}: ${result.error}`);
     } else {
@@ -321,4 +400,63 @@ export async function checkExistingVersesAction(
     );
 
   return { count: rows.length };
+}
+
+// ── Conflict detection for USFM imports ─────────────────────────────────────
+
+export interface BookConflict {
+  osisBook: string;
+  /** Chapters present in the file that already have translation data in the DB. */
+  conflictingChapters: number[];
+  /** All chapters present in the incoming file. */
+  incomingChapters: number[];
+  /** Total chapters in this book (from source DB). */
+  totalBookChapters: number;
+}
+
+export async function checkUsfmConflictsAction(
+  abbreviation: string,
+  incomingBooks: Array<{ osisBook: string; chapters: number[] }>
+): Promise<{ conflicts: BookConflict[] }> {
+  if (!abbreviation || incomingBooks.length === 0) return { conflicts: [] };
+
+  const trans = await userDb
+    .select({ id: translations.id })
+    .from(translations)
+    .where(eq(translations.abbreviation, abbreviation.toUpperCase()))
+    .limit(1);
+
+  if (!trans[0]) return { conflicts: [] };
+  const translationId = trans[0].id;
+
+  const conflicts: BookConflict[] = [];
+
+  for (const { osisBook, chapters } of incomingBooks) {
+    const book = await getBook(osisBook);
+    if (!book) continue;
+
+    const existingRows = await userDb
+      .select({ chapter: translationVerses.chapter })
+      .from(translationVerses)
+      .where(and(
+        eq(translationVerses.translationId, translationId),
+        eq(translationVerses.bookId, book.id),
+      ));
+
+    const existingSet = new Set(existingRows.map(r => r.chapter));
+    const conflictingChapters = chapters
+      .filter(ch => existingSet.has(ch))
+      .sort((a, b) => a - b);
+
+    if (conflictingChapters.length > 0) {
+      conflicts.push({
+        osisBook,
+        conflictingChapters,
+        incomingChapters: [...chapters].sort((a, b) => a - b),
+        totalBookChapters: book.chapterCount,
+      });
+    }
+  }
+
+  return { conflicts };
 }

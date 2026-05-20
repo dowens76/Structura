@@ -3,7 +3,8 @@
 import { startTransition, useActionState, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { importTranslationAction, checkExistingVersesAction, importUsfmFileAction } from "./actions";
+import { importTranslationAction, checkExistingVersesAction, importUsfmFileAction, checkUsfmConflictsAction } from "./actions";
+import type { BookConflict } from "./actions";
 import type { Book, Translation } from "@/lib/db/schema";
 import { OSIS_BOOKS_OT, OSIS_BOOKS_NT } from "@/lib/utils/osis";
 import { useTranslation } from "@/lib/i18n/LocaleContext";
@@ -104,6 +105,44 @@ function MarkerInventory({ inv, stats }: { inv: { preserved: string[]; stripped:
   );
 }
 
+// ── Conflict detection helpers ────────────────────────────────────────────────
+
+function formatChapterRanges(chapters: number[]): string {
+  if (chapters.length === 0) return "";
+  const ranges: string[] = [];
+  let start = chapters[0], end = chapters[0];
+  for (let i = 1; i < chapters.length; i++) {
+    if (chapters[i] === end + 1) { end = chapters[i]; }
+    else { ranges.push(start === end ? `${start}` : `${start}–${end}`); start = end = chapters[i]; }
+  }
+  ranges.push(start === end ? `${start}` : `${start}–${end}`);
+  return ranges.join(", ");
+}
+
+function describeConflictChapters(c: BookConflict): string {
+  if (c.conflictingChapters.length === c.incomingChapters.length) {
+    return `all ${c.incomingChapters.length} ch${c.incomingChapters.length !== 1 ? "s" : ""}`;
+  }
+  return `ch${c.conflictingChapters.length !== 1 ? "s" : ""}. ${formatChapterRanges(c.conflictingChapters)}`;
+}
+
+function computeChaptersMap(
+  conflicts: BookConflict[],
+  mode: "overwrite" | "skip" | "selective",
+  selectedChapters: Record<string, Set<number>>
+): Record<string, number[]> | null {
+  if (mode === "overwrite") return null;
+  const result: Record<string, number[]> = {};
+  for (const c of conflicts) {
+    const conflictSet = new Set(c.conflictingChapters);
+    const selected = selectedChapters[c.osisBook] ?? new Set(c.conflictingChapters);
+    result[c.osisBook] = c.incomingChapters.filter(ch =>
+      mode === "skip" ? !conflictSet.has(ch) : (!conflictSet.has(ch) || selected.has(ch))
+    );
+  }
+  return result;
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 
 export default function ImportForm({ books, existingTranslations }: ImportFormProps) {
@@ -151,6 +190,13 @@ export default function ImportForm({ books, existingTranslations }: ImportFormPr
   const [folderProgress, setFolderProgress] = useState<{ done: number; total: number; currentBook: string } | null>(null);
   const [folderErrors, setFolderErrors] = useState<string[]>([]);
   const [folderImportDone, setFolderImportDone] = useState(false);
+
+  // Conflict resolution state (USFM tab)
+  const [usfmConflicts, setUsfmConflicts] = useState<BookConflict[] | null>(null);
+  const [checkingConflicts, setCheckingConflicts] = useState(false);
+  const [conflictChoice, setConflictChoice] = useState<"overwrite" | "skip" | "selective">("overwrite");
+  const [selectedConflictChapters, setSelectedConflictChapters] = useState<Record<string, Set<number>>>({});
+  const [pendingImportType, setPendingImportType] = useState<"file" | "folder" | null>(null);
 
   useEffect(() => {
     if (usfmState.redirectTo) router.push(usfmState.redirectTo);
@@ -234,10 +280,8 @@ export default function ImportForm({ books, existingTranslations }: ImportFormPr
     }
   }
 
-  async function handleFolderImport() {
+  async function doFolderImport(chaptersMap: Record<string, number[]> | null) {
     const validPreviews = folderPreviews.filter(f => f.parsed);
-    if (validPreviews.length === 0 || !usfmName.trim() || !usfmAbbr.trim()) return;
-
     setFolderImporting(true);
     setFolderImportDone(false);
     setFolderErrors([]);
@@ -258,6 +302,11 @@ export default function ImportForm({ books, existingTranslations }: ImportFormPr
       fd.set("abbreviation", usfmAbbr.trim().toUpperCase());
       fd.set("usfmFile", match);
 
+      const bookCode = preview.parsed?.detectedBook;
+      if (chaptersMap && bookCode && bookCode in chaptersMap) {
+        fd.set("chaptersToProcess", JSON.stringify({ [bookCode]: chaptersMap[bookCode] }));
+      }
+
       try {
         const result = await importUsfmFileAction(INITIAL_USFM_STATE, fd);
         if (!result.success && result.error) {
@@ -276,6 +325,86 @@ export default function ImportForm({ books, existingTranslations }: ImportFormPr
     setFolderImportDone(true);
 
     if (firstRedirect) router.push(firstRedirect);
+  }
+
+  async function handleFolderImport() {
+    const validPreviews = folderPreviews.filter(f => f.parsed);
+    if (validPreviews.length === 0 || !usfmName.trim() || !usfmAbbr.trim()) return;
+
+    const incomingBooks = validPreviews
+      .filter(fp => fp.parsed?.detectedBook)
+      .map(fp => ({
+        osisBook: fp.parsed!.detectedBook!,
+        chapters: [...new Set(fp.parsed!.verses.map(v => v.chapter))],
+      }));
+
+    setCheckingConflicts(true);
+    try {
+      const { conflicts } = await checkUsfmConflictsAction(usfmAbbr.trim().toUpperCase(), incomingBooks);
+      if (conflicts.length > 0) {
+        const initSelected: Record<string, Set<number>> = {};
+        for (const c of conflicts) initSelected[c.osisBook] = new Set(c.conflictingChapters);
+        setUsfmConflicts(conflicts);
+        setSelectedConflictChapters(initSelected);
+        setConflictChoice("overwrite");
+        setPendingImportType("folder");
+      } else {
+        await doFolderImport(null);
+      }
+    } finally {
+      setCheckingConflicts(false);
+    }
+  }
+
+  async function doSingleFileImport(chaptersMap: Record<string, number[]> | null) {
+    const file = fileInputRef.current?.files?.[0];
+    if (!file) return;
+    const fd = new FormData();
+    fd.set("name", usfmName.trim());
+    fd.set("abbreviation", usfmAbbr.trim().toUpperCase());
+    fd.set("usfmFile", file);
+    if (chaptersMap) fd.set("chaptersToProcess", JSON.stringify(chaptersMap));
+    startTransition(() => usfmFormAction(fd));
+  }
+
+  async function handleSingleFileImport() {
+    if (!parsedFile || fileError || !usfmName.trim() || !usfmAbbr.trim()) return;
+    const osisBook = parsedFile.detectedBook;
+    if (!osisBook) return;
+    const incomingChapters = [...new Set(parsedFile.verses.map(v => v.chapter))];
+
+    setCheckingConflicts(true);
+    try {
+      const { conflicts } = await checkUsfmConflictsAction(usfmAbbr.trim().toUpperCase(), [
+        { osisBook, chapters: incomingChapters },
+      ]);
+      if (conflicts.length > 0) {
+        const initSelected: Record<string, Set<number>> = {};
+        for (const c of conflicts) initSelected[c.osisBook] = new Set(c.conflictingChapters);
+        setUsfmConflicts(conflicts);
+        setSelectedConflictChapters(initSelected);
+        setConflictChoice("overwrite");
+        setPendingImportType("file");
+      } else {
+        await doSingleFileImport(null);
+      }
+    } finally {
+      setCheckingConflicts(false);
+    }
+  }
+
+  async function handleConflictConfirm() {
+    const chaptersMap = usfmConflicts && conflictChoice !== "overwrite"
+      ? computeChaptersMap(usfmConflicts, conflictChoice, selectedConflictChapters)
+      : null;
+    const type = pendingImportType;
+    setUsfmConflicts(null);
+    setPendingImportType(null);
+    if (type === "file") {
+      await doSingleFileImport(chaptersMap);
+    } else if (type === "folder") {
+      await doFolderImport(chaptersMap);
+    }
   }
 
   async function handlePasteSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -659,33 +788,114 @@ export default function ImportForm({ books, existingTranslations }: ImportFormPr
             </p>
           )}
 
+          {/* Conflict resolution dialog */}
+          {usfmConflicts && usfmConflicts.length > 0 && (
+            <div className="rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950 overflow-hidden">
+              <div className="px-4 py-3 border-b border-amber-200 dark:border-amber-800">
+                <p className="text-sm font-semibold text-amber-800 dark:text-amber-200">
+                  This translation already has text for some of these chapters
+                </p>
+                <p className="text-xs text-amber-700 dark:text-amber-300 mt-1">
+                  {usfmConflicts.map((c, i) => (
+                    <span key={c.osisBook}>
+                      {i > 0 && ", "}
+                      <strong>{c.osisBook}</strong> ({describeConflictChapters(c)})
+                    </span>
+                  ))}
+                </p>
+              </div>
+              <div className="px-4 py-3 space-y-2">
+                {(["overwrite", "skip", "selective"] as const).map((opt) => (
+                  <label key={opt} className="flex items-start gap-2.5 cursor-pointer">
+                    <input
+                      type="radio" name="conflictChoice" value={opt}
+                      checked={conflictChoice === opt}
+                      onChange={() => setConflictChoice(opt)}
+                      className="mt-0.5 accent-blue-600"
+                    />
+                    <span className="text-sm text-stone-800 dark:text-stone-100">
+                      {opt === "overwrite" && "Overwrite all existing text"}
+                      {opt === "skip" && "Import only new chapters (skip existing)"}
+                      {opt === "selective" && "Choose which chapters to overwrite"}
+                    </span>
+                  </label>
+                ))}
+
+                {conflictChoice === "selective" && (
+                  <div className="ml-6 mt-1 space-y-3">
+                    {usfmConflicts.map(c => (
+                      <div key={c.osisBook}>
+                        <p className="text-xs font-semibold text-stone-600 dark:text-stone-300 mb-1.5">{c.osisBook}</p>
+                        <div className="flex flex-wrap gap-1">
+                          {c.conflictingChapters.map(ch => {
+                            const checked = (selectedConflictChapters[c.osisBook] ?? new Set(c.conflictingChapters)).has(ch);
+                            return (
+                              <button
+                                key={ch} type="button"
+                                onClick={() => setSelectedConflictChapters(prev => {
+                                  const s = new Set(prev[c.osisBook] ?? c.conflictingChapters);
+                                  if (s.has(ch)) s.delete(ch); else s.add(ch);
+                                  return { ...prev, [c.osisBook]: s };
+                                })}
+                                className={[
+                                  "px-2 py-0.5 rounded text-xs font-mono border transition-colors",
+                                  checked
+                                    ? "bg-amber-500 text-white border-amber-500"
+                                    : "bg-[var(--surface)] text-stone-400 border-[var(--border)]",
+                                ].join(" ")}
+                              >
+                                {ch}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ))}
+                    <p className="text-xs text-stone-500 dark:text-stone-400">
+                      Highlighted chapters will be overwritten; unselected chapters keep existing text.
+                    </p>
+                  </div>
+                )}
+
+                <div className="flex gap-2 pt-2 border-t border-amber-200 dark:border-amber-800 mt-1">
+                  <button
+                    type="button"
+                    onClick={() => { setUsfmConflicts(null); setPendingImportType(null); }}
+                    className="px-4 py-1.5 rounded-lg text-sm font-medium border border-[var(--border)] bg-[var(--surface)] text-stone-700 dark:text-stone-300 hover:bg-stone-50 dark:hover:bg-stone-800 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button" onClick={handleConflictConfirm}
+                    className="px-4 py-1.5 rounded-lg text-sm font-semibold bg-blue-600 text-white hover:bg-blue-700 transition-colors"
+                  >
+                    {conflictChoice === "overwrite" ? "Overwrite & Import" :
+                     conflictChoice === "skip" ? "Import New Chapters" : "Import Selected"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
           <button
             type="button"
             disabled={
-              folderImporting || usfmPending || !usfmName.trim() || !usfmAbbr.trim() ||
+              folderImporting || usfmPending || checkingConflicts || !!usfmConflicts ||
+              !usfmName.trim() || !usfmAbbr.trim() ||
               (importMode === "file" ? !parsedFile || !!fileError : folderPreviews.filter(f => f.parsed).length === 0)
             }
-            onClick={() => {
-              if (importMode === "folder") {
-                handleFolderImport();
-              } else {
-                const fd = new FormData();
-                fd.set("name", usfmName.trim());
-                fd.set("abbreviation", usfmAbbr.trim().toUpperCase());
-                const file = fileInputRef.current?.files?.[0];
-                if (file) fd.set("usfmFile", file);
-                startTransition(() => usfmFormAction(fd));
-              }
-            }}
+            onClick={() => importMode === "folder" ? handleFolderImport() : handleSingleFileImport()}
             className="px-5 py-2.5 rounded-lg text-sm font-semibold bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-60 transition-colors"
           >
             {folderImporting
               ? `Importing… (${folderProgress?.done ?? 0} / ${folderProgress?.total ?? 0})`
-              : usfmPending
-                ? "Importing…"
-                : importMode === "folder"
-                  ? `Import ${folderPreviews.filter(f => f.parsed).length} Book${folderPreviews.filter(f => f.parsed).length !== 1 ? "s" : ""}`
-                  : "Import USFM File"}
+              : checkingConflicts
+                ? "Checking…"
+                : usfmPending
+                  ? "Importing…"
+                  : importMode === "folder"
+                    ? `Import ${folderPreviews.filter(f => f.parsed).length} Book${folderPreviews.filter(f => f.parsed).length !== 1 ? "s" : ""}`
+                    : "Import USFM File"}
           </button>
         </div>
       )}
