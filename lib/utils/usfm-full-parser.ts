@@ -25,6 +25,19 @@ export const PARATEXT_TO_OSIS: Record<string, string> = {
   "1TI": "1Tim","2TI": "2Tim", TIT: "Titus", PHM: "Phlm",  HEB: "Heb",
   JAS: "Jas",   "1PE": "1Pet","2PE": "2Pet", "1JN": "1John","2JN": "2John",
   "3JN": "3John",JUD: "Jude", REV: "Rev",
+  // ── Common 4-char aliases used by some Bible software (e.g. DCO-BT) ─────
+  EXOD: "Exod", DEUT: "Deut", JOSH: "Josh", JUDG: "Judg", RUTH: "Ruth",
+  "1SAM": "1Sam", "2SAM": "2Sam",
+  "1KGS": "1Kgs", "2KGS": "2Kgs",
+  "1CHR": "1Chr", "2CHR": "2Chr",
+  EZRA: "Ezra", NEHE: "Neh",  ESTH: "Esth",
+  PROV: "Prov", ECCL: "Eccl", SONG: "Song", LAME: "Lam",  EZEK: "Ezek",
+  JOEL: "Joel", AMOS: "Amos", OBAD: "Obad", JONA: "Jonah",
+  NAHU: "Nah",  HABA: "Hab",  ZEPH: "Zeph", HAGG: "Hag",  ZECH: "Zech",
+  MALA: "Mal",
+  MATT: "Matt", MARK: "Mark", LUKE: "Luke", JOHN: "John", ACTS: "Acts",
+  GALA: "Gal",  PHIL: "Phil", PHLM: "Phlm", JAME: "Jas",  JUDE: "Jude",
+  REVE: "Rev",
 };
 
 // Markers whose content is preserved inline (rendered as styled spans)
@@ -399,11 +412,11 @@ export function parseUsfmFile(raw: string): ParsedUsfmFile {
       continue;
     }
 
-    // ── Everything else: strip marker, optionally keep text ───────────────
+    // ── Everything else: strip marker, keep following text if inside a verse ─
     strippedSeen.add(marker);
-    // If it's a closing marker, no text to preserve. If opening, the inline
-    // text (before the next marker) belongs in the verse.
-    if (!closing && text.trim() && currentVerse > 0) {
+    // Preserve text for both opening AND closing unknown markers — closing
+    // markers like \fn* (a DCO-BT footnote wrapper) have real verse text after them.
+    if (text.trim() && currentVerse > 0) {
       verseText  += text;
       wordsSoFar += countWords(text);
     }
