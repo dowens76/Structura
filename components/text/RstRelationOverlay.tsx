@@ -595,15 +595,23 @@ export default function RstRelationOverlay({
 
   const scheduleRemeasure = useCallback(() => {
     if (frameRef.current) cancelAnimationFrame(frameRef.current);
+    // Double-RAF: the outer frame lets any pending padding / DOM changes
+    // (from useLayoutEffect) flush into the browser's layout engine; the inner
+    // frame reads stable getBoundingClientRect values.  Without this, the first
+    // measurement on initial load (e.g. in Tauri's WebView) can fire before the
+    // padding reflow is complete, placing arrows away from the text until the
+    // next remeasure is triggered (e.g. by toggling a translation).
     frameRef.current = requestAnimationFrame(() => {
-      const container = containerRef.current;
-      if (!container) return;
-      const newPos           = measureSegments(allSegIds, container);
-      const { nodes, links } = layoutTree(relations, tvRelations, paragraphFirstWordIds, newPos, isHebrew, hasTranslation);
-      setPosMap(newPos);
-      setSvgH(container.scrollHeight);
-      setLayoutNodes(nodes);
-      setLayoutLinks(links);
+      frameRef.current = requestAnimationFrame(() => {
+        const container = containerRef.current;
+        if (!container) return;
+        const newPos           = measureSegments(allSegIds, container);
+        const { nodes, links } = layoutTree(relations, tvRelations, paragraphFirstWordIds, newPos, isHebrew, hasTranslation);
+        setPosMap(newPos);
+        setSvgH(container.scrollHeight);
+        setLayoutNodes(nodes);
+        setLayoutLinks(links);
+      });
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [relations, tvRelations, containerRef, isHebrew, hasTranslation, editing, paragraphFirstWordIds.join(",")]);
