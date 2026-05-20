@@ -7,30 +7,46 @@ import type {
   Character, CharacterRef, SpeechSection, WordTag, WordTagRef,
   Translation, TranslationVerse, RstRelation, WordArrow, LineAnnotation,
 } from "@/lib/db/schema";
-import type { DisplayMode, GrammarFilterState, TranslationTextEntry } from "@/lib/morphology/types";
+import type { DisplayMode, GrammarFilterState, TranslationTextEntry, InterlinearSubMode } from "@/lib/morphology/types";
 import type { ColorRule } from "@/lib/morphology/colorRules";
 import VerseDisplay from "@/components/text/VerseDisplay";
 import MorphologyPanel from "@/components/text/MorphologyPanel";
 import GrammarFilter from "@/components/controls/GrammarFilter";
 import DisplayModeToggle from "@/components/controls/DisplayModeToggle";
+import InterlinearSubModePicker from "@/components/controls/InterlinearSubModePicker";
 import ColorRulePanel from "@/components/controls/ColorRulePanel";
 import CharacterPanel from "@/components/controls/CharacterPanel";
 import WordTagPanel from "@/components/controls/WordTagPanel";
 import ChapterOverlays from "@/components/text/ChapterOverlays";
 import ClearAnnotationsDialog, { type ClearCategory } from "@/components/controls/ClearAnnotationsDialog";
 import PassageNotesPane from "@/components/notes/PassageNotesPane";
+import FindBar from "@/components/text/FindBar";
 import ResizablePane from "@/components/ResizablePane";
+import OutlinePane from "@/components/text/OutlinePane";
+import SearchPane from "@/components/search/SearchPane";
+import BibleLookupPane from "@/components/bible/BibleLookupPane";
 import RstTypeManager from "@/components/controls/RstTypeManager";
+import ToolbarCustomizer, { DEFAULT_TOOLBAR_VIS, type ToolbarVisibility } from "@/components/controls/ToolbarCustomizer";
 import { RELATIONSHIP_TYPES } from "@/lib/morphology/clauseRelationships";
 import type { RstTypeEntry } from "@/lib/morphology/clauseRelationships";
-import type { RstCustomType } from "@/lib/db/schema";
+import type { RstCustomType, TranslationFootnote } from "@/lib/db/schema";
 import { useWordArrows } from "@/lib/hooks/useWordArrows";
 import { useAnnotationRange } from "@/lib/hooks/useAnnotationRange";
 import { useRstRelations } from "@/lib/hooks/useRstRelations";
 import hebrewLemmas from "@/lib/data/hebrew-lemmas.json";
 import { computeSectionRanges } from "@/lib/utils/sectionRanges";
-import { generateOutline } from "@/lib/utils/outlineExport";
 import { OSIS_BOOK_NAMES } from "@/lib/utils/osis";
+import { useTranslation } from "@/lib/i18n/LocaleContext";
+
+/** Normalize text for diacritic-insensitive find-in-page matching. */
+function normalizeForSearch(text: string): string {
+  return text
+    .normalize("NFD")
+    .replace(/[\u0591-\u05C7]/g, "")
+    .replace(/[\u0300-\u036F]/g, "")
+    .replace(/\//g, "")
+    .toLowerCase();
+}
 
 /** Returns true if the word's surface text is entirely punctuation and should
  *  be skipped during character / word-tag selection. */
@@ -89,6 +105,9 @@ interface Props {
   // ULT (built-in) translation — base text from ult.db, edits in user.db
   ultBaseVerses?: { chapter: number; verse: number; text: string }[];
   ultTranslation?: Translation | null;
+  // VCB (built-in Vietnamese) translation
+  vcbBaseVerses?: { chapter: number; verse: number; text: string }[];
+  vcbTranslation?: Translation | null;
   // RST relations + word arrows
   initialRstRelations: RstRelation[];
   initialWordArrows: WordArrow[];
@@ -101,6 +120,10 @@ interface Props {
   // Book-wide breaks + max verses for cross-chapter range computation
   bookSceneBreaks: { wordId: string; level: number; chapter: number; verse: number; extendedThrough: number | null }[];
   bookMaxVerses: Map<number, number>;
+  // Translation footnotes (keyed by translation ID)
+  initialTranslationFootnotes?: Record<number, TranslationFootnote[]>;
+  // Workspace translation-only mode — hides source text by default
+  translationOnly?: boolean;
 }
 
 export default function PassageView({
@@ -126,6 +149,8 @@ export default function PassageView({
   translationVerseData,
   ultBaseVerses = [],
   ultTranslation = null,
+  vcbBaseVerses = [],
+  vcbTranslation = null,
   initialRstRelations,
   initialWordArrows,
   initialWordFormatting,
@@ -133,9 +158,12 @@ export default function PassageView({
   initialLineAnnotations,
   bookSceneBreaks,
   bookMaxVerses,
+  initialTranslationFootnotes = {},
+  translationOnly = false,
 }: Props) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
+  const { t } = useTranslation();
 
   // ── Passage state ─────────────────────────────────────────────────────────
   const [passage, setPassage] = useState(initialPassage);
@@ -150,25 +178,64 @@ export default function PassageView({
   // Use hardcoded defaults for initial render so server and client HTML match,
   // then hydrate from localStorage in the mount useEffect to avoid hydration mismatch.
   const [displayMode, setDisplayMode] = useState<DisplayMode>("clean");
+  const [interlinearSubMode, setInterlinearSubMode] = useState<InterlinearSubMode>("lemma");
+  const [constituentLabelMap, setConstituentLabelMap] = useState<Map<string, string>>(new Map());
+  const [datasets, setDatasets] = useState<{ id: number; name: string }[]>([]);
+  const [datasetEntryMap, setDatasetEntryMap] = useState<Map<string, string>>(new Map());
+  const [uploadDatasetId, setUploadDatasetId] = useState<number | null>(null);
+  const uploadInputRef = useRef<HTMLInputElement>(null);
   const [grammarFilter, setGrammarFilter] = useState<GrammarFilterState>(DEFAULT_FILTER);
   const [selectedWord, setSelectedWord] = useState<Word | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
   const [notesOpen, setNotesOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [bibleOpen, setBibleOpen] = useState(false);
+  const [searchHits, setSearchHits] = useState<Set<string>>(new Set());
+  const [searchRequest, setSearchRequest] = useState<{ query: string; source: string; nonce: number } | null>(null);
   const [presentationMode, setPresentationMode] = useState(false);
   const [notesScrollVerse, setNotesScrollVerse] = useState<{ ch: number; v: number } | null>(null);
   const [showTooltips, setShowTooltips] = useState(false);
+  const [showAtnachBreaks, setShowAtnachBreaks] = useState(false);
   const [activeTranslationAbbrs, setActiveTranslationAbbrs] = useState<Set<string>>(new Set());
   const [colorRules, setColorRules] = useState<ColorRule[]>([]);
   const [useLinguisticTerms, setUseLinguisticTerms] = useState(false);
   const [hebrewFontSize, setHebrewFontSize] = useState(1.375);
   const [greekFontSize, setGreekFontSize] = useState(1.25);
   const [translationFontSize, setTranslationFontSize] = useState(0.875);
+  // Find-in-page
+  const [findOpen, setFindOpen] = useState(false);
+  const [findQuery, setFindQuery] = useState("");
+  const [findFocusIdx, setFindFocusIdx] = useState(0);
+  const findInputRef = useRef<HTMLInputElement>(null);
+  // Toolbar customizer
+  const [toolbarVis, setToolbarVis] = useState<ToolbarVisibility>(DEFAULT_TOOLBAR_VIS);
+  const [showToolbarCustomizer, setShowToolbarCustomizer] = useState(false);
+  const [tbTooltip, setTbTooltip] = useState<{ text: string; x: number; y: number } | null>(null);
+  const gearBtnRef = useRef<HTMLButtonElement>(null);
+  // Translation footnotes
+  const [localFootnotes, setLocalFootnotes] = useState<Record<number, TranslationFootnote[]>>(initialTranslationFootnotes);
+  const [fnDialogOpen, setFnDialogOpen] = useState(false);
+  const [fnDialogVerse, setFnDialogVerse] = useState(1);
+  const [fnDialogAbbr, setFnDialogAbbr] = useState("");
+  const [fnDialogType, setFnDialogType] = useState<"f" | "x">("f");
+  const [fnDialogContent, setFnDialogContent] = useState("");
+  const [fnEditId, setFnEditId] = useState<number | null>(null);
+  const [showFootnotes, setShowFootnotes] = useState(true);
+  // Version history
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyAbbr, setHistoryAbbr] = useState("");
+  const [historyVerse, setHistoryVerse] = useState(1);
+  const [historyVersions, setHistoryVersions] = useState<Array<{ id: number; text: string; createdAt: string; label: string | null }>>([]);
+  // Translation source editing (USFM mode)
+  const [editingTranslationSource, setEditingTranslationSource] = useState(false);
   const [hideSourceText, setHideSourceText] = useState(false);
 
   // Persist sticky settings
   useEffect(() => { writeLocal("structura:displayMode", displayMode); }, [displayMode]);
+  useEffect(() => { writeLocal("structura:interlinearSubMode", interlinearSubMode); }, [interlinearSubMode]);
   useEffect(() => { writeLocal("structura:useLinguisticTerms", useLinguisticTerms); }, [useLinguisticTerms]);
   useEffect(() => { writeLocal("structura:hideSourceText", hideSourceText); }, [hideSourceText]);
+  useEffect(() => { writeLocal("structura:toolbarVisibility", toolbarVis); }, [toolbarVis]);
 
   useEffect(() => {
     fetch("/api/book-groupings")
@@ -177,17 +244,55 @@ export default function PassageView({
       .catch(() => {});
   }, []);
 
+  // Load datasets list on mount
+  useEffect(() => {
+    fetch("/api/interlinear/datasets?workspaceId=1")
+      .then((r) => r.json())
+      .then((rows: { id: number; name: string }[]) => setDatasets(rows))
+      .catch(() => {});
+  }, []);
+
+  // Load constituent labels when in constituent sub-mode
+  useEffect(() => {
+    if (displayMode !== "interlinear" || interlinearSubMode !== "constituent") return;
+    const chapterEntries = [...new Set(words.map((w) => `${w.chapter}`))];
+    Promise.all(chapterEntries.map((ch) =>
+      fetch(`/api/interlinear/constituent-labels?workspaceId=1&book=${encodeURIComponent(osisBook)}&chapter=${ch}&textSource=${encodeURIComponent(textSource)}`)
+        .then((r) => r.json())
+        .then((rows: { wordId: string; label: string }[]) => rows)
+    ))
+      .then((all) => setConstituentLabelMap(new Map(all.flat().map((r) => [r.wordId, r.label]))))
+      .catch(() => {});
+  }, [displayMode, interlinearSubMode, osisBook, textSource, words]);
+
+  // Load dataset entries when in dataset sub-mode
+  useEffect(() => {
+    if (displayMode !== "interlinear") return;
+    if (typeof interlinearSubMode !== "object" || interlinearSubMode.type !== "dataset") return;
+    const dsId = interlinearSubMode.id;
+    const chapterEntries = [...new Set(words.map((w) => `${w.chapter}`))];
+    Promise.all(chapterEntries.map((ch) =>
+      fetch(`/api/interlinear/datasets/${dsId}/entries?book=${encodeURIComponent(osisBook)}&chapter=${ch}&textSource=${encodeURIComponent(textSource)}`)
+        .then((r) => r.json())
+        .then((rows: { wordId: string; value: string }[]) => rows)
+    ))
+      .then((all) => setDatasetEntryMap(new Map(all.flat().map((r) => [r.wordId, r.value]))))
+      .catch(() => {});
+  }, [displayMode, interlinearSubMode, osisBook, textSource, words]);
+
   // Restore all persisted settings after hydration — avoids SSR/client HTML mismatch.
   // Font sizes are included here (not in lazy initializers) for the same reason.
   // Write effects for font sizes were removed; adjustFontSize writes directly instead.
   useEffect(() => {
     setDisplayMode(readLocal<DisplayMode>("structura:displayMode", "clean"));
+    setInterlinearSubMode(readLocal<InterlinearSubMode>("structura:interlinearSubMode", "lemma"));
     setActiveTranslationAbbrs(new Set(readLocal<string[]>("structura:activeTranslations", [])));
     setUseLinguisticTerms(readLocal<boolean>("structura:useLinguisticTerms", false));
     setHebrewFontSize(readLocal<number>("structura:hebrewFontSize", 1.375));
     setGreekFontSize(readLocal<number>("structura:greekFontSize", 1.25));
     setTranslationFontSize(readLocal<number>("structura:translationFontSize", 0.875));
-    setHideSourceText(readLocal<boolean>("structura:hideSourceText", false));
+    setHideSourceText(readLocal<boolean>("structura:hideSourceText", translationOnly));
+    setToolbarVis({ ...DEFAULT_TOOLBAR_VIS, ...readLocal<Partial<ToolbarVisibility>>("structura:toolbarVisibility", {}) });
   }, []);
 
   // ── Editing mode toggles ──────────────────────────────────────────────────
@@ -199,6 +304,8 @@ export default function PassageView({
   // ── Character tagging state ───────────────────────────────────────────────
   const [highlightCharIds, setHighlightCharIds] = useState<Set<number>>(new Set());
   const [editingRefs, setEditingRefs] = useState(false);
+  const [refRangeStart, setRefRangeStart] = useState<string | null>(null);
+  const [wordTagRangeStart, setWordTagRangeStart] = useState<string | null>(null);
   const [editingSpeech, setEditingSpeech] = useState(false);
   const [characters, setCharacters] = useState<Character[]>(initialCharacters);
   const [activeCharId, setActiveCharId] = useState<number | null>(
@@ -339,47 +446,81 @@ export default function PassageView({
   const [editingItalic, setEditingItalic] = useState(false);
 
   // ── Translation editing state ──────────────────────────────────────────────
-  // If ULT base verses are provided, merge them in: user edits take precedence;
-  // verses not yet edited fall back to the immutable base text from ult.db.
+  // Merge ULT and VCB base verses; user edits take precedence.
   // Verses are keyed by "chapter:verse" since passages span multiple chapters.
   const initialTranslationVerseData = useMemo(() => {
-    if (!ultTranslation || ultBaseVerses.length === 0) return translationVerseData;
-    const ultId = ultTranslation.id;
-    const editedMap = new Map(
-      (translationVerseData[ultId] ?? []).map((v) => [`${v.chapter}:${v.verse}`, v])
-    );
-    const merged: TranslationVerse[] = ultBaseVerses.map((base, i) => {
-      return editedMap.get(`${base.chapter}:${base.verse}`) ?? {
-        id: -(i + 1),
-        workspaceId: ultTranslation.workspaceId,
-        translationId: ultId,
-        osisRef: `${osisBook}.${base.chapter}.${base.verse}`,
-        bookId: 0,
-        chapter: base.chapter,
-        verse: base.verse,
-        text: base.text,
-      };
-    });
-    return { ...translationVerseData, [ultId]: merged };
-  // Only recalculate on passage identity / ULT change, not on every edit keystroke.
+    let data = translationVerseData;
+
+    if (ultTranslation && ultBaseVerses.length > 0) {
+      const ultId = ultTranslation.id;
+      const editedMap = new Map(
+        (data[ultId] ?? []).map((v) => [`${v.chapter}:${v.verse}`, v])
+      );
+      const merged: TranslationVerse[] = ultBaseVerses.map((base, i) => {
+        return editedMap.get(`${base.chapter}:${base.verse}`) ?? {
+          id: -(i + 1),
+          workspaceId: ultTranslation.workspaceId,
+          translationId: ultId,
+          osisRef: `${osisBook}.${base.chapter}.${base.verse}`,
+          bookId: 0,
+          chapter: base.chapter,
+          verse: base.verse,
+          text: base.text,
+        };
+      });
+      data = { ...data, [ultId]: merged };
+    }
+
+    if (vcbTranslation && vcbBaseVerses.length > 0) {
+      const vcbId = vcbTranslation.id;
+      const editedMap = new Map(
+        (data[vcbId] ?? []).map((v) => [`${v.chapter}:${v.verse}`, v])
+      );
+      const merged: TranslationVerse[] = vcbBaseVerses.map((base, i) => {
+        return editedMap.get(`${base.chapter}:${base.verse}`) ?? {
+          id: -(i + 1),
+          workspaceId: vcbTranslation.workspaceId,
+          translationId: vcbId,
+          osisRef: `${osisBook}.${base.chapter}.${base.verse}`,
+          bookId: 0,
+          chapter: base.chapter,
+          verse: base.verse,
+          text: base.text,
+        };
+      });
+      data = { ...data, [vcbId]: merged };
+    }
+
+    return data;
+  // Only recalculate on passage identity / translation change.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [passage.id, ultTranslation?.id]);
+  }, [passage.id, ultTranslation?.id, vcbTranslation?.id]);
 
   const [editingTranslation, setEditingTranslation] = useState(false);
   const [localTranslationVerseData, setLocalTranslationVerseData] = useState(initialTranslationVerseData);
   // Snapshot taken when translation editing mode is entered, used for Cancel
   const translationEditSnapshotRef = useRef(initialTranslationVerseData);
 
-  // Merge ULT into the available translations list and track which are "built-in"
+  // Merge ULT + VCB into the available translations list and track which are "built-in"
   const allAvailableTranslations = useMemo(() => {
-    if (!ultTranslation || ultBaseVerses.length === 0) return availableTranslations;
-    if (availableTranslations.some((t) => t.id === ultTranslation.id)) return availableTranslations;
-    return [ultTranslation, ...availableTranslations];
-  }, [availableTranslations, ultTranslation, ultBaseVerses.length]);
+    let list = availableTranslations;
+    const includeUlt = ultTranslation && (translationOnly || ultBaseVerses.length > 0);
+    if (includeUlt && !list.some((t) => t.id === ultTranslation!.id)) {
+      list = [ultTranslation!, ...list];
+    }
+    const includeVcb = vcbTranslation && (translationOnly || vcbBaseVerses.length > 0);
+    if (includeVcb && !list.some((t) => t.id === vcbTranslation!.id)) {
+      list = [...list, vcbTranslation!];
+    }
+    return list;
+  }, [availableTranslations, ultTranslation, ultBaseVerses.length, vcbTranslation, vcbBaseVerses.length, translationOnly]);
 
   const systemTranslationIds = useMemo(
-    () => new Set(ultTranslation ? [ultTranslation.id] : []),
-    [ultTranslation]
+    () => new Set([
+      ...(ultTranslation ? [ultTranslation.id] : []),
+      ...(vcbTranslation ? [vcbTranslation.id] : []),
+    ]),
+    [ultTranslation, vcbTranslation]
   );
 
   // ── Overlay ref ────────────────────────────────────────────────────────────
@@ -406,6 +547,19 @@ export default function PassageView({
     });
   }
 
+  // Refs for the static keydown listener to read current find state without stale closures
+  const findOpenRef = useRef(false);
+  const findHitIdsRef = useRef<string[]>([]);
+  const findFocusIdRef = useRef<string | null>(null);
+  // tagFocusedFindWord is assigned each render with fresh state closures
+  const tagFocusedFindWordRef = useRef<() => void>(() => {});
+  const editingRefsRef = useRef(false);
+  const editingWordTagsRef = useRef(false);
+
+  useEffect(() => { findOpenRef.current = findOpen; }, [findOpen]);
+  useEffect(() => { editingRefsRef.current = editingRefs; }, [editingRefs]);
+  useEffect(() => { editingWordTagsRef.current = editingWordTags; }, [editingWordTags]);
+
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
       if ((e.metaKey || e.ctrlKey) && e.key === "z" && !e.shiftKey) {
@@ -417,6 +571,38 @@ export default function PassageView({
         undoStackRef.current = next;
         setUndoStack(next);
         entry.undo();
+        return;
+      }
+      // Ctrl/Cmd+F — open find bar
+      if ((e.metaKey || e.ctrlKey) && e.key === "f" && !e.shiftKey) {
+        e.preventDefault();
+        setFindOpen(true);
+        setTimeout(() => findInputRef.current?.select(), 0);
+        return;
+      }
+      // Ctrl/Cmd+G — next hit; Ctrl/Cmd+Shift+G — previous hit
+      if ((e.metaKey || e.ctrlKey) && e.key === "g") {
+        if (!findOpenRef.current || findHitIdsRef.current.length === 0) return;
+        e.preventDefault();
+        if (e.shiftKey) {
+          setFindFocusIdx((i) => (i - 1 + findHitIdsRef.current.length) % findHitIdsRef.current.length);
+        } else {
+          setFindFocusIdx((i) => (i + 1) % findHitIdsRef.current.length);
+        }
+        return;
+      }
+      // Ctrl/Cmd+E — tag focused find word with active annotation tool
+      if ((e.metaKey || e.ctrlKey) && e.key === "e") {
+        if (!findOpenRef.current || !findFocusIdRef.current) return;
+        if (!editingRefsRef.current && !editingWordTagsRef.current) return;
+        e.preventDefault();
+        tagFocusedFindWordRef.current();
+        return;
+      }
+      // Escape — close find bar
+      if (e.key === "Escape" && findOpenRef.current) {
+        setFindOpen(false);
+        setFindQuery("");
       }
     }
     window.addEventListener("keydown", onKeyDown);
@@ -477,6 +663,34 @@ export default function PassageView({
 
     return computeSectionRanges(allBreaks, bookMaxVerses, osisBook);
   }, [sceneBreakMap, bookSceneBreaks, bookMaxVerses, wordToChapter, passage.startChapter, passage.endChapter, osisBook, passageChapterSet]);
+
+  // ── Find-in-page hits ─────────────────────────────────────────────────────
+  const findHitIds = useMemo<string[]>(() => {
+    if (!findQuery.trim()) return [];
+    const q = normalizeForSearch(findQuery);
+    if (!q) return [];
+    return words
+      .filter((w) => !isPunctuationWord(w))
+      .filter((w) => normalizeForSearch(w.surfaceText ?? "").includes(q))
+      .map((w) => w.wordId);
+  }, [words, findQuery]);
+
+  const findHitSet = useMemo(() => new Set(findHitIds), [findHitIds]);
+  const findFocusId = findHitIds[findFocusIdx % Math.max(findHitIds.length, 1)] ?? null;
+
+  // Keep refs in sync for the static keydown listener
+  useEffect(() => { findHitIdsRef.current = findHitIds; }, [findHitIds]);
+
+  // Sync findFocusId ref for keyboard handler
+  useEffect(() => { findFocusIdRef.current = findFocusId; }, [findFocusId]);
+
+  // Scroll focused find hit into view
+  useEffect(() => {
+    if (!findFocusId) return;
+    document
+      .querySelector(`[data-word-id="${CSS.escape(findFocusId)}"]`)
+      ?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [findFocusId]);
 
   // ── Verse groups keyed by "chapter:verse" (for speech section handler) ────
   const chapterVerseGroups = useMemo(() => {
@@ -642,7 +856,15 @@ export default function PassageView({
     const map = new Map<string, TranslationTextEntry[]>();
     for (const t of allAvailableTranslations) {
       if (!activeTranslationIds.has(t.id)) continue;
-      for (const tv of localTranslationVerseData[t.id] ?? []) {
+      const verses = localTranslationVerseData[t.id] ?? [];
+      // Deduplicate by chapter:verse — keep highest-id row (DB has no unique constraint)
+      const deduped = new Map<string, typeof verses[0]>();
+      for (const tv of verses) {
+        const vk = `${tv.chapter}:${tv.verse}`;
+        const prev = deduped.get(vk);
+        if (!prev || tv.id > prev.id) deduped.set(vk, tv);
+      }
+      for (const tv of deduped.values()) {
         const key = `${tv.chapter}:${tv.verse}`;
         const existing = map.get(key) ?? [];
         existing.push({ abbr: t.abbreviation, text: tv.text, translationId: t.id });
@@ -1712,6 +1934,24 @@ export default function PassageView({
     } catch { /* non-critical */ }
   }
 
+  async function handleUpdateSceneThematic(wordId: string, level: number, thematic: boolean, thematicLetter: string | null) {
+    setSceneBreakMap((prev) => {
+      const next = new Map(prev);
+      const arr = (prev.get(wordId) ?? []).map((b) =>
+        b.level === level ? { ...b, thematic, thematicLetter: thematic ? thematicLetter : null } : b
+      );
+      next.set(wordId, arr);
+      return next;
+    });
+    try {
+      await fetch("/api/scene-breaks", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ wordId, level, thematic, thematicLetter }),
+      });
+    } catch { /* non-critical */ }
+  }
+
   // Line annotation handlers (handleSelectAnnotationSegment, handleCancelAnnotation,
   // handleSaveAnnotation, handleDeleteAnnotation, handleUpdateAnnotation,
   // handleExpandAnnotationRange) are provided by useAnnotationRange above.
@@ -1792,22 +2032,356 @@ export default function PassageView({
     await handleUpdateTranslationVerse(abbr, verse, snapRecord.text);
   }
 
-  // ── Copy outline to clipboard ─────────────────────────────────────────────
-  const [outlineCopied, setOutlineCopied] = useState(false);
-
-  async function handleExportOutline() {
-    const allBreaks: { wordId: string; heading: string | null; level: number; chapter: number; verse: number }[] = [];
-    for (const [wordId, arr] of sceneBreakMap) {
-      for (const br of arr) {
-        const ch = wordToChapter.get(wordId) ?? passage.startChapter;
-        allBreaks.push({ wordId, heading: br.heading, level: br.level, chapter: ch, verse: br.verse });
+  // ── Search / Bible lookup ────────────────────────────────────────────────
+  const handleSearchResults = useCallback((allResults: import("@/app/api/search/words/route").SearchResult[]) => {
+    const normalizedSource = textSource === "LXX" ? "STEPBIBLE_LXX" : textSource;
+    const hits = new Set<string>();
+    for (const r of allResults) {
+      if (r.book === osisBook && passageChapterSet.has(r.chapter) && r.textSource === normalizedSource) {
+        hits.add(r.wordId);
       }
     }
-    allBreaks.sort((a, b) => a.chapter !== b.chapter ? a.chapter - b.chapter : a.verse !== b.verse ? a.verse - b.verse : a.level - b.level);
-    const text = generateOutline(allBreaks, sectionRanges);
-    await navigator.clipboard.writeText(text);
-    setOutlineCopied(true);
-    setTimeout(() => setOutlineCopied(false), 2000);
+    setSearchHits(hits);
+  }, [osisBook, passageChapterSet, textSource]);
+
+  const handleSearchSaved = useCallback((tagId: number, name: string, color: string, wordRefs: { wordId: string; book: string; chapter: number; textSource: string }[]) => {
+    const newTag: import("@/lib/db/schema").WordTag = { id: tagId, workspaceId: 1, book: "*", name, color, type: "search", createdAt: new Date().toISOString(), sortOrder: null, corpusGroupingId: null, lemmas: null };
+    setWordTags((prev) => [...prev, newTag]);
+    const normalizedSource = textSource === "LXX" ? "STEPBIBLE_LXX" : textSource;
+    const passageRefs = wordRefs.filter(
+      (r) => r.book === osisBook && passageChapterSet.has(r.chapter) && r.textSource === normalizedSource
+    );
+    if (passageRefs.length > 0) {
+      setWordTagRefMap((prev) => {
+        const next = new Map(prev);
+        for (const r of passageRefs) {
+          if (!next.has(r.wordId)) {
+            next.set(r.wordId, { id: -1, workspaceId: 1, wordId: r.wordId, tagId, textSource: r.textSource, book: r.book, chapter: r.chapter });
+          }
+        }
+        return next;
+      });
+    }
+    setSearchHits(new Set());
+  }, [osisBook, passageChapterSet, textSource]);
+
+  /** Called by MorphologyPanel when the user clicks a lemma or Strong's number. */
+  const handleSearchFromWord = useCallback((query: string, source: string) => {
+    setSearchOpen(true);
+    setSearchRequest({ query, source, nonce: Date.now() });
+  }, []);
+
+  /** Called when the user clicks a lemma in interlinear mode. */
+  const handleLemmaClick = useCallback((word: Word) => {
+    const query = word.language === "hebrew"
+      ? (word.strongNumber ?? word.lemma ?? "")
+      : (word.lemma ?? "");
+    if (!query) return;
+    setSearchOpen(true);
+    setSearchRequest({ query, source: word.textSource, nonce: Date.now() });
+  }, []);
+
+  // ── Interlinear dataset handlers ──────────────────────────────────────────
+  async function handleSaveConstituentLabel(wordId: string, label: string | null) {
+    setConstituentLabelMap((prev) => {
+      const next = new Map(prev);
+      if (label === null) next.delete(wordId);
+      else next.set(wordId, label);
+      return next;
+    });
+    try {
+      const ch = wordToChapter.get(wordId) ?? passage.startChapter;
+      if (label === null) {
+        await fetch("/api/interlinear/constituent-labels", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ workspaceId: 1, wordId }),
+        });
+      } else {
+        await fetch("/api/interlinear/constituent-labels", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ workspaceId: 1, wordId, label, textSource, book: osisBook, chapter: ch }),
+        });
+      }
+    } catch { /* ignore */ }
+  }
+
+  async function handleSaveDatasetEntry(wordId: string, value: string | null) {
+    if (typeof interlinearSubMode !== "object" || interlinearSubMode.type !== "dataset") return;
+    const dsId = interlinearSubMode.id;
+    setDatasetEntryMap((prev) => {
+      const next = new Map(prev);
+      if (value === null) next.delete(wordId);
+      else next.set(wordId, value);
+      return next;
+    });
+    try {
+      const ch = wordToChapter.get(wordId) ?? passage.startChapter;
+      if (value === null) {
+        await fetch(`/api/interlinear/datasets/${dsId}/entries`, {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ wordId }),
+        });
+      } else {
+        await fetch(`/api/interlinear/datasets/${dsId}/entries`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ wordId, value, textSource, book: osisBook, chapter: ch }),
+        });
+      }
+    } catch { /* ignore */ }
+  }
+
+  async function handleCreateDataset(name: string): Promise<{ id: number; name: string } | null> {
+    try {
+      const res = await fetch("/api/interlinear/datasets", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workspaceId: 1, name }),
+      });
+      const ds = await res.json() as { id: number; name: string };
+      setDatasets((prev) => [...prev, ds]);
+      return ds;
+    } catch { return null; }
+  }
+
+  async function handleDeleteDataset(id: number) {
+    setDatasets((prev) => prev.filter((d) => d.id !== id));
+    try { await fetch(`/api/interlinear/datasets/${id}`, { method: "DELETE" }); } catch { /* ignore */ }
+  }
+
+  async function handleRenameDataset(id: number, name: string) {
+    setDatasets((prev) => prev.map((d) => d.id === id ? { ...d, name } : d));
+    if (typeof interlinearSubMode === "object" && interlinearSubMode.type === "dataset" && interlinearSubMode.id === id) {
+      setInterlinearSubMode({ type: "dataset", id, name });
+    }
+    try {
+      await fetch(`/api/interlinear/datasets/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      });
+    } catch { /* ignore */ }
+  }
+
+  async function handleUploadDatasetFile(datasetId: number, file: File) {
+    const text = await file.text();
+    const entries: { wordId: string; value: string; textSource: string; book: string; chapter: number }[] = [];
+    for (const line of text.split(/\r?\n/)) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith("#")) continue;
+      const sep = trimmed.indexOf("\t");
+      if (sep < 1) continue;
+      const wordId = trimmed.slice(0, sep).trim();
+      const value  = trimmed.slice(sep + 1).trim();
+      if (wordId && value) {
+        const ch = wordToChapter.get(wordId) ?? passage.startChapter;
+        entries.push({ wordId, value, textSource, book: osisBook, chapter: ch });
+      }
+    }
+    if (entries.length === 0) return;
+    try {
+      await fetch(`/api/interlinear/datasets/${datasetId}/upload`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ entries }),
+      });
+      if (typeof interlinearSubMode === "object" && interlinearSubMode.type === "dataset" && interlinearSubMode.id === datasetId) {
+        // Reload all entries for the passage
+        const chapterSet = [...new Set(words.map((w) => w.chapter))];
+        const all = await Promise.all(chapterSet.map((ch) =>
+          fetch(`/api/interlinear/datasets/${datasetId}/entries?book=${encodeURIComponent(osisBook)}&chapter=${ch}&textSource=${encodeURIComponent(textSource)}`)
+            .then((r) => r.json())
+            .then((rows: { wordId: string; value: string }[]) => rows)
+        ));
+        setDatasetEntryMap(new Map(all.flat().map((r) => [r.wordId, r.value])));
+      }
+    } catch { /* ignore */ }
+    setUploadDatasetId(null);
+  }
+
+  // ── Translation footnote handlers ─────────────────────────────────────────
+  async function handleAddFootnote() {
+    if (!fnDialogContent.trim()) return;
+    const translation = allAvailableTranslations.find((t) => t.abbreviation === fnDialogAbbr);
+    if (!translation) return;
+    try {
+      const tvRecord = localTranslationVerseData[translation.id]?.find((tv) => tv.verse === fnDialogVerse);
+      const res = await fetch("/api/translation-footnotes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          translationId: translation.id,
+          osisRef: tvRecord?.osisRef ?? `${osisBook}.${passage.startChapter}.${fnDialogVerse}`,
+          verse: fnDialogVerse,
+          abbr: fnDialogAbbr,
+          type: fnDialogType,
+          content: fnDialogContent.trim(),
+        }),
+      });
+      if (res.ok) {
+        const { footnote: created }: { footnote: TranslationFootnote } = await res.json();
+        setLocalFootnotes((prev) => ({
+          ...prev,
+          [translation.id]: [...(prev[translation.id] ?? []), created],
+        }));
+        if (tvRecord) {
+          const newText = tvRecord.text.trimEnd() + " \\fn \\fn*";
+          await handleUpdateTranslationVerse(fnDialogAbbr, fnDialogVerse, newText);
+        }
+        setFnDialogOpen(false);
+        setFnDialogContent("");
+      }
+    } catch { /* ignore */ }
+  }
+
+  async function handleUpdateFootnote() {
+    if (fnEditId === null || !fnDialogContent.trim()) return;
+    try {
+      const res = await fetch("/api/translation-footnotes", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: fnEditId, content: fnDialogContent.trim(), type: fnDialogType }),
+      });
+      if (res.ok) {
+        setLocalFootnotes((prev) => {
+          const updated = { ...prev };
+          for (const tid of Object.keys(updated)) {
+            updated[Number(tid)] = (updated[Number(tid)] ?? []).map((fn) =>
+              fn.id === fnEditId ? { ...fn, content: fnDialogContent.trim(), type: fnDialogType } : fn
+            );
+          }
+          return updated;
+        });
+        setFnDialogOpen(false);
+        setFnEditId(null);
+        setFnDialogContent("");
+      }
+    } catch { /* ignore */ }
+  }
+
+  function openEditFootnote(fn: TranslationFootnote) {
+    const translation = allAvailableTranslations.find((t) => t.id === fn.translationId);
+    setFnEditId(fn.id);
+    setFnDialogAbbr(translation?.abbreviation ?? "");
+    setFnDialogVerse(fn.verse);
+    setFnDialogType(fn.type as "f" | "x");
+    setFnDialogContent(fn.content);
+    setFnDialogOpen(true);
+  }
+
+  async function handleDeleteFootnote(translationId: number, fnId: number) {
+    try {
+      await fetch(`/api/translation-footnotes?id=${fnId}`, { method: "DELETE" });
+      setLocalFootnotes((prev) => ({
+        ...prev,
+        [translationId]: (prev[translationId] ?? []).filter((fn) => fn.id !== fnId),
+      }));
+    } catch { /* ignore */ }
+  }
+
+  // ── Divine-name USFM marker ───────────────────────────────────────────────────
+  function applyNdMarker() {
+    const el = document.activeElement as HTMLTextAreaElement | null;
+    if (!el || el.tagName !== "TEXTAREA" || !el.dataset.translationTextarea) return;
+    const s = el.selectionStart ?? 0;
+    const e = el.selectionEnd ?? 0;
+    if (s === e) return;
+    const val = el.value;
+    const selected = val.slice(s, e);
+    const inserted = `\\nd ${selected}\\nd*`;
+    const newVal = val.slice(0, s) + inserted + val.slice(e);
+    const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value")?.set;
+    nativeSetter?.call(el, newVal);
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+    el.selectionStart = s;
+    el.selectionEnd = s + inserted.length;
+    el.focus();
+  }
+
+  // ── Version history ───────────────────────────────────────────────────────
+  async function openHistory(abbr: string, verse: number) {
+    const translation = allAvailableTranslations.find((t) => t.abbreviation === abbr);
+    if (!translation) return;
+    const tvRecord = localTranslationVerseData[translation.id]?.find((tv) => tv.verse === verse);
+    if (!tvRecord) return;
+    setHistoryAbbr(abbr);
+    setHistoryVerse(verse);
+    setHistoryOpen(true);
+    try {
+      const res = await fetch(
+        `/api/translation-versions?translationId=${translation.id}&osisRef=${encodeURIComponent(tvRecord.osisRef)}`
+      );
+      if (res.ok) setHistoryVersions((await res.json()).versions ?? []);
+    } catch { /* ignore */ }
+  }
+
+  async function handleRestoreVersion(versionText: string) {
+    await handleUpdateTranslationVerse(historyAbbr, historyVerse, versionText);
+    setHistoryOpen(false);
+  }
+
+  // ── Toolbar tooltip ───────────────────────────────────────────────────────
+  function handleToolbarMouseMove(e: React.MouseEvent) {
+    const btn = (e.target as Element).closest("[data-tip]") as HTMLElement | null;
+    if (btn) {
+      const text = btn.getAttribute("data-tip") ?? "";
+      if (text) setTbTooltip({ text, x: e.clientX, y: e.clientY });
+      else setTbTooltip(null);
+    } else {
+      setTbTooltip(null);
+    }
+  }
+
+  // ── tagFocusedFindWord — updated each render so it captures fresh state ─────
+  tagFocusedFindWordRef.current = function tagFocusedFindWord() {
+    const focusId = findFocusIdRef.current;
+    if (!focusId) return;
+    const abbr = focusId.startsWith("tv:") ? focusId.split(":")[1] : null;
+    const source = abbr ?? textSource;
+    if (editingRefs && activeCharId !== null) {
+      handleToggleCharacterRefById(focusId, source);
+    } else if (editingWordTags && activeWordTagId !== null && !pendingWordTag) {
+      handleToggleWordTagRefById(focusId, source);
+    }
+  };
+
+  // ── Outline pane ──────────────────────────────────────────────────────────
+  const [outlineOpen, setOutlineOpen] = useState(false);
+
+  const outlineBreaksForPane = useMemo(() => {
+    const result: { wordId: string; heading: string | null; level: number; chapter: number; verse: number; positionInVerse: number; thematic: boolean; thematicLetter: string | null }[] = [];
+    for (const [wordId, arr] of sceneBreakMap) {
+      const ch = wordToChapter.get(wordId) ?? passage.startChapter;
+      for (const br of arr) {
+        result.push({ wordId, heading: br.heading, level: br.level, chapter: ch, verse: br.verse, positionInVerse: 1, thematic: br.thematic, thematicLetter: br.thematicLetter });
+      }
+    }
+    result.sort((a, b) =>
+      a.chapter !== b.chapter ? a.chapter - b.chapter :
+      a.verse   !== b.verse   ? a.verse   - b.verse   :
+      a.level   - b.level
+    );
+    return result;
+  }, [sceneBreakMap, wordToChapter, passage.startChapter]);
+
+  async function handleDeleteSceneBreakForOutline(wordId: string, level: number) {
+    setSceneBreakMap((prev) => {
+      const next = new Map(prev);
+      const arr = (prev.get(wordId) ?? []).filter((b) => b.level !== level);
+      if (arr.length === 0) next.delete(wordId);
+      else next.set(wordId, arr);
+      return next;
+    });
+    try {
+      await fetch("/api/scene-breaks", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ wordId, level }),
+      });
+    } catch { /* non-critical */ }
   }
 
   // ── Shared range button helper ────────────────────────────────────────────
@@ -1878,16 +2452,16 @@ export default function PassageView({
               {rangeLabel}
             </span>
 
-            {/* Copy outline to clipboard */}
+            {/* Outline sidebar toggle */}
             {sceneBreakMap.size > 0 && (
               <button
                 type="button"
-                onClick={handleExportOutline}
+                onClick={() => setOutlineOpen((v) => !v)}
                 className="shrink-0 text-xs px-2 py-0.5 rounded hover:bg-stone-200 dark:hover:bg-stone-700 transition-colors"
-                style={{ color: "var(--text-muted)" }}
-                title="Copy section break outline to clipboard"
+                style={{ color: outlineOpen ? "var(--accent)" : "var(--text-muted)" }}
+                title="Open outline sidebar"
               >
-                {outlineCopied ? "✓ Copied" : "📋 Outline"}
+                📋 Outline
               </button>
             )}
 
@@ -1992,8 +2566,26 @@ export default function PassageView({
         {/* ── Sticky control area: toolbar + all editing panels/hints ─────── */}
         <div className="sticky top-0 z-20 shrink-0 flex flex-col" style={{ backgroundColor: "var(--background)" }}>
 
+        {/* Toolbar tooltip */}
+        {tbTooltip && (
+          <div
+            className="fixed z-[200] pointer-events-none px-2 py-1 rounded bg-stone-900 dark:bg-stone-100 text-white dark:text-stone-900 text-[13px] max-w-xs shadow-lg"
+            style={
+              tbTooltip.x > window.innerWidth * 0.65
+                ? { right: window.innerWidth - tbTooltip.x + 8, top: tbTooltip.y + 16 }
+                : { left: tbTooltip.x + 12, top: tbTooltip.y + 16 }
+            }
+          >
+            {tbTooltip.text}
+          </div>
+        )}
+
         {/* Toolbar */}
-        <div className="border-b border-[var(--border)] px-6 py-3 flex items-center gap-4 flex-wrap">
+        <div
+          className="border-b border-[var(--border)] px-6 py-3 flex items-center gap-4 flex-wrap"
+          onMouseMove={handleToolbarMouseMove}
+          onMouseLeave={() => setTbTooltip(null)}
+        >
 
           {/* Presentation mode toggle — always visible */}
           <button
@@ -2039,116 +2631,130 @@ export default function PassageView({
               <ColorRulePanel rules={colorRules} onChange={setColorRules} isHebrew={isHebrew} />
             </>
           )}
-          <button
+          {displayMode === "interlinear" && (
+            <InterlinearSubModePicker
+              subMode={interlinearSubMode}
+              onChange={setInterlinearSubMode}
+              datasets={datasets}
+              onCreateDataset={handleCreateDataset}
+              onDeleteDataset={handleDeleteDataset}
+              onRenameDataset={handleRenameDataset}
+              onUploadDataset={(id) => {
+                setUploadDatasetId(id);
+                setTimeout(() => uploadInputRef.current?.click(), 0);
+              }}
+            />
+          )}
+          {toolbarVis.tooltips && <button
             onClick={() => setShowTooltips((v) => !v)}
-            title={showTooltips ? "Disable hover tooltips" : "Enable hover tooltips"}
+            data-tip={showTooltips ? "Disable hover tooltips" : "Enable hover tooltips"}
             className={["px-2.5 py-1 rounded text-xs font-medium transition-colors",
               showTooltips ? "bg-blue-600 text-white"
                 : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
             ].join(" ")}
-          >Tooltips</button>
+          >Tooltips</button>}
 
-          {/* Paragraph edit mode */}
-          <button
-            onClick={() => setEditingParagraphs((v) => !v)}
-            title={editingParagraphs ? "Exit paragraph edit mode" : "Enter paragraph edit mode — click any word to start/remove a paragraph there"}
-            className={["px-2.5 py-1 rounded text-xs font-medium transition-colors",
-              editingParagraphs ? "bg-amber-500 text-white"
-                : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
-            ].join(" ")}
-          >¶</button>
+          {/* Linguistic terms toggle — Hebrew only */}
+          {isHebrew && toolbarVis.qatal && (
+            <button
+              onClick={() => setUseLinguisticTerms((v) => !v)}
+              data-tip={useLinguisticTerms
+                ? "Show descriptive aspect names (Perfect, Imperfect…)"
+                : "Show linguistic terms (Qatal, Yiqtol, Wayyiqtol, Weqatal)"}
+              className={["px-2.5 py-1 rounded text-xs font-medium transition-colors",
+                useLinguisticTerms ? "bg-blue-600 text-white"
+                  : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
+              ].join(" ")}
+            >Qatal</button>
+          )}
+
+          <div className="h-5 border-l border-[var(--border)]" />
+
+          {/* Atnach marker — Hebrew only */}
+          {isHebrew && toolbarVis.atnach && (
+            <button
+              onClick={() => setShowAtnachBreaks((v) => !v)}
+              data-tip={showAtnachBreaks ? "Hide atnach half-verse markers" : "Show atnach accent markers (main cantillation accent dividing each verse)"}
+              className={["px-2.5 py-1 rounded text-xs font-medium transition-colors",
+                showAtnachBreaks ? "bg-violet-600 text-white"
+                  : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
+              ].join(" ")}
+            >Atnach</button>
+          )}
 
           {/* Scene / episode break mode */}
-          <button
+          {toolbarVis.scenes && <button
             onClick={() => editingScenes ? handleExitSceneEditing() : setEditingScenes(true)}
-            title={editingScenes
+            data-tip={editingScenes
               ? "Exit section break mode"
-              : "Enter section break mode — click any word to start/remove a section break there"}
+              : "Enter section break mode — click any word to mark/remove a section break there"}
             className={["px-2.5 py-1 rounded text-xs font-medium transition-colors",
               editingScenes ? "bg-amber-500 text-white"
                 : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
             ].join(" ")}
-          >§</button>
+          >§</button>}
+
+          {/* Outline sidebar toggle */}
+          {toolbarVis.outline && sceneBreakMap.size > 0 && (
+            <button
+              type="button"
+              onClick={() => setOutlineOpen((v) => !v)}
+              className={[
+                "shrink-0 text-xs px-2 py-0.5 rounded transition-colors",
+                outlineOpen
+                  ? "bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400"
+                  : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
+              ].join(" ")}
+              data-tip="Open outline sidebar"
+            >
+              📋 Outline
+            </button>
+          )}
 
           {/* Line annotation mode */}
-          <button
+          {toolbarVis.annotations && <button
             onClick={() => {
               setEditingAnnotations((v) => !v);
               setAnnotRangeStart(null);
               setAnnotRangeEnd(null);
             }}
-            title={editingAnnotations
-              ? "Exit annotation mode"
-              : "Add clause/paragraph labels"}
+            data-tip={editingAnnotations ? "Exit annotation mode" : "Add clause/paragraph labels"}
             className={["px-2.5 py-1 rounded text-xs font-medium transition-colors",
               editingAnnotations ? "bg-indigo-600 text-white"
                 : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
             ].join(" ")}
-          >≡</button>
+          >≡</button>}
 
-          {/* Character reference mode */}
-          <button
-            onClick={() => {
-              setEditingRefs((v) => !v);
-              setEditingSpeech(false); setEditingWordTags(false);
-              setPendingWordTag(false); setSpeechRangeStart(null);
-            }}
-            title={editingRefs ? "Exit reference tagging" : "Tag words as referring to a character"}
+          {/* Paragraph edit mode */}
+          {toolbarVis.paragraphs && <button
+            onClick={() => setEditingParagraphs((v) => !v)}
+            data-tip={editingParagraphs ? "Exit paragraph edit mode" : "Enter paragraph edit mode — click any word to start/remove a paragraph there"}
             className={["px-2.5 py-1 rounded text-xs font-medium transition-colors",
-              editingRefs ? "bg-violet-600 text-white"
+              editingParagraphs ? "bg-amber-500 text-white"
                 : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
             ].join(" ")}
-          >👤</button>
-
-          {/* Speech section mode */}
-          <button
-            onClick={() => {
-              setEditingSpeech((v) => !v);
-              setEditingRefs(false); setEditingWordTags(false);
-              setPendingWordTag(false); setSpeechRangeStart(null);
-            }}
-            title={editingSpeech ? "Exit speech tagging" : "Mark word ranges as spoken by a character (two clicks: start then end)"}
-            className={["px-2.5 py-1 rounded text-xs font-medium transition-colors",
-              editingSpeech ? "bg-violet-600 text-white"
-                : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
-            ].join(" ")}
-          >💬</button>
-
-          {/* Word/concept tag mode */}
-          <button
-            onClick={() => {
-              setEditingWordTags((v) => !v);
-              setEditingRefs(false); setEditingSpeech(false);
-              setEditingIndents(false); setSpeechRangeStart(null);
-              setPendingWordTag(false); setEditingArrows(false); setArrowFromWordId(null);
-            }}
-            title={editingWordTags ? "Exit word/concept tag mode" : "Tag words or concepts with colour highlights"}
-            className={["px-2.5 py-1 rounded text-xs font-medium transition-colors",
-              editingWordTags ? "bg-yellow-500 text-white"
-                : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
-            ].join(" ")}
-          >🏷</button>
+          >¶</button>}
 
           {/* Indent mode */}
-          <button
+          {toolbarVis.indents && <button
             onClick={() => {
               setEditingIndents((v) => !v);
               setEditingRefs(false); setEditingSpeech(false);
               setEditingWordTags(false); setSpeechRangeStart(null);
               setPendingWordTag(false);
             }}
-            title={editingIndents ? "Exit indent mode" : "Indent paragraphs to indicate subordinate clauses"}
+            data-tip={editingIndents ? "Exit indent mode" : "Indent paragraphs to indicate subordinate clauses"}
             className={["px-2.5 py-1 rounded text-xs font-medium transition-colors",
               editingIndents ? "bg-teal-600 text-white"
                 : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
             ].join(" ")}
-          >⇥</button>
+          >⇥</button>}
 
           {/* Source/translation indent link toggle */}
           {editingIndents && (
             <label
               className="flex items-center gap-1 text-[11px] text-stone-500 dark:text-stone-400 cursor-pointer select-none"
-              title={indentsLinked
+              data-tip={indentsLinked
                 ? "Source and translation indent are linked — uncheck to set them independently"
                 : "Source and translation indent are independent — check to link them"}
             >
@@ -2159,8 +2765,6 @@ export default function PassageView({
                   const nowLinked = e.target.checked;
                   setIndentsLinked(nowLinked);
                   if (!nowLinked) {
-                    // Seed T with S values for any paragraph not yet explicitly set,
-                    // so T starts equal to S and can be changed independently from there.
                     setTvLineIndentMap((prev) => {
                       const next = new Map(prev);
                       for (const [wId, lvl] of lineIndentMap) {
@@ -2177,7 +2781,7 @@ export default function PassageView({
           )}
 
           {/* RST relation mode */}
-          <button
+          {toolbarVis.rst && <button
             onClick={() => {
               const entering = !editingRst;
               setEditingRst(entering);
@@ -2188,29 +2792,27 @@ export default function PassageView({
               setShowRstPicker(false);
               if (!entering) setShowRstTypeManager(false);
             }}
-            title={editingRst ? "Exit RST relation mode" : "Mark RST (Rhetorical Structure Theory) relations between paragraph segments"}
+            data-tip={editingRst ? "Exit RST relation mode" : "Mark RST (Rhetorical Structure Theory) relations between paragraph segments"}
             className={["px-2.5 py-1 rounded text-xs font-medium transition-colors",
               editingRst ? "bg-rose-600 text-white"
                 : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
             ].join(" ")}
-          >↳</button>
-          {editingRst && (
+          >↳</button>}
+          {toolbarVis.rst && editingRst && (
             <button
               onClick={() => setShowRstTypeManager((v) => !v)}
-              title="Manage RST label types"
+              data-tip="Manage RST label types"
               className={[
                 "px-2.5 py-1 rounded text-xs font-medium transition-colors",
                 showRstTypeManager
                   ? "bg-amber-500 text-white"
                   : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
               ].join(" ")}
-            >
-              Labels
-            </button>
+            >Labels</button>
           )}
 
           {/* Word arrow mode */}
-          <button
+          {toolbarVis.arrows && <button
             onClick={() => {
               setEditingArrows((v) => !v);
               setEditingRst(false);
@@ -2221,31 +2823,15 @@ export default function PassageView({
               setEditingWordTags(false);
               setPendingWordTag(false);
             }}
-            title={editingArrows ? "Exit word arrow mode" : "Draw free-form arrows between words"}
+            data-tip={editingArrows ? "Exit word arrow mode" : "Draw free-form arrows between words"}
             className={["px-2.5 py-1 rounded text-xs font-medium transition-colors",
               editingArrows ? "bg-rose-600 text-white"
                 : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
             ].join(" ")}
-          >↷</button>
-
-          {/* Undo */}
-          {undoStack.length > 0 && (
-            <button
-              onClick={() => {
-                setUndoStack((prev) => {
-                  if (prev.length === 0) return prev;
-                  const entry = prev[prev.length - 1];
-                  entry.undo();
-                  return prev.slice(0, -1);
-                });
-              }}
-              title={`Undo: ${undoStack[undoStack.length - 1].label} (Ctrl/Cmd+Z)`}
-              className="px-2.5 py-1 rounded text-xs font-medium bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700 transition-colors"
-            >↩ {undoStack[undoStack.length - 1].label}</button>
-          )}
+          >↷</button>}
 
           {/* Bold formatting mode */}
-          <button
+          {toolbarVis.bold && <button
             onClick={() => {
               setEditingBold((v) => !v);
               setEditingItalic(false);
@@ -2260,15 +2846,15 @@ export default function PassageView({
               setRstSegA(null);
               setArrowFromWordId(null);
             }}
-            title={editingBold ? "Exit bold mode" : "Click words to toggle bold"}
+            data-tip={editingBold ? "Exit bold mode" : "Click words to toggle bold"}
             className={["px-2.5 py-1 rounded text-xs font-bold transition-colors",
               editingBold ? "bg-stone-800 text-white dark:bg-stone-200 dark:text-stone-900"
                 : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
             ].join(" ")}
-          >B</button>
+          >B</button>}
 
           {/* Italic formatting mode */}
-          <button
+          {toolbarVis.italic && <button
             onClick={() => {
               setEditingItalic((v) => !v);
               setEditingBold(false);
@@ -2283,63 +2869,126 @@ export default function PassageView({
               setRstSegA(null);
               setArrowFromWordId(null);
             }}
-            title={editingItalic ? "Exit italic mode" : "Click words to toggle italic"}
+            data-tip={editingItalic ? "Exit italic mode" : "Click words to toggle italic"}
             className={["px-2.5 py-1 rounded text-xs italic transition-colors",
               editingItalic ? "bg-stone-800 text-white dark:bg-stone-200 dark:text-stone-900"
                 : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
             ].join(" ")}
-          >I</button>
+          >I</button>}
+
+          {/* Character reference mode */}
+          {toolbarVis.refs && <button
+            onClick={() => {
+              setEditingRefs((v) => !v);
+              setEditingSpeech(false); setEditingWordTags(false);
+              setPendingWordTag(false); setSpeechRangeStart(null);
+            }}
+            data-tip={editingRefs ? "Exit reference tagging" : "Tag words as referring to a character"}
+            className={["px-2.5 py-1 rounded text-xs font-medium transition-colors",
+              editingRefs ? "bg-violet-600 text-white"
+                : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
+            ].join(" ")}
+          >👤</button>}
+
+          {/* Speech section mode */}
+          {toolbarVis.speech && <button
+            onClick={() => {
+              setEditingSpeech((v) => !v);
+              setEditingRefs(false); setEditingWordTags(false);
+              setPendingWordTag(false); setSpeechRangeStart(null);
+            }}
+            data-tip={editingSpeech ? "Exit speech tagging" : "Mark word ranges as spoken by a character (two clicks: start then end)"}
+            className={["px-2.5 py-1 rounded text-xs font-medium transition-colors",
+              editingSpeech ? "bg-violet-600 text-white"
+                : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
+            ].join(" ")}
+          >💬</button>}
+
+          {/* Word/concept tag mode */}
+          {toolbarVis.wordTags && <button
+            onClick={() => {
+              setEditingWordTags((v) => !v);
+              setEditingRefs(false); setEditingSpeech(false);
+              setEditingIndents(false); setSpeechRangeStart(null);
+              setPendingWordTag(false); setEditingArrows(false); setArrowFromWordId(null);
+            }}
+            data-tip={editingWordTags ? "Exit word/concept tag mode" : "Tag words or concepts with colour highlights"}
+            className={["px-2.5 py-1 rounded text-xs font-medium transition-colors",
+              editingWordTags ? "bg-yellow-500 text-white"
+                : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
+            ].join(" ")}
+          >🏷</button>}
+
+          {/* Undo */}
+          {undoStack.length > 0 && (
+            <button
+              onClick={() => {
+                setUndoStack((prev) => {
+                  if (prev.length === 0) return prev;
+                  const entry = prev[prev.length - 1];
+                  entry.undo();
+                  return prev.slice(0, -1);
+                });
+              }}
+              data-tip={`Undo: ${undoStack[undoStack.length - 1].label} (Ctrl/Cmd+Z)`}
+              className="px-2.5 py-1 rounded text-xs font-medium bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700 transition-colors"
+            >↩ {undoStack[undoStack.length - 1].label}</button>
+          )}
 
           {/* Clear annotations */}
-          <div className="border-l border-[var(--border)] pl-3 ml-1">
-            <button
-              onClick={() => setShowClearDialog(true)}
-              title="Clear annotations by category"
-              className="px-2.5 py-1 rounded text-xs font-medium transition-colors bg-stone-100 dark:bg-stone-800 text-stone-500 dark:text-stone-400 hover:bg-red-100 hover:text-red-600 dark:hover:bg-red-950 dark:hover:text-red-400"
-            >
-              🗑
-            </button>
-          </div>
+          {toolbarVis.clear && (
+            <div className="border-l border-[var(--border)] pl-3 ml-1">
+              <button
+                onClick={() => setShowClearDialog(true)}
+                data-tip="Clear annotations by category"
+                className="px-2.5 py-1 rounded text-xs font-medium transition-colors bg-stone-100 dark:bg-stone-800 text-stone-500 dark:text-stone-400 hover:bg-red-100 hover:text-red-600 dark:hover:bg-red-950 dark:hover:text-red-400"
+              >🗑</button>
+            </div>
+          )}
 
-          {/* Notes panel toggle */}
-          <div className="border-l border-[var(--border)] pl-3 ml-1">
-            <button
+          {/* Notes / Search / Bible panel toggles */}
+          <div className="border-l border-[var(--border)] pl-3 ml-1 flex items-center gap-1">
+            {toolbarVis.notes && <button
               onClick={() => setNotesOpen((v) => !v)}
-              title={notesOpen ? "Hide notes pane" : "Show notes pane"}
+              data-tip={notesOpen ? "Hide notes pane" : "Show notes pane"}
               className={[
                 "px-2.5 py-1 rounded text-xs font-medium transition-colors",
                 notesOpen
                   ? "bg-amber-500 text-white"
                   : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
               ].join(" ")}
-            >
-              📝
-            </button>
-          </div>
-
-          {/* Linguistic terms toggle — Hebrew only */}
-          {isHebrew && (
-            <button
-              onClick={() => setUseLinguisticTerms((v) => !v)}
-              title={useLinguisticTerms
-                ? "Show descriptive aspect names (Perfect, Imperfect…)"
-                : "Show linguistic terms (Qatal, Yiqtol, Wayyiqtol, Weqatal)"}
-              className={["px-2.5 py-1 rounded text-xs font-medium transition-colors",
-                useLinguisticTerms ? "bg-blue-600 text-white"
+            >📝</button>}
+            {toolbarVis.search && <button
+              onClick={() => setSearchOpen((v) => !v)}
+              data-tip={searchOpen ? "Close Search" : "Search corpus"}
+              className={[
+                "px-2.5 py-1 rounded text-xs font-medium transition-colors",
+                searchOpen
+                  ? "bg-amber-500 text-white"
                   : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
               ].join(" ")}
-            >Qatal</button>
-          )}
+            >🔍</button>}
+            {toolbarVis.bible && <button
+              onClick={() => setBibleOpen((v) => !v)}
+              data-tip={bibleOpen ? "Close Bible Lookup" : "Bible Lookup"}
+              className={[
+                "px-2.5 py-1 rounded text-xs font-medium transition-colors",
+                bibleOpen
+                  ? "bg-amber-500 text-white"
+                  : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
+              ].join(" ")}
+            >📖</button>}
+          </div>
 
           {/* Translation toggles */}
-          {allAvailableTranslations.length > 0 && (
+          {toolbarVis.translations && allAvailableTranslations.length > 0 && (
             <div className="flex items-center gap-1 border-l border-[var(--border)] pl-4">
               <span className="text-xs text-stone-400 dark:text-stone-500 mr-1 select-none">Translations:</span>
               {/* Source text visibility — shown only when a translation is active */}
               {hasActiveTranslations && (
                 <button
                   onClick={() => setHideSourceText((v) => !v)}
-                  title={hideSourceText ? `Show ${textSource} text` : `Hide ${textSource} text`}
+                  data-tip={hideSourceText ? `Show ${textSource} text` : `Hide ${textSource} text`}
                   className={["px-2.5 py-1 rounded text-xs font-medium font-mono transition-colors",
                     !hideSourceText ? "bg-emerald-600 text-white"
                       : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
@@ -2349,8 +2998,8 @@ export default function PassageView({
               {/* Translation text edit mode */}
               {hasActiveTranslations && (
                 <button
-                  onClick={() => setEditingTranslation((v) => !v)}
-                  title={editingTranslation ? "Exit translation edit mode" : "Edit translation text"}
+                  onClick={() => { setEditingTranslation((v) => !v); setEditingTranslationSource(false); }}
+                  data-tip={editingTranslation ? "Exit translation edit mode" : "Edit translation text"}
                   className={["px-2.5 py-1 rounded text-xs font-medium transition-colors",
                     editingTranslation ? "bg-sky-600 text-white"
                       : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
@@ -2359,7 +3008,7 @@ export default function PassageView({
               )}
               {allAvailableTranslations.map((t) => (
                 <button key={t.id} onClick={() => toggleTranslation(t.id)}
-                  title={systemTranslationIds.has(t.id) ? `${t.name} (built-in)` : t.name}
+                  data-tip={systemTranslationIds.has(t.id) ? `${t.name} (built-in)` : t.name}
                   className={["px-2.5 py-1 rounded text-xs font-medium font-mono transition-colors",
                     activeTranslationIds.has(t.id) ? "bg-emerald-600 text-white"
                       : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
@@ -2371,6 +3020,58 @@ export default function PassageView({
                   )}
                 </button>
               ))}
+              {/* Translation editing sub-toolbar — only shown when edit mode is active */}
+              {hasActiveTranslations && editingTranslation && (
+                <>
+                  {/* Divine Name: wraps textarea selection in \nd...\nd* */}
+                  <button
+                    onMouseDown={(e) => { e.preventDefault(); applyNdMarker(); }}
+                    data-tip="Wrap selection as Divine Name (small caps) — \nd...\nd*"
+                    className="px-2.5 py-1.5 rounded text-[11px] font-bold font-mono tracking-wider transition-colors bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-amber-100 hover:text-amber-700 dark:hover:bg-amber-900 dark:hover:text-amber-300"
+                    style={{ fontVariant: "small-caps" }}
+                  >nd</button>
+                  <button
+                    onClick={() => {
+                      const firstAbbr = [...activeTranslationIds]
+                        .map((id) => allAvailableTranslations.find((tr) => tr.id === id))
+                        .find((tr) => tr)?.abbreviation ?? "";
+                      setFnEditId(null);
+                      setFnDialogAbbr(firstAbbr);
+                      setFnDialogVerse(passage.startVerse);
+                      setFnDialogType("f");
+                      setFnDialogContent("");
+                      setFnDialogOpen(true);
+                    }}
+                    data-tip="Add a footnote or cross-reference to a verse"
+                    className="px-2.5 py-1.5 rounded text-xs font-medium transition-colors bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700"
+                  >fn+</button>
+                  <button
+                    onClick={() => {
+                      const firstAbbr = [...activeTranslationIds]
+                        .map((id) => allAvailableTranslations.find((tr) => tr.id === id))
+                        .find((tr) => tr)?.abbreviation ?? "";
+                      openHistory(firstAbbr, passage.startVerse);
+                    }}
+                    data-tip="View version history for a verse"
+                    className={["px-2.5 py-1.5 rounded text-xs font-medium transition-colors",
+                      historyOpen ? "bg-violet-600 text-white"
+                        : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
+                    ].join(" ")}
+                  >⏱</button>
+                </>
+              )}
+              {/* Show/hide footnotes — visible whenever a translation is active */}
+              {hasActiveTranslations && (
+                <button
+                  onClick={() => setShowFootnotes((v) => !v)}
+                  data-tip={showFootnotes ? "Hide footnotes" : "Show footnotes"}
+                  className={["px-2.5 py-1.5 rounded text-xs font-medium transition-colors",
+                    showFootnotes
+                      ? "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700"
+                      : "bg-stone-300 dark:bg-stone-600 text-stone-500 dark:text-stone-400",
+                  ].join(" ")}
+                >fn</button>
+              )}
             </div>
           )}
 
@@ -2380,18 +3081,41 @@ export default function PassageView({
             return (
               <div className="flex items-center gap-2 border-l border-[var(--border)] pl-4">
                 <span className="text-xs text-stone-400 dark:text-stone-500 select-none">{isHebrew ? "Heb" : "Grk"}</span>
-                <button className={sizeBtn} onClick={() => adjustFontSize("source", -0.125)} title="Decrease source text size">A−</button>
-                <button className={sizeBtn} onClick={() => adjustFontSize("source", +0.125)} title="Increase source text size">A+</button>
+                <button className={sizeBtn} onClick={() => adjustFontSize("source", -0.125)} data-tip="Decrease source text size">A−</button>
+                <button className={sizeBtn} onClick={() => adjustFontSize("source", +0.125)} data-tip="Increase source text size">A+</button>
                 {hasActiveTranslations && (
                   <>
                     <span className="text-xs text-stone-400 dark:text-stone-500 select-none ml-1">Tr</span>
-                    <button className={sizeBtn} onClick={() => adjustFontSize("translation", -0.0625)} title="Decrease translation text size">A−</button>
-                    <button className={sizeBtn} onClick={() => adjustFontSize("translation", +0.0625)} title="Increase translation text size">A+</button>
+                    <button className={sizeBtn} onClick={() => adjustFontSize("translation", -0.0625)} data-tip="Decrease translation text size">A−</button>
+                    <button className={sizeBtn} onClick={() => adjustFontSize("translation", +0.0625)} data-tip="Increase translation text size">A+</button>
                   </>
                 )}
               </div>
             );
           })()}
+
+          {/* Gear button — toolbar customizer */}
+          <div className="ml-auto">
+            <button
+              ref={gearBtnRef}
+              onClick={() => setShowToolbarCustomizer((v) => !v)}
+              data-tip="Customize toolbar"
+              className={[
+                "px-2.5 py-1 rounded text-lg font-medium transition-colors",
+                showToolbarCustomizer
+                  ? "bg-stone-300 dark:bg-stone-600 text-stone-700 dark:text-stone-200"
+                  : "bg-stone-100 dark:bg-stone-800 text-stone-500 dark:text-stone-400 hover:bg-stone-200 dark:hover:bg-stone-700",
+              ].join(" ")}
+            >⚙</button>
+            {showToolbarCustomizer && (
+              <ToolbarCustomizer
+                visibility={toolbarVis}
+                onChange={(key: keyof ToolbarVisibility, vis: boolean) => setToolbarVis((prev) => ({ ...prev, [key]: vis }))}
+                onClose={() => setShowToolbarCustomizer(false)}
+                anchorRef={gearBtnRef}
+              />
+            )}
+          </div>
           </>)}
         </div>
 
@@ -2628,6 +3352,22 @@ export default function PassageView({
 
         </div>{/* end sticky control area */}
 
+        {/* Find-in-page bar */}
+        {findOpen && (
+          <FindBar
+            query={findQuery}
+            onChange={(q) => setFindQuery(q)}
+            hitCount={findHitIds.length}
+            focusIdx={findFocusIdx}
+            onPrev={() => setFindFocusIdx((i) => (i - 1 + Math.max(findHitIds.length, 1)) % Math.max(findHitIds.length, 1))}
+            onNext={() => setFindFocusIdx((i) => (i + 1) % Math.max(findHitIds.length, 1))}
+            onClose={() => { setFindOpen(false); setFindQuery(""); }}
+            inputRef={findInputRef}
+            canTag={editingRefs || editingWordTags}
+            onTag={() => tagFocusedFindWordRef.current()}
+          />
+        )}
+
         {/* ── Passage text ─────────────────────────────────────────────────── */}
         {words.length === 0 ? (
           <p className="px-6 py-6 text-sm italic" style={{ color: "var(--text-muted)" }}>
@@ -2704,6 +3444,7 @@ export default function PassageView({
                     wordTagMap={wordTagMap}
                     editingWordTags={editingWordTags}
                     highlightWordTagIds={highlightWordTagIds}
+                    searchHits={searchHits}
                     lineIndentMap={lineIndentMap}
                     translationIndentMap={tvLineIndentMap}
                     indentsLinked={indentsLinked}
@@ -2722,6 +3463,7 @@ export default function PassageView({
                     onUpdateSceneHeading={handleUpdateSceneHeading}
                     onUpdateSceneOutOfSequence={handleUpdateSceneOutOfSequence}
                     onUpdateSceneExtendedThrough={handleUpdateSceneExtendedThrough}
+                    onUpdateSceneThematic={handleUpdateSceneThematic}
                     onChangeSceneBreakLevel={handleChangeSceneBreakLevel}
                     sectionRanges={sectionRanges}
                     annotationsBySegment={annotationsBySegment}
@@ -2740,6 +3482,27 @@ export default function PassageView({
                     onSelectArrowWordById={handleSelectArrowWordById}
                     hideSourceText={hideSourceText}
                     rstSourcePad={rstSourcePad}
+                    hasActiveTranslations={hasActiveTranslations}
+                    showAtnachBreaks={showAtnachBreaks}
+                    tagRangeStartWordId={refRangeStart ?? wordTagRangeStart}
+                    findHits={findHitSet}
+                    findFocusId={findFocusId}
+                    interlinearSubMode={interlinearSubMode}
+                    constituentLabelMap={constituentLabelMap}
+                    datasetEntryMap={datasetEntryMap}
+                    onSaveConstituentLabel={handleSaveConstituentLabel}
+                    onSaveDatasetEntry={handleSaveDatasetEntry}
+                    onLemmaClick={displayMode === "interlinear" && interlinearSubMode === "lemma" ? handleLemmaClick : undefined}
+                    editingTranslationSource={editingTranslationSource}
+                    translationFootnotes={
+                      showFootnotes
+                        ? Object.entries(localFootnotes).flatMap(([tid, fns]) =>
+                            fns.filter((fn) => fn.verse === verse.v && activeTranslationIds.has(Number(tid)))
+                          )
+                        : []
+                    }
+                    onDeleteFootnote={(translationId, fnId) => handleDeleteFootnote(translationId, fnId)}
+                    onEditFootnote={(fn) => openEditFootnote(fn)}
                     onVerseClick={(v) => {
                       setNotesOpen(true);
                       setNotesScrollVerse({ ch: verse.ch, v });
@@ -2774,6 +3537,52 @@ export default function PassageView({
         </ResizablePane>
       )}
 
+      {/* ── Search pane ──────────────────────────────────────────────────── */}
+      {searchOpen && (
+        <ResizablePane storageKey="pane-search-width" defaultWidth={340} minWidth={260} maxWidth={800}>
+          <SearchPane
+            book={osisBook}
+            textSource={textSource}
+            onClose={() => { setSearchOpen(false); setSearchHits(new Set()); }}
+            onResultsChange={handleSearchResults}
+            onSaveComplete={handleSearchSaved}
+            searchRequest={searchRequest}
+          />
+        </ResizablePane>
+      )}
+
+      {/* ── Bible lookup pane ────────────────────────────────────────────── */}
+      {bibleOpen && (
+        <ResizablePane storageKey="pane-bible-width" defaultWidth={320} minWidth={240} maxWidth={600}>
+          <BibleLookupPane onClose={() => setBibleOpen(false)} />
+        </ResizablePane>
+      )}
+
+      {/* ── Outline pane ─────────────────────────────────────────────────── */}
+      {outlineOpen && (
+        <ResizablePane storageKey="pane-outline-width" defaultWidth={320} minWidth={220} maxWidth={600}>
+          <OutlinePane
+            book={osisBook}
+            chapter={-1}
+            textSource={textSource}
+            sceneBreakMap={new Map()}
+            bookSceneBreaks={outlineBreaksForPane}
+            wordPositionMap={new Map()}
+            sectionRanges={sectionRanges}
+            onUpdateCurrentHeading={handleUpdateSceneHeading}
+            onDeleteCurrentBreak={handleDeleteSceneBreakForOutline}
+            onClose={() => setOutlineOpen(false)}
+            outlineExtended={false}
+            onToggleExtended={() => {}}
+            continuationBook={null}
+            continuationBookName={null}
+            continuationBreaks={[]}
+            crossBookRangeKeys={new Set()}
+            passageChapters={passageChapterSet}
+          />
+        </ResizablePane>
+      )}
+
       {/* ── Morphology side panel — flex sibling so it pushes content left instead of overlaying ── */}
       {panelOpen && (
           <ResizablePane storageKey="pane-morphology-width" defaultWidth={288} minWidth={200} maxWidth={700}>
@@ -2787,10 +3596,69 @@ export default function PassageView({
                 >×</button>
               </div>
               <div className="flex-1 overflow-y-auto">
-                <MorphologyPanel word={selectedWord} useLinguisticTerms={useLinguisticTerms} />
+                <MorphologyPanel word={selectedWord} useLinguisticTerms={useLinguisticTerms} onSearchRequest={handleSearchFromWord} />
               </div>
             </div>
           </ResizablePane>
+      )}
+
+      {/* ── Version history panel ────────────────────────────────────────── */}
+      {historyOpen && (
+        <ResizablePane storageKey="pane-history-width" defaultWidth={360} minWidth={260} maxWidth={700}>
+          <div className="flex flex-col h-full border-l" style={{ borderColor: "var(--border)", backgroundColor: "var(--surface)" }}>
+            <div className="flex items-center justify-between px-4 py-2 border-b shrink-0" style={{ borderColor: "var(--border)" }}>
+              <span className="text-sm font-semibold" style={{ color: "var(--foreground)" }}>
+                Version History — {historyAbbr} {passage.startChapter}:{historyVerse}
+              </span>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  min={1}
+                  max={999}
+                  value={historyVerse}
+                  onChange={(e) => openHistory(historyAbbr, parseInt(e.target.value) || 1)}
+                  className="w-14 text-xs rounded border px-1.5 py-0.5"
+                  style={{ backgroundColor: "var(--surface-muted)", borderColor: "var(--border-muted)", color: "var(--foreground)" }}
+                  title="Verse number"
+                />
+                <button
+                  onClick={() => setHistoryOpen(false)}
+                  className="text-stone-400 hover:text-stone-600 dark:hover:text-stone-200 text-lg leading-none"
+                >×</button>
+              </div>
+            </div>
+            <div className="flex-1 overflow-y-auto px-3 py-2 space-y-2">
+              {historyVersions.length === 0 ? (
+                <p className="text-xs text-center py-6" style={{ color: "var(--text-muted)" }}>
+                  No saved versions yet. Versions are recorded automatically each time you edit a verse.
+                </p>
+              ) : (
+                historyVersions.map((v) => (
+                  <div key={v.id} className="rounded border p-2.5 text-xs space-y-1.5"
+                    style={{ borderColor: "var(--border-muted)", backgroundColor: "var(--surface-muted)" }}>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-mono" style={{ color: "var(--text-muted)" }}>
+                        {new Date(v.createdAt).toLocaleString()}
+                      </span>
+                      <button
+                        onClick={() => handleRestoreVersion(v.text)}
+                        className="px-2 py-0.5 rounded bg-emerald-600 text-white text-[10px] font-medium hover:bg-emerald-700"
+                      >
+                        Restore
+                      </button>
+                    </div>
+                    {v.label && (
+                      <p className="font-semibold" style={{ color: "var(--foreground)" }}>{v.label}</p>
+                    )}
+                    <p className="leading-snug line-clamp-3" style={{ color: "var(--foreground)" }}>
+                      {v.text}
+                    </p>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </ResizablePane>
       )}
 
       {/* Clear annotations dialog */}
@@ -2806,6 +3674,110 @@ export default function PassageView({
           onCleared={handleAnnotationsCleared}
         />
       )}
+
+      {/* Footnote create / edit dialog */}
+      {fnDialogOpen && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40" onClick={() => { setFnDialogOpen(false); setFnEditId(null); }}>
+          <div
+            className="rounded-lg shadow-xl border p-5 w-full max-w-md"
+            style={{ backgroundColor: "var(--surface)", borderColor: "var(--border)" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-sm font-semibold mb-3" style={{ color: "var(--foreground)" }}>
+              {fnEditId !== null ? "Edit Footnote" : "Add Footnote / Cross-Reference"}
+            </h3>
+            <div className="flex gap-3 mb-3">
+              <div className="flex-1">
+                <label className="block text-xs mb-1" style={{ color: "var(--text-muted)" }}>Translation</label>
+                <select
+                  value={fnDialogAbbr}
+                  onChange={(e) => setFnDialogAbbr(e.target.value)}
+                  className="w-full text-xs rounded border px-2 py-1"
+                  style={{ backgroundColor: "var(--surface-muted)", borderColor: "var(--border-muted)", color: "var(--foreground)" }}
+                >
+                  {[...activeTranslationIds].map((id) => {
+                    const tr = allAvailableTranslations.find((t) => t.id === id);
+                    return tr ? <option key={id} value={tr.abbreviation}>{tr.abbreviation}</option> : null;
+                  })}
+                </select>
+              </div>
+              <div className="w-20">
+                <label className="block text-xs mb-1" style={{ color: "var(--text-muted)" }}>Verse</label>
+                <input
+                  type="number"
+                  min={1}
+                  max={999}
+                  value={fnDialogVerse}
+                  onChange={(e) => setFnDialogVerse(parseInt(e.target.value) || 1)}
+                  className="w-full text-xs rounded border px-2 py-1"
+                  style={{ backgroundColor: "var(--surface-muted)", borderColor: "var(--border-muted)", color: "var(--foreground)" }}
+                />
+              </div>
+              <div>
+                <label className="block text-xs mb-1" style={{ color: "var(--text-muted)" }}>Type</label>
+                <div className="flex gap-1">
+                  {(["f", "x"] as const).map((typ) => (
+                    <button
+                      key={typ}
+                      type="button"
+                      onClick={() => setFnDialogType(typ)}
+                      className={[
+                        "px-2 py-1 text-xs rounded border",
+                        fnDialogType === typ
+                          ? "bg-emerald-600 text-white border-emerald-600"
+                          : "border-[var(--border-muted)] text-[var(--text-muted)] hover:bg-[var(--surface-muted)]",
+                      ].join(" ")}
+                    >
+                      {typ === "f" ? "fn" : "xref"}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <textarea
+              value={fnDialogContent}
+              onChange={(e) => setFnDialogContent(e.target.value)}
+              placeholder="Footnote content (USFM inline markers allowed)"
+              rows={4}
+              className="w-full text-xs rounded border px-2 py-1.5 resize-y focus:outline-none focus:ring-1 focus:ring-sky-500"
+              style={{ backgroundColor: "var(--surface-muted)", borderColor: "var(--border-muted)", color: "var(--foreground)" }}
+            />
+            <div className="flex justify-end gap-2 mt-3">
+              <button
+                type="button"
+                onClick={() => { setFnDialogOpen(false); setFnEditId(null); setFnDialogContent(""); }}
+                className="px-3 py-1.5 text-xs rounded border"
+                style={{ borderColor: "var(--border-muted)", color: "var(--text-muted)" }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={fnEditId !== null ? handleUpdateFootnote : handleAddFootnote}
+                disabled={!fnDialogContent.trim()}
+                className="px-3 py-1.5 text-xs rounded bg-emerald-600 text-white disabled:opacity-50"
+              >
+                {fnEditId !== null ? "Save" : "Add"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Hidden file input for dataset upload */}
+      <input
+        ref={uploadInputRef}
+        type="file"
+        accept=".txt,.tsv,.csv,text/plain,text/tab-separated-values"
+        className="hidden"
+        onChange={async (e) => {
+          const file = e.target.files?.[0];
+          if (file && uploadDatasetId != null) {
+            await handleUploadDatasetFile(uploadDatasetId, file);
+          }
+          e.target.value = "";
+        }}
+      />
     </div>
   );
 }

@@ -82,6 +82,9 @@ interface OutlinePaneProps {
   /** Keys whose sectionRanges end has been extended into the continuation book. */
   crossBookRangeKeys: Set<string>;
   loadingContinuation?: boolean;
+  /** When provided (passage view), all breaks whose chapter is in this set are treated as
+   *  "current" (scroll behaviour) instead of the single `chapter` prop value. */
+  passageChapters?: Set<number>;
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -104,6 +107,7 @@ export default function OutlinePane({
   crossBookRangeKeys,
   wordPositionMap,
   loadingContinuation = false,
+  passageChapters,
 }: OutlinePaneProps) {
   const [editKey, setEditKey]       = useState<string | null>(null); // `${wordId}:${level}`
   const [editDraft, setEditDraft]   = useState("");
@@ -204,11 +208,11 @@ export default function OutlinePane({
         key,
         prefix: br.thematic && br.thematicLetter ? br.thematicLetter : formatPrefix(br.level, counters[br.level]),
         rangeStr,
-        isCurrent: !br.bookCode && br.chapter === chapter,
+        isCurrent: !br.bookCode && (passageChapters ? passageChapters.has(br.chapter) : br.chapter === chapter),
         thematicIndent,
       };
     });
-  }, [sortedBreaks, sectionRanges, headingOverrides, chapter, crossBookRangeKeys, continuationBookName, breakLetterMap]);
+  }, [sortedBreaks, sectionRanges, headingOverrides, chapter, crossBookRangeKeys, continuationBookName, breakLetterMap, passageChapters]);
 
   async function handleDelete(item: (typeof items)[number]) {
     if (item.isCurrent) {
@@ -252,8 +256,8 @@ export default function OutlinePane({
     setEditKey(null);
   }
 
-  function scrollToVerse(v: number) {
-    const el = document.querySelector(`[data-osis-ref="${book}.${chapter}.${v}"]`);
+  function scrollToVerse(ch: number, v: number) {
+    const el = document.querySelector(`[data-osis-ref="${book}.${ch}.${v}"]`);
     el?.scrollIntoView({ behavior: "smooth", block: "center" });
   }
 
@@ -380,7 +384,7 @@ export default function OutlinePane({
                         <button
                           className="shrink-0 text-[10px] hover:underline"
                           style={{ color: "var(--text-muted)" }}
-                          onClick={() => scrollToVerse(item.verse)}
+                          onClick={() => scrollToVerse(item.chapter, item.verse)}
                           title={`Scroll to verse ${item.rangeStr}`}
                         >
                           {item.rangeStr}

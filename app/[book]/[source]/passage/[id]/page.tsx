@@ -17,19 +17,23 @@ import {
   getTranslationVerses,
   getUltVerses,
   getUltTranslation,
+  getVcbVerses,
+  getVcbTranslation,
   getChapterRstRelations,
   getChapterWordArrows,
   getChapterWordFormatting,
   getChapterSceneBreaks,
   getChapterLineAnnotations,
+  getChapterTranslationFootnotes,
   getBookSceneBreaks,
   getBookChapterMaxVerses,
   getGroupedBooksFor,
+  getWorkspaceById,
 } from "@/lib/db/queries";
 import { getActiveWorkspaceId } from "@/lib/workspace";
 import { OSIS_BOOK_NAMES, CONTIGUOUS_BOOK_PAIRS, CONTIGUOUS_BOOK_PREV } from "@/lib/utils/osis";
 import type { TextSource } from "@/lib/morphology/types";
-import type { TranslationVerse } from "@/lib/db/schema";
+import type { TranslationVerse, TranslationFootnote } from "@/lib/db/schema";
 import PassageView from "@/components/passage/PassageView";
 import PassageNavButtons from "@/components/passage/PassageNavButtons";
 import ThemeToggle from "@/components/ThemeToggle";
@@ -48,6 +52,8 @@ export default async function PassagePage({ params }: PageProps) {
   const osisBook    = decodeURIComponent(bookParam);
   const textSource  = source as TextSource;
   const workspaceId = await getActiveWorkspaceId();
+  const workspace = await getWorkspaceById(workspaceId).catch(() => null);
+  const translationOnly = workspace?.translationOnly ?? false;
 
   const [passage, bookRecord] = await Promise.all([
     getPassage(id),
@@ -223,7 +229,44 @@ export default async function PassagePage({ params }: PageProps) {
     }
   }
 
-  // ── Display metadata ───────────────────────────────────────────────────────
+  // ── VCB ────────────────────────────────────────────────────────────────────
+  const vcbBaseVerses: { chapter: number; verse: number; text: string }[] = [];
+  let vcbTranslation: Awaited<ReturnType<typeof getVcbTranslation>> = null;
+  for (const { book: entryBook, chapter: ch } of chapterEntries) {
+    const verses = getVcbVerses(entryBook, ch);
+    for (const v of verses) vcbBaseVerses.push({ ...v, chapter: ch });
+  }
+  if (vcbBaseVerses.length > 0) {
+    vcbTranslation = await getVcbTranslation(workspaceId);
+    if (vcbTranslation !== null) {
+      const vcbEditsPerEntry = await Promise.all(
+        chapterEntries.map(({ book: entryBook, chapter: ch }) =>
+          getTranslationVerses(vcbTranslation!.id, entryBook, ch)
+        )
+      );
+      translationVerseData[vcbTranslation.id] = vcbEditsPerEntry.flat();
+    }
+  }
+
+  // ── Translation footnotes ──────────────────────────────────────────────────
+  const allTranslationsForFootnotes = [
+    ...availableTranslations,
+    ...(ultTranslation ? [ultTranslation] : []),
+    ...(vcbTranslation ? [vcbTranslation] : []),
+  ];
+  const initialTranslationFootnotes: Record<number, TranslationFootnote[]> = {};
+  await Promise.all(
+    allTranslationsForFootnotes.map(async (t) => {
+      const fnPerEntry = await Promise.all(
+        chapterEntries.map(({ book: entryBook, chapter: ch }) =>
+          getChapterTranslationFootnotes(t.id, entryBook, ch)
+        )
+      );
+      initialTranslationFootnotes[t.id] = fnPerEntry.flat();
+    })
+  );
+
+  // Display metadata ───────────────────────────────────────────────────────
   const bookName    = OSIS_BOOK_NAMES[osisBook] ?? osisBook;
   const endBookName = OSIS_BOOK_NAMES[endOsisBook] ?? endOsisBook;
   const isHebrew    = bookRecord.language === "hebrew";
@@ -330,6 +373,8 @@ export default async function PassagePage({ params }: PageProps) {
           translationVerseData={translationVerseData}
           ultBaseVerses={ultBaseVerses}
           ultTranslation={ultTranslation}
+          vcbBaseVerses={vcbBaseVerses}
+          vcbTranslation={vcbTranslation}
           initialRstRelations={initialRstRelations}
           initialWordArrows={initialWordArrows}
           initialWordFormatting={initialWordFormatting}
@@ -337,6 +382,8 @@ export default async function PassagePage({ params }: PageProps) {
           initialLineAnnotations={initialLineAnnotations}
           bookSceneBreaks={allBookSceneBreaks}
           bookMaxVerses={mergedBookMaxVerses}
+          initialTranslationFootnotes={initialTranslationFootnotes}
+          translationOnly={translationOnly}
         />
       </div>
     </div>
