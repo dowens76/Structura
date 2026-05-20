@@ -156,6 +156,10 @@ function migrateUserDb(sqlite: Database.Database): void {
   const tagCols = (sqlite.prepare("PRAGMA table_info(word_tags)").all() as { name: string }[]).map(r => r.name);
   if (!tagCols.includes("sort_order"))
     sqlite.exec("ALTER TABLE word_tags ADD COLUMN sort_order INTEGER DEFAULT 0");
+  if (!tagCols.includes("corpus_grouping_id"))
+    sqlite.exec("ALTER TABLE word_tags ADD COLUMN corpus_grouping_id INTEGER");
+  if (!tagCols.includes("lemmas"))
+    sqlite.exec("ALTER TABLE word_tags ADD COLUMN lemmas TEXT");
 
   const clrelCols = (sqlite.prepare("PRAGMA table_info(clause_relationships)").all() as { name: string }[]).map(r => r.name);
   if (!clrelCols.includes("intersect_point"))
@@ -234,6 +238,10 @@ function migrateUserDb(sqlite: Database.Database): void {
   if (!waCols.includes("midpoint_dx")) sqlite.exec("ALTER TABLE word_arrows ADD COLUMN midpoint_dx REAL");
   if (!waCols.includes("midpoint_dy")) sqlite.exec("ALTER TABLE word_arrows ADD COLUMN midpoint_dy REAL");
 
+  const wfmtCols = (sqlite.prepare("PRAGMA table_info(word_formatting)").all() as { name: string }[]).map(r => r.name);
+  if (!wfmtCols.includes("is_small_caps"))
+    sqlite.exec("ALTER TABLE word_formatting ADD COLUMN is_small_caps INTEGER NOT NULL DEFAULT 0");
+
   sqlite.exec(`
     CREATE TABLE IF NOT EXISTS app_settings (
       key   TEXT PRIMARY KEY,
@@ -257,6 +265,38 @@ function migrateUserDb(sqlite: Database.Database): void {
   const workspaceCols = (sqlite.prepare("PRAGMA table_info(workspaces)").all() as { name: string }[]).map(r => r.name);
   if (!workspaceCols.includes("translation_only"))
     sqlite.exec("ALTER TABLE workspaces ADD COLUMN translation_only INTEGER NOT NULL DEFAULT 0");
+
+  sqlite.exec(`
+    CREATE TABLE IF NOT EXISTS translation_footnotes (
+      id             INTEGER PRIMARY KEY AUTOINCREMENT,
+      workspace_id   INTEGER NOT NULL DEFAULT 1 REFERENCES workspaces(id) ON DELETE CASCADE,
+      translation_id INTEGER NOT NULL REFERENCES translations(id) ON DELETE CASCADE,
+      osis_ref       TEXT    NOT NULL,
+      type           TEXT    NOT NULL,
+      content        TEXT    NOT NULL,
+      word_index     INTEGER NOT NULL DEFAULT 0,
+      book           TEXT    NOT NULL,
+      chapter        INTEGER NOT NULL,
+      verse          INTEGER NOT NULL,
+      created_at     TEXT
+    );
+    CREATE INDEX IF NOT EXISTS tf_trans_book_ch_idx ON translation_footnotes(translation_id, book, chapter);
+    CREATE INDEX IF NOT EXISTS tf_osis_ref_idx ON translation_footnotes(osis_ref);
+  `);
+
+  sqlite.exec(`
+    CREATE TABLE IF NOT EXISTS translation_versions (
+      id             INTEGER PRIMARY KEY AUTOINCREMENT,
+      workspace_id   INTEGER NOT NULL DEFAULT 1 REFERENCES workspaces(id) ON DELETE CASCADE,
+      translation_id INTEGER NOT NULL REFERENCES translations(id) ON DELETE CASCADE,
+      osis_ref       TEXT    NOT NULL,
+      text           TEXT    NOT NULL,
+      label          TEXT,
+      created_at     TEXT
+    );
+    CREATE INDEX IF NOT EXISTS tv_ver_trans_osis_idx ON translation_versions(translation_id, osis_ref);
+    CREATE INDEX IF NOT EXISTS tv_ver_ws_trans_idx ON translation_versions(workspace_id, translation_id);
+  `);
 
   // Seed VCB translation record if vcb.db is present but the translations row is missing
   if (fs.existsSync(VCB_DB_PATH)) {
