@@ -4,11 +4,17 @@ use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Manager};
 use tauri_plugin_shell::ShellExt;
 
-// ── Helper: find a free TCP port ──────────────────────────────────────────────
+// ── Helper: find a TCP port ───────────────────────────────────────────────────
 
-fn find_free_port() -> u16 {
-    let listener = TcpListener::bind("127.0.0.1:0").expect("Failed to bind to a port");
-    listener.local_addr().unwrap().port()
+/// Try the preferred port first so the URL is predictable (http://localhost:3737).
+/// Falls back to any OS-assigned free port if 3737 is already in use.
+fn find_preferred_port(preferred: u16) -> u16 {
+    if TcpListener::bind(format!("127.0.0.1:{preferred}")).is_ok() {
+        preferred
+    } else {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("Failed to bind to a port");
+        listener.local_addr().unwrap().port()
+    }
 }
 
 // ── Tauri command: open print dialog ─────────────────────────────────────────
@@ -240,8 +246,10 @@ pub fn run() {
                 log::error!("ensure_user_db failed: {e}");
             }
 
-            // Find a free port and spawn the Next.js sidecar
-            let port = find_free_port();
+            // Find a port and spawn the Next.js sidecar.
+            // Prefer 3737 so the URL is always http://localhost:3737 — predictable
+            // for browser access and Reveal.js iframe embedding.
+            let port = find_preferred_port(3737);
             if let Err(e) = spawn_server(app.handle(), port) {
                 log::error!("spawn_server failed: {e}");
                 // Show a native error dialog so the user knows what went wrong

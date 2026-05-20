@@ -97,6 +97,10 @@ interface ChapterDisplayProps {
   translationOnly?: boolean;
   /** Ordered list of OSIS book codes for this text source (for F9 book navigation). */
   sortedBooks?: string[];
+  /** When true, start in presentation mode (driven by ?present URL param). */
+  initialPresentationMode?: boolean;
+  /** When true, hide the sticky toolbar entirely (for clean iframe embeds). */
+  hideToolbar?: boolean;
 }
 
 const DEFAULT_FILTER: GrammarFilterState = {
@@ -149,6 +153,8 @@ export default function ChapterDisplay({
   initialTranslationFootnotes = {},
   translationOnly = false,
   sortedBooks = [],
+  initialPresentationMode = false,
+  hideToolbar = false,
 }: ChapterDisplayProps) {
   const { t, locale } = useTranslation();
   const router = useRouter();
@@ -425,7 +431,7 @@ export default function ChapterDisplay({
   const [hideSourceText, setHideSourceText] = useState(false);
 
   // ── Presentation mode ─────────────────────────────────────────────────────
-  const [presentationMode, setPresentationMode] = useState(false);
+  const [presentationMode, setPresentationMode] = useState(initialPresentationMode);
 
   // ── Toolbar visibility (customizer) ───────────────────────────────────────
   const [toolbarVis, setToolbarVis] = useState<ToolbarVisibility>(DEFAULT_TOOLBAR_VIS);
@@ -433,6 +439,16 @@ export default function ChapterDisplay({
   const gearBtnRef = useRef<HTMLButtonElement>(null);
   function setToolbarItemVis(key: keyof ToolbarVisibility, val: boolean) {
     setToolbarVis(prev => ({ ...prev, [key]: val }));
+  }
+
+  // ── Copy-link button ──────────────────────────────────────────────────────
+  const [linkCopied, setLinkCopied] = useState(false);
+  function handleCopyPresentLink() {
+    const url = `${window.location.origin}${window.location.pathname}?present`;
+    navigator.clipboard.writeText(url).then(() => {
+      setLinkCopied(true);
+      setTimeout(() => setLinkCopied(false), 2000);
+    });
   }
 
   // ── Toolbar tooltip ───────────────────────────────────────────────────────
@@ -3002,7 +3018,7 @@ export default function ChapterDisplay({
         {!presentationMode && headingSlot}
 
         {/* Sticky control area: toolbar + all editing panels/hints */}
-        <div className="sticky top-0 z-20 shrink-0 flex flex-col" style={{ backgroundColor: "var(--background)" }}>
+        {!hideToolbar && <div className="sticky top-0 z-20 shrink-0 flex flex-col" style={{ backgroundColor: "var(--background)" }}>
 
         {/* Toolbar */}
         {tbTooltip && (
@@ -3684,6 +3700,15 @@ export default function ChapterDisplay({
 
           </>
 
+          {/* Copy-link button — copies a ?present URL for browser / Reveal.js use */}
+          <button
+            onClick={handleCopyPresentLink}
+            data-tip={linkCopied ? "Copied!" : "Copy link for browser / iframe (localhost URL with ?present)"}
+            className="px-3 py-1.5 rounded text-[13px] font-medium transition-colors bg-stone-100 dark:bg-stone-800 text-stone-500 dark:text-stone-400 hover:bg-stone-200 dark:hover:bg-stone-700"
+          >
+            {linkCopied ? "✓" : "🔗"}
+          </button>
+
           {/* Gear button — toolbar customizer, always visible */}
           <div className="ml-auto">
             <button
@@ -3951,7 +3976,7 @@ export default function ChapterDisplay({
           </div>
         )}
 
-        </div>{/* end sticky control area */}
+        </div>}{/* end sticky control area */}
 
         {/* Chapter text */}
         <div

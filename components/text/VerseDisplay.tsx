@@ -473,7 +473,7 @@ function AnnotBadge({
         {annotation.description && isEnd && (
           <span
             className="text-stone-600 dark:text-stone-400 leading-tight min-w-0 break-words"
-            style={{ fontSize: presentationMode ? "1rem" : "var(--translation-font-size, 0.875rem)" }}
+            style={{ fontSize: "var(--translation-font-size, 0.875rem)" }}
           >
             {annotation.description}
           </span>
@@ -502,7 +502,7 @@ function AnnotBadge({
           >
             <span
               className="text-stone-600 dark:text-stone-400 leading-tight min-w-0 break-words"
-              style={{ fontSize: presentationMode ? "1rem" : "var(--translation-font-size, 0.875rem)" }}
+              style={{ fontSize: "var(--translation-font-size, 0.875rem)" }}
             >
               {annotation.description}
             </span>

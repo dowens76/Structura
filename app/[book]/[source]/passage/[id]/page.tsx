@@ -41,10 +41,14 @@ import SettingsButton from "@/components/SettingsButton";
 
 interface PageProps {
   params: Promise<{ book: string; source: string; id: string }>;
+  searchParams?: Promise<{ present?: string; toolbar?: string; [key: string]: string | string[] | undefined }>;
 }
 
-export default async function PassagePage({ params }: PageProps) {
+export default async function PassagePage({ params, searchParams }: PageProps) {
   const { book: bookParam, source, id: idStr } = await params;
+  const sp = searchParams ? await searchParams : {};
+  const initialPresentationMode = "present" in sp;
+  const hideToolbar = sp.toolbar === "0";
   const id = parseInt(idStr, 10);
 
   if (isNaN(id)) notFound();
@@ -278,8 +282,8 @@ export default async function PassagePage({ params }: PageProps) {
 
   return (
     <div className="flex flex-col h-screen" style={{ backgroundColor: "var(--background)" }}>
-      {/* Nav bar */}
-      <nav
+      {/* Nav bar — hidden when ?toolbar=0 (clean iframe embed) */}
+      {!hideToolbar && <nav
         className="shrink-0 border-b px-4 py-0 flex items-center gap-3 h-12"
         style={{ borderColor: "var(--nav-border)", backgroundColor: "var(--nav-bg)" }}
       >
@@ -345,7 +349,7 @@ export default async function PassagePage({ params }: PageProps) {
             ← Ch. {passage.startChapter}
           </Link>
         </div>
-      </nav>
+      </nav>}
 
       {/* Passage content */}
       <div className="flex-1 min-h-0">
@@ -384,6 +388,8 @@ export default async function PassagePage({ params }: PageProps) {
           bookMaxVerses={mergedBookMaxVerses}
           initialTranslationFootnotes={initialTranslationFootnotes}
           translationOnly={translationOnly}
+          initialPresentationMode={initialPresentationMode}
+          hideToolbar={hideToolbar}
         />
       </div>
     </div>

@@ -124,6 +124,10 @@ interface Props {
   initialTranslationFootnotes?: Record<number, TranslationFootnote[]>;
   // Workspace translation-only mode — hides source text by default
   translationOnly?: boolean;
+  /** When true, start in presentation mode (driven by ?present URL param). */
+  initialPresentationMode?: boolean;
+  /** When true, hide the sticky toolbar entirely (for clean iframe embeds). */
+  hideToolbar?: boolean;
 }
 
 export default function PassageView({
@@ -160,6 +164,8 @@ export default function PassageView({
   bookMaxVerses,
   initialTranslationFootnotes = {},
   translationOnly = false,
+  initialPresentationMode = false,
+  hideToolbar = false,
 }: Props) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -192,7 +198,7 @@ export default function PassageView({
   const [bibleOpen, setBibleOpen] = useState(false);
   const [searchHits, setSearchHits] = useState<Set<string>>(new Set());
   const [searchRequest, setSearchRequest] = useState<{ query: string; source: string; nonce: number } | null>(null);
-  const [presentationMode, setPresentationMode] = useState(false);
+  const [presentationMode, setPresentationMode] = useState(initialPresentationMode);
   const [notesScrollVerse, setNotesScrollVerse] = useState<{ ch: number; v: number } | null>(null);
   const [showTooltips, setShowTooltips] = useState(false);
   const [showAtnachBreaks, setShowAtnachBreaks] = useState(false);
@@ -212,6 +218,14 @@ export default function PassageView({
   const [showToolbarCustomizer, setShowToolbarCustomizer] = useState(false);
   const [tbTooltip, setTbTooltip] = useState<{ text: string; x: number; y: number } | null>(null);
   const gearBtnRef = useRef<HTMLButtonElement>(null);
+  const [linkCopied, setLinkCopied] = useState(false);
+  function handleCopyPresentLink() {
+    const url = `${window.location.origin}${window.location.pathname}?present`;
+    navigator.clipboard.writeText(url).then(() => {
+      setLinkCopied(true);
+      setTimeout(() => setLinkCopied(false), 2000);
+    });
+  }
   // Translation footnotes
   const [localFootnotes, setLocalFootnotes] = useState<Record<number, TranslationFootnote[]>>(initialTranslationFootnotes);
   const [fnDialogOpen, setFnDialogOpen] = useState(false);
@@ -2564,7 +2578,7 @@ export default function PassageView({
         </div>
 
         {/* ── Sticky control area: toolbar + all editing panels/hints ─────── */}
-        <div className="sticky top-0 z-20 shrink-0 flex flex-col" style={{ backgroundColor: "var(--background)" }}>
+        {!hideToolbar && <div className="sticky top-0 z-20 shrink-0 flex flex-col" style={{ backgroundColor: "var(--background)" }}>
 
         {/* Toolbar tooltip */}
         {tbTooltip && (
@@ -2623,7 +2637,7 @@ export default function PassageView({
             ].join(" ")}
           >⊞</button>
 
-          {!presentationMode && (<>
+          <>
           <DisplayModeToggle mode={displayMode} onChange={setDisplayMode} />
           {displayMode === "color" && (
             <>
@@ -3094,6 +3108,15 @@ export default function PassageView({
             );
           })()}
 
+          {/* Copy-link button — copies a ?present URL for browser / Reveal.js use */}
+          <button
+            onClick={handleCopyPresentLink}
+            data-tip={linkCopied ? "Copied!" : "Copy link for browser / iframe (localhost URL with ?present)"}
+            className="px-2.5 py-1 rounded text-xs font-medium transition-colors bg-stone-100 dark:bg-stone-800 text-stone-500 dark:text-stone-400 hover:bg-stone-200 dark:hover:bg-stone-700"
+          >
+            {linkCopied ? "✓" : "🔗"}
+          </button>
+
           {/* Gear button — toolbar customizer */}
           <div className="ml-auto">
             <button
@@ -3116,7 +3139,7 @@ export default function PassageView({
               />
             )}
           </div>
-          </>)}
+          </>
         </div>
 
         {/* Character palette bar */}
@@ -3350,7 +3373,7 @@ export default function PassageView({
           </div>
         )}
 
-        </div>{/* end sticky control area */}
+        </div>}{/* end sticky control area */}
 
         {/* Find-in-page bar */}
         {findOpen && (
@@ -3379,10 +3402,10 @@ export default function PassageView({
             style={{
               paddingLeft:  "1.5rem",
               paddingRight: "1.5rem",
-              "--hebrew-font-size": `${hebrewFontSize}rem`,
-              "--greek-font-size": `${greekFontSize}rem`,
-              "--translation-font-size": `${translationFontSize}rem`,
-              "--source-row-height": `${(isHebrew ? hebrewFontSize : greekFontSize) * 2.0}rem`,
+              "--hebrew-font-size": `${hebrewFontSize * (presentationMode ? 2 : 1)}rem`,
+              "--greek-font-size": `${greekFontSize * (presentationMode ? 2 : 1)}rem`,
+              "--translation-font-size": `${translationFontSize * (presentationMode ? 2 : 1)}rem`,
+              "--source-row-height": `${(isHebrew ? hebrewFontSize : greekFontSize) * (presentationMode ? 2 : 1) * 2.0}rem`,
             } as React.CSSProperties}
             onClick={(e) => {
               if (editingArrows && !(e.target as HTMLElement).closest("[data-word-id]")) {

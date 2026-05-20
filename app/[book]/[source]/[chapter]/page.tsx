@@ -36,8 +36,10 @@ interface PageProps {
 
 export default async function ChapterPage({ params, searchParams }: PageProps) {
   const { book, source, chapter: chapterStr } = await params;
-  const { par } = await searchParams;
+  const { par, present, toolbar } = await searchParams;
   const chapter = parseInt(chapterStr, 10);
+  const initialPresentationMode = present !== undefined;
+  const hideToolbar = toolbar === "0";
 
   if (isNaN(chapter) || chapter < 1) notFound();
 
@@ -207,8 +209,8 @@ export default async function ChapterPage({ params, searchParams }: PageProps) {
 
   return (
     <div className="flex flex-col h-screen" style={{ backgroundColor: "var(--background)" }}>
-      {/* Nav bar */}
-      <nav
+      {/* Nav bar — hidden when ?toolbar=0 (clean iframe embed) */}
+      {!hideToolbar && <nav
         className="shrink-0 border-b px-4 py-0 flex items-center gap-3 h-12"
         style={{ borderColor: "var(--nav-border)", backgroundColor: "var(--nav-bg)" }}
       >
@@ -286,7 +288,7 @@ export default async function ChapterPage({ params, searchParams }: PageProps) {
 
         {/* Theme toggle */}
         <ThemeToggle />
-      </nav>
+      </nav>}
 
       {/* Text content */}
       <div className="flex-1 min-h-0 flex flex-col">
@@ -350,6 +352,8 @@ export default async function ChapterPage({ params, searchParams }: PageProps) {
             initialTranslationFootnotes={initialTranslationFootnotes}
             translationOnly={translationOnly}
             sortedBooks={sourceBooks.map((b) => b.osisCode)}
+            initialPresentationMode={initialPresentationMode}
+            hideToolbar={hideToolbar}
             headingSlot={
               <div
                 key="chapter-heading"
