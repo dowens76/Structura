@@ -143,31 +143,46 @@ export function getLxxDb(): ReturnType<typeof drizzle<typeof sourceSchema>> | nu
 }
 
 function migrateUserDb(sqlite: Database.Database): void {
+  // Run the entire migration under an exclusive lock so concurrent Next.js
+  // build workers (or worker threads) don't race each other.  The caller
+  // already sets busy_timeout = 5000 ms, so the second worker will simply
+  // wait for the first to finish and then find everything already done.
+  sqlite.exec("BEGIN EXCLUSIVE");
+  try {
+    _migrateUserDbInner(sqlite);
+    sqlite.exec("COMMIT");
+  } catch (e) {
+    try { sqlite.exec("ROLLBACK"); } catch { /* ignore */ }
+    throw e;
+  }
+}
+
+function _migrateUserDbInner(sqlite: Database.Database): void {
   const sceneBreakCols = (sqlite.prepare("PRAGMA table_info(scene_breaks)").all() as { name: string }[]).map(r => r.name);
   if (!sceneBreakCols.includes("thematic"))
-    sqlite.exec("ALTER TABLE scene_breaks ADD COLUMN thematic INTEGER NOT NULL DEFAULT 0");
+    try { sqlite.exec("ALTER TABLE scene_breaks ADD COLUMN thematic INTEGER NOT NULL DEFAULT 0"); } catch { /* already exists */ }
   if (!sceneBreakCols.includes("thematic_letter"))
-    sqlite.exec("ALTER TABLE scene_breaks ADD COLUMN thematic_letter TEXT");
+    try { sqlite.exec("ALTER TABLE scene_breaks ADD COLUMN thematic_letter TEXT"); } catch { /* already exists */ }
 
   const charCols = (sqlite.prepare("PRAGMA table_info(characters)").all() as { name: string }[]).map(r => r.name);
   if (!charCols.includes("sort_order"))
-    sqlite.exec("ALTER TABLE characters ADD COLUMN sort_order INTEGER DEFAULT 0");
+    try { sqlite.exec("ALTER TABLE characters ADD COLUMN sort_order INTEGER DEFAULT 0"); } catch { /* already exists */ }
 
   const tagCols = (sqlite.prepare("PRAGMA table_info(word_tags)").all() as { name: string }[]).map(r => r.name);
   if (!tagCols.includes("sort_order"))
-    sqlite.exec("ALTER TABLE word_tags ADD COLUMN sort_order INTEGER DEFAULT 0");
+    try { sqlite.exec("ALTER TABLE word_tags ADD COLUMN sort_order INTEGER DEFAULT 0"); } catch { /* already exists */ }
   if (!tagCols.includes("corpus_grouping_id"))
-    sqlite.exec("ALTER TABLE word_tags ADD COLUMN corpus_grouping_id INTEGER");
+    try { sqlite.exec("ALTER TABLE word_tags ADD COLUMN corpus_grouping_id INTEGER"); } catch { /* already exists */ }
   if (!tagCols.includes("lemmas"))
-    sqlite.exec("ALTER TABLE word_tags ADD COLUMN lemmas TEXT");
+    try { sqlite.exec("ALTER TABLE word_tags ADD COLUMN lemmas TEXT"); } catch { /* already exists */ }
 
   const clrelCols = (sqlite.prepare("PRAGMA table_info(clause_relationships)").all() as { name: string }[]).map(r => r.name);
   if (!clrelCols.includes("intersect_point"))
-    sqlite.exec("ALTER TABLE clause_relationships ADD COLUMN intersect_point TEXT NOT NULL DEFAULT 'mid'");
+    try { sqlite.exec("ALTER TABLE clause_relationships ADD COLUMN intersect_point TEXT NOT NULL DEFAULT 'mid'"); } catch { /* already exists */ }
 
   const rstCols = (sqlite.prepare("PRAGMA table_info(rst_relations)").all() as { name: string }[]).map(r => r.name);
   if (!rstCols.includes("intersect_point"))
-    sqlite.exec("ALTER TABLE rst_relations ADD COLUMN intersect_point TEXT NOT NULL DEFAULT 'mid'");
+    try { sqlite.exec("ALTER TABLE rst_relations ADD COLUMN intersect_point TEXT NOT NULL DEFAULT 'mid'"); } catch { /* already exists */ }
 
   sqlite.exec(`
     CREATE TABLE IF NOT EXISTS passages (
@@ -187,7 +202,7 @@ function migrateUserDb(sqlite: Database.Database): void {
 
   const passageCols = (sqlite.prepare("PRAGMA table_info(passages)").all() as { name: string }[]).map(r => r.name);
   if (!passageCols.includes("end_book"))
-    sqlite.exec("ALTER TABLE passages ADD COLUMN end_book TEXT");
+    try { sqlite.exec("ALTER TABLE passages ADD COLUMN end_book TEXT"); } catch { /* already exists */ }
 
   sqlite.exec(`
     CREATE TABLE IF NOT EXISTS auto_backup_settings (
@@ -234,13 +249,13 @@ function migrateUserDb(sqlite: Database.Database): void {
   `);
 
   const waCols = (sqlite.prepare("PRAGMA table_info(word_arrows)").all() as { name: string }[]).map(r => r.name);
-  if (!waCols.includes("color"))       sqlite.exec("ALTER TABLE word_arrows ADD COLUMN color TEXT");
-  if (!waCols.includes("midpoint_dx")) sqlite.exec("ALTER TABLE word_arrows ADD COLUMN midpoint_dx REAL");
-  if (!waCols.includes("midpoint_dy")) sqlite.exec("ALTER TABLE word_arrows ADD COLUMN midpoint_dy REAL");
+  if (!waCols.includes("color"))       try { sqlite.exec("ALTER TABLE word_arrows ADD COLUMN color TEXT"); } catch { /* already exists */ }
+  if (!waCols.includes("midpoint_dx")) try { sqlite.exec("ALTER TABLE word_arrows ADD COLUMN midpoint_dx REAL"); } catch { /* already exists */ }
+  if (!waCols.includes("midpoint_dy")) try { sqlite.exec("ALTER TABLE word_arrows ADD COLUMN midpoint_dy REAL"); } catch { /* already exists */ }
 
   const wfmtCols = (sqlite.prepare("PRAGMA table_info(word_formatting)").all() as { name: string }[]).map(r => r.name);
   if (!wfmtCols.includes("is_small_caps"))
-    sqlite.exec("ALTER TABLE word_formatting ADD COLUMN is_small_caps INTEGER NOT NULL DEFAULT 0");
+    try { sqlite.exec("ALTER TABLE word_formatting ADD COLUMN is_small_caps INTEGER NOT NULL DEFAULT 0"); } catch { /* already exists */ }
 
   sqlite.exec(`
     CREATE TABLE IF NOT EXISTS app_settings (
@@ -264,7 +279,7 @@ function migrateUserDb(sqlite: Database.Database): void {
 
   const workspaceCols = (sqlite.prepare("PRAGMA table_info(workspaces)").all() as { name: string }[]).map(r => r.name);
   if (!workspaceCols.includes("translation_only"))
-    sqlite.exec("ALTER TABLE workspaces ADD COLUMN translation_only INTEGER NOT NULL DEFAULT 0");
+    try { sqlite.exec("ALTER TABLE workspaces ADD COLUMN translation_only INTEGER NOT NULL DEFAULT 0"); } catch { /* already exists */ }
 
   sqlite.exec(`
     CREATE TABLE IF NOT EXISTS translation_footnotes (
@@ -309,7 +324,7 @@ function migrateUserDb(sqlite: Database.Database): void {
         "INSERT OR IGNORE INTO workspaces (id, user_id, name) VALUES (1, 1, 'Default')"
       ).run();
       sqlite.prepare(
-        "INSERT INTO translations (workspace_id, name, abbreviation, language) VALUES (1, 'Vietnamese Contemporary Bible 2015', 'VCB', 'Vietnamese')"
+        "INSERT OR IGNORE INTO translations (workspace_id, name, abbreviation, language) VALUES (1, 'Vietnamese Contemporary Bible 2015', 'VCB', 'Vietnamese')"
       ).run();
     }
   }
