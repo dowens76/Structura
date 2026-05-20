@@ -717,6 +717,9 @@ function TranslationTextarea({ initialText, abbr, verseNum, onSave, onCancel, so
   const savedRef = useRef(false);
   const valueRef = useRef(value);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Keep a stable ref to onSave so the unmount cleanup always calls the latest version
+  const onSaveRef = useRef(onSave);
+  useEffect(() => { onSaveRef.current = onSave; });
 
   // If the parent resets initialText (e.g. after Cancel), mirror it here and allow saving again
   useEffect(() => {
@@ -726,10 +729,20 @@ function TranslationTextarea({ initialText, abbr, verseNum, onSave, onCancel, so
     if (debounceRef.current) clearTimeout(debounceRef.current);
   }, [initialText]);
 
+  // On unmount (editing disabled / verse changed), save with trailing spaces trimmed
+  useEffect(() => {
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      onSaveRef.current(abbr, verseNum, valueRef.current.trim());
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   function triggerSave(text: string) {
+    // Auto-save during typing pauses — do NOT trim so the user can keep typing
     if (!savedRef.current) {
       savedRef.current = true;
-      onSave(abbr, verseNum, text.trim());
+      onSave(abbr, verseNum, text);
     }
   }
 
@@ -749,8 +762,11 @@ function TranslationTextarea({ initialText, abbr, verseNum, onSave, onCancel, so
         onChange={handleChange}
         data-translation-textarea="true"
         onBlur={() => {
+          // User navigated away — cancel debounce and save with trailing spaces trimmed
           if (debounceRef.current) clearTimeout(debounceRef.current);
-          triggerSave(valueRef.current);
+          debounceRef.current = null;
+          savedRef.current = true;
+          onSave(abbr, verseNum, valueRef.current.trim());
         }}
         rows={sourceMode ? 4 : 3}
         className={[
