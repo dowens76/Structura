@@ -92,6 +92,9 @@ interface ChapterDisplayProps {
   headingSlot?: React.ReactNode;
   /** Footnotes keyed by translationId for the current chapter. */
   initialTranslationFootnotes?: Record<number, TranslationFootnote[]>;
+  /** When true (workspace "Translation only" mode), the chapter view defaults to
+   *  hiding the source text and auto-activating the locale-appropriate translation. */
+  translationOnly?: boolean;
   /** Ordered list of OSIS book codes for this text source (for F9 book navigation). */
   sortedBooks?: string[];
 }
@@ -144,9 +147,10 @@ export default function ChapterDisplay({
   vcbTranslation = null,
   headingSlot,
   initialTranslationFootnotes = {},
+  translationOnly = false,
   sortedBooks = [],
 }: ChapterDisplayProps) {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
   const router = useRouter();
 
   // Translation footnotes keyed by translationId → verse → footnotes[]
@@ -818,12 +822,23 @@ export default function ChapterDisplay({
   useEffect(() => {
     setDisplayMode(readLocal<DisplayMode>("structura:displayMode", "clean"));
     setInterlinearSubMode(readLocal<InterlinearSubMode>("structura:interlinearSubMode", "lemma"));
-    setActiveTranslationAbbrs(new Set(readLocal<string[]>("structura:activeTranslations", [])));
+    const storedAbbrs = readLocal<string[]>("structura:activeTranslations", []);
+    if (storedAbbrs.length > 0) {
+      setActiveTranslationAbbrs(new Set(storedAbbrs));
+    } else if (translationOnly) {
+      // Auto-activate the locale-appropriate built-in translation so the column
+      // is visible immediately without any manual setup.
+      const autoAbbr = locale === "vi" && vcbTranslation ? "VCB"
+        : ultTranslation ? "ULT"
+        : null;
+      if (autoAbbr) setActiveTranslationAbbrs(new Set([autoAbbr]));
+    }
     setUseLinguisticTerms(readLocal<boolean>("structura:useLinguisticTerms", false));
     setHebrewFontSize(readLocal<number>("structura:hebrewFontSize", 1.375));
     setGreekFontSize(readLocal<number>("structura:greekFontSize", 1.25));
     setTranslationFontSize(readLocal<number>("structura:translationFontSize", 0.875));
-    setHideSourceText(readLocal<boolean>("structura:hideSourceText", false));
+    // In translation-only mode, default to hiding source text (use stored pref if set).
+    setHideSourceText(readLocal<boolean>("structura:hideSourceText", translationOnly));
     setToolbarVis({ ...DEFAULT_TOOLBAR_VIS, ...readLocal<Partial<ToolbarVisibility>>("structura:toolbarVisibility", {}) });
   }, []); // empty deps → runs once after first render (client only)
 
@@ -1017,18 +1032,22 @@ export default function ChapterDisplay({
     [characters]
   );
 
-  // Merge ULT and VCB into availableTranslations when they have base verses (they won't
-  // appear in the DB query result if no translation_verses edits exist for this chapter).
+  // Merge ULT and VCB into availableTranslations.  Normally they're included only
+  // when they have base verses for this chapter.  In translationOnly mode we include
+  // them whenever they're imported (even for empty chapters) so the placeholder column
+  // is still visible and the user knows to start translating.
   const allAvailableTranslations = useMemo(() => {
     let list = availableTranslations;
-    if (ultTranslation && ultBaseVerses.length > 0 && !list.some((t) => t.id === ultTranslation.id)) {
-      list = [ultTranslation, ...list];
+    const includeUlt = ultTranslation && (translationOnly || ultBaseVerses.length > 0);
+    if (includeUlt && !list.some((t) => t.id === ultTranslation!.id)) {
+      list = [ultTranslation!, ...list];
     }
-    if (vcbTranslation && vcbBaseVerses.length > 0 && !list.some((t) => t.id === vcbTranslation.id)) {
-      list = [...list, vcbTranslation];
+    const includeVcb = vcbTranslation && (translationOnly || vcbBaseVerses.length > 0);
+    if (includeVcb && !list.some((t) => t.id === vcbTranslation!.id)) {
+      list = [...list, vcbTranslation!];
     }
     return list;
-  }, [availableTranslations, ultTranslation, ultBaseVerses.length, vcbTranslation, vcbBaseVerses.length]);
+  }, [availableTranslations, ultTranslation, ultBaseVerses.length, vcbTranslation, vcbBaseVerses.length, translationOnly]);
 
   // Set of system translation IDs — shown with a "built-in" badge in the picker
   const systemTranslationIds = useMemo(
@@ -3957,6 +3976,7 @@ export default function ChapterDisplay({
                 isHebrew={isHebrew}
                 showTooltips={showTooltips}
                 translationTexts={editingTranslationVerseMap.get(verseNum) ?? []}
+                hasActiveTranslations={hasActiveTranslations}
                 useLinguisticTerms={useLinguisticTerms}
                 paragraphBreakIds={paragraphBreakIds}
                 editingParagraphs={editingParagraphs}

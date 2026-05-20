@@ -174,6 +174,9 @@ interface VerseDisplayProps {
   onDeleteFootnote?: (translationId: number, footnoteId: number) => void;
   /** Called when the user clicks the edit button on a footnote. */
   onEditFootnote?: (fn: TranslationFootnote) => void;
+  /** True when at least one translation is active, even if this verse has no text yet.
+   *  Used to keep the two-column layout visible and show a "start translating" hint. */
+  hasActiveTranslations?: boolean;
 }
 
 // ── Annotation sub-components ────────────────────────────────────────────────
@@ -867,6 +870,7 @@ export default function VerseDisplay({
   translationFootnotes = [] as TranslationFootnote[],
   onDeleteFootnote,
   onEditFootnote,
+  hasActiveTranslations = false,
 }: VerseDisplayProps) {
   const firstWordId = words[0]?.wordId;
   const verseStartsNewParagraph = firstWordId ? paragraphBreakIds.has(firstWordId) : false;
@@ -1682,7 +1686,10 @@ export default function VerseDisplay({
   }
 
   // ── Single-column layout (no translation) ──────────────────────────────
-  if (translationTexts.length === 0) {
+  // Skip this early-return when a translation IS active but just has no text
+  // for this verse yet — fall through to the two-column layout instead so
+  // the placeholder column stays visible.
+  if (translationTexts.length === 0 && !hasActiveTranslations) {
     return (
       <div className={`${verseStartsNewParagraph ? "mt-5" : ""} ${(speechContinuesIntoNext || annotContinuesIntoNext) ? "" : "mb-4"}`}>
         {verseStartsNewParagraph && firstWordId && renderSegSeparator(firstWordId)}
@@ -2102,9 +2109,18 @@ export default function VerseDisplay({
                         segIdx === rowSegs.length - 1 &&
                         localWi === tvSeg.tokens.length - 1;
 
-                      // Decode USFM marker prefix applied during preprocessing
-                      const { display: decodedToken, marker: usfmMarker } = decodeUsfmToken(token);
-                      const { leading: tokLead, core: tokCore, trailing: tokTrail } = splitTokenPunctuation(decodedToken);
+                      // Strip outer punctuation BEFORE decoding the USFM marker prefix
+                      // so that tokens like  'ND:LORD  (quote glued directly to the
+                      // marker by the USFM source) are handled correctly.  Without this
+                      // order, decodeUsfmToken("'ND:LORD") fails to recognise the ND:
+                      // prefix and the small-caps Divine Name styling is lost.
+                      const { leading: tokLeadOuter, core: rawCore, trailing: tokTrailOuter } = splitTokenPunctuation(token);
+                      const { display: decodedDisplay, marker: usfmMarker } = decodeUsfmToken(rawCore);
+                      // A second pass handles punctuation embedded in the decoded display
+                      // (e.g. ND:"Lord" → leading ", core Lord, trailing ").
+                      const { leading: tokLeadInner, core: tokCore, trailing: tokTrailInner } = splitTokenPunctuation(decodedDisplay);
+                      const tokLead  = tokLeadOuter  + tokLeadInner;
+                      const tokTrail = tokTrailInner + tokTrailOuter;
 
                       // USFM inline marker styling
                       const usfmStyle: React.CSSProperties =
@@ -2295,6 +2311,13 @@ export default function VerseDisplay({
               }}
             >
               {tvRowContent}
+              {/* Placeholder shown on the first row when a translation is active but
+                  this chapter has no text yet — prompts the user to start translating. */}
+              {allTvSegs.length === 0 && si === 0 && !editingTranslation && !editingTranslationSource && (
+                <p className="text-xs italic select-none" style={{ color: "var(--text-muted)" }}>
+                  Enable editing to translate
+                </p>
+              )}
               {/* Footnotes appear under the translation text, in the last source row only */}
               {si === sourceSegments.length - 1 && translationFootnotes.length > 0 && (
                 <div className="mt-0.5 space-y-0.5">

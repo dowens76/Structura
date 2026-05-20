@@ -11,6 +11,7 @@ import {
   getChapterLineAnnotations, getBookSceneBreaks, getBookChapterMaxVerses,
   getUltVerses, getUltTranslation, getVcbVerses, getVcbTranslation, getGroupedBooksFor,
   getChapterTranslationFootnotes,
+  getWorkspaceById,
 } from "@/lib/db/queries";
 import type { TranslationVerse, TranslationFootnote } from "@/lib/db/schema";
 import type { TextSource } from "@/lib/morphology/types";
@@ -44,6 +45,8 @@ export default async function ChapterPage({ params, searchParams }: PageProps) {
   const textSource = source as TextSource;
 
   const workspaceId = await getActiveWorkspaceId();
+  const workspace = await getWorkspaceById(workspaceId).catch(() => null);
+  const translationOnly = workspace?.translationOnly ?? false;
 
   // Parallel mode: show OSHB + LXX side by side.
   // Triggered by ?par=1 when viewing an OSHB book that has LXX data.
@@ -345,6 +348,7 @@ export default async function ChapterPage({ params, searchParams }: PageProps) {
             bookSceneBreaks={bookSceneBreaks}
             bookMaxVerses={bookMaxVerses}
             initialTranslationFootnotes={initialTranslationFootnotes}
+            translationOnly={translationOnly}
             sortedBooks={sourceBooks.map((b) => b.osisCode)}
             headingSlot={
               <div
