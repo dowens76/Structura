@@ -1845,8 +1845,10 @@ export default function VerseDisplay({
     );
     // Attach \fn \fn* to the preceding word so the superscript survives tokenisation.
     // "know \fn \fn* wisdom" → "know«fn» wisdom"
-    s = s.replace(/(\S+)\s+\\fn\s+\\fn\*/g, "$1«fn»");
-    s = s.replace(/\\fn\s+\\fn\*/g, "«fn»"); // fallback: fn at start with no preceding word
+    // Trailing space is always appended so the next word stays a separate token
+    // even when the original had no space after \fn* (e.g. DCO-BT imports).
+    s = s.replace(/(\S+)\s+\\fn\s+\\fn\*/g, "$1«fn» ");
+    s = s.replace(/\\fn\s+\\fn\*/g, "«fn» "); // fallback: fn at start with no preceding word
     s = s.replace(/\\[a-z]+\d*\*?\s*/g, "");
     return s;
   }

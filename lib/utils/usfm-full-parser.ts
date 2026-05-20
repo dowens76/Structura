@@ -30,14 +30,22 @@ export const PARATEXT_TO_OSIS: Record<string, string> = {
   "1SAM": "1Sam", "2SAM": "2Sam",
   "1KGS": "1Kgs", "2KGS": "2Kgs",
   "1CHR": "1Chr", "2CHR": "2Chr",
-  EZRA: "Ezra", NEHE: "Neh",  ESTH: "Esth",
+  EZRA: "Ezra", NEHE: "Neh",  ESTH: "Esth", PSAL: "Ps",   PS: "Ps",
   PROV: "Prov", ECCL: "Eccl", SONG: "Song", LAME: "Lam",  EZEK: "Ezek",
-  JOEL: "Joel", AMOS: "Amos", OBAD: "Obad", JONA: "Jonah",
+  JOEL: "Joel", AMOS: "Amos", OBAD: "Obad", JONA: "Jonah", JONAH: "Jonah",
   NAHU: "Nah",  HABA: "Hab",  ZEPH: "Zeph", HAGG: "Hag",  ZECH: "Zech",
   MALA: "Mal",
   MATT: "Matt", MARK: "Mark", LUKE: "Luke", JOHN: "John", ACTS: "Acts",
   GALA: "Gal",  PHIL: "Phil", PHLM: "Phlm", JAME: "Jas",  JUDE: "Jude",
   REVE: "Rev",
+  // NT numbered books
+  "1COR": "1Cor",  "2COR": "2Cor",
+  "1TIM": "1Tim",  "2TIM": "2Tim",
+  "1THS": "1Thess","2THS": "2Thess","1THE": "1Thess","2THE": "2Thess",
+  "1PET": "1Pet",  "2PET": "2Pet",
+  "1JOH": "1John", "2JOH": "2John", "3JOH": "3John",
+  "1JHN": "1John", "2JHN": "2John", "3JHN": "3John",
+  "1JOHN": "1John", "2JOHN": "2John", "3JOHN": "3John",
 };
 
 // Markers whose content is preserved inline (rendered as styled spans)
@@ -417,6 +425,7 @@ export function parseUsfmFile(raw: string): ParsedUsfmFile {
     // Preserve text for both opening AND closing unknown markers — closing
     // markers like \fn* (a DCO-BT footnote wrapper) have real verse text after them.
     if (text.trim() && currentVerse > 0) {
+      if (verseText.length > 0 && !verseText.endsWith(" ")) verseText += " ";
       verseText  += text;
       wordsSoFar += countWords(text);
     }

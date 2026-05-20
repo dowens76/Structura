@@ -1101,7 +1101,14 @@ export default function ChapterDisplay({
     for (const t of allAvailableTranslations) {
       if (!activeTranslationIds.has(t.id)) continue;
       const verses = localTranslationVerseData[t.id] ?? [];
+      // Deduplicate by verse number (DB has no unique constraint on translationId+verse).
+      // Keep the highest-id row, which is the most recent insert.
+      const deduped = new Map<number, typeof verses[0]>();
       for (const tv of verses) {
+        const prev = deduped.get(tv.verse);
+        if (!prev || tv.id > prev.id) deduped.set(tv.verse, tv);
+      }
+      for (const tv of deduped.values()) {
         const existing = map.get(tv.verse) ?? [];
         existing.push({ abbr: t.abbreviation, text: tv.text, translationId: t.id });
         map.set(tv.verse, existing);
