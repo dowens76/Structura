@@ -33,13 +33,13 @@
       alt="Structura — A Workbench for Scripture Study"
     />
     <p class="hero-tagline">
-      A workbench for studying the Hebrew Old Testament,
-      Septuagint, and Greek New Testament. Loaded with full morphological data
+      A workbench for studying the Hebrew Bible,
+      Septuagint, and Greek New Testament. Loaded with morphological data
       and a layered annotation system for linguistic, narrative, and discourse analysis.
     </p>
     <div class="cta-group">
       <a class="btn btn-primary" href="https://github.com/dowens76/Structura/releases" target="_blank" rel="noopener">
-        ⬇ Download v0.7.1
+        ⬇ Download the latest version
       </a>
       <a class="btn btn-secondary" href="https://github.com/dowens76/Structura" target="_blank" rel="noopener">
         View Source
@@ -51,9 +51,9 @@
   <section>
     <div class="container">
       <p class="section-label">Features</p>
-      <h2 class="section-title">Everything you need for deep textual study</h2>
+      <h2 class="section-title">Structure your study of the biblical text</h2>
       <p class="section-sub">
-        Structura combines reading, annotation, and discourse analysis in a single
+        Structura combines tools for reading, translating, annotating, and analyzing biblical texts in a single
         desktop application — available on macOS, Windows, and Linux.
       </p>
       <div class="features-grid">
@@ -62,9 +62,27 @@
           <span class="card-icon">📖</span>
           <h3 class="card-title">Reading &amp; Display</h3>
           <p class="card-body">
-            Three display modes — Clean, Color-coded by part of speech, and
-            Interlinear (lemma, Strong's, parsing, or constituent labels).
-            Click any word for a full morphological panel. Full dark-mode support.
+            Three display modes — Clean, Color-coded morphology with custom rules per
+            part of speech, and Interlinear (lemma, Strong's, parsing code, constituent
+            labels, or custom word datasets). 
+            Click any word to see grammatical information for each word, as well as a lexicon entry. 
+            Includes a side-by-side OSHB/LXX parallel view.
+            Adjustable font sizes, full dark mode, and a customizable toolbar.
+          </p>
+        </div>
+
+        <div class="card">
+          <span class="card-icon">⊞</span>
+          <h3 class="card-title">Presentation Mode</h3>
+          <p class="card-body">
+            Enlarge text for screen sharing or teaching — source text scales to 2× and
+            translation text to 3× normal size, with section headings enlarged
+            proportionally. The Structura server runs on port 3737, so any browser on
+            the same machine can open <code>http://localhost:3737</code> while the app
+            is running. Add <code>?present</code> to a URL to open directly in
+            Presentation Mode, or <code>?present&amp;toolbar=0</code> for a clean,
+            chrome-free view suitable for embedding in a Reveal.js <code>&lt;iframe&gt;</code>.
+            The 🔗 button in the toolbar copies a ready-to-paste URL.
           </p>
         </div>
 
@@ -72,9 +90,12 @@
           <span class="card-icon">🔄</span>
           <h3 class="card-title">Translation Support</h3>
           <p class="card-body">
-            Display the built-in ULT alongside source text, or import your own
-            translation via paste or USFM. Edit translation text in place.
-            Multiple translations side by side with independent font sizing.
+            Built-in ULT (English, 31,102 verses) and VCB Vietnamese Contemporary Bible
+            (31,096 verses) are bundled and need no setup. Import your own translation by
+            pasting verse text or uploading USFM. Edit translation text in place — edits
+            persist and override the built-in base text. Display multiple translations
+            side by side with independent paragraph breaks, indentation, and formatting.
+            Translations are shared across all workspaces.
           </p>
         </div>
 
@@ -82,9 +103,11 @@
           <span class="card-icon">¶</span>
           <h3 class="card-title">Structural Annotation</h3>
           <p class="card-body">
-            Mark paragraph breaks, add up to five levels of indentation,
-            apply bold and italic per word. Define scene and episode breaks
-            across a six-level hierarchy with headings and custom labels.
+            Mark paragraph breaks and apply up to five levels of indentation — source
+            and translation indentation can be linked or controlled independently. Apply
+            bold and italic per word. Define scene and episode breaks across a six-level
+            hierarchy with headings, out-of-sequence flags, and optional thematic letter
+            labels (A–Z). View and export the full outline with a collapsible sidebar.
           </p>
         </div>
 
@@ -92,10 +115,12 @@
           <span class="card-icon">→</span>
           <h3 class="card-title">Discourse Analysis</h3>
           <p class="card-body">
-            Draw RST (Rhetorical Structure Theory) relation arrows between
-            paragraph segments using 14 relation types — Cause, Purpose,
-            Concession, Condition, Sequence, and more. Also supports free-form
-            directional arrows between individual words across verse boundaries.
+            Draw RST (Rhetorical Structure Theory) relation arrows between paragraph
+            segments using 15 relation types — Cause/Reason, Purpose, Concession,
+            Condition, Inference, Temporal, and more across coordinate and subordinate
+            categories. Also supports free-form directional arrows between any two words
+            across verse boundaries. Annotate lines with plot elements, theme labels
+            (A/B/C), or free-form descriptions.
           </p>
         </div>
 
@@ -103,19 +128,36 @@
           <span class="card-icon">🎭</span>
           <h3 class="card-title">Character &amp; Speech</h3>
           <p class="card-body">
-            Build a character cast with custom colors per book. Tag words as
-            character references. Mark speech sections with 21 speech-act
-            classifications including Command, Question, Promise, and Lament.
+            Build a character cast with custom colors per book. Tag words as character
+            references with support for dual-character tagging shown as a striped
+            underline. Mark contiguous speech sections with 21 speech-act classifications
+            including Command, Question, Promise, Lament, and more.
+          </p>
+        </div>
+
+        <div class="card">
+          <span class="card-icon">🏷</span>
+          <h3 class="card-title">Word Tags &amp; Bible Lookup</h3>
+          <p class="card-body">
+            Tag words by lexical form in one click, or create custom named concept tags
+            for themes and motifs. Highlight all instances of a tag across the text.
+            The Bible Lookup pane (📖) retrieves any reference by name — thousands of
+            translations via fetch.bible (no key required) or api.bible (NASB, NLT, NIV,
+            KJV). Scripture tooltips appear on hover in the notes panel. Filter the
+            translation dropdown by language.
           </p>
         </div>
 
         <div class="card">
           <span class="card-icon">💾</span>
-          <h3 class="card-title">Export &amp; Backup</h3>
+          <h3 class="card-title">Workspaces, Passages &amp; Export</h3>
           <p class="card-body">
-            Export any annotated passage to PDF or PNG. Back up the entire
-            database manually or on a schedule with configurable retention
-            policies. Fifty-step undo for all annotation operations.
+            Multiple workspaces keep annotations scoped separately while sharing
+            imported translations. Define named passages spanning chapters and study
+            them in a dedicated passage view with all annotation tools. Export any
+            view to PDF or PNG. Back up the entire database manually or on a schedule
+            with configurable retention policies. Fifty-step undo for all annotation
+            operations.
           </p>
         </div>
 
@@ -127,10 +169,10 @@
   <section class="sources-section">
     <div class="container">
       <p class="section-label">Text Sources</p>
-      <h2 class="section-title">Original-language texts included</h2>
+      <h2 class="section-title">Five bundled texts — no downloads needed</h2>
       <p class="section-sub">
-        Structura ships with four bundled text sources covering the full biblical
-        canon in Hebrew, Greek, and English.
+        Structura ships with five bundled texts covering the full biblical canon
+        in Hebrew, Greek, English, and Vietnamese — ready to use on first launch.
       </p>
       <div class="sources-grid">
 
@@ -155,7 +197,13 @@
         <div class="source-card">
           <span class="source-tag">ULT</span>
           <p class="source-name">UnfoldingWord Literal Text</p>
-          <p class="source-desc">English literal translation aligned to the source texts — 31,102 verses across 66 books.</p>
+          <p class="source-desc">English literal translation — 31,102 verses across all 66 books. CC BY-SA 4.0.</p>
+        </div>
+
+        <div class="source-card">
+          <span class="source-tag">VCB</span>
+          <p class="source-name">Vietnamese Contemporary Bible</p>
+          <p class="source-desc">Biblica® Open Vietnamese Contemporary Bible 2015 — 31,096 verses across all 66 books.</p>
         </div>
 
       </div>

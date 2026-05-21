@@ -6,13 +6,13 @@ A biblical text analysis workbench for studying the Hebrew Old Testament, Septua
 
 ## How to Obtain the Desktop App
 
-Structura ships as a Linux, Mac, and Windows app. As of version 0.6.0, Chromebook users with Linux enabled may use the ARM64 deb file. The app has not yet been tested on a Chromebook, so if you use it, share your experiences through the feedback system explained in the next section. 
+Structura ships as a Linux, Mac, and Windows app. As of version 0.6.0, Chromebook users with Linux enabled may use the ARM64 deb file. The app has not yet been tested on a Chromebook, so if you use it, share your experiences through the feedback system explained in the next section.
 
 Download the latest release at https://github.com/dowens76/structura/releases/latest.
 
 ### How to Give Feedback
 
-If you want to give feedback about the app, share ideas for new features, or connect about visually analysing Bible passages, click on the Discussions tab above and start or respond to a discussion. You will need a free Github account. 
+If you want to give feedback about the app, share ideas for new features, or connect about visually analysing Bible passages, click on the Discussions tab above and start or respond to a discussion. You will need a free Github account.
 
 ---
 
@@ -42,12 +42,46 @@ If you want to give feedback about the app, share ideas for new features, or con
 - **Tooltips** — Hover over any word for parsing information (when enabled)
 - **Dark mode** — Full light/dark theme support
 - **Parallel view** — Side-by-side OSHB Hebrew and LXX Septuagint for books shared between the two
+- **Find in text** — Press Ctrl/Cmd+F to open a search bar that highlights all matches in the current chapter or passage; navigate matches with Ctrl/Cmd+G (forward) and Ctrl/Cmd+Shift+G (back); works across source and translation text with diacritic-insensitive matching
+- **Keyboard navigation** — F8 / Ctrl+F8 moves to the next / previous chapter; F9 / Ctrl+F9 moves to the next / previous book
+- **Toolbar customizer** — Click the ⚙ gear button to show or hide individual toolbar buttons; a Reset button and Hide all / Show all shortcuts are included; settings persist per session
+
+### Presentation Mode
+
+Press the ⊞ button in the toolbar to enter Presentation Mode, which enlarges the text for screen sharing or display:
+
+- Source text (Hebrew / Greek) is scaled to **2×** the configured font size
+- Translation text is scaled to **3×** the configured font size
+- Section headings are enlarged proportionally
+- All editing tools are still accessible from the toolbar
+
+**Browser and Reveal.js access**
+
+The Structura app serves its interface over HTTP on port **3737** (falling back to a random free port if 3737 is taken). This means any browser on the same machine can open `http://localhost:3737` while the app is running — no separate server needed.
+
+Two URL parameters control the initial state:
+
+| Parameter | Effect |
+|-----------|--------|
+| `?present` | Opens the page already in Presentation Mode |
+| `?present&toolbar=0` | Presentation Mode with the toolbar and nav bar hidden — designed for clean iframe embedding |
+
+The **🔗 Copy Link** button in the toolbar copies the current page URL with `?present` appended to the clipboard. Paste it directly into a Reveal.js `<iframe src="...">` slide:
+
+```html
+<section>
+  <iframe
+    src="http://localhost:3737/Gen/OSHB/1?present&toolbar=0"
+    width="100%" height="600" frameborder="0">
+  </iframe>
+</section>
+```
 
 ### Translation
 
 - **Built-in ULT** — The UnfoldingWord Literal Text (English, 31,102 verses, all 66 books) is bundled and available immediately in the translation picker
 - **Built-in VCB** — The Biblica® Open Vietnamese Contemporary Bible 2015 (Vietnamese, 31,096 verses, all 66 books) is bundled alongside the ULT
-- **Import translations** — Paste any translation with verse numbers and text (one chapter at a time), or import USFM-formatted translation text 
+- **Import translations** — Paste any translation with verse numbers and text (one chapter at a time), or import USFM-formatted translation text
 - **Parallel display** — One or more translations shown alongside the source text in both chapter and passage views
 - **In-place editing** — Edit translation text directly in the view; edits are saved and override the built-in base text
 - **Translation-specific formatting** — Independent paragraph breaks, indentation, and bold/italic per translation
@@ -92,7 +126,7 @@ When display mode is set to Interlinear, a toolbar picker selects what appears b
 
 ### Discourse & Rhetorical Analysis
 
-- **Clause relations** — Draw  arrows to show relationships between paragraph segments (according to Rhetorical Structure Theory) using 15 relation types across coordinate and subordinate categories (Cause/Reason, Purpose, Concession, Condition, Inference, Temporal, etc.)
+- **Clause relations** — Draw arrows to show relationships between paragraph segments (according to Rhetorical Structure Theory) using 15 relation types across coordinate and subordinate categories (Cause/Reason, Purpose, Concession, Condition, Inference, Temporal, etc.)
 - **Free-form arrows** — Draw directional arrows between any two words across verse boundaries
 - **Line annotations** — Annotate lines or segments of text in one of three ways, identifying plot elements (Background information, Initial Situation, Conflict, Transforming Action, Resolution, etc.), theme labels (A, B, C, etc.), or free-form descriptions
 
@@ -202,4 +236,6 @@ On first launch the app creates `~/Library/Application Support/com.structura.app
 
 ### Architecture
 
-The Rust shell finds a free port, spawns a bundled Node.js 24 binary running the Next.js standalone server, waits for the "Ready" signal, then navigates the WebView to the local server URL. In development (`npm run tauri:dev`) the WebView points directly to `http://localhost:3000`.
+The Rust shell binds to port **3737** (falling back to a random free port if 3737 is already in use), spawns a bundled Node.js 24 binary running the Next.js standalone server, waits for the "Ready" signal, then navigates the WebView to `http://localhost:3737`. Because the server is reachable from any browser on the same machine, the app can also be used without Tauri by simply opening that URL in Chrome or Firefox — useful for Reveal.js iframe embedding and other web-based workflows.
+
+In development (`npm run tauri:dev`) the WebView points directly to `http://localhost:3000`.
