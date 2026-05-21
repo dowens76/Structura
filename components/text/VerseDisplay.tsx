@@ -1715,11 +1715,12 @@ export default function VerseDisplay({
           // ── Hanging-indent label and source elements ──────────────
           // Half-leading of the source text — pushes the verse label down so its
           // text visually aligns with the first character of the source line.
-          // Hebrew line-height:2.5 → half-leading = 0.75×fontSize;
-          // Greek  line-height:2.25 → half-leading = 0.625×fontSize.
+          // Uses --source-half-leading (set by parent, scales with lineHeightMultiplier);
+          // falls back to the static value: Hebrew (lh=2.5) → 0.75×fontSize,
+          //                                 Greek  (lh=2.25) → 0.625×fontSize.
           const labelPaddingTop = isHebrew
-            ? "calc(0.75 * var(--hebrew-font-size, 1.375rem))"
-            : "calc(0.625 * var(--greek-font-size, 1.25rem))";
+            ? "var(--source-half-leading, calc(0.75 * var(--hebrew-font-size, 1.375rem)))"
+            : "var(--source-half-leading, calc(0.625 * var(--greek-font-size, 1.25rem)))";
 
           const segLabelEl = editingIndents ? (
             <div className="flex items-start gap-0.5" data-seg-label={seg[0].wordId} style={{ minWidth: "5rem" }}>
@@ -1761,7 +1762,7 @@ export default function VerseDisplay({
           const segSourceEl = (
             <span
               data-rst-text={seg[0].wordId}
-              className={`${isHebrew ? "text-hebrew" : "text-greek"} leading-loose`}
+              className={isHebrew ? "text-hebrew" : "text-greek"}
               lang={isHebrew ? "he" : "grc"}
               style={{
                 // Grid items are blockified by CSS, so text-indent works here without display:block.
@@ -2249,7 +2250,7 @@ export default function VerseDisplay({
               >
                 <span
                   data-rst-text={seg[0].wordId}
-                  className={`${isHebrew ? "text-hebrew" : "text-greek"} leading-loose`}
+                  className={isHebrew ? "text-hebrew" : "text-greek"}
                   lang={isHebrew ? "he" : "grc"}
                 >
                   {renderRuns(runs)}
