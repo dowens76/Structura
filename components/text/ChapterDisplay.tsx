@@ -224,6 +224,7 @@ export default function ChapterDisplay({
   const [hebrewFontSize, setHebrewFontSize] = useState(1.375);
   const [greekFontSize, setGreekFontSize] = useState(1.25);
   const [translationFontSize, setTranslationFontSize] = useState(0.875);
+  const [lineHeightMultiplier, setLineHeightMultiplier] = useState(1.0);
   const [editingParagraphs, setEditingParagraphs] = useState(false);
   const [paragraphBreakIds, setParagraphBreakIds] = useState<Set<string>>(
     () => new Set(initialParagraphBreakIds)
@@ -853,6 +854,7 @@ export default function ChapterDisplay({
     setHebrewFontSize(readLocal<number>("structura:hebrewFontSize", 1.375));
     setGreekFontSize(readLocal<number>("structura:greekFontSize", 1.25));
     setTranslationFontSize(readLocal<number>("structura:translationFontSize", 0.875));
+    setLineHeightMultiplier(readLocal<number>("structura:lineHeightMultiplier", 1.0));
     // In translation-only mode, default to hiding source text (use stored pref if set).
     setHideSourceText(readLocal<boolean>("structura:hideSourceText", translationOnly));
     setToolbarVis({ ...DEFAULT_TOOLBAR_VIS, ...readLocal<Partial<ToolbarVisibility>>("structura:toolbarVisibility", {}) });
@@ -1276,6 +1278,14 @@ export default function ChapterDisplay({
         return next;
       });
     }
+  }
+
+  function adjustLineHeight(delta: number) {
+    setLineHeightMultiplier((prev) => {
+      const next = Math.min(2.0, Math.max(0.75, Math.round((prev + delta) * 100) / 100));
+      writeLocal("structura:lineHeightMultiplier", next);
+      return next;
+    });
   }
 
   function handleSelectWord(word: Word, shiftHeld = false) {
@@ -3694,6 +3704,9 @@ export default function ChapterDisplay({
                         <button className={sizeBtn} onClick={() => adjustFontSize("translation", +0.0625)} data-tip={t("toolbar.titleIncreaseTr")}>A+</button>
                       </>
                     )}
+                    <span className="text-xs text-stone-400 dark:text-stone-500 select-none ml-1">↕</span>
+                    <button className={sizeBtn} onClick={() => adjustLineHeight(-0.1)} data-tip="Decrease line spacing">−</button>
+                    <button className={sizeBtn} onClick={() => adjustLineHeight(+0.1)} data-tip="Increase line spacing">+</button>
                   </div>
                 );
               })()}
@@ -3988,8 +4001,8 @@ export default function ChapterDisplay({
             "--hebrew-font-size": `${hebrewFontSize * (presentationMode ? 2 : 1)}rem`,
             "--greek-font-size": `${greekFontSize * (presentationMode ? 2 : 1)}rem`,
             "--translation-font-size": `${translationFontSize * (presentationMode ? 3 : 1)}rem`,
-            "--source-row-height": `${(isHebrew ? hebrewFontSize : greekFontSize) * (presentationMode ? 1.0 : 2.0)}rem`,
-            "--translation-line-height": presentationMode ? "calc(1.5 * var(--translation-font-size))" : undefined,
+            "--source-row-height": `${(isHebrew ? hebrewFontSize : greekFontSize) * (presentationMode ? 1.0 : 2.0) * lineHeightMultiplier}rem`,
+            "--translation-line-height": presentationMode ? `calc(${1.5 * lineHeightMultiplier} * var(--translation-font-size))` : undefined,
           } as React.CSSProperties}
         >
           {verseNums.map((verseNum) => {
