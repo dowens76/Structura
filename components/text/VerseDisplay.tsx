@@ -1991,7 +1991,7 @@ export default function VerseDisplay({
                   style={{
                     color: "var(--foreground)",
                     fontSize: "var(--translation-font-size, 0.875rem)",
-                    lineHeight: "var(--source-row-height, 1.625)",
+                    lineHeight: "var(--translation-line-height, var(--source-row-height, 1.625))",
                     paddingLeft: tvIndentLevel > 0 ? `${tvIndentLevel * 2}rem` : undefined,
                     textIndent: `${HANG_PX}px hanging` as React.CSSProperties["textIndent"],
                   }}

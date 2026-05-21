@@ -3404,8 +3404,9 @@ export default function PassageView({
               paddingRight: "1.5rem",
               "--hebrew-font-size": `${hebrewFontSize * (presentationMode ? 2 : 1)}rem`,
               "--greek-font-size": `${greekFontSize * (presentationMode ? 2 : 1)}rem`,
-              "--translation-font-size": `${translationFontSize * (presentationMode ? 2 : 1)}rem`,
-              "--source-row-height": `${(isHebrew ? hebrewFontSize : greekFontSize) * (presentationMode ? 2 : 1) * 2.0}rem`,
+              "--translation-font-size": `${translationFontSize * (presentationMode ? 3 : 1)}rem`,
+              "--source-row-height": `${(isHebrew ? hebrewFontSize : greekFontSize) * (presentationMode ? 1.0 : 2.0)}rem`,
+              "--translation-line-height": presentationMode ? "calc(1.5 * var(--translation-font-size))" : undefined,
             } as React.CSSProperties}
             onClick={(e) => {
               if (editingArrows && !(e.target as HTMLElement).closest("[data-word-id]")) {
