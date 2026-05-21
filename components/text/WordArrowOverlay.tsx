@@ -220,24 +220,53 @@ function computeArrowGeometry(
     cx0 = p0x + liveDx;  cy0 = p0y + curveDepth1;
     cx1 = p1x + live2Dx; cy1 = p1y + curveDepth2;
   } else {
-    // ── Side-gutter C-elbow ───────────────────────────────────────────────────
-    // Each handle independently adjusts the gutter depth on its side.
-    // Formula: bezierMidX = 0.75*gutterX + 0.125*(fromXEdge+toXEdge)
-    //          → gutterX = defaultGutterX + liveDx/0.75   (moves midX by liveDx px)
-    p0x = isHebrew ? fromR.x + fromR.width : fromR.x;
-    p1x = isHebrew ? toR.x  + toR.width   : toR.x;
-    // Use the corrected attachment Y so the arrowhead points at the consonants.
-    p0y = fromAttachY;
-    p1y = toAttachY;
-    const defaultGutterX = isHebrew
-      ? (srcBlockRightX !== null
-          ? srcBlockRightX + GUTTER_REACH
-          : Math.max(p0x, p1x) + GUTTER_REACH)
-      : Math.min(p0x, p1x) - GUTTER_REACH;
-    const gutterX1 = defaultGutterX + liveDx  / 0.75;
-    const gutterX2 = defaultGutterX + live2Dx / 0.75;
-    cx0 = gutterX1; cy0 = p0y + liveDy;
-    cx1 = gutterX2; cy1 = p1y + live2Dy;
+    // ── Multi-line: pick anchor edge based on primary displacement direction ───
+    const fromMidX = fromR.x + fromR.width  / 2;
+    const toMidX   = toR.x   + toR.width    / 2;
+    const dx       = toMidX   - fromMidX;
+    const dy       = toAttachY - fromAttachY; // signed: positive = TO is lower on screen
+
+    if (Math.abs(dy) >= Math.abs(dx)) {
+      // ── Primarily vertical: anchor bottom/top of each word ──────────────────
+      // FROM exits at its bottom edge when TO is below, top edge when TO is above.
+      // TO is entered at its top edge when FROM is above, bottom edge when below.
+      p0x = fromMidX;
+      p0y = dy >= 0 ? fromR.y + fromR.height : fromR.y;
+      p1x = toMidX;
+      p1y = dy >= 0 ? toR.y                  : toR.y + toR.height;
+      // Control points ⅓ and ⅔ of the gap: produces a smooth vertical arc.
+      const spanY = (p1y - p0y) / 3;
+      cx0 = p0x + liveDx;   cy0 = p0y + spanY + liveDy;
+      cx1 = p1x + live2Dx;  cy1 = p1y - spanY + live2Dy;
+    } else {
+      // ── Primarily horizontal: left/right anchor ──────────────────────────────
+      p0y = fromAttachY;
+      p1y = toAttachY;
+
+      const SAME_COL = Math.max(fromR.width, toR.width) * 0.75;
+
+      if (Math.abs(dx) < SAME_COL) {
+        // Same column: C-elbow gutter on the language-start side.
+        p0x = isHebrew ? fromR.x + fromR.width : fromR.x;
+        p1x = isHebrew ? toR.x  + toR.width   : toR.x;
+        const defaultGutterX = isHebrew
+          ? (srcBlockRightX !== null
+              ? srcBlockRightX + GUTTER_REACH
+              : Math.max(p0x, p1x) + GUTTER_REACH)
+          : Math.min(p0x, p1x) - GUTTER_REACH;
+        const gutterX1 = defaultGutterX + liveDx  / 0.75;
+        const gutterX2 = defaultGutterX + live2Dx / 0.75;
+        cx0 = gutterX1; cy0 = p0y + liveDy;
+        cx1 = gutterX2; cy1 = p1y + live2Dy;
+      } else {
+        // Cross-column: anchor each word on its side nearest the other.
+        p0x = dx > 0 ? fromR.x + fromR.width : fromR.x;
+        p1x = dx > 0 ? toR.x                 : toR.x + toR.width;
+        const spanX = (p1x - p0x) / 3;
+        cx0 = p0x + spanX + liveDx;   cy0 = p0y + liveDy;
+        cx1 = p1x - spanX + live2Dx;  cy1 = p1y + live2Dy;
+      }
+    }
   }
 
   d = `M ${p0x} ${p0y} C ${cx0} ${cy0}, ${cx1} ${cy1}, ${p1x} ${p1y}`;
