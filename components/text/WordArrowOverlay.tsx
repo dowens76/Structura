@@ -52,6 +52,16 @@ type DragState =
       liveDy: number;
     }
   | {
+      type: "midpoint2";
+      id: number;
+      orig2Dx: number;
+      orig2Dy: number;
+      startClientX: number;
+      startClientY: number;
+      live2Dx: number;
+      live2Dy: number;
+    }
+  | {
       type: "anchor";
       id: number;
       which: "from" | "to";
@@ -123,13 +133,6 @@ function bezierPoint(
   return [x, y];
 }
 
-const bezierMid = (
-  x0: number, y0: number,
-  cx0: number, cy0: number,
-  cx1: number, cy1: number,
-  x1: number, y1: number,
-) => bezierPoint(x0, y0, cx0, cy0, cx1, cy1, x1, y1, 0.5);
-
 /**
  * Client-space coordinates → SVG / outer-container scroll-canvas coordinates.
  * Matches the same formula used in getWordRect.
@@ -150,22 +153,39 @@ function clientToSvg(
 
 interface ArrowGeometry {
   d: string;
-  midX: number;
-  midY: number;
-  handleDy: number;
-  labelDy: number;
+  /** Bezier t=0.5 — used for label and color picker placement */
+  labelX: number;
+  labelY: number;
+  /** Handle 1 at t=0.25 — controls control point 0 (FROM side) */
+  handle1X: number;
+  handle1Y: number;
+  /** Handle 2 at t=0.75 — controls control point 1 (TO side) */
+  handle2X: number;
+  handle2Y: number;
   fromAnchorX: number;
   fromAnchorY: number;
   toAnchorX: number;
   toAnchorY: number;
 }
 
+/**
+ * Computes arrow path geometry with two independently-adjustable control points.
+ *
+ * liveDx/liveDy  → offset for cp0 (FROM-side control point), sourced from midpointDx/Dy.
+ * live2Dx/live2Dy → offset for cp1 (TO-side control point), sourced from midpoint2Dx/Dy.
+ *
+ * Backward compatibility: when midpoint2Dx/Dy are null the caller passes them as
+ * midpointDx/Dy so both control points start at the same position, preserving the
+ * original symmetric shape.
+ */
 function computeArrowGeometry(
   arrow: WordArrow,
   fromR: WordRect,
   toR: WordRect,
   liveDx: number,
   liveDy: number,
+  live2Dx: number,
+  live2Dy: number,
   isHebrew: boolean,
   srcBlockRightX: number | null = null,
 ): ArrowGeometry {
@@ -173,64 +193,67 @@ function computeArrowGeometry(
   const toCY   = toR.y  + toR.height  / 2;
   const sameLine = Math.abs(fromCY - toCY) < fromR.height * 0.75;
 
+  // For Hebrew, heavily-cantillated words have a tall bounding box whose
+  // geometric centre falls in the cantillation zone, well above the consonants.
+  // Using 0.62 of the height shifts the multi-line attachment point down into
+  // the consonant area so the arrowhead points at the visible text, not above it.
+  const fromAttachY = isHebrew ? fromR.y + fromR.height * 0.62 : fromCY;
+  const toAttachY   = isHebrew ? toR.y  + toR.height  * 0.62 : toCY;
+
   let d: string;
-  let midX: number, midY: number;
-  let handleDy: number, labelDy: number;
+  let cx0: number, cy0: number, cx1: number, cy1: number;
+  let p0x: number, p0y: number, p1x: number, p1y: number; // curve endpoints
 
   if (sameLine) {
     // ── Below-line arc ────────────────────────────────────────────────────────
-    // midpointDy shifts how deep the bow goes. Formula derivation:
-    //   bezierMidY = 0.5*(fromY+toY) + 0.75*curveDepth
-    //   → curveDepth = defaultDepth + liveDy*(4/3)   (moves midpoint by liveDy px)
-    const fromX = fromR.x + fromR.width / 2;
-    const toX   = toR.x  + toR.width   / 2;
-    const fromY = fromR.y + fromR.height + 3;
-    const toY   = toR.y  + toR.height   + 3;
-    const horizDist    = Math.abs(toX - fromX);
+    // Each handle independently adjusts the curve depth on its side.
+    // Formula: bezierMidY = 0.5*(fromY+toY) + 0.75*curveDepth
+    //          → curveDepth = defaultDepth + liveDy*(4/3)   (moves midpoint by liveDy px)
+    p0x = fromR.x + fromR.width / 2;
+    p1x = toR.x  + toR.width   / 2;
+    p0y = fromR.y + fromR.height + 3;
+    p1y = toR.y  + toR.height   + 3;
+    const horizDist    = Math.abs(p1x - p0x);
     const defaultDepth = Math.max(horizDist * 0.35 + 20, 24);
-    const curveDepth   = Math.max(8, defaultDepth + liveDy * (4 / 3));
-    const cx0 = fromX, cy0 = fromY + curveDepth;
-    const cx1 = toX,   cy1 = toY   + curveDepth;
-    d = `M ${fromX} ${fromY} C ${cx0} ${cy0}, ${cx1} ${cy1}, ${toX} ${toY}`;
-    [midX, midY] = bezierMid(fromX, fromY, cx0, cy0, cx1, cy1, toX, toY);
-    handleDy = curveDepth / 2 + 2;
-    labelDy  = curveDepth / 2 + 8;
-
-    return {
-      d, midX, midY, handleDy, labelDy,
-      fromAnchorX: fromX, fromAnchorY: fromY,
-      toAnchorX: toX, toAnchorY: toY,
-    };
+    const curveDepth1  = Math.max(8, defaultDepth + liveDy  * (4 / 3));
+    const curveDepth2  = Math.max(8, defaultDepth + live2Dy * (4 / 3));
+    cx0 = p0x + liveDx;  cy0 = p0y + curveDepth1;
+    cx1 = p1x + live2Dx; cy1 = p1y + curveDepth2;
   } else {
     // ── Side-gutter C-elbow ───────────────────────────────────────────────────
-    // midpointDx shifts the gutter depth. Formula:
-    //   bezierMidX = 0.75*gutterX + 0.125*(fromXEdge+toXEdge)
-    //   → gutterX = defaultGutterX + liveDx / 0.75   (moves midX by liveDx px)
-    const fromXEdge = isHebrew ? fromR.x + fromR.width : fromR.x;
-    const toXEdge   = isHebrew ? toR.x  + toR.width   : toR.x;
+    // Each handle independently adjusts the gutter depth on its side.
+    // Formula: bezierMidX = 0.75*gutterX + 0.125*(fromXEdge+toXEdge)
+    //          → gutterX = defaultGutterX + liveDx/0.75   (moves midX by liveDx px)
+    p0x = isHebrew ? fromR.x + fromR.width : fromR.x;
+    p1x = isHebrew ? toR.x  + toR.width   : toR.x;
+    // Use the corrected attachment Y so the arrowhead points at the consonants.
+    p0y = fromAttachY;
+    p1y = toAttachY;
     const defaultGutterX = isHebrew
-      // In the 3-column layout (translation active), pin the gutter to just right
-      // of the source column boundary so the arc stays in the source/label area
-      // rather than bleeding into the translation column.  In the 2-column layout
-      // (srcBlockRightX === null) fall back to the per-word edge, as before.
       ? (srcBlockRightX !== null
           ? srcBlockRightX + GUTTER_REACH
-          : Math.max(fromXEdge, toXEdge) + GUTTER_REACH)
-      : Math.min(fromXEdge, toXEdge) - GUTTER_REACH;
-    const gutterX = defaultGutterX + liveDx / 0.75;
-    const cx0 = gutterX, cy0 = fromCY;
-    const cx1 = gutterX, cy1 = toCY;
-    d = `M ${fromXEdge} ${fromCY} C ${cx0} ${cy0}, ${cx1} ${cy1}, ${toXEdge} ${toCY}`;
-    [midX, midY] = bezierMid(fromXEdge, fromCY, cx0, cy0, cx1, cy1, toXEdge, toCY);
-    handleDy = 0;
-    labelDy  = -12;
-
-    return {
-      d, midX, midY, handleDy, labelDy,
-      fromAnchorX: fromXEdge, fromAnchorY: fromCY,
-      toAnchorX: toXEdge, toAnchorY: toCY,
-    };
+          : Math.max(p0x, p1x) + GUTTER_REACH)
+      : Math.min(p0x, p1x) - GUTTER_REACH;
+    const gutterX1 = defaultGutterX + liveDx  / 0.75;
+    const gutterX2 = defaultGutterX + live2Dx / 0.75;
+    cx0 = gutterX1; cy0 = p0y + liveDy;
+    cx1 = gutterX2; cy1 = p1y + live2Dy;
   }
+
+  d = `M ${p0x} ${p0y} C ${cx0} ${cy0}, ${cx1} ${cy1}, ${p1x} ${p1y}`;
+
+  const [labelX, labelY]   = bezierPoint(p0x, p0y, cx0, cy0, cx1, cy1, p1x, p1y, 0.5);
+  const [handle1X, handle1Y] = bezierPoint(p0x, p0y, cx0, cy0, cx1, cy1, p1x, p1y, 0.25);
+  const [handle2X, handle2Y] = bezierPoint(p0x, p0y, cx0, cy0, cx1, cy1, p1x, p1y, 0.75);
+
+  return {
+    d,
+    labelX, labelY,
+    handle1X, handle1Y,
+    handle2X, handle2Y,
+    fromAnchorX: p0x, fromAnchorY: p0y,
+    toAnchorX: p1x,   toAnchorY: p1y,
+  };
 }
 
 // ── Component ──────────────────────────────────────────────────────────────────
@@ -310,10 +333,15 @@ export default function WordArrowOverlay({
     if (!dragState) return;
 
     function onMouseMove(e: MouseEvent) {
+      e.preventDefault();
       if (dragState?.type === "midpoint") {
         const liveDx = dragState.origDx + (e.clientX - dragState.startClientX);
         const liveDy = dragState.origDy + (e.clientY - dragState.startClientY);
         setDragState({ ...dragState, liveDx, liveDy });
+      } else if (dragState?.type === "midpoint2") {
+        const live2Dx = dragState.orig2Dx + (e.clientX - dragState.startClientX);
+        const live2Dy = dragState.orig2Dy + (e.clientY - dragState.startClientY);
+        setDragState({ ...dragState, live2Dx, live2Dy });
       } else if (dragState?.type === "anchor") {
         setDragState({ ...dragState, clientX: e.clientX, clientY: e.clientY });
       }
@@ -326,6 +354,10 @@ export default function WordArrowOverlay({
         const liveDx = dragState.origDx + (e.clientX - dragState.startClientX);
         const liveDy = dragState.origDy + (e.clientY - dragState.startClientY);
         onUpdateArrow?.(dragState.id, { midpointDx: liveDx, midpointDy: liveDy });
+      } else if (dragState.type === "midpoint2") {
+        const live2Dx = dragState.orig2Dx + (e.clientX - dragState.startClientX);
+        const live2Dy = dragState.orig2Dy + (e.clientY - dragState.startClientY);
+        onUpdateArrow?.(dragState.id, { midpoint2Dx: live2Dx, midpoint2Dy: live2Dy });
       } else if (dragState.type === "anchor") {
         // Find the word element under the cursor (skip pointer-events:none elements)
         const els = document.elementsFromPoint(e.clientX, e.clientY);
@@ -378,49 +410,77 @@ export default function WordArrowOverlay({
         pointerEvents: "none",
         overflow:      "visible",
         zIndex:        4,
+        // Suppress text selection on the page while any handle is being dragged.
+        userSelect:    dragState ? "none" : undefined,
       }}
     >
       <defs>
-        {uniqueColors.map(color => (
-          <marker
-            key={color}
-            id={`war-head-${color.slice(1)}`}
-            markerWidth={7}
-            markerHeight={7}
-            refX={3.5}
-            refY={3.5}
-            orient="auto"
-          >
-            <path d="M0,1 L7,3.5 L0,6 Z" fill={color} opacity={0.7} />
-          </marker>
-        ))}
+        {uniqueColors.map(color => {
+          // A filled dot at each endpoint.  markerUnits="userSpaceOnUse" keeps
+          // the size fixed in pixels regardless of stroke width.  refX/refY
+          // centre the circle exactly on the path endpoint.
+          const hex = color.slice(1);
+          return (
+            <marker
+              key={hex}
+              id={`war-dot-${hex}`}
+              markerWidth={7} markerHeight={7}
+              refX={3.5} refY={3.5}
+              markerUnits="userSpaceOnUse"
+            >
+              <circle cx={3.5} cy={3.5} r={2.5} fill={color} opacity={0.75} />
+            </marker>
+          );
+        })}
       </defs>
 
       {drawn.map(({ arrow, fromR, toR, srcBlockRightX }) => {
         const color = effectiveColor(arrow);
 
-        // Apply live drag delta for midpoint drag
-        const isDraggingMidpoint = dragState?.type === "midpoint" && dragState.id === arrow.id;
-        const liveDx = isDraggingMidpoint
+        // ── Live delta resolution ──────────────────────────────────────────────
+        // Handle 1 (cp0 / FROM side): sourced from midpointDx/Dy
+        const isDragging1 = dragState?.type === "midpoint"  && dragState.id === arrow.id;
+        const isDragging2 = dragState?.type === "midpoint2" && dragState.id === arrow.id;
+
+        const liveDx = isDragging1
           ? (dragState as Extract<DragState, { type: "midpoint" }>).liveDx
           : (arrow.midpointDx ?? 0);
-        const liveDy = isDraggingMidpoint
+        const liveDy = isDragging1
           ? (dragState as Extract<DragState, { type: "midpoint" }>).liveDy
           : (arrow.midpointDy ?? 0);
 
-        const { d, midX, midY, handleDy, labelDy, fromAnchorX, fromAnchorY, toAnchorX, toAnchorY } =
-          computeArrowGeometry(arrow, fromR, toR, liveDx, liveDy, isHebrew, srcBlockRightX);
+        // Handle 2 (cp1 / TO side): sourced from midpoint2Dx/Dy.
+        // Falls back to midpointDx/Dy when midpoint2 has never been set,
+        // so existing arrows keep their symmetric shape.
+        const live2Dx = isDragging2
+          ? (dragState as Extract<DragState, { type: "midpoint2" }>).live2Dx
+          : (arrow.midpoint2Dx ?? arrow.midpointDx ?? 0);
+        const live2Dy = isDragging2
+          ? (dragState as Extract<DragState, { type: "midpoint2" }>).live2Dy
+          : (arrow.midpoint2Dy ?? arrow.midpointDy ?? 0);
+
+        const {
+          d, labelX, labelY,
+          handle1X, handle1Y,
+          handle2X, handle2Y,
+          fromAnchorX, fromAnchorY,
+          toAnchorX, toAnchorY,
+        } = computeArrowGeometry(
+          arrow, fromR, toR,
+          liveDx, liveDy, live2Dx, live2Dy,
+          isHebrew, srcBlockRightX,
+        );
 
         const isHovered       = hoveredId === arrow.id;
         const isDraggingThis  = dragState !== null && dragState.id === arrow.id;
         // Show color picker + delete whenever editing is active (not just on hover)
         const showEditHandles = editing && !selectedFromWordId;
 
-        // Color picker row geometry — centered on midX, offset above handle
-        const colorRowY = midY + handleDy - 26;
+        // Color picker row geometry — centered on labelX, offset above
+        const colorRowY = labelY - 20;
         const colorCount = ARROW_COLORS.length;
         const colorSpacing = 14;
-        const colorRowStartX = midX - ((colorCount - 1) * colorSpacing) / 2;
+        const colorRowStartX = labelX - ((colorCount - 1) * colorSpacing) / 2;
 
         return (
           <g key={arrow.id}>
@@ -431,14 +491,15 @@ export default function WordArrowOverlay({
               strokeWidth={isHovered || isDraggingThis ? 2 : 1.2}
               strokeOpacity={0.6}
               fill="none"
-              markerEnd={`url(#war-head-${color.slice(1)})`}
+              markerStart={`url(#war-dot-${color.slice(1)})`}
+              markerEnd={`url(#war-dot-${color.slice(1)})`}
             />
 
             {/* Optional label */}
             {arrow.label && (
               <text
-                x={midX}
-                y={midY + labelDy}
+                x={labelX}
+                y={labelY - 8}
                 textAnchor="middle"
                 fontSize={9}
                 fill={color}
@@ -477,6 +538,7 @@ export default function WordArrowOverlay({
                   onMouseEnter={() => { if (!dragState) setHoveredId(arrow.id); }}
                   onMouseLeave={() => { if (!dragState) setHoveredId(null); }}
                   onMouseDown={(e) => {
+                    e.preventDefault();
                     e.stopPropagation();
                     setDragState({
                       type: "anchor",
@@ -501,6 +563,7 @@ export default function WordArrowOverlay({
                   onMouseEnter={() => { if (!dragState) setHoveredId(arrow.id); }}
                   onMouseLeave={() => { if (!dragState) setHoveredId(null); }}
                   onMouseDown={(e) => {
+                    e.preventDefault();
                     e.stopPropagation();
                     setDragState({
                       type: "anchor",
@@ -512,20 +575,21 @@ export default function WordArrowOverlay({
                   }}
                 />
 
-                {/* Midpoint drag handle */}
+                {/* ── Curve handle 1 (FROM side, t=0.25) ── */}
                 <circle
-                  cx={midX}
-                  cy={midY + handleDy}
-                  r={6}
+                  cx={handle1X}
+                  cy={handle1Y}
+                  r={5}
                   fill={color}
-                  fillOpacity={isHovered || isDraggingMidpoint ? 0.85 : 0.3}
+                  fillOpacity={isHovered || isDragging1 ? 0.85 : 0.3}
                   stroke="white"
                   strokeWidth={1.2}
-                  strokeOpacity={isHovered || isDraggingMidpoint ? 1 : 0.5}
+                  strokeOpacity={isHovered || isDragging1 ? 1 : 0.5}
                   style={{ cursor: "move", pointerEvents: "auto" }}
                   onMouseEnter={() => { if (!dragState) setHoveredId(arrow.id); }}
                   onMouseLeave={() => { if (!dragState) setHoveredId(null); }}
                   onMouseDown={(e) => {
+                    e.preventDefault();
                     e.stopPropagation();
                     setDragState({
                       type: "midpoint",
@@ -540,7 +604,39 @@ export default function WordArrowOverlay({
                   }}
                 />
 
-                {/* Color picker + delete — only on hover */}
+                {/* ── Curve handle 2 (TO side, t=0.75) ── */}
+                <circle
+                  cx={handle2X}
+                  cy={handle2Y}
+                  r={5}
+                  fill={color}
+                  fillOpacity={isHovered || isDragging2 ? 0.85 : 0.3}
+                  stroke="white"
+                  strokeWidth={1.2}
+                  strokeOpacity={isHovered || isDragging2 ? 1 : 0.5}
+                  style={{ cursor: "move", pointerEvents: "auto" }}
+                  onMouseEnter={() => { if (!dragState) setHoveredId(arrow.id); }}
+                  onMouseLeave={() => { if (!dragState) setHoveredId(null); }}
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    // Initialise orig2 from midpoint2Dx/Dy, falling back to
+                    // midpointDx/Dy so a first drag on handle 2 starts from the
+                    // current symmetric shape rather than the origin.
+                    setDragState({
+                      type: "midpoint2",
+                      id: arrow.id,
+                      orig2Dx: arrow.midpoint2Dx ?? arrow.midpointDx ?? 0,
+                      orig2Dy: arrow.midpoint2Dy ?? arrow.midpointDy ?? 0,
+                      startClientX: e.clientX,
+                      startClientY: e.clientY,
+                      live2Dx: arrow.midpoint2Dx ?? arrow.midpointDx ?? 0,
+                      live2Dy: arrow.midpoint2Dy ?? arrow.midpointDy ?? 0,
+                    });
+                  }}
+                />
+
+                {/* Color picker + delete — always visible in edit mode */}
                 {showEditHandles && (
                   <g>
                     {/* Background pill */}
@@ -622,8 +718,8 @@ export default function WordArrowOverlay({
                 onClick={() => onDeleteArrow(arrow.id)}
               >
                 <circle
-                  cx={midX}
-                  cy={midY + handleDy}
+                  cx={labelX}
+                  cy={labelY}
                   r={7}
                   fill="white"
                   stroke={color}
@@ -631,8 +727,8 @@ export default function WordArrowOverlay({
                   strokeWidth={1.5}
                 />
                 <text
-                  x={midX}
-                  y={midY + handleDy + 4}
+                  x={labelX}
+                  y={labelY + 4}
                   textAnchor="middle"
                   fontSize={10}
                   fill={color}

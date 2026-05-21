@@ -250,8 +250,10 @@ function _migrateUserDbInner(sqlite: Database.Database): void {
 
   const waCols = (sqlite.prepare("PRAGMA table_info(word_arrows)").all() as { name: string }[]).map(r => r.name);
   if (!waCols.includes("color"))       try { sqlite.exec("ALTER TABLE word_arrows ADD COLUMN color TEXT"); } catch { /* already exists */ }
-  if (!waCols.includes("midpoint_dx")) try { sqlite.exec("ALTER TABLE word_arrows ADD COLUMN midpoint_dx REAL"); } catch { /* already exists */ }
-  if (!waCols.includes("midpoint_dy")) try { sqlite.exec("ALTER TABLE word_arrows ADD COLUMN midpoint_dy REAL"); } catch { /* already exists */ }
+  if (!waCols.includes("midpoint_dx"))  try { sqlite.exec("ALTER TABLE word_arrows ADD COLUMN midpoint_dx REAL");  } catch { /* already exists */ }
+  if (!waCols.includes("midpoint_dy"))  try { sqlite.exec("ALTER TABLE word_arrows ADD COLUMN midpoint_dy REAL");  } catch { /* already exists */ }
+  if (!waCols.includes("midpoint2_dx")) try { sqlite.exec("ALTER TABLE word_arrows ADD COLUMN midpoint2_dx REAL"); } catch { /* already exists */ }
+  if (!waCols.includes("midpoint2_dy")) try { sqlite.exec("ALTER TABLE word_arrows ADD COLUMN midpoint2_dy REAL"); } catch { /* already exists */ }
 
   const wfmtCols = (sqlite.prepare("PRAGMA table_info(word_formatting)").all() as { name: string }[]).map(r => r.name);
   if (!wfmtCols.includes("is_small_caps"))

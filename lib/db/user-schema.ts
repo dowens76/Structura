@@ -287,6 +287,8 @@ export const wordArrows = sqliteTable(
     color:       text("color"),
     midpointDx:  real("midpoint_dx"),
     midpointDy:  real("midpoint_dy"),
+    midpoint2Dx: real("midpoint2_dx"),
+    midpoint2Dy: real("midpoint2_dy"),
     textSource:  text("text_source").notNull(),
     book:        text("book").notNull(),
     chapter:     integer("chapter").notNull(),

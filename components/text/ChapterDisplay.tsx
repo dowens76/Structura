@@ -3400,7 +3400,11 @@ export default function ChapterDisplay({
                     : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
                 ].join(" ")}
               >
-                ↷
+                <svg width="20" height="10" viewBox="0 0 20 10" fill="none" aria-hidden="true" style={{ display: "inline-block", verticalAlign: "middle" }}>
+                  <path d="M2,3 C2,9 18,9 18,3" stroke="currentColor" strokeWidth="1.5" />
+                  <circle cx="2"  cy="3" r="2" fill="currentColor" />
+                  <circle cx="18" cy="3" r="2" fill="currentColor" />
+                </svg>
               </button>}
 
               <div className="h-5 border-l border-[var(--border)]" />

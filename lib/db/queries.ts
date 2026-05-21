@@ -1443,6 +1443,8 @@ export async function updateWordArrow(
     color?: string | null;
     midpointDx?: number | null;
     midpointDy?: number | null;
+    midpoint2Dx?: number | null;
+    midpoint2Dy?: number | null;
     fromWordId?: string;
     toWordId?: string;
   }

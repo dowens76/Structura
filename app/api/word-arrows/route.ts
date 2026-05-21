@@ -35,14 +35,16 @@ export async function POST(req: NextRequest) {
 
 export async function PATCH(req: NextRequest) {
   const body = await req.json();
-  const { id, color, midpointDx, midpointDy, fromWordId, toWordId } = body;
+  const { id, color, midpointDx, midpointDy, midpoint2Dx, midpoint2Dy, fromWordId, toWordId } = body;
   if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 });
   const patch: Record<string, unknown> = {};
-  if ("color"       in body) patch.color       = color       ?? null;
-  if ("midpointDx"  in body) patch.midpointDx  = midpointDx  ?? null;
-  if ("midpointDy"  in body) patch.midpointDy  = midpointDy  ?? null;
-  if ("fromWordId"  in body) patch.fromWordId  = fromWordId;
-  if ("toWordId"    in body) patch.toWordId    = toWordId;
+  if ("color"        in body) patch.color        = color        ?? null;
+  if ("midpointDx"   in body) patch.midpointDx   = midpointDx   ?? null;
+  if ("midpointDy"   in body) patch.midpointDy   = midpointDy   ?? null;
+  if ("midpoint2Dx"  in body) patch.midpoint2Dx  = midpoint2Dx  ?? null;
+  if ("midpoint2Dy"  in body) patch.midpoint2Dy  = midpoint2Dy  ?? null;
+  if ("fromWordId"   in body) patch.fromWordId   = fromWordId;
+  if ("toWordId"     in body) patch.toWordId     = toWordId;
   const arrow = await updateWordArrow(Number(id), patch);
   return NextResponse.json({ arrow });
 }
