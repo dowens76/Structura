@@ -1578,14 +1578,12 @@ export default function VerseDisplay({
         backgroundPosition: "center bottom",
         backgroundRepeat: "no-repeat",
         paddingBottom: isHebrew ? "6px" : "2px",
-        whiteSpace: "pre",
       } : char1 ? {
         backgroundImage: `linear-gradient(to right, ${char1.color}, ${char1.color})`,
         backgroundSize: "100% 2px",
         backgroundPosition: "center bottom",
         backgroundRepeat: "no-repeat",
         paddingBottom: isHebrew ? "6px" : "2px",
-        whiteSpace: "pre",
       } : undefined;
 
       const inner = gWords.map((word, wi) => {
