@@ -1920,6 +1920,9 @@ export default function VerseDisplay({
           const rowSegs: TvSeg[] = si < sourceSegments.length - 1
             ? (tvSegs[si] ? [tvSegs[si]] : [])
             : tvSegs.slice(si);
+          // Only show footnote anchors when there are visible footnotes for this translation.
+          // translationFootnotes is passed as [] by the parent when showFootnotes is false.
+          const showFnAnchors = translationFootnotes.some((f) => f.translationId === tvTranslationId);
 
           // Verse-level translation paragraph separator (first row only)
           const tvStartsNewParagraph = si === 0
@@ -2184,7 +2187,7 @@ export default function VerseDisplay({
                           >
                             {tokCore}
                           </span>
-                          {fnLetter && (
+                          {fnLetter && showFnAnchors && (
                             <sup className="text-[0.65em] font-normal leading-none text-stone-400 dark:text-stone-500 select-none">
                               {fnLetter}
                             </sup>
@@ -2200,7 +2203,7 @@ export default function VerseDisplay({
                     })
                   )}
                   {/* Orphaned anchors: footnotes without an embedded \fn marker in the verse text */}
-                  {isLastRow && (() => {
+                  {isLastRow && showFnAnchors && (() => {
                     const tFns = translationFootnotes.filter((f) => f.translationId === tvTranslationId);
                     const orphans = tFns.slice(embeddedFnCount);
                     if (orphans.length === 0) return null;
