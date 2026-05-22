@@ -198,8 +198,11 @@
       color: rgba(250,248,244,.65);
     }
     .feature-dark .slider-track {
-      background: rgba(255,255,255,.07);
-      box-shadow: var(--shadow-lg), 0 0 0 1px rgba(255,255,255,.1);
+      background: transparent;
+      box-shadow: none;
+    }
+    .feature-dark .slide img {
+      background: transparent;
     }
     .feature-dark .dot {
       background: rgba(255,255,255,.25);
@@ -240,7 +243,7 @@
 
     /* Fallback for missing screenshots */
     .slide img[src$=".png"] {
-      background: var(--bg-warm);
+      /*background: var(--bg-warm);*/
     }
 
     .slider-dots {
