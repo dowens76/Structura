@@ -90,20 +90,35 @@ export function computeSectionRanges(
   return result;
 }
 
+/** OSIS codes for books that contain exactly one chapter. */
+const SINGLE_CHAPTER_BOOKS = new Set(["Obad", "Phlm", "2John", "3John", "Jude"]);
+
 /**
  * Formats a verse range for display next to a section heading.
- * Same chapter: "(v–v)" e.g. "(1–25)"
- * Cross chapter: "(ch:v – ch:v)" e.g. "(1:1 – 2:5)"
+ *
+ * Multi-chapter books always include the chapter number so that ranges like
+ * "(4:1–24)" are unambiguous even when a section spans an entire chapter.
+ * Single-chapter books (Obad, Phlm, 2John, 3John, Jude) omit the chapter.
+ *
+ * Same chapter (multi-ch):  "(4:1–24)"  or "(4:5)"
+ * Same chapter (single-ch): "(1–24)"    or "(5)"
+ * Cross chapter:            "(4:1 – 5:3)"
  */
 export function formatVerseRange(
   startChapter: number,
   startVerse: number,
   endChapter: number,
-  endVerse: number
+  endVerse: number,
+  book: string = ""
 ): string {
+  const showCh = !SINGLE_CHAPTER_BOOKS.has(book);
   if (startChapter === endChapter) {
-    if (startVerse === endVerse) return `(${startVerse})`;
-    return `(${startVerse}–${endVerse})`;
+    if (startVerse === endVerse) {
+      return showCh ? `(${startChapter}:${startVerse})` : `(${startVerse})`;
+    }
+    return showCh
+      ? `(${startChapter}:${startVerse}–${endVerse})`
+      : `(${startVerse}–${endVerse})`;
   }
   return `(${startChapter}:${startVerse} – ${endChapter}:${endVerse})`;
 }

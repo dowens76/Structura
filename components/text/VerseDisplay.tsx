@@ -10,6 +10,13 @@ import { PLOT_ELEMENTS, ANNOTATION_PALETTE, getPlotElement, getAnnotationColor }
 /** Width of the hanging-indent space (px). RST lines are drawn inside this space. */
 const HANG_PX = 32;
 
+/**
+ * OSIS codes for books that contain exactly one chapter.
+ * Section-heading range labels omit the chapter number for these books
+ * (there is only ever one chapter, so it adds no information).
+ */
+const SINGLE_CHAPTER_BOOKS = new Set(["Obad", "Phlm", "2John", "3John", "Jude"]);
+
 /** Hebrew Unicode ranges: basic Hebrew block + presentation forms A. */
 const HEBREW_RE = /[֐-׿יִ-ﭏ]+/g;
 
@@ -1238,9 +1245,16 @@ export default function VerseDisplay({
       const letter = breakLetterMap.get(wordId) ?? "";
       const startVerseStr = `${br.verse}${letter}`;
       if (!range) return `(${startVerseStr})`;
+      // Single-chapter books have no useful chapter prefix; all others include it
+      // so that whole-chapter ranges like "(4:1–24)" are unambiguous.
+      const showCh = !SINGLE_CHAPTER_BOOKS.has(book);
       if (chapter === range.endChapter) {
-        if (br.verse === range.endVerse && !letter) return `(${startVerseStr})`;
-        return `(${startVerseStr}–${range.endVerse})`;
+        if (br.verse === range.endVerse && !letter) {
+          return showCh ? `(${chapter}:${startVerseStr})` : `(${startVerseStr})`;
+        }
+        return showCh
+          ? `(${chapter}:${startVerseStr}–${range.endVerse})`
+          : `(${startVerseStr}–${range.endVerse})`;
       }
       return `(${chapter}:${startVerseStr} – ${range.endChapter}:${range.endVerse})`;
     }
