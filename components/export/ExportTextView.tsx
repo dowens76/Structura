@@ -76,20 +76,8 @@ export default function ExportTextView({
     [customRstTypes],
   );
 
-  // ── Active translations (read from localStorage, same keys as ChapterDisplay) ──
-  // Start empty; populate after mount so we never try to read localStorage on the server.
-  const [activeAbbrs, setActiveAbbrs] = useState<Set<string>>(new Set());
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem("structura:activeTranslations");
-      const abbrs: string[] = raw ? (JSON.parse(raw) as string[]) : [];
-      setActiveAbbrs(new Set(abbrs));
-    } catch {
-      // ignore parse errors
-    }
-    setMounted(true);
-  }, []);
+  // (No localStorage filtering needed — the export page loads all translation
+  //  verse data from the server and shows everything that has content.)
 
   // ── Build lookup maps ───────────────────────────────────────────────────
   const paragraphBreakIds = useMemo(
@@ -238,14 +226,12 @@ export default function ExportTextView({
     [verseGroups]
   );
 
-  // ── Translation text entries per verse (only user's active translations) ──
-  // After mount we know which abbreviations are active; before mount show nothing
-  // (same behaviour as ChapterDisplay which also starts with no active translations).
+  // ── Translation text entries per verse ──────────────────────────────────
+  // All translation verse data is loaded server-side; include every translation
+  // that has at least one verse for this passage.
   const translationVerseMap = useMemo(() => {
-    if (!mounted) return new Map<number, TranslationTextEntry[]>();
     const map = new Map<number, TranslationTextEntry[]>();
     for (const t of availableTranslations) {
-      if (!activeAbbrs.has(t.abbreviation)) continue;
       const verses = translationVerseData[t.id] ?? [];
       for (const v of verses) {
         if (!map.has(v.verse)) map.set(v.verse, []);
@@ -253,18 +239,19 @@ export default function ExportTextView({
       }
     }
     return map;
-  }, [mounted, activeAbbrs, availableTranslations, translationVerseData]);
+  }, [availableTranslations, translationVerseData]);
 
-  const hasTranslation =
-    mounted && availableTranslations.some((t) => activeAbbrs.has(t.abbreviation));
+  const hasTranslation = availableTranslations.some(
+    (t) => (translationVerseData[t.id]?.length ?? 0) > 0
+  );
 
   // ── Noop callbacks (read-only view) ───────────────────────────────────
   const noop = () => {};
   const noopWord = (_w: Word) => {};
 
   return (
-    // outerRef: full-width wrapper — WordArrowOverlay SVG is absolute inside this
-    <div ref={outerRef} style={{ position: "relative" }}>
+    // outerRef: full-width wrapper — used as PNG capture root so nothing is clipped
+    <div ref={outerRef} style={{ position: "relative" }} data-png-target="true">
       <WordArrowOverlay
         arrows={wordArrows}
         containerRef={containerRef}
@@ -273,10 +260,13 @@ export default function ExportTextView({
         selectedFromWordId={null}
         onDeleteArrow={noop}
         onUpdateArrow={async () => {}}
+        isHebrew={isHebrew}
+        hasTranslation={hasTranslation}
       />
 
       {/* containerRef: content container — ClauseRelationshipOverlay SVG is absolute inside this */}
-      <div ref={containerRef} className="relative px-6 py-6 max-w-4xl mx-auto">
+      {/* data-png-crop-to: ExportLayout uses this rect to strip empty side margins from the PNG */}
+      <div ref={containerRef} className="relative px-6 py-6 max-w-4xl mx-auto" data-png-crop-to="true">
         <ClauseRelationshipOverlay
           relationships={clauseRelationships}
           containerRef={containerRef}

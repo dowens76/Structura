@@ -3426,6 +3426,7 @@ export default function PassageView({
               "--translation-font-size": `${translationFontSize * (presentationMode ? 3 : 1)}rem`,
               "--source-row-height": `${(isHebrew ? hebrewFontSize : greekFontSize) * (presentationMode ? 1.0 : 2.0) * lineHeightMultiplier}rem`,
               "--translation-line-height": presentationMode ? `calc(${1.5 * lineHeightMultiplier} * var(--translation-font-size))` : `calc(${2.0 * lineHeightMultiplier} * var(--${isHebrew ? "hebrew" : "greek"}-font-size))`,
+              "--translation-half-leading": "calc((var(--translation-line-height) - var(--translation-font-size)) / 2)",
               "--source-lh": String(isHebrew ? 2.5 * lineHeightMultiplier : 2.25 * lineHeightMultiplier),
               "--source-half-leading": isHebrew
                 ? `calc(${(2.5 * lineHeightMultiplier - 1) / 2} * var(--hebrew-font-size, 1.375rem))`

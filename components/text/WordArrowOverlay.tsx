@@ -303,7 +303,10 @@ export default function WordArrowOverlay({
   const [svgHeight, setSvgHeight] = useState(0);
   const [hoveredId, setHoveredId] = useState<number | null>(null);
   const [dragState, setDragState] = useState<DragState>(null);
-  const frameRef = useRef<number | null>(null);
+  const frameRef   = useRef<number | null>(null);
+  const svgRef     = useRef<SVGSVGElement | null>(null);
+  const arrowsRef  = useRef(arrows);
+  arrowsRef.current = arrows;
 
   const effectiveOuterRef = outerRef ?? containerRef;
 
@@ -334,6 +337,61 @@ export default function WordArrowOverlay({
     setDrawn(newDrawn);
   }
 
+  /**
+   * Direct SVG DOM update for print — bypasses React's render / commit cycle.
+   *
+   * React state updates (even with flushSync) schedule a synchronous flush
+   * but still go through reconciliation.  In some browsers the print snapshot
+   * is taken before that flush is reflected in the rendered output.  Writing
+   * directly to path.d and text.x/y attributes is immediate and is visible to
+   * the print engine regardless of timing.
+   */
+  function updateSvgForPrint() {
+    const container = containerRef.current;
+    const outer     = effectiveOuterRef.current;
+    const svg       = svgRef.current;
+    if (!container || !outer || !svg) return;
+
+    // Update SVG height to match the print-layout scroll height.
+    const newHeight = outer.scrollHeight > outer.clientHeight
+      ? outer.scrollHeight : outer.clientHeight;
+    svg.style.height = `${newHeight}px`;
+
+    for (const arrow of arrowsRef.current) {
+      const fromR = getWordRect(arrow.fromWordId, container, outer);
+      const toR   = getWordRect(arrow.toWordId,   container, outer);
+      if (!fromR || !toR) continue;
+
+      const fromBlockRight = isHebrew ? getSrcBlockRight(arrow.fromWordId, container, outer) : null;
+      const toBlockRight   = isHebrew ? getSrcBlockRight(arrow.toWordId,   container, outer) : null;
+      const srcBlockRightX =
+        fromBlockRight !== null || toBlockRight !== null
+          ? Math.max(fromBlockRight ?? -Infinity, toBlockRight ?? -Infinity)
+          : null;
+
+      const { d, labelX, labelY } = computeArrowGeometry(
+        arrow, fromR, toR,
+        arrow.midpointDx  ?? 0,
+        arrow.midpointDy  ?? 0,
+        arrow.midpoint2Dx ?? arrow.midpointDx ?? 0,
+        arrow.midpoint2Dy ?? arrow.midpointDy ?? 0,
+        isHebrew, srcBlockRightX,
+      );
+
+      // Update every path element for this arrow (visible path + hover path).
+      svg.querySelectorAll<Element>(`[data-arrow-path="${arrow.id}"]`).forEach(el => {
+        el.setAttribute("d", d);
+      });
+
+      // Update optional label position.
+      const labelEl = svg.querySelector<Element>(`[data-arrow-label="${arrow.id}"]`);
+      if (labelEl) {
+        labelEl.setAttribute("x", String(labelX));
+        labelEl.setAttribute("y", String(labelY - 8));
+      }
+    }
+  }
+
   useLayoutEffect(() => {
     function scheduleMeasure() {
       if (frameRef.current) cancelAnimationFrame(frameRef.current);
@@ -355,6 +413,70 @@ export default function WordArrowOverlay({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [arrows, containerRef, effectiveOuterRef, layoutRef, hasTranslation]);
+
+  // ── Print re-measurement ─────────────────────────────────────────────────
+  //
+  // When the browser renders the print layout for window.print(), it reflows
+  // the page to the paper width (narrower than the screen).  The SVG paths are
+  // stored as screen coordinates, so arrows land in the wrong position in the
+  // PDF.
+  //
+  // IMPORTANT: In WebKit/WKWebView the `beforeprint` event fires BEFORE print
+  // CSS is applied and the layout is reflowed, so getBoundingClientRect() in
+  // that handler still returns screen-layout positions.  Instead we listen on
+  // window.matchMedia('print'), whose `change` event fires AFTER WebKit has
+  // applied @media print rules and completed reflow.  At that point
+  // getBoundingClientRect() returns the true print-layout positions we need.
+  //
+  // flushSync forces React to commit the updated paths synchronously so the
+  // DOM is updated before the browser takes its print snapshot.
+  //
+  // measureRef always holds the most-recent measure closure (with up-to-date
+  // arrow data), avoiding stale-closure issues in the stable event handler.
+  const measureRef            = useRef(measure);
+  measureRef.current           = measure;
+  const updateSvgForPrintRef  = useRef(updateSvgForPrint);
+  updateSvgForPrintRef.current = updateSvgForPrint;
+
+  useEffect(() => {
+    const mql = window.matchMedia("print");
+
+    function handlePrintMediaChange(e: MediaQueryListEvent) {
+      if (frameRef.current) {
+        cancelAnimationFrame(frameRef.current);
+        frameRef.current = null;
+      }
+      if (e.matches) {
+        // Print CSS is now active and layout has reflowed.
+        // Write path coordinates directly to the DOM — this bypasses React's
+        // render/commit cycle so the update is visible in the print snapshot
+        // regardless of browser print-pipeline timing.
+        updateSvgForPrintRef.current();
+      } else {
+        // Print dialog closed — restore screen-layout coordinates via state.
+        measureRef.current();
+      }
+    }
+
+    // ExportLayout dispatches this before calling window.print() while the
+    // text container is temporarily constrained to ≈ print content width.
+    // Handling it synchronously here guarantees the SVG paths are updated
+    // before the browser snapshot — no dependency on matchMedia timing.
+    function handlePrintPrepare() {
+      if (frameRef.current) {
+        cancelAnimationFrame(frameRef.current);
+        frameRef.current = null;
+      }
+      updateSvgForPrintRef.current();
+    }
+
+    mql.addEventListener("change", handlePrintMediaChange);
+    window.addEventListener("structura:print-prepare", handlePrintPrepare);
+    return () => {
+      mql.removeEventListener("change", handlePrintMediaChange);
+      window.removeEventListener("structura:print-prepare", handlePrintPrepare);
+    };
+  }, []); // empty: attach once per mount, refs keep content current
 
   // ── Global drag handlers ────────────────────────────────────────────────────
 
@@ -430,6 +552,7 @@ export default function WordArrowOverlay({
 
   return (
     <svg
+      ref={svgRef}
       style={{
         position:      "absolute",
         top:           0,
@@ -515,6 +638,7 @@ export default function WordArrowOverlay({
           <g key={arrow.id}>
             {/* ── Arrow path ── */}
             <path
+              data-arrow-path={arrow.id}
               d={d}
               stroke={color}
               strokeWidth={isHovered || isDraggingThis ? 2 : 1.2}
@@ -527,6 +651,7 @@ export default function WordArrowOverlay({
             {/* Optional label */}
             {arrow.label && (
               <text
+                data-arrow-label={arrow.id}
                 x={labelX}
                 y={labelY - 8}
                 textAnchor="middle"
@@ -541,6 +666,7 @@ export default function WordArrowOverlay({
 
             {/* ── Fat invisible hover target ── */}
             <path
+              data-arrow-path={arrow.id}
               d={d}
               stroke="transparent"
               strokeWidth={12}

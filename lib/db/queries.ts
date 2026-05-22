@@ -3,7 +3,7 @@ import { sourceDb, userDb, sourceLookups, lxxLookups, getLxxDb, getUltSqlite, ge
 import type { LookupMaps } from "./index";
 import { books, words } from "./source-schema";
 import type { Word, WordRow } from "./source-schema";
-import { translations, translationVerses, paragraphBreaks, paragraphHeadings, characters, characterRefs, speechSections, wordTags, wordTagRefs, lineIndents, sceneBreaks, passages, clauseRelationships, rstRelations, wordArrows, wordFormatting, lineAnnotations, bookGroupings, appSettings, translationFootnotes, translationVersions, workspaces } from "./user-schema";
+import { translations, translationVerses, paragraphBreaks, paragraphHeadings, characters, characterRefs, speechSections, wordTags, wordTagRefs, lineIndents, sceneBreaks, passages, clauseRelationships, rstRelations, wordArrows, wordFormatting, lineAnnotations, bookGroupings, appSettings, translationFootnotes, translationVersions, workspaces, users } from "./user-schema";
 import type { Book, Translation, TranslationVerse, Character, CharacterRef, SpeechSection, WordTag, WordTagRef, Passage, ClauseRelationship, RstRelation, WordArrow, LineAnnotation, BookGrouping, TranslationFootnote, TranslationVersion } from "./schema";
 import type { TextSource, Testament } from "@/lib/morphology/types";
 
@@ -1672,6 +1672,20 @@ export function getVcbBooks(): string[] {
 export async function getWorkspaceById(id: number) {
   const rows = await userDb.select().from(workspaces).where(eq(workspaces.id, id)).limit(1);
   return rows[0] ?? null;
+}
+
+/**
+ * Returns the display name of the user who owns the given workspace, or null
+ * if the workspace or its user cannot be found. Used for the PDF export header.
+ */
+export async function getAuthorName(workspaceId: number): Promise<string | null> {
+  const rows = await userDb
+    .select({ name: users.name })
+    .from(workspaces)
+    .innerJoin(users, eq(users.id, workspaces.userId))
+    .where(eq(workspaces.id, workspaceId))
+    .limit(1);
+  return rows[0]?.name ?? null;
 }
 
 /**

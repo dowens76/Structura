@@ -31,6 +31,14 @@ export default function ExportLayout({ children, revealHref, filename, backHref,
     if (pdfStatus === "loading") return;
     setPdfStatus("loading");
     try {
+      // Dispatch "structura:print-prepare" so WordArrowOverlay re-measures its
+      // SVG paths against the current (screen) layout before print() is called.
+      // The @page rule below requests landscape orientation, which gives enough
+      // width (~1010 px for A4, ~940 px for US Letter at 1.5 cm margins) to
+      // accommodate the max-w-4xl (896 px) multi-column layout without compression
+      // — so no width pre-constraint is needed.
+      window.dispatchEvent(new CustomEvent("structura:print-prepare"));
+
       // WKWebView (Tauri Mac) ignores window.print(). Delegate to the Rust
       // print_page command which calls the native WebviewWindow::print() API.
       if ("__TAURI_INTERNALS__" in window) {
@@ -39,6 +47,7 @@ export default function ExportLayout({ children, revealHref, filename, backHref,
       } else {
         window.print();
       }
+
       setPdfStatus("done");
     } catch (err) {
       console.error("PDF export failed:", err);
@@ -48,7 +57,7 @@ export default function ExportLayout({ children, revealHref, filename, backHref,
   }
 
   /**
-   * Render the given element to a PNG data URL.
+   * Render an element to a transparent-background PNG data URL.
    *
    * html-to-image serialises the DOM to an SVG <foreignObject> then loads it
    * as a data-URL in an <img> tag before drawing on canvas. In some WKWebView
@@ -58,26 +67,56 @@ export default function ExportLayout({ children, revealHref, filename, backHref,
    *      text using the already-loaded page fonts, which avoids the timeout/
    *      CORS failure that can occur when the renderer tries to re-fetch fonts
    *      from the tauri://localhost origin.
+   *
+   * If `cropTo` is supplied the canvas is cropped to that element's bounding
+   * rect (relative to `el`) so that blank side-margins are stripped while still
+   * allowing `el` to be the full-width capture root (preventing any overflow
+   * clipping that would happen if we captured the narrower inner element directly).
    */
-  async function renderToPng(el: HTMLElement, bg: string): Promise<string> {
-    const { toPng } = await import("html-to-image");
+  async function renderToPng(el: HTMLElement, cropTo?: HTMLElement): Promise<string> {
+    const { toCanvas } = await import("html-to-image");
+    const pixelRatio = 2;
+
+    const render = (opts: object) => toCanvas(el, { pixelRatio, ...opts });
+    let canvas: HTMLCanvasElement;
     try {
-      return await toPng(el, { pixelRatio: 2, backgroundColor: bg });
+      canvas = await render({});
     } catch {
       // Retry without font embedding — last-resort for WKWebView environments
-      return await toPng(el, { pixelRatio: 2, backgroundColor: bg, skipFonts: true });
+      canvas = await render({ skipFonts: true });
     }
+
+    // Crop to the inner content element's bounds if provided
+    if (cropTo) {
+      const elRect   = el.getBoundingClientRect();
+      const cropRect = cropTo.getBoundingClientRect();
+      const sx = Math.round((cropRect.left - elRect.left) * pixelRatio);
+      const sy = Math.round((cropRect.top  - elRect.top)  * pixelRatio);
+      const sw = Math.round(cropRect.width  * pixelRatio);
+      const sh = Math.round(cropRect.height * pixelRatio);
+
+      const cropped = document.createElement("canvas");
+      cropped.width  = sw;
+      cropped.height = sh;
+      cropped.getContext("2d")!.drawImage(canvas, sx, sy, sw, sh, 0, 0, sw, sh);
+      return cropped.toDataURL("image/png");
+    }
+
+    return canvas.toDataURL("image/png");
   }
 
   async function handlePng() {
     if (!textRef.current || pngStatus === "loading") return;
     setPngStatus("loading");
     try {
-      const bg =
-        getComputedStyle(document.documentElement)
-          .getPropertyValue("--background")
-          .trim() || "#f8f6f2";
-      const url = await renderToPng(textRef.current, bg);
+      // [data-png-target]: outerRef — full-width, so nothing can be clipped.
+      // [data-png-crop-to]: containerRef (max-w-4xl) — used to trim blank side margins.
+      const pngTarget =
+        (textRef.current.querySelector("[data-png-target]") as HTMLElement | null)
+        ?? textRef.current;
+      const cropTo =
+        pngTarget.querySelector("[data-png-crop-to]") as HTMLElement | undefined ?? undefined;
+      const url = await renderToPng(pngTarget, cropTo);
 
       // WKWebView (Tauri Mac) does not honour `<a download>` for data URLs.
       // Detect Tauri at call-time (event handlers are always client-side) and
@@ -138,13 +177,31 @@ export default function ExportLayout({ children, revealHref, filename, backHref,
 
   return (
     <>
-      {/* Print-only CSS — hides toolbar, preserves background colours */}
+      {/* Print-only CSS — white background regardless of current theme */}
       <style>{`
         @media print {
           .export-toolbar { display: none !important; }
-          body { background: white !important; }
-          @page { margin: 1.5cm; }
+          /* Landscape gives ~1010 px content on A4 — enough for the wide
+             multi-column layout (source + labels + translation + annotations)
+             without compressing columns or wrapping Hebrew words. */
+          @page { size: landscape; margin: 1.5cm; }
           * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+
+          /* Force light-mode CSS variables so print is always black-on-white,
+             even when the app is in dark mode. All children inherit from here. */
+          [data-export-page] {
+            background: white !important;
+            --background: white;
+            --foreground: #1f2f3f;
+            --surface: #ffffff;
+            --surface-muted: #f1ede5;
+            --border: #ddd8ce;
+            --border-muted: #ccc5b8;
+            --text-muted: #7a6e5e;
+            --accent: #c89b3c;
+            --accent-hover: #a87d28;
+            --interlinear-color: #b04a32;
+          }
         }
       `}</style>
 

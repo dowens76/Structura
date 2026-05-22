@@ -2236,9 +2236,21 @@ export default function VerseDisplay({
           );
         });
 
+        // Uses --source-half-leading (set by parent, scales with lineHeightMultiplier);
+        // fallback replicates the 2.5× / 2.25× default line-height used when no parent sets it.
         const labelPaddingTop = isHebrew
-          ? "calc(0.75 * var(--hebrew-font-size, 1.375rem))"
-          : "calc(0.625 * var(--greek-font-size, 1.25rem))";
+          ? "var(--source-half-leading, calc(0.75 * var(--hebrew-font-size, 1.375rem)))"
+          : "var(--source-half-leading, calc(0.625 * var(--greek-font-size, 1.25rem)))";
+
+        // Push the translation column's first line down so it visually aligns
+        // with the verse-number label (which sits at labelPaddingTop).
+        // Formula: source-half-leading − translation-half-leading
+        // --translation-half-leading is set by ChapterDisplay / PassageView as
+        //   calc((--translation-line-height − --translation-font-size) / 2).
+        // Fallback assumes line-height ratio 1.625 → half-leading = 0.3125 × fontSize.
+        const tvPaddingTop = isHebrew
+          ? "calc(var(--source-half-leading, calc(0.75 * var(--hebrew-font-size, 1.375rem))) - var(--translation-half-leading, calc(0.3125 * var(--translation-font-size, 0.875rem))))"
+          : "calc(var(--source-half-leading, calc(0.625 * var(--greek-font-size, 1.25rem))) - var(--translation-half-leading, calc(0.3125 * var(--translation-font-size, 0.875rem))))";
 
         // Suppress the dashed separator when this segment continues the same speech box or annotation.
         // Use the outermost layer to decide — if it continues from the previous segment, no gap.
@@ -2340,7 +2352,7 @@ export default function VerseDisplay({
               className="flex flex-col gap-1"
               data-seg-translation={seg[0].wordId}
               style={{
-                paddingTop: "4px",
+                paddingTop: tvPaddingTop,
                 marginLeft: rstSourcePad || undefined,
               }}
             >

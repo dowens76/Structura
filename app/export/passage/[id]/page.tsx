@@ -18,6 +18,7 @@ import {
   getChapterSceneBreaks,
   getChapterLineAnnotations,
   getChapterRstRelations,
+  getAuthorName,
 } from "@/lib/db/queries";
 import type { TranslationVerse } from "@/lib/db/schema";
 import type { TextSource } from "@/lib/morphology/types";
@@ -107,8 +108,13 @@ export default async function ExportPassagePage({ params }: PageProps) {
     })
   );
 
-  const bookName = OSIS_BOOK_NAMES[osisBook] ?? osisBook;
-  const isHebrew = bookRecord.language === "hebrew";
+  const activeTranslationAbbrevs = availableTranslations
+    .filter((t) => (translationVerseData[t.id]?.length ?? 0) > 0)
+    .map((t) => t.abbreviation);
+
+  const bookName   = OSIS_BOOK_NAMES[osisBook] ?? osisBook;
+  const isHebrew   = bookRecord.language === "hebrew";
+  const authorName = await getAuthorName(workspaceId);
 
   // Use first chapter for API route (single chapter passages most common)
   // For multi-chapter passages, include passageId
@@ -134,13 +140,16 @@ export default async function ExportPassagePage({ params }: PageProps) {
   };
 
   return (
-    <div style={{ backgroundColor: "var(--background)", minHeight: "100vh" }}>
+    <div data-export-page style={{ backgroundColor: "var(--background)", minHeight: "100vh" }}>
       {/* Print header — visible only in print */}
       <div className="hidden print:block px-8 pt-6 pb-2">
         <h1 style={{ fontFamily: "Georgia, 'Times New Roman', serif", fontSize: "1.25rem", fontWeight: "bold" }}>
           {passageLabel}
         </h1>
-        <p style={{ fontSize: "0.75rem", color: "#78716c" }}>Structura · {textSource}</p>
+        <p style={{ fontSize: "0.75rem", color: "#78716c" }}>Structura · {[textSource, ...activeTranslationAbbrevs].join(" – ")}</p>
+        {authorName && (
+          <p style={{ fontSize: "0.75rem", color: "#78716c" }}>Author: {authorName}</p>
+        )}
       </div>
 
       <ExportLayout revealHref={revealHref} filename={filename} backHref={`/${encodeURIComponent(osisBook)}/${textSource}/passage/${id}`} noteContext={noteContext}>
