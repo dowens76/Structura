@@ -7,6 +7,12 @@
       "runtimeArgs": ["-c", "cd /Users/daniel/Documents/GitHub/Structura && PATH=/usr/local/bin:$PATH npm run dev"],
       "port": 3000,
       "autoPort": true
+    },
+    {
+      "name": "structura-docs",
+      "runtimeExecutable": "/bin/sh",
+      "runtimeArgs": ["-c", "python3 -m http.server 3001 --directory /Users/daniel/Documents/GitHub/Structura/docs"],
+      "port": 3001
     }
   ]
 }

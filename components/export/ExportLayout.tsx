@@ -23,17 +23,49 @@ interface Props {
 
 export default function ExportLayout({ children, revealHref, filename, backHref, noteContext }: Props) {
   const textRef = useRef<HTMLDivElement>(null);
-  const [pngStatus, setPngStatus] = useState<"idle" | "loading" | "done">("idle");
+  const [pdfStatus, setPdfStatus] = useState<"idle" | "loading" | "done" | "error">("idle");
+  const [pngStatus, setPngStatus] = useState<"idle" | "loading" | "done" | "error">("idle");
   const [slidesStatus, setSlidesStatus] = useState<"idle" | "loading" | "done">("idle");
 
   async function handlePdf() {
-    // WKWebView (Tauri Mac) ignores window.print(). Delegate to the Rust
-    // print_page command which calls the native WebviewWindow::print() API.
-    if ("__TAURI_INTERNALS__" in window) {
-      const { invoke } = await import("@tauri-apps/api/core");
-      await invoke("print_page");
-    } else {
-      window.print();
+    if (pdfStatus === "loading") return;
+    setPdfStatus("loading");
+    try {
+      // WKWebView (Tauri Mac) ignores window.print(). Delegate to the Rust
+      // print_page command which calls the native WebviewWindow::print() API.
+      if ("__TAURI_INTERNALS__" in window) {
+        const { invoke } = await import("@tauri-apps/api/core");
+        await invoke("print_page");
+      } else {
+        window.print();
+      }
+      setPdfStatus("done");
+    } catch (err) {
+      console.error("PDF export failed:", err);
+      setPdfStatus("error");
+    }
+    setTimeout(() => setPdfStatus("idle"), 3000);
+  }
+
+  /**
+   * Render the given element to a PNG data URL.
+   *
+   * html-to-image serialises the DOM to an SVG <foreignObject> then loads it
+   * as a data-URL in an <img> tag before drawing on canvas. In some WKWebView
+   * builds this step silently produces a blank image. We try twice:
+   *   1. Full rendering (fonts embedded as base64) — works in all browsers.
+   *   2. skipFonts:true — skips external-font fetching. WKWebView still renders
+   *      text using the already-loaded page fonts, which avoids the timeout/
+   *      CORS failure that can occur when the renderer tries to re-fetch fonts
+   *      from the tauri://localhost origin.
+   */
+  async function renderToPng(el: HTMLElement, bg: string): Promise<string> {
+    const { toPng } = await import("html-to-image");
+    try {
+      return await toPng(el, { pixelRatio: 2, backgroundColor: bg });
+    } catch {
+      // Retry without font embedding — last-resort for WKWebView environments
+      return await toPng(el, { pixelRatio: 2, backgroundColor: bg, skipFonts: true });
     }
   }
 
@@ -41,15 +73,11 @@ export default function ExportLayout({ children, revealHref, filename, backHref,
     if (!textRef.current || pngStatus === "loading") return;
     setPngStatus("loading");
     try {
-      const { toPng } = await import("html-to-image");
       const bg =
         getComputedStyle(document.documentElement)
           .getPropertyValue("--background")
           .trim() || "#f8f6f2";
-      const url = await toPng(textRef.current, {
-        pixelRatio: 2,
-        backgroundColor: bg,
-      });
+      const url = await renderToPng(textRef.current, bg);
 
       // WKWebView (Tauri Mac) does not honour `<a download>` for data URLs.
       // Detect Tauri at call-time (event handlers are always client-side) and
@@ -77,9 +105,9 @@ export default function ExportLayout({ children, revealHref, filename, backHref,
       setPngStatus("done");
     } catch (err) {
       console.error("PNG export failed:", err);
-      setPngStatus("idle");
+      setPngStatus("error");
     }
-    setTimeout(() => setPngStatus("idle"), 2000);
+    setTimeout(() => setPngStatus("idle"), 3000);
   }
 
   async function handleSlides() {
@@ -148,19 +176,32 @@ export default function ExportLayout({ children, revealHref, filename, backHref,
             Export:
           </span>
           <button
-            className={btnPrimary}
+            className={pdfStatus === "error" ? `${btnBase} bg-red-600 text-white` : btnPrimary}
             onClick={handlePdf}
+            disabled={pdfStatus === "loading"}
             title="Open print dialog — choose 'Save as PDF' in the destination"
           >
-            📄 PDF
+            {pdfStatus === "loading"
+              ? "Opening…"
+              : pdfStatus === "done"
+                ? "✓ PDF"
+                : pdfStatus === "error"
+                  ? "✗ PDF failed"
+                  : "📄 PDF"}
           </button>
           <button
-            className={btnSecondary}
+            className={pngStatus === "error" ? `${btnBase} bg-red-600 text-white` : btnSecondary}
             onClick={handlePng}
             disabled={pngStatus === "loading"}
             title="Download a PNG screenshot of the text"
           >
-            {pngStatus === "loading" ? "Rendering…" : pngStatus === "done" ? "✓ PNG" : "🖼 PNG"}
+            {pngStatus === "loading"
+              ? "Rendering…"
+              : pngStatus === "done"
+                ? "✓ PNG"
+                : pngStatus === "error"
+                  ? "✗ PNG failed"
+                  : "🖼 PNG"}
           </button>
           {/* Slides export hidden — code preserved, not yet exposed in UI
           <button
