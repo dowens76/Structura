@@ -113,7 +113,7 @@
     /* ── Hero ──────────────────────────────────────────────────────── */
     .hero {
       text-align: center;
-      padding: 6.5rem 2rem 5.5rem;
+      padding: 2.5rem 1rem 2.5rem;
       background: linear-gradient(170deg, #faf8f4 0%, #f0ece4 100%);
       border-bottom: 1px solid var(--border);
     }
@@ -221,8 +221,8 @@
       border-radius: var(--radius);
       overflow: hidden;
       aspect-ratio: 16 / 10;
-      background: var(--bg-warm);
-      box-shadow: var(--shadow-lg), 0 0 0 1px var(--border);
+      /*background: var(--bg-warm);
+      box-shadow: var(--shadow-lg), 0 0 0 1px var(--border);*/
     }
 
     .slide {
@@ -391,6 +391,97 @@
       .cta-buttons { flex-direction: column; align-items: center; }
       .cta-buttons .btn { width: 100%; max-width: 300px; justify-content: center; }
     }
+
+    /* ── Downloads ────────────────────────────────────────────────── */
+    .downloads-panel {
+      margin: 4rem 0;
+      padding: 2rem;
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 16px;
+      background: rgba(255,255,255,0.02);
+      backdrop-filter: blur(6px);
+    }
+
+    h3.downloads-title {
+      font-family: var(--serif);
+      font-size: clamp(1rem, 2.2vw, 2rem);
+      font-weight: normal;
+      color: var(--navy);
+
+      margin-top: 0;
+      margin-bottom: 1.5rem;
+      /*font-size: 1.6rem;
+      font-weight: 600;*/
+      letter-spacing: -0.02em;
+    }
+
+    #downloads-list {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+    }
+
+    #downloads-list li {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 0.5rem;
+
+      padding: 0.85rem 0;
+
+      border-top: 1px solid rgba(255,255,255,0.06);
+        }
+
+    #downloads-list li:first-child {
+      border-top: none;
+    }
+
+/*    .download-link {
+      color: inherit;
+      text-decoration: none;
+      transition: opacity 0.2s ease;
+    }
+
+    .download-link:hover {
+      opacity: 0.7;
+    }*/
+
+    .download-link {
+      display: inline-block;
+
+      padding: 0.45rem 0.9rem;
+
+      border: 1px solid rgba(255,255,255,0.14);
+      border-radius: 8px;
+
+      background: var(--navy);
+
+      color: #ffffff;
+      text-decoration: none;
+      font-weight: 500;
+
+      transition:
+        background 0.2s ease,
+        border-color 0.2s ease,
+        transform 0.15s ease;
+    }
+
+    .download-link:hover {
+      background: var(--gold);
+      border-color: rgba(255,255,255,0.28);
+
+      transform: translateY(-1px);
+    }
+
+    .download-link:active {
+      transform: translateY(0);
+    }
+
+    .download-size {
+      font-size: 0.9rem;
+      opacity: 0.6;
+    }
+
   </style>
 </head>
 <body>
@@ -402,8 +493,8 @@
     <span>Structura</span>
   </a>
   <div class="nav-end">
-    <a class="btn btn-ghost" href="https://github.com/dowens76/Structura" target="_blank" rel="noopener">GitHub</a>
-    <a class="btn btn-gold" href="https://github.com/dowens76/Structura/releases" target="_blank" rel="noopener">⬇ Download</a>
+    <a class="btn btn-ghost" href="https://github.com/dowens76/Structura" target="_blank" rel="noopener">Source Code on GitHub</a>
+    <a class="btn btn-gold" href="https://github.com/dowens76/Structura/releases" target="_blank" rel="noopener">⬇ Download the Latest version</a>
   </div>
 </nav>
 
@@ -671,7 +762,7 @@
       <li>English and Vietnamese localization</li>
       <li>Automatic and manual backup with configurable retention</li>
       <li>Export passages to PDF or PNG</li>
-      <li>Export section breaks to a collapsible outline</li>
+      <li>Export section breaks to an outline for use in other documents</li>
       <li>Export notes to MS Word, LibreOffice, or the clipboard</li>
       <li>And more!</li>
     </ul>
@@ -680,18 +771,84 @@
 
 <!-- ── Final CTA ────────────────────────────────────────────────────── -->
 <section class="cta-section">
-  <h2 class="cta-title">Ready to start studying?</h2>
-  <p class="cta-sub">Free, open source, and available for macOS, Windows, and Linux.</p>
-  <div class="cta-buttons">
-    <a class="btn btn-lg btn-navy" href="https://github.com/dowens76/Structura/releases" target="_blank" rel="noopener">⬇ Download Structura</a>
-    <a class="btn btn-lg btn-outline" href="https://github.com/dowens76/Structura" target="_blank" rel="noopener">View on GitHub</a>
-  </div>
+  <h2 class="cta-title">Ready to start structuring your study of Scripture?</h2>
+  <!-- <p class="cta-sub">Free, open source, and available for macOS, Windows, and Linux.</p> -->
+
+  <h3 class="downloads-title" id="downloads-title">Loading latest release...</h2>
+  <ul id="downloads-list"></ul>
+
+<!-- <div class="cta-buttons">
+    <a class="btn btn-lg btn-navy" href="https://github.com/dowens76/Structura/releases" target="_blank" rel="noopener">⬇ View All Downloads</a>
+    <a class="btn btn-lg btn-outline" href="https://github.com/dowens76/Structura" target="_blank" rel="noopener">View Source Code on GitHub</a>
+  </div> -->
+
 </section>
+
+<script>
+async function loadLatestRelease() {
+  const heading = document.getElementById('downloads-title');
+  const list = document.getElementById('downloads-list');
+
+  try {
+    const response = await fetch(
+      'https://api.github.com/repos/dowens76/structura/releases/latest'
+    );
+
+    if (!response.ok) {
+      throw new Error('GitHub API request failed');
+    }
+
+    const release = await response.json();
+
+    heading.textContent =
+      `Download Structura ${release.tag_name}`;
+
+    list.innerHTML = '';
+
+    release.assets.forEach(asset => {
+      const li = document.createElement('li');
+
+      const a = document.createElement('a');
+      a.href = asset.browser_download_url;
+      a.textContent = asset.name;
+      a.className = 'download-link';
+
+      const size = document.createElement('span');
+      size.className = 'download-size';
+      size.textContent =
+        `${(asset.size / (1024 * 1024)).toFixed(1)} MB`;
+
+      li.appendChild(a);
+      li.appendChild(size);
+
+      list.appendChild(li);
+    });
+
+  } catch (err) {
+    heading.textContent = 'Downloads unavailable';
+
+    list.innerHTML = `
+      <li>
+        <a
+          class="download-link"
+          href="https://github.com/dowens76/structura/releases/latest"
+        >
+          View latest release on GitHub
+        </a>
+      </li>
+    `;
+
+    console.error(err);
+  }
+}
+
+loadLatestRelease();
+</script>
 
 <!-- ── Footer ────────────────────────────────────────────────────────── -->
 <footer>
   <p>
-    &copy; 2025 Daniel Owens &nbsp;&middot;&nbsp;
+    &copy; 2026 Daniel Owens &nbsp;&middot;&nbsp;
     Released under the <a href="https://github.com/dowens76/Structura/blob/main/LICENSE" target="_blank" rel="noopener">MIT License</a>
     &nbsp;&middot;&nbsp;
     <a href="https://github.com/dowens76/Structura" target="_blank" rel="noopener">GitHub</a>
