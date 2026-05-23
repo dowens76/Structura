@@ -21,7 +21,6 @@ export default function PassageExportLink({ passageId }: Props) {
   return (
     <Link
       href={href}
-      target="_blank"
       className="text-xs px-2 py-1 rounded transition-colors"
       style={{ color: "var(--nav-fg)" }}
     >
