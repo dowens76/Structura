@@ -13,6 +13,7 @@ import {
   getChapterWordFormatting,
   getTranslations,
   getTranslationVerses,
+  getChapterTranslationFootnotes,
   getChapterClauseRelationships,
   getChapterWordArrows,
   getChapterSceneBreaks,
@@ -24,7 +25,7 @@ import {
   getVcbTranslation,
   getVcbVerses,
 } from "@/lib/db/queries";
-import type { TranslationVerse } from "@/lib/db/schema";
+import type { TranslationVerse, TranslationFootnote } from "@/lib/db/schema";
 import type { TextSource } from "@/lib/morphology/types";
 import { OSIS_BOOK_NAMES } from "@/lib/utils/osis";
 import ExportLayout from "@/components/export/ExportLayout";
@@ -170,6 +171,16 @@ export default async function ExportPassagePage({ params, searchParams }: PagePr
     );
   }
 
+  const translationFootnoteData: Record<number, TranslationFootnote[]> = {};
+  await Promise.all(
+    visibleTranslations.map(async (t) => {
+      const footnotesPerChapter = await Promise.all(
+        chapterRange.map((ch) => getChapterTranslationFootnotes(t.id, osisBook, ch))
+      );
+      translationFootnoteData[t.id] = footnotesPerChapter.flat();
+    })
+  );
+
   const activeTranslationAbbrevs = visibleTranslations
     .filter((t) => (translationVerseData[t.id]?.length ?? 0) > 0)
     .map((t) => t.abbreviation);
@@ -247,6 +258,7 @@ export default async function ExportPassagePage({ params, searchParams }: PagePr
           sceneBreaks={sceneBreaks}
           availableTranslations={visibleTranslations}
           translationVerseData={translationVerseData}
+          translationFootnoteData={translationFootnoteData}
           clauseRelationships={clauseRelationships}
           wordArrows={wordArrows}
           lineAnnotations={lineAnnotations}

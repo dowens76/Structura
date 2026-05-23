@@ -4,6 +4,7 @@ import { useMemo, useRef, useState, useEffect } from "react";
 import type {
   Word, Character, CharacterRef, SpeechSection,
   WordTag, WordTagRef, ClauseRelationship, WordArrow, LineAnnotation, RstRelation, RstCustomType,
+  TranslationFootnote,
 } from "@/lib/db/schema";
 import type { TranslationTextEntry } from "@/lib/morphology/types";
 import type { Translation, TranslationVerse } from "@/lib/db/schema";
@@ -30,6 +31,7 @@ interface Props {
   sceneBreaks: { wordId: string; heading: string | null; level: number; verse: number; outOfSequence: boolean }[];
   availableTranslations: Translation[];
   translationVerseData: Record<number, TranslationVerse[]>;
+  translationFootnoteData?: Record<number, TranslationFootnote[]>;
   clauseRelationships: ClauseRelationship[];
   wordArrows: WordArrow[];
   lineAnnotations: LineAnnotation[];
@@ -52,6 +54,7 @@ export default function ExportTextView({
   sceneBreaks,
   availableTranslations,
   translationVerseData,
+  translationFootnoteData,
   clauseRelationships,
   wordArrows,
   lineAnnotations,
@@ -299,6 +302,13 @@ export default function ExportTextView({
           const lastWordIdx = allWordIds.indexOf(verseWords[verseWords.length - 1].wordId);
           const nextVerseFirstWordId = lastWordIdx < words.length - 1 ? words[lastWordIdx + 1].wordId : null;
 
+          const verseChapter = verseWords[0].chapter;
+          const verseFootnotes = translationFootnoteData
+            ? Object.values(translationFootnoteData).flat().filter(
+                (fn) => fn.chapter === verseChapter && fn.verse === verseNum
+              )
+            : [];
+
           return (
             <VerseDisplay
               key={verseNum}
@@ -353,6 +363,7 @@ export default function ExportTextView({
               annotRangeEndWordId={null}
               showAnnotationCol={lineAnnotations.length > 0}
               rstSourcePad={rstRelations.length > 0 ? 48 : 0}
+              translationFootnotes={verseFootnotes}
             />
           );
         })}
