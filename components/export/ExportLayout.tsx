@@ -92,7 +92,7 @@ export default function ExportLayout({ children, revealHref, filename, backHref,
 
           // Print and wait until the dialog is dismissed before cleaning up.
           await new Promise<void>((resolve) => {
-            iframe.contentWindow!.addEventListener("afterprint", resolve, { once: true });
+            iframe.contentWindow!.addEventListener("afterprint", () => resolve(), { once: true });
             iframe.contentWindow!.print();
           });
         } finally {
