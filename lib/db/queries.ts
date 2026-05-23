@@ -19,6 +19,7 @@ function decodeWord(row: WordRow, maps: LookupMaps): Word {
     positionInVerse: row.positionInVerse,
     surfaceText:     row.surfaceText,
     surfaceNorm:     row.surfaceNorm,
+    largeLetters:    row.largeLetters ?? null,
     lemma:           row.lemma,
     strongNumber:    row.strongNumber,
     morphCode:       row.morphCode,

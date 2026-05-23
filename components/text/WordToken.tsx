@@ -59,6 +59,25 @@ function splitPunctuation(text: string): { leading: string; core: string; traili
   return { leading, core, trailing };
 }
 
+/** Strip Hebrew diacritics (vowel points + cantillation) leaving only base consonants. */
+const HEBREW_DIACRITICS = /[֑-ׇ]/g;
+
+/**
+ * Render Hebrew word text with Masoretic large letters displayed at 1.5× size.
+ * Uses Intl.Segmenter to split into grapheme clusters so vowel points attached
+ * to the large consonant are scaled together with it.
+ */
+function renderWithLargeLetters(text: string, largeLetters: string): React.ReactNode {
+  const largeBase = largeLetters.replace(HEBREW_DIACRITICS, "");
+  const segmenter = new Intl.Segmenter("he", { granularity: "grapheme" });
+  const clusters = [...segmenter.segment(text)].map((s) => s.segment);
+  return clusters.map((cluster, i) =>
+    cluster.replace(HEBREW_DIACRITICS, "") === largeBase
+      ? <span key={i} style={{ fontSize: "1.5em", lineHeight: "1" }}>{cluster}</span>
+      : cluster
+  );
+}
+
 function getInterlinearLabel(word: Word): string {
   if (word.language === "hebrew") {
     // Look up the actual Hebrew word form from the Strong's number
@@ -371,6 +390,9 @@ export default function WordToken({
 
   const displayText = (word.surfaceText ?? "").replace(/\//g, "");
   const { leading, core, trailing } = splitPunctuation(displayText);
+  const coreContent = word.largeLetters
+    ? renderWithLargeLetters(core, word.largeLetters)
+    : core;
 
   const content = (
     <>
@@ -385,7 +407,7 @@ export default function WordToken({
         onMouseLeave={() => setHovering(false)}
         title={isEditing ? undefined : `${word.lemma ?? word.surfaceText} — ${word.partOfSpeech ?? "unknown"}`}
       >
-        {core}
+        {coreContent}
         {showTooltip && !isEditing && <ParseTooltip word={word} flipped={tooltipBelow} useLinguisticTerms={useLinguisticTerms} />}
       </span>
       {trailing}
@@ -404,7 +426,7 @@ export default function WordToken({
           onMouseEnter={handleMouseEnter}
           onMouseLeave={() => setHovering(false)}
         >
-          <span className="word-surface">{core}</span>
+          <span className="word-surface">{coreContent}</span>
           {showTooltip && !isEditing && <ParseTooltip word={word} flipped={tooltipBelow} useLinguisticTerms={useLinguisticTerms} />}
         </span>
         <InterlinearLabel

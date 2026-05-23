@@ -87,6 +87,7 @@ export const words = sqliteTable(
 
     surfaceText:  text("surface_text").notNull(),
     surfaceNorm:  text("surface_norm"),
+    largeLetters: text("large_letters"),
 
     lemma:        text("lemma"),
     strongNumber: text("strong_number"),
@@ -148,6 +149,7 @@ export interface Word {
   positionInVerse: number;
   surfaceText:     string;
   surfaceNorm:     string | null;
+  largeLetters:    string | null;
   lemma:           string | null;
   strongNumber:    string | null;
   morphCode:       string | null;

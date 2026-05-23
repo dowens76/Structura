@@ -76,7 +76,8 @@ function processWordElement(
   bookId: number,
   chapter: number,
   verse: number,
-  position: number
+  position: number,
+  largeLetterMap: Map<string, string>
 ): schema.NewWord | null {
   const morphCode = String(wEl["@_morph"] ?? "");
   const lemmaRaw = String(wEl["@_lemma"] ?? "");
@@ -101,6 +102,7 @@ function processWordElement(
     positionInVerse: position,
     surfaceText,
     surfaceNorm,
+    largeLetters: largeLetterMap.get(wordId) ?? null,
     lemma: lemmaText,
     strongNumber,
     morphCode: morphCode || null,
@@ -165,6 +167,16 @@ function importBook(xmlFile: string): void {
 
   const rawXml = readFileSync(path.join(WLC_PATH, xmlFile), "utf-8");
 
+  // Build a map of wordId → large letter text by scanning the raw XML before
+  // the preprocessing step strips the <seg type="x-large"> tags.
+  // Matches patterns like: <w ... id="05WH5">שְׁמַ֖<seg type="x-large">ע</seg></w>
+  const largeLetterMap = new Map<string, string>();
+  const largeRe = /<w\b[^>]*\bid="([^"]+)"[^>]*>[^<]*<seg type="x-large">([^<]+)<\/seg>/g;
+  let lm: RegExpExecArray | null;
+  while ((lm = largeRe.exec(rawXml)) !== null) {
+    largeLetterMap.set(lm[1], lm[2]);
+  }
+
   // Merge <seg> punctuation elements into the text of the preceding <w> element.
   // e.g. </w><seg type="x-sof-pasuq">׃</seg>  →  ׃</w>
   //      </w><seg type="x-maqqef">־</seg>       →  ־</w>
@@ -217,7 +229,7 @@ function importBook(xmlFile: string): void {
           if (!wEl || typeof wEl !== "object") continue;
           const word = processWordElement(
             wEl as Record<string, unknown>,
-            osisRef, bookId, chNum, vNum, position
+            osisRef, bookId, chNum, vNum, position, largeLetterMap
           );
           if (word) {
             wordBatch.push(word);
