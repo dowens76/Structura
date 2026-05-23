@@ -169,10 +169,11 @@ function importBook(xmlFile: string): void {
   // e.g. </w><seg type="x-sof-pasuq">׃</seg>  →  ׃</w>
   //      </w><seg type="x-maqqef">־</seg>       →  ־</w>
   //      </w><seg type="x-paseq">׀</seg>        →  ׀</w>
-  const xml = rawXml.replace(
-    /<\/w>(\s*)<seg type="x-(?:sof-pasuq|maqqef|paseq)">([^<]+)<\/seg>/g,
-    "$2</w>$1"
-  );
+  // Unwrap <seg type="x-large"> scribal large letters that appear inside <w> elements
+  // (e.g. Deut 6:4, Lev 11:42, Num 27:5) — keep the letter content, drop the tags.
+  const xml = rawXml
+    .replace(/<\/w>(\s*)<seg type="x-(?:sof-pasuq|maqqef|paseq)">([^<]+)<\/seg>/g, "$2</w>$1")
+    .replace(/<seg type="x-large">([^<]+)<\/seg>/g, "$1");
 
   const parsed = xmlParser.parse(xml);
 
