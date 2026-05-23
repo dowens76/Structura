@@ -1,6 +1,6 @@
 "use client";
 
-import { useLayoutEffect, useRef, useState, type RefObject } from "react";
+import { useLayoutEffect, useEffect, useRef, useState, type RefObject } from "react";
 import type { ClauseRelationship } from "@/lib/db/schema";
 import { RELATIONSHIP_MAP, RELATIONSHIP_TYPES } from "@/lib/morphology/clauseRelationships";
 
@@ -214,6 +214,7 @@ export default function ClauseRelationshipOverlay({
   const [svgHeight, setSvgHeight] = useState(0);
   const [hoveredKey, setHoveredKey] = useState<string | null>(null);
   const frameRef = useRef<number | null>(null);
+  const svgRef   = useRef<SVGSVGElement>(null);
 
   function measure() {
     const c = containerRef.current;
@@ -233,6 +234,312 @@ export default function ClauseRelationshipOverlay({
     setSvgHeight(c.scrollHeight);
     setPoints(newPoints);
   }
+
+  // Updated every render so print handlers always call the latest measure closure.
+  const measureRef = useRef(measure);
+  measureRef.current = measure;
+
+  // ── Print re-measurement ─────────────────────────────────────────────────────
+  // Like WordArrowOverlay, we bypass React's render/commit cycle entirely for
+  // print: re-measure positions at the print layout then write SVG attributes
+  // directly via setAttribute.  flushSync is unreliable here because the browser
+  // print snapshot can fire before React's reconciliation is reflected in the DOM.
+  function updateSvgForPrint() {
+    const c   = containerRef.current;
+    const svg = svgRef.current;
+    if (!c || !svg) return;
+
+    // Re-measure all segment positions at the current (print) layout.
+    const allIds = new Set<string>([
+      ...paragraphFirstWordIds,
+      ...relationships.flatMap((r) => [r.fromSegWordId, r.toSegWordId]),
+    ]);
+    const newPoints: SegmentPoint[] = [];
+    for (const wordId of allIds) {
+      const pos = getSegmentPos(wordId, c);
+      if (pos !== null) newPoints.push({ wordId, ...pos });
+    }
+    if (newPoints.length === 0) return;
+
+    svg.style.height = `${c.scrollHeight}px`;
+
+    const yMap          = new Map(newPoints.map((p) => [p.wordId, p.y]));
+    const labelLeftMap  = new Map(newPoints.map((p) => [p.wordId, p.labelLeftX]));
+    const labelRightMap = new Map(newPoints.map((p) => [p.wordId, p.labelRightX]));
+    const wordLeftMap   = new Map(newPoints.map((p) => [p.wordId, p.wordLeftX]));
+    const transNearMap  = new Map(newPoints.map((p) => [p.wordId, p.transLeftX]));
+
+    const arcGoesLeft        = hasSource;
+    const arcFarLeft         = hasSource && !isHebrew && !hasTranslation;
+    const arcFarLeftWithTrans = hasSource && !isHebrew && hasTranslation;
+    const minWordLeftX = arcFarLeftWithTrans
+      ? Math.min(...newPoints.map((p) => p.wordLeftX))
+      : Infinity;
+
+    const wordNearMap = new Map(
+      newPoints.map((p) => [
+        p.wordId,
+        arcFarLeft          ? p.labelLeftX
+        : arcFarLeftWithTrans ? p.wordLeftX
+        : arcGoesLeft       ? p.wordRightX
+        : p.wordLeftX,
+      ])
+    );
+
+    const relGroups   = buildRelGroups(relationships);
+    const groupLevels = assignGroupArcLevels(relGroups, yMap);
+    const coordGroups = buildCoordGroups(relationships);
+
+    function _anchorXFor(...wordIds: string[]): number | undefined {
+      if (arcFarLeftWithTrans) {
+        const wls = wordIds.map((id) => wordLeftMap.get(id)).filter((x): x is number => x != null);
+        if (wls.length === 0) return undefined;
+        return Math.min(...wls) - ARC_COL;
+      }
+      if (arcGoesLeft) {
+        const lls = wordIds.map((id) => labelLeftMap.get(id)).filter((x): x is number => x != null);
+        if (lls.length === 0) return undefined;
+        return Math.min(...lls) - ARC_COL;
+      } else {
+        const lrs = wordIds.map((id) => labelRightMap.get(id)).filter((x): x is number => x != null);
+        if (lrs.length === 0) return undefined;
+        return Math.max(...lrs) + ARC_COL;
+      }
+    }
+
+    function _armTipX(wordId: string): number | undefined {
+      const wn = wordNearMap.get(wordId);
+      if (arcGoesLeft) {
+        if (arcFarLeft) {
+          if (wn != null) return wn - LABEL_GAP;
+          const ll = labelLeftMap.get(wordId);
+          return ll != null ? ll - LABEL_GAP : undefined;
+        } else if (arcFarLeftWithTrans) {
+          return minWordLeftX - LABEL_GAP;
+        } else {
+          if (wn != null) return wn + LABEL_GAP;
+          const ll = labelLeftMap.get(wordId);
+          return ll != null ? ll - ARC_COL + LABEL_GAP : undefined;
+        }
+      } else {
+        if (wn != null) return wn - LABEL_GAP;
+        const lr = labelRightMap.get(wordId);
+        return lr != null ? lr + ARC_COL - LABEL_GAP : undefined;
+      }
+    }
+
+    // Pre-pass: groupGeoMap (same as the render pre-pass).
+    const groupGeoMap = new Map<string, GroupGeo>();
+    for (const group of relGroups) {
+      const { fromSegWordId, toSegs, groupKey, relType } = group;
+      const rt = RELATIONSHIP_MAP[relType];
+      if (!rt) continue;
+      const isSubordinate = rt.category === "subordinate";
+      const nucleusY_raw  = yMap.get(fromSegWordId);
+      if (nucleusY_raw == null) continue;
+      const validToSegs = toSegs.filter((s) => yMap.get(s.wordId) != null);
+      if (validToSegs.length === 0) continue;
+      let nucleusY = nucleusY_raw;
+      if (isSubordinate) {
+        const cg = coordGroups.get(fromSegWordId);
+        if (cg && cg.length > 1) {
+          const cgYs = cg.map((id) => yMap.get(id)).filter((y): y is number => y != null);
+          if (cgYs.length > 1) nucleusY = (Math.min(...cgYs) + Math.max(...cgYs)) / 2;
+        }
+      }
+      const satelliteYs = validToSegs.map((s) => yMap.get(s.wordId)!);
+      const allArmYs    = [nucleusY, ...satelliteYs];
+      const spanMinY    = Math.min(...allArmYs);
+      const spanMaxY    = Math.max(...allArmYs);
+      if (spanMinY === spanMaxY) continue;
+      const allWordIds  = [fromSegWordId, ...validToSegs.map((s) => s.wordId)];
+      const spineAnchor = _anchorXFor(...allWordIds);
+      if (spineAnchor == null) continue;
+      const level   = groupLevels.get(groupKey) ?? 0;
+      const depth   = isSubordinate ? BASE_DEPTH + level * LEVEL_STEP : BRACKET_BASE + level * LEVEL_STEP;
+      const cornerX = arcGoesLeft ? spineAnchor + depth : spineAnchor - depth;
+      groupGeoMap.set(groupKey, { cornerX, spanMinY, spanMaxY });
+    }
+
+    const segToGeoMap = new Map<string, GroupGeo[]>();
+    for (const group of relGroups) {
+      const geo = groupGeoMap.get(group.groupKey);
+      if (!geo) continue;
+      const rt      = RELATIONSHIP_MAP[group.relType];
+      const isCoord = rt?.category === "coordinate";
+      const segIds  = [group.fromSegWordId];
+      if (isCoord) for (const s of group.toSegs) segIds.push(s.wordId);
+      for (const segId of segIds) {
+        if (!segToGeoMap.has(segId)) segToGeoMap.set(segId, []);
+        segToGeoMap.get(segId)!.push(geo);
+      }
+    }
+
+    function _getNestedGeo(wordId: string): GroupGeo | undefined {
+      const geos = segToGeoMap.get(wordId);
+      if (!geos || geos.length === 0) return undefined;
+      return geos.reduce((best, g) =>
+        arcGoesLeft ? (g.cornerX < best.cornerX ? g : best)
+                    : (g.cornerX > best.cornerX ? g : best)
+      );
+    }
+    function _effectiveTipX(wordId: string): number | undefined {
+      const nested = _getNestedGeo(wordId);
+      return nested ? nested.cornerX : _armTipX(wordId);
+    }
+    function _effectiveY(wordId: string, ip: IntersectPoint, fallbackY: number): number {
+      const nested = _getNestedGeo(wordId);
+      if (!nested) return fallbackY;
+      if (ip === "start") return nested.spanMinY;
+      if (ip === "end")   return nested.spanMaxY;
+      return (nested.spanMinY + nested.spanMaxY) / 2;
+    }
+
+    // Patch each group's SVG elements.
+    for (const group of relGroups) {
+      const { fromSegWordId, relType, toSegs, groupKey } = group;
+      const rt = RELATIONSHIP_MAP[relType];
+      if (!rt) continue;
+      const isSubordinate = rt.category === "subordinate";
+
+      const nucleusY_raw = yMap.get(fromSegWordId);
+      if (nucleusY_raw == null) continue;
+      const validToSegs = toSegs.filter((s) => yMap.get(s.wordId) != null);
+      if (validToSegs.length === 0) continue;
+
+      let nucleusY = nucleusY_raw;
+      if (isSubordinate) {
+        const cg = coordGroups.get(fromSegWordId);
+        if (cg && cg.length > 1) {
+          const cgYs = cg.map((id) => yMap.get(id)).filter((y): y is number => y != null);
+          if (cgYs.length > 1) nucleusY = (Math.min(...cgYs) + Math.max(...cgYs)) / 2;
+        }
+      }
+
+      const allWordIds  = [fromSegWordId, ...validToSegs.map((s) => s.wordId)];
+      const spineAnchor = _anchorXFor(...allWordIds);
+      if (spineAnchor == null) continue;
+
+      const level   = groupLevels.get(groupKey) ?? 0;
+      const depth   = isSubordinate ? BASE_DEPTH + level * LEVEL_STEP : BRACKET_BASE + level * LEVEL_STEP;
+      const cornerX = arcGoesLeft ? spineAnchor + depth : spineAnchor - depth;
+
+      const nucleusTipX = _effectiveTipX(fromSegWordId);
+      if (nucleusTipX == null) continue;
+      const effNucleusY = _effectiveY(fromSegWordId, "mid", nucleusY);
+
+      const satData = validToSegs.flatMap((s) => {
+        const rawSatY = yMap.get(s.wordId);
+        if (rawSatY == null) return [];
+        const sy   = _effectiveY(s.wordId, s.intersectPoint, rawSatY);
+        const tipX = _effectiveTipX(s.wordId);
+        if (tipX == null) return [];
+        const armPath = isSubordinate
+          ? `M ${cornerX} ${sy} H ${tipX}`
+          : `M ${tipX} ${sy} H ${cornerX}`;
+        return [{ s, sy, tipX, armPath }];
+      });
+
+      const allEffectiveYs = [effNucleusY, ...satData.map((d) => d.sy)];
+      const spanMinY = Math.min(...allEffectiveYs);
+      const spanMaxY = Math.max(...allEffectiveYs);
+      if (spanMinY === spanMaxY) continue;
+
+      const nucleusArmPath = `M ${nucleusTipX} ${effNucleusY} H ${cornerX}`;
+      const verticalPath   = `M ${cornerX} ${spanMinY} V ${spanMaxY}`;
+
+      const extremalSatY = satData
+        .map((d) => d.sy)
+        .reduce(
+          (ex, y) => Math.abs(y - effNucleusY) > Math.abs(ex - effNucleusY) ? y : ex,
+          satData[0]?.sy ?? effNucleusY,
+        );
+      const labelY = extremalSatY > effNucleusY ? extremalSatY - 3 : extremalSatY + 10;
+      const bracketOpensLeft = arcGoesLeft && !arcFarLeft && !arcFarLeftWithTrans;
+      const labelX = bracketOpensLeft ? cornerX - 2 : cornerX + 2;
+
+      svg.querySelector(`[data-clrel-spine="${CSS.escape(groupKey)}"]`)
+         ?.setAttribute("d", verticalPath);
+      svg.querySelector(`[data-clrel-nuc="${CSS.escape(groupKey)}"]`)
+         ?.setAttribute("d", nucleusArmPath);
+      const lEl = svg.querySelector<Element>(`[data-clrel-label="${CSS.escape(groupKey)}"]`);
+      if (lEl) { lEl.setAttribute("x", String(labelX)); lEl.setAttribute("y", String(labelY)); }
+
+      for (const { s, armPath } of satData) {
+        svg.querySelector(`[data-clrel-sat-arm="${s.id}"]`)?.setAttribute("d", armPath);
+      }
+
+      // Mirror bracket on the translation side.
+      if (hasTranslation && hasSource) {
+        const allLRs = allWordIds
+          .map((id) => labelRightMap.get(id))
+          .filter((x): x is number => x != null);
+        if (allLRs.length > 0) {
+          const mSpineAnchor  = Math.max(...allLRs) + ARC_COL;
+          const mCornerX      = mSpineAnchor - depth;
+          const mNucleusLR    = labelRightMap.get(fromSegWordId);
+          if (mNucleusLR != null) {
+            const mNucleusTipX    = (transNearMap.get(fromSegWordId) ?? mNucleusLR + ARC_COL) - LABEL_GAP;
+            const mNucleusArmPath = `M ${mNucleusTipX} ${effNucleusY} H ${mCornerX}`;
+            svg.querySelector(`[data-clrel-mirror-spine="${CSS.escape(groupKey)}"]`)
+               ?.setAttribute("d", `M ${mCornerX} ${spanMinY} V ${spanMaxY}`);
+            svg.querySelector(`[data-clrel-mirror-nuc="${CSS.escape(groupKey)}"]`)
+               ?.setAttribute("d", mNucleusArmPath);
+            const mlEl = svg.querySelector<Element>(`[data-clrel-mirror-label="${CSS.escape(groupKey)}"]`);
+            if (mlEl) { mlEl.setAttribute("x", String(mCornerX + 2)); mlEl.setAttribute("y", String(labelY)); }
+            for (const { s, sy } of satData) {
+              const lr = labelRightMap.get(s.wordId);
+              if (lr == null) continue;
+              const mTipX    = (transNearMap.get(s.wordId) ?? lr + ARC_COL) - LABEL_GAP;
+              const mArmPath = isSubordinate
+                ? `M ${mCornerX} ${sy} H ${mTipX}`
+                : `M ${mTipX} ${sy} H ${mCornerX}`;
+              svg.querySelector(`[data-clrel-mirror-sat-arm="${s.id}"]`)?.setAttribute("d", mArmPath);
+            }
+          }
+        }
+      }
+    }
+  }
+
+  const updateSvgForPrintRef = useRef(updateSvgForPrint);
+  updateSvgForPrintRef.current = updateSvgForPrint;
+
+  useEffect(() => {
+    const mql = window.matchMedia("print");
+
+    function onPrintPrepare() {
+      if (frameRef.current) { cancelAnimationFrame(frameRef.current); frameRef.current = null; }
+      updateSvgForPrintRef.current();
+    }
+
+    function onPrintChange(e: MediaQueryListEvent) {
+      if (frameRef.current) { cancelAnimationFrame(frameRef.current); frameRef.current = null; }
+      if (e.matches) {
+        updateSvgForPrintRef.current();
+      } else {
+        measureRef.current();
+      }
+    }
+
+    // beforeprint fires after print CSS is applied in Chrome/Blink (unlike WebKit
+    // where it fires before). Using it here gives us correct print-layout positions
+    // before the snapshot is taken. For Tauri/WKWebView, print_page never triggers
+    // beforeprint so this handler is a no-op on that path.
+    function onBeforePrint() {
+      if (frameRef.current) { cancelAnimationFrame(frameRef.current); frameRef.current = null; }
+      updateSvgForPrintRef.current();
+    }
+
+    mql.addEventListener("change", onPrintChange);
+    window.addEventListener("structura:print-prepare", onPrintPrepare);
+    window.addEventListener("beforeprint", onBeforePrint);
+    return () => {
+      mql.removeEventListener("change", onPrintChange);
+      window.removeEventListener("structura:print-prepare", onPrintPrepare);
+      window.removeEventListener("beforeprint", onBeforePrint);
+    };
+  }, []);
 
   useLayoutEffect(() => {
     function scheduleMeasure() {
@@ -442,6 +749,7 @@ export default function ClauseRelationshipOverlay({
   // ── Render ──────────────────────────────────────────────────────────────
   return (
     <svg
+      ref={svgRef}
       style={{
         position:      "absolute",
         top:           0,
@@ -566,15 +874,16 @@ export default function ClauseRelationshipOverlay({
         return (
           <g key={groupKey}>
             {/* Vertical spine */}
-            <path d={verticalPath} fill="none" stroke={color} strokeWidth={strokeWidth} strokeLinejoin="miter" />
+            <path data-clrel-spine={groupKey} d={verticalPath} fill="none" stroke={color} strokeWidth={strokeWidth} strokeLinejoin="miter" />
 
             {/* Nucleus arm */}
-            <path d={nucleusArmPath} fill="none" stroke={color} strokeWidth={strokeWidth} />
+            <path data-clrel-nuc={groupKey} d={nucleusArmPath} fill="none" stroke={color} strokeWidth={strokeWidth} />
 
             {/* Satellite arms */}
             {satData.map(({ s, armPath }) => (
               <path
                 key={`arm-${s.id}`}
+                data-clrel-sat-arm={s.id}
                 d={armPath}
                 fill="none"
                 stroke={color}
@@ -585,6 +894,7 @@ export default function ClauseRelationshipOverlay({
 
             {/* Label */}
             <text
+              data-clrel-label={groupKey}
               x={labelX} y={labelY}
               textAnchor={labelAnc} fontSize={9} fontFamily="monospace"
               fill={color} style={{ userSelect: "none" }}
@@ -702,17 +1012,19 @@ export default function ClauseRelationshipOverlay({
 
               return (
                 <g key={`mirror-${groupKey}`}>
-                  <path d={`M ${mCornerX} ${spanMinY} V ${spanMaxY}`} fill="none" stroke={color} strokeWidth={strokeWidth} />
-                  <path d={mNucleusArmPath} fill="none" stroke={color} strokeWidth={strokeWidth} />
+                  <path data-clrel-mirror-spine={groupKey} d={`M ${mCornerX} ${spanMinY} V ${spanMaxY}`} fill="none" stroke={color} strokeWidth={strokeWidth} />
+                  <path data-clrel-mirror-nuc={groupKey} d={mNucleusArmPath} fill="none" stroke={color} strokeWidth={strokeWidth} />
                   {mSatPaths.map(({ id, mArmPath }) => (
                     <path
                       key={id}
+                      data-clrel-mirror-sat-arm={id}
                       d={mArmPath}
                       fill="none" stroke={color} strokeWidth={strokeWidth}
                       markerEnd={isSubordinate ? `url(#clrel-arrow-${relType})` : undefined}
                     />
                   ))}
                   <text
+                    data-clrel-mirror-label={groupKey}
                     x={mLabelX} y={labelY}
                     textAnchor={mLabelAnc} fontSize={9} fontFamily="monospace"
                     fill={color} style={{ userSelect: "none" }}

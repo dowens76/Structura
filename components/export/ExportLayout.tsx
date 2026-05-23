@@ -30,24 +30,75 @@ export default function ExportLayout({ children, revealHref, filename, backHref,
   async function handlePdf() {
     if (pdfStatus === "loading") return;
     setPdfStatus("loading");
-    try {
-      // Dispatch "structura:print-prepare" so WordArrowOverlay re-measures its
-      // SVG paths against the current (screen) layout before print() is called.
-      // The @page rule below requests landscape orientation, which gives enough
-      // width (~1010 px for A4, ~940 px for US Letter at 1.5 cm margins) to
-      // accommodate the max-w-4xl (896 px) multi-column layout without compression
-      // — so no width pre-constraint is needed.
-      window.dispatchEvent(new CustomEvent("structura:print-prepare"));
 
-      // WKWebView (Tauri Mac) ignores window.print(). Delegate to the Rust
-      // print_page command which calls the native WebviewWindow::print() API.
+    const el = textRef.current;
+
+    try {
       if ("__TAURI_INTERNALS__" in window) {
+        // ── WKWebView / Tauri ────────────────────────────────────────────────
+        // WKWebView renders at the screen viewport width and scales to paper.
+        // Pre-shrink annotation columns to match the print CSS, then dispatch
+        // structura:print-prepare so overlays re-measure synchronously before
+        // the snapshot is taken by print_page.
+        const annotCols = el
+          ? Array.from(el.querySelectorAll<HTMLElement>('[class~="w-48"]'))
+          : [];
+        annotCols.forEach(col => { col.style.width = "8rem"; });
+        window.dispatchEvent(new CustomEvent("structura:print-prepare"));
         const { invoke } = await import("@tauri-apps/api/core");
         await invoke("print_page");
+        annotCols.forEach(col => { col.style.width = ""; });
       } else {
-        window.print();
-      }
+        // ── Regular browser ──────────────────────────────────────────────────
+        // Capture the content as a canvas image (same pipeline as PNG export),
+        // then print it inside a hidden iframe. This sidesteps print-CSS reflow
+        // and SVG re-measurement timing issues that affect window.print() on
+        // the live page — the captured image is already pixel-perfect.
+        const pngTarget =
+          (el?.querySelector("[data-png-target]") as HTMLElement | null) ?? el;
+        const cropTo =
+          (pngTarget?.querySelector("[data-png-crop-to]") as HTMLElement | null) ?? undefined;
+        if (!pngTarget) throw new Error("No capture target");
 
+        const dataUrl = await renderToPng(pngTarget, cropTo);
+
+        const iframe = document.createElement("iframe");
+        iframe.style.cssText =
+          "position:fixed;width:0;height:0;border:none;left:-9999px;top:-9999px;";
+        document.body.appendChild(iframe);
+        try {
+          const iDoc = iframe.contentDocument!;
+          iDoc.open();
+          iDoc.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><style>
+            @page { margin: 1.5cm; }
+            * { margin: 0; padding: 0; box-sizing: border-box; }
+            body { background: white; }
+            img {
+              display: block;
+              max-width: 100%;
+              height: auto;
+              -webkit-print-color-adjust: exact;
+              print-color-adjust: exact;
+            }
+          </style></head><body><img src="${dataUrl}"></body></html>`);
+          iDoc.close();
+
+          // Wait for the image to finish loading inside the iframe.
+          await new Promise<void>((resolve) => {
+            const img = iDoc.querySelector("img") as HTMLImageElement;
+            if (img.complete) { resolve(); return; }
+            img.onload = () => resolve();
+          });
+
+          // Print and wait until the dialog is dismissed before cleaning up.
+          await new Promise<void>((resolve) => {
+            iframe.contentWindow!.addEventListener("afterprint", resolve, { once: true });
+            iframe.contentWindow!.print();
+          });
+        } finally {
+          if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
+        }
+      }
       setPdfStatus("done");
     } catch (err) {
       console.error("PDF export failed:", err);
@@ -181,11 +232,19 @@ export default function ExportLayout({ children, revealHref, filename, backHref,
       <style>{`
         @media print {
           .export-toolbar { display: none !important; }
-          /* Landscape gives ~1010 px content on A4 — enough for the wide
-             multi-column layout (source + labels + translation + annotations)
-             without compressing columns or wrapping Hebrew words. */
-          @page { size: landscape; margin: 1.5cm; }
+          @page { margin: 1.5cm; }
           * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+
+          /* Annotation column: shrink from w-48 (12 rem) to 8 rem in portrait
+             layout so source and translation columns each get ~206 px.
+             handlePdf() applies the same change in JS before measuring arrows,
+             keeping SVG coordinates consistent with the printed layout. */
+          [data-png-target] [class~="w-48"] { width: 8rem !important; }
+
+          /* Content container: fill the full printable width regardless of the
+             screen-layout max-width cap.  The browser reflows to paper width;
+             removing the cap here lets content use every available millimetre. */
+          [data-png-crop-to] { max-width: 100% !important; }
 
           /* Force light-mode CSS variables so print is always black-on-white,
              even when the app is in dark mode. All children inherit from here. */

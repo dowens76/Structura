@@ -470,11 +470,25 @@ export default function WordArrowOverlay({
       updateSvgForPrintRef.current();
     }
 
+    // beforeprint fires after print CSS is applied in Chrome/Blink (unlike WebKit
+    // where it fires before). Using it here gives us correct print-layout positions
+    // before the snapshot is taken. For Tauri/WKWebView, print_page never triggers
+    // beforeprint so this handler is a no-op on that path.
+    function handleBeforePrint() {
+      if (frameRef.current) {
+        cancelAnimationFrame(frameRef.current);
+        frameRef.current = null;
+      }
+      updateSvgForPrintRef.current();
+    }
+
     mql.addEventListener("change", handlePrintMediaChange);
     window.addEventListener("structura:print-prepare", handlePrintPrepare);
+    window.addEventListener("beforeprint", handleBeforePrint);
     return () => {
       mql.removeEventListener("change", handlePrintMediaChange);
       window.removeEventListener("structura:print-prepare", handlePrintPrepare);
+      window.removeEventListener("beforeprint", handleBeforePrint);
     };
   }, []); // empty: attach once per mount, refs keep content current
 

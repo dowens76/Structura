@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useState, useEffect } from "react";
 import LanguagePicker from "@/components/ui/LanguagePicker";
 import { useTranslation } from "@/lib/i18n/LocaleContext";
 import { OSIS_BOOK_NAMES } from "@/lib/utils/osis";
@@ -42,6 +43,22 @@ export default function NavLinks({
   contPrevBookLastChapter = null,
 }: NavLinksProps) {
   const { t } = useTranslation();
+
+  // Append active translations as ?t=ESV,NIV so the export server page can
+  // filter to exactly what's currently displayed. Starts as plain href (matches
+  // SSR), then useEffect updates it after mount once localStorage is available.
+  const [exportHrefWithTranslations, setExportHrefWithTranslations] = useState(exportHref);
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem("structura:activeTranslations");
+      const abbrs: string[] = raw ? JSON.parse(raw) : [];
+      if (abbrs.length > 0) {
+        setExportHrefWithTranslations(`${exportHref}?t=${abbrs.map(encodeURIComponent).join(",")}`);
+      } else {
+        setExportHrefWithTranslations(exportHref);
+      }
+    } catch { /* ignore */ }
+  }, [exportHref]);
 
   return (
     <>
@@ -111,7 +128,7 @@ export default function NavLinks({
       </Link>
       {!parallelMode && (
         <Link
-          href={exportHref}
+          href={exportHrefWithTranslations}
           className="text-xs px-2 py-1 rounded transition-colors"
           style={{ color: "var(--nav-fg)" }}
         >

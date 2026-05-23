@@ -19,6 +19,10 @@ import {
   getChapterLineAnnotations,
   getChapterRstRelations,
   getAuthorName,
+  getUltTranslation,
+  getUltVerses,
+  getVcbTranslation,
+  getVcbVerses,
 } from "@/lib/db/queries";
 import type { TranslationVerse } from "@/lib/db/schema";
 import type { TextSource } from "@/lib/morphology/types";
@@ -29,10 +33,12 @@ import { getActiveWorkspaceId } from "@/lib/workspace";
 
 interface PageProps {
   params: Promise<{ id: string }>;
+  searchParams?: Promise<{ t?: string; [key: string]: string | string[] | undefined }>;
 }
 
-export default async function ExportPassagePage({ params }: PageProps) {
+export default async function ExportPassagePage({ params, searchParams }: PageProps) {
   const { id: idStr } = await params;
+  const sp = searchParams ? await searchParams : {};
   const id = parseInt(idStr, 10);
 
   if (isNaN(id)) notFound();
@@ -97,10 +103,38 @@ export default async function ExportPassagePage({ params }: PageProps) {
   const lineAnnotations     = perChapterResults.flatMap(([,,,,,,,,, la]) => la);
   const rstRelations        = perChapterResults.flatMap(([,,,,,,,,,, rr]) => rr);
 
+  // Include built-in ULT and VCB translations (same as ChapterDisplay does).
+  const ultBaseVersesByChapter = new Map(
+    chapterRange.map((ch) => [ch, getUltVerses(osisBook, ch)])
+  );
+  const vcbBaseVersesByChapter = new Map(
+    chapterRange.map((ch) => [ch, getVcbVerses(osisBook, ch)])
+  );
+  const hasUltBase = [...ultBaseVersesByChapter.values()].some(v => v.length > 0);
+  const hasVcbBase = [...vcbBaseVersesByChapter.values()].some(v => v.length > 0);
+  const [ultTranslation, vcbTranslation] = await Promise.all([
+    hasUltBase ? getUltTranslation(workspaceId) : Promise.resolve(null),
+    hasVcbBase ? getVcbTranslation(workspaceId) : Promise.resolve(null),
+  ]);
+  const allTranslations = [
+    ...(ultTranslation && !availableTranslations.some(t => t.id === ultTranslation.id) ? [ultTranslation] : []),
+    ...availableTranslations,
+    ...(vcbTranslation && !availableTranslations.some(t => t.id === vcbTranslation.id) ? [vcbTranslation] : []),
+  ];
+
+  // If the caller passed ?t=ESV,NIV (written by PassageExportLink from localStorage),
+  // restrict to those abbreviations; otherwise show all translations.
+  const requestedAbbrs = sp.t
+    ? String(sp.t).split(",").map((a) => decodeURIComponent(a.trim())).filter(Boolean)
+    : null;
+  const visibleTranslations = requestedAbbrs
+    ? allTranslations.filter((t) => requestedAbbrs.includes(t.abbreviation))
+    : allTranslations;
+
   // Translation verses for all covered chapters
   const translationVerseData: Record<number, TranslationVerse[]> = {};
   await Promise.all(
-    availableTranslations.map(async (t) => {
+    visibleTranslations.map(async (t) => {
       const versesPerChapter = await Promise.all(
         chapterRange.map((ch) => getTranslationVerses(t.id, osisBook, ch, workspaceId))
       );
@@ -108,7 +142,35 @@ export default async function ExportPassagePage({ params }: PageProps) {
     })
   );
 
-  const activeTranslationAbbrevs = availableTranslations
+  // Merge ULT/VCB base verses with user edits (same logic as ChapterDisplay).
+  if (ultTranslation && hasUltBase && visibleTranslations.some(t => t.id === ultTranslation.id)) {
+    const allBase = chapterRange.flatMap(ch =>
+      (ultBaseVersesByChapter.get(ch) ?? []).map((base, i) => ({ ...base, chapter: ch, idx: i }))
+    );
+    const editedMap = new Map((translationVerseData[ultTranslation.id] ?? []).map(v => [`${v.chapter}:${v.verse}`, v]));
+    translationVerseData[ultTranslation.id] = allBase.map(base =>
+      editedMap.get(`${base.chapter}:${base.verse}`) ?? {
+        id: -(base.idx + 1), workspaceId: ultTranslation!.workspaceId,
+        translationId: ultTranslation!.id, osisRef: `${osisBook}.${base.chapter}.${base.verse}`,
+        bookId: 0, chapter: base.chapter, verse: base.verse, text: base.text,
+      }
+    );
+  }
+  if (vcbTranslation && hasVcbBase && visibleTranslations.some(t => t.id === vcbTranslation.id)) {
+    const allBase = chapterRange.flatMap(ch =>
+      (vcbBaseVersesByChapter.get(ch) ?? []).map((base, i) => ({ ...base, chapter: ch, idx: i }))
+    );
+    const editedMap = new Map((translationVerseData[vcbTranslation.id] ?? []).map(v => [`${v.chapter}:${v.verse}`, v]));
+    translationVerseData[vcbTranslation.id] = allBase.map(base =>
+      editedMap.get(`${base.chapter}:${base.verse}`) ?? {
+        id: -(base.idx + 1), workspaceId: vcbTranslation!.workspaceId,
+        translationId: vcbTranslation!.id, osisRef: `${osisBook}.${base.chapter}.${base.verse}`,
+        bookId: 0, chapter: base.chapter, verse: base.verse, text: base.text,
+      }
+    );
+  }
+
+  const activeTranslationAbbrevs = visibleTranslations
     .filter((t) => (translationVerseData[t.id]?.length ?? 0) > 0)
     .map((t) => t.abbreviation);
 
@@ -183,7 +245,7 @@ export default async function ExportPassagePage({ params }: PageProps) {
           lineIndents={lineIndents}
           wordFormatting={wordFormatting}
           sceneBreaks={sceneBreaks}
-          availableTranslations={availableTranslations}
+          availableTranslations={visibleTranslations}
           translationVerseData={translationVerseData}
           clauseRelationships={clauseRelationships}
           wordArrows={wordArrows}

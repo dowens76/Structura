@@ -76,9 +76,6 @@ export default function ExportTextView({
     [customRstTypes],
   );
 
-  // (No localStorage filtering needed — the export page loads all translation
-  //  verse data from the server and shows everything that has content.)
-
   // ── Build lookup maps ───────────────────────────────────────────────────
   const paragraphBreakIds = useMemo(
     () => new Set(paragraphBreakIdArray),
@@ -227,8 +224,8 @@ export default function ExportTextView({
   );
 
   // ── Translation text entries per verse ──────────────────────────────────
-  // All translation verse data is loaded server-side; include every translation
-  // that has at least one verse for this passage.
+  // availableTranslations is already filtered to the active set by the server
+  // page (via the ?t= query param written by NavLinks / PassageExportLink).
   const translationVerseMap = useMemo(() => {
     const map = new Map<number, TranslationTextEntry[]>();
     for (const t of availableTranslations) {

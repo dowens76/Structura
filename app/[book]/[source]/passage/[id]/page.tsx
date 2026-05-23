@@ -38,6 +38,7 @@ import PassageView from "@/components/passage/PassageView";
 import PassageNavButtons from "@/components/passage/PassageNavButtons";
 import ThemeToggle from "@/components/ThemeToggle";
 import SettingsButton from "@/components/SettingsButton";
+import PassageExportLink from "@/components/passage/PassageExportLink";
 
 interface PageProps {
   params: Promise<{ book: string; source: string; id: string }>;
@@ -319,14 +320,7 @@ export default async function PassagePage({ params, searchParams }: PageProps) {
         </Link>
 
         {/* Export link */}
-        <Link
-          href={`/export/passage/${id}`}
-          target="_blank"
-          className="text-xs px-2 py-1 rounded transition-colors"
-          style={{ color: "var(--nav-fg)" }}
-        >
-          Export →
-        </Link>
+        <PassageExportLink passageId={id} />
 
         <PassageNavButtons
           book={osisBook}
