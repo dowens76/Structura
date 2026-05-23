@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { notFound } from "next/navigation";
 import {
   getChapterWords,
@@ -108,12 +110,18 @@ export default async function ExportChapterPage({ params, searchParams }: PagePr
 
   // If the caller passed ?t=ESV,NIV (written by NavLinks from localStorage),
   // restrict to those abbreviations; otherwise show all translations.
+  // Fall back to all translations when the filter matches nothing — this handles
+  // stale localStorage entries (e.g. after a translation is renamed) so that the
+  // export never silently renders with an empty translation column.
   const requestedAbbrs = sp.t
     ? String(sp.t).split(",").map((a) => decodeURIComponent(a.trim())).filter(Boolean)
     : null;
-  const visibleTranslations = requestedAbbrs
+  const filtered = requestedAbbrs
     ? allTranslations.filter((t) => requestedAbbrs.includes(t.abbreviation))
     : allTranslations;
+  const visibleTranslations = requestedAbbrs && filtered.length === 0
+    ? allTranslations
+    : filtered;
 
   const translationVerseData: Record<number, TranslationVerse[]> = {};
   await Promise.all(
@@ -145,6 +153,7 @@ export default async function ExportChapterPage({ params, searchParams }: PagePr
     );
   }
 
+  // Fetch footnotes for all visible translations (user-created, ULT, and VCB).
   const translationFootnoteData: Record<number, TranslationFootnote[]> = {};
   await Promise.all(
     visibleTranslations.map(async (t) => {

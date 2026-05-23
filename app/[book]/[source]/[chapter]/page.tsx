@@ -158,7 +158,7 @@ export default async function ChapterPage({ params, searchParams }: PageProps) {
       })
     );
 
-    // Footnotes for all available translations
+    // Footnotes for user-created translations
     await Promise.all(
       availableTranslations.map(async (t) => {
         initialTranslationFootnotes[t.id] = await getChapterTranslationFootnotes(t.id, osisBook, chapter);
@@ -174,6 +174,10 @@ export default async function ChapterPage({ params, searchParams }: PageProps) {
         translationVerseData[ultTranslation.id] = await getTranslationVerses(
           ultTranslation.id, osisBook, chapter, workspaceId
         );
+        // Footnotes for ULT (user may have added them via the footnote dialog)
+        initialTranslationFootnotes[ultTranslation.id] = await getChapterTranslationFootnotes(
+          ultTranslation.id, osisBook, chapter
+        );
       }
     }
 
@@ -184,6 +188,10 @@ export default async function ChapterPage({ params, searchParams }: PageProps) {
       if (vcbTranslation !== null) {
         translationVerseData[vcbTranslation.id] = await getTranslationVerses(
           vcbTranslation.id, osisBook, chapter, workspaceId
+        );
+        // Footnotes for VCB
+        initialTranslationFootnotes[vcbTranslation.id] = await getChapterTranslationFootnotes(
+          vcbTranslation.id, osisBook, chapter
         );
       }
     }

@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { notFound } from "next/navigation";
 import {
   getPassage,
@@ -125,12 +127,17 @@ export default async function ExportPassagePage({ params, searchParams }: PagePr
 
   // If the caller passed ?t=ESV,NIV (written by PassageExportLink from localStorage),
   // restrict to those abbreviations; otherwise show all translations.
+  // Fall back to all translations when the filter matches nothing — handles stale
+  // localStorage entries so the export never renders with an empty translation column.
   const requestedAbbrs = sp.t
     ? String(sp.t).split(",").map((a) => decodeURIComponent(a.trim())).filter(Boolean)
     : null;
-  const visibleTranslations = requestedAbbrs
+  const filtered = requestedAbbrs
     ? allTranslations.filter((t) => requestedAbbrs.includes(t.abbreviation))
     : allTranslations;
+  const visibleTranslations = requestedAbbrs && filtered.length === 0
+    ? allTranslations
+    : filtered;
 
   // Translation verses for all covered chapters
   const translationVerseData: Record<number, TranslationVerse[]> = {};
