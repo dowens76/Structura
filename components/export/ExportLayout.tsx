@@ -112,110 +112,123 @@ export default function ExportLayout({ children, revealHref, filename, backHref,
   }
 
   /**
-   * Pre-fetch every @font-face URL found in the document's stylesheets from
-   * JavaScript (where network requests work) and return a complete CSS string
-   * suitable for html-to-image's `fontEmbedCSS` option.
-   *
-   * Why this is needed in Tauri/WKWebView:
-   *   html-to-image serialises the DOM to an SVG <foreignObject>, then loads the
-   *   SVG as a data-URL inside an <img> tag.  When WebKit renders an SVG image it
-   *   isolates the foreignObject HTML from the parent document — @font-face rules
-   *   are visible in the SVG <style>, but WKWebView's SVG renderer does NOT load
-   *   custom fonts for foreignObject HTML content, even when the src is already a
-   *   data URL.  Providing `fontEmbedCSS` skips html-to-image's own fetch step
-   *   entirely, so the SVG is handed fonts that need no further loading.
-   */
-  async function buildFontEmbedCSS(): Promise<string> {
-    const chunks: string[] = [];
-    for (const sheet of Array.from(document.styleSheets)) {
-      let rules: CSSRuleList;
-      try {
-        rules = sheet.cssRules; // throws for cross-origin sheets
-      } catch {
-        continue;
-      }
-      for (const rule of Array.from(rules)) {
-        if (!(rule instanceof CSSFontFaceRule)) continue;
-        let ruleText = rule.cssText;
-        // Replace each non-data-URL src with a base64 data URL
-        const urlRegex = /url\(["']?([^"')]+)["']?\)/g;
-        let m: RegExpExecArray | null;
-        const replacements: Array<[string, string]> = [];
-        while ((m = urlRegex.exec(ruleText)) !== null) {
-          const url = m[1];
-          if (url.startsWith("data:")) continue; // already embedded
-          try {
-            const resp = await fetch(url);
-            const blob = await resp.blob();
-            const dataUrl = await new Promise<string>((resolve, reject) => {
-              const reader = new FileReader();
-              reader.onload  = () => resolve(reader.result as string);
-              reader.onerror = reject;
-              reader.readAsDataURL(blob);
-            });
-            replacements.push([url, dataUrl]);
-          } catch { /* keep original URL — best effort */ }
-        }
-        for (const [orig, data] of replacements) {
-          ruleText = ruleText.replace(orig, data);
-        }
-        chunks.push(ruleText);
-      }
-    }
-    return chunks.join("\n");
-  }
-
-  /**
    * Render an element to a transparent-background PNG data URL.
    *
-   * html-to-image serialises the DOM to an SVG <foreignObject> then loads it
-   * as a data-URL in an <img> tag before drawing on canvas. In some WKWebView
-   * builds this step silently produces a blank image. We try twice:
-   *   1. Full rendering (fonts embedded as base64) — works in all browsers.
-   *   2. skipFonts:true — skips external-font fetching. WKWebView still renders
-   *      text using the already-loaded page fonts, which avoids the timeout/
-   *      CORS failure that can occur when the renderer tries to re-fetch fonts
-   *      from the tauri://localhost origin.
+   * Two rendering paths:
    *
-   * Tauri/WKWebView: buildFontEmbedCSS() pre-fetches ALL @font-face fonts as
-   * data URLs in the JavaScript context (where HTTP works) and passes them as
-   * fontEmbedCSS, so html-to-image hands the SVG renderer self-contained font
-   * data that requires no network access at render time.
+   * Tauri/WKWebView — native capture, scroll-and-stitch:
+   *   Calls the Rust `capture_viewport_png` command which uses WKWebView's
+   *   `takeSnapshot()` API — the same full HTML renderer that displays the page.
+   *   Custom fonts (Ezra SIL, Gentium Plus), BiDi/RTL text shaping, and inline
+   *   SVG overlays (RST arrows, word arrows) all render exactly as on screen.
+   *   Full-page height is captured by hiding the toolbar, scrolling through the
+   *   content in viewport-sized strips, and compositing onto a single canvas.
    *
-   * If `cropTo` is supplied the canvas is cropped to that element's bounding
-   * rect (relative to `el`) so that blank side-margins are stripped while still
-   * allowing `el` to be the full-width capture root (preventing any overflow
-   * clipping that would happen if we captured the narrower inner element directly).
+   * Regular browser — html-to-image:
+   *   Serialises the DOM to an SVG <foreignObject> and draws to canvas.  Fonts
+   *   embed correctly via the auto-detect path in all desktop browsers.
+   *
+   * If `cropTo` is supplied the output is cropped to that element's bounds
+   * (used to trim blank side-margins from the max-w-4xl inner container).
    */
   async function renderToPng(el: HTMLElement, cropTo?: HTMLElement): Promise<string> {
+    // ── Tauri path: native WKWebView HTML renderer ───────────────────────────
+    if ("__TAURI_INTERNALS__" in window) {
+      const { invoke } = await import("@tauri-apps/api/core");
+      const dpr = window.devicePixelRatio || 1;
+
+      // Hide the export toolbar (display:none removes it from layout so it
+      // doesn't leave a blank gap and doesn't appear in the screenshot).
+      const toolbar = document.querySelector<HTMLElement>(".export-toolbar");
+      const prevDisplay = toolbar?.style.display ?? "";
+      if (toolbar) toolbar.style.display = "none";
+
+      const savedScrollX = window.scrollX;
+      const savedScrollY = window.scrollY;
+
+      try {
+        // Re-measure after toolbar removal so coordinates are accurate.
+        await new Promise<void>(r => requestAnimationFrame(() => requestAnimationFrame(() => r())));
+
+        const elRect      = el.getBoundingClientRect();
+        const totalHeight = el.scrollHeight;
+        const elLeft      = elRect.left;
+
+        // Horizontal crop: strip blank side-margins from the inner container.
+        let srcXOffset = 0;          // left offset of cropTo within el, CSS px
+        let outCSSW    = elRect.width;
+        if (cropTo) {
+          const cRect = cropTo.getBoundingClientRect();
+          srcXOffset  = cRect.left - elLeft;
+          outCSSW     = cRect.width;
+        }
+
+        const outW = Math.round(outCSSW    * dpr);
+        const outH = Math.round(totalHeight * dpr);
+
+        const outCanvas = document.createElement("canvas");
+        outCanvas.width  = outW;
+        outCanvas.height = outH;
+        const ctx = outCanvas.getContext("2d")!;
+
+        // scrollBase: window scroll Y that puts el's top edge at viewport y=0.
+        const scrollBase = savedScrollY + elRect.top;
+        const viewH      = window.innerHeight;
+        let destCSSY     = 0; // CSS px composited into outCanvas so far
+
+        while (destCSSY < totalHeight) {
+          window.scrollTo(0, scrollBase + destCSSY);
+
+          // Wait for the scroll event, the overlays' double-RAF remeasure, and
+          // an extra settling frame so SVG arrows update before we snapshot.
+          await new Promise<void>(r =>
+            requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(r, 50)))
+          );
+
+          const b64 = await invoke<string>("capture_viewport_png");
+
+          // Re-read el position after scroll (el.top ≈ -destCSSY in viewport).
+          const rect         = el.getBoundingClientRect();
+          const visibleElTop = Math.max(0, rect.top); // viewport y where el starts
+          const remaining    = totalHeight - destCSSY;
+          const stripCSS     = Math.min(viewH - visibleElTop, remaining);
+          if (stripCSS <= 0) break;
+
+          const srcX = Math.round((rect.left + srcXOffset) * dpr);
+          const srcY = Math.round(visibleElTop             * dpr);
+          const srcH = Math.round(stripCSS                 * dpr);
+          const dstY = Math.round(destCSSY                 * dpr);
+
+          await new Promise<void>((resolve, reject) => {
+            const img = new Image();
+            img.onload = () => {
+              ctx.drawImage(img, srcX, srcY, outW, srcH, 0, dstY, outW, srcH);
+              resolve();
+            };
+            img.onerror = reject;
+            img.src = `data:image/png;base64,${b64}`;
+          });
+
+          destCSSY += stripCSS;
+        }
+
+        return outCanvas.toDataURL("image/png");
+      } finally {
+        window.scrollTo(savedScrollX, savedScrollY);
+        if (toolbar) toolbar.style.display = prevDisplay;
+      }
+    }
+
+    // ── Regular browser path: html-to-image ──────────────────────────────────
     const { toCanvas } = await import("html-to-image");
     const pixelRatio = 2;
-
     const render = (opts: object) => toCanvas(el, { pixelRatio, ...opts });
     let canvas: HTMLCanvasElement;
-
-    if ("__TAURI_INTERNALS__" in window) {
-      // Pre-fetch all @font-face fonts as data URLs.  fontEmbedCSS bypasses
-      // html-to-image's own fetch step so the SVG renderer receives fonts that
-      // need no further loading — working around WKWebView's foreignObject limit.
-      let fontEmbedCSS: string | undefined;
-      try {
-        const css = await buildFontEmbedCSS();
-        if (css.trim()) fontEmbedCSS = css;
-      } catch { /* fall through — let html-to-image attempt its own embedding */ }
-
-      try {
-        canvas = await render({ fontEmbedCSS });
-      } catch {
-        canvas = await render({ skipFonts: true });
-      }
-    } else {
-      try {
-        canvas = await render({});
-      } catch {
-        // Retry without font embedding — last-resort for WKWebView environments
-        canvas = await render({ skipFonts: true });
-      }
+    try {
+      canvas = await render({});
+    } catch {
+      // Retry without font embedding — last-resort fallback
+      canvas = await render({ skipFonts: true });
     }
 
     // Crop to the inner content element's bounds if provided

@@ -30,6 +30,99 @@ async fn print_page(app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+// ── Tauri command: capture current viewport as PNG ───────────────────────────
+//
+// Called from the ExportLayout PNG path as part of a scroll-and-stitch
+// pipeline.  Uses WKWebView's native takeSnapshot() API — the same full HTML
+// renderer used to display the page — so custom fonts (Ezra SIL, Gentium Plus),
+// BiDi text shaping, and SVG overlays all render exactly as seen on screen.
+// JavaScript scrolls through the content in viewport-sized strips and composites
+// the base64 PNG strips onto a single canvas to reconstruct the full page.
+//
+// macOS implementation: dispatches to the main thread via with_webview(), calls
+// WKWebView.takeSnapshotWithConfiguration(_:completionHandler:), converts the
+// returned NSImage to PNG bytes via NSBitmapImageRep, and pipes the result back
+// to the command thread through an mpsc channel.
+
+#[cfg(target_os = "macos")]
+#[tauri::command]
+fn capture_viewport_png(app: AppHandle) -> Result<String, String> {
+    use base64::Engine;
+    use std::sync::mpsc;
+
+    let window = app
+        .get_webview_window("main")
+        .ok_or_else(|| "No main window".to_string())?;
+
+    let (tx, rx) = mpsc::channel::<Result<Vec<u8>, String>>();
+
+    // with_webview dispatches the closure to the main thread asynchronously
+    // and returns immediately.  We block below on rx.recv_timeout() until the
+    // takeSnapshot completion handler fires and sends its result.
+    window
+        .with_webview(move |webview| {
+            use block2::RcBlock;
+            use objc2::runtime::AnyObject;
+            use objc2_app_kit::{NSBitmapImageFileType, NSBitmapImageRep, NSImage};
+            use objc2_foundation::{NSDictionary, NSError, NSString};
+            use objc2_web_kit::WKWebView;
+
+            // Build the completion handler block.
+            // WKWebView calls it on the main thread once the snapshot is ready.
+            let completion = RcBlock::new(
+                move |ns_image: *mut NSImage, _error: *mut NSError| {
+                    let result: Result<Vec<u8>, String> = (|| unsafe {
+                        // nil image means the snapshot failed
+                        let image = ns_image
+                            .as_ref()
+                            .ok_or_else(|| "takeSnapshot: NSImage is nil".to_string())?;
+
+                        // NSImage → TIFF bytes (lossless intermediate)
+                        let tiff = image
+                            .TIFFRepresentation()
+                            .ok_or_else(|| "TIFFRepresentation returned nil".to_string())?;
+
+                        // TIFF bytes → NSBitmapImageRep (understands pixel data)
+                        let bitmap = NSBitmapImageRep::imageRepWithData(&tiff)
+                            .ok_or_else(|| "imageRepWithData returned nil".to_string())?;
+
+                        // NSBitmapImageRep → PNG NSData
+                        let props = NSDictionary::<NSString, AnyObject>::new();
+                        let png_data = bitmap
+                            .representationUsingType_properties(
+                                NSBitmapImageFileType::PNG,
+                                &props,
+                            )
+                            .ok_or_else(|| "PNG representation returned nil".to_string())?;
+
+                        Ok(png_data.as_bytes_unchecked().to_vec())
+                    })();
+                    let _ = tx.send(result);
+                },
+            );
+
+            // Cast the opaque webview handle to WKWebView and fire the snapshot.
+            // SAFETY: on macOS the inner pointer is always a WKWebView instance.
+            unsafe {
+                let wk: &WKWebView = &*webview.inner().cast::<WKWebView>();
+                wk.takeSnapshotWithConfiguration_completionHandler(None, &*completion);
+            }
+        })
+        .map_err(|e| format!("with_webview dispatch failed: {e}"))?;
+
+    // Wait up to 15 s for the completion handler to send its result.
+    rx.recv_timeout(std::time::Duration::from_secs(15))
+        .map_err(|e| format!("capture_viewport_png timed out: {e}"))
+        .and_then(|r| r) // flatten Result<Result<...>>
+        .map(|bytes| base64::engine::general_purpose::STANDARD.encode(&bytes))
+}
+
+#[cfg(not(target_os = "macos"))]
+#[tauri::command]
+fn capture_viewport_png(_app: AppHandle) -> Result<String, String> {
+    Err("capture_viewport_png is only supported on macOS".to_string())
+}
+
 // ── Tauri command: native folder picker ───────────────────────────────────────
 
 #[tauri::command]
@@ -262,7 +355,7 @@ pub fn run() {
 
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![pick_folder, save_file, print_page])
+        .invoke_handler(tauri::generate_handler![pick_folder, save_file, print_page, capture_viewport_png])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
