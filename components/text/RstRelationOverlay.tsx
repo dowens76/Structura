@@ -640,10 +640,29 @@ export default function RstRelationOverlay({
     };
   }, [scheduleRemeasure, containerRef, layoutRef]);
 
-  // ── structura:print-prepare: synchronous re-measure before Tauri snapshot ──
-  // ExportLayout dispatches this event before calling invoke("print_page").
-  // We cancel any pending double-RAF and immediately re-measure using flushSync
-  // so the SVG positions are correct in the printed snapshot.
+  // ── Print re-measurement (mirrors WordArrowOverlay's handler set) ────────────
+  //
+  // Three events are handled, each representing a different print-pipeline phase:
+  //
+  // 1. structura:print-prepare — dispatched by ExportLayout just before any print
+  //    operation.  Cancels pending double-RAFs and re-measures immediately with
+  //    flushSync so React commits the updated SVG before the snapshot.
+  //
+  // 2. matchMedia("print") change (e.matches = true) — fires AFTER WebKit has
+  //    applied @media print rules and completed layout reflow.  At this point
+  //    getBoundingClientRect() returns true print-layout coordinates.  Used for
+  //    regular-browser window.print() flows where print-CSS reflow may have
+  //    shifted segment positions.
+  //
+  // 3. beforeprint — fires after print CSS in Chrome/Blink (unlike WebKit where
+  //    it fires before).  Provides a second chance to re-measure after reflow in
+  //    Blink-based browsers.
+  //
+  // All three handlers use flushSync so React commits synchronously before the
+  // browser takes its print snapshot.  measureRef and scheduleRemeasureRef are
+  // updated every render so the stable event-handler closures always call the
+  // latest measurement logic.
+
   const printMeasureRef = useRef<() => void>(() => {});
   // Update the ref every render so the handler always has current closure values.
   printMeasureRef.current = () => {
@@ -658,7 +677,31 @@ export default function RstRelationOverlay({
       setLayoutLinks(links);
     });
   };
+
+  // scheduleRemeasureRef — used by the matchMedia "print ended" handler to
+  // restore screen-layout coordinates after the print dialog closes.
+  const scheduleRemeasureRef = useRef<() => void>(() => {});
+  scheduleRemeasureRef.current = scheduleRemeasure;
+
   useEffect(() => {
+    const mql = window.matchMedia("print");
+
+    function handlePrintMediaChange(e: MediaQueryListEvent) {
+      if (frameRef.current) {
+        cancelAnimationFrame(frameRef.current);
+        frameRef.current = null;
+      }
+      if (e.matches) {
+        // Print CSS is now active and layout has reflowed.  Re-measure so SVG
+        // coordinates reflect the print layout before the snapshot is taken.
+        printMeasureRef.current();
+      } else {
+        // Print dialog closed — restore screen-layout coordinates via a normal
+        // double-RAF remeasure.
+        scheduleRemeasureRef.current();
+      }
+    }
+
     function handlePrintPrepare() {
       if (frameRef.current) {
         cancelAnimationFrame(frameRef.current);
@@ -666,9 +709,26 @@ export default function RstRelationOverlay({
       }
       printMeasureRef.current();
     }
+
+    // beforeprint fires after print CSS in Chrome/Blink (unlike WebKit where it
+    // fires before reflow).  Handles regular-browser print flows.
+    function handleBeforePrint() {
+      if (frameRef.current) {
+        cancelAnimationFrame(frameRef.current);
+        frameRef.current = null;
+      }
+      printMeasureRef.current();
+    }
+
+    mql.addEventListener("change", handlePrintMediaChange);
     window.addEventListener("structura:print-prepare", handlePrintPrepare);
-    return () => window.removeEventListener("structura:print-prepare", handlePrintPrepare);
-  }, []); // empty deps — attach once, ref keeps content current
+    window.addEventListener("beforeprint", handleBeforePrint);
+    return () => {
+      mql.removeEventListener("change", handlePrintMediaChange);
+      window.removeEventListener("structura:print-prepare", handlePrintPrepare);
+      window.removeEventListener("beforeprint", handleBeforePrint);
+    };
+  }, []); // empty deps — attach once, refs keep content current
 
   if (!svgH) return null;
 
