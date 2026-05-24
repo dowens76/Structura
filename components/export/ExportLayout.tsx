@@ -112,6 +112,60 @@ export default function ExportLayout({ children, revealHref, filename, backHref,
   }
 
   /**
+   * Pre-fetch every @font-face URL found in the document's stylesheets from
+   * JavaScript (where network requests work) and return a complete CSS string
+   * suitable for html-to-image's `fontEmbedCSS` option.
+   *
+   * Why this is needed in Tauri/WKWebView:
+   *   html-to-image serialises the DOM to an SVG <foreignObject>, then loads the
+   *   SVG as a data-URL inside an <img> tag.  When WebKit renders an SVG image it
+   *   isolates the foreignObject HTML from the parent document — @font-face rules
+   *   are visible in the SVG <style>, but WKWebView's SVG renderer does NOT load
+   *   custom fonts for foreignObject HTML content, even when the src is already a
+   *   data URL.  Providing `fontEmbedCSS` skips html-to-image's own fetch step
+   *   entirely, so the SVG is handed fonts that need no further loading.
+   */
+  async function buildFontEmbedCSS(): Promise<string> {
+    const chunks: string[] = [];
+    for (const sheet of Array.from(document.styleSheets)) {
+      let rules: CSSRuleList;
+      try {
+        rules = sheet.cssRules; // throws for cross-origin sheets
+      } catch {
+        continue;
+      }
+      for (const rule of Array.from(rules)) {
+        if (!(rule instanceof CSSFontFaceRule)) continue;
+        let ruleText = rule.cssText;
+        // Replace each non-data-URL src with a base64 data URL
+        const urlRegex = /url\(["']?([^"')]+)["']?\)/g;
+        let m: RegExpExecArray | null;
+        const replacements: Array<[string, string]> = [];
+        while ((m = urlRegex.exec(ruleText)) !== null) {
+          const url = m[1];
+          if (url.startsWith("data:")) continue; // already embedded
+          try {
+            const resp = await fetch(url);
+            const blob = await resp.blob();
+            const dataUrl = await new Promise<string>((resolve, reject) => {
+              const reader = new FileReader();
+              reader.onload  = () => resolve(reader.result as string);
+              reader.onerror = reject;
+              reader.readAsDataURL(blob);
+            });
+            replacements.push([url, dataUrl]);
+          } catch { /* keep original URL — best effort */ }
+        }
+        for (const [orig, data] of replacements) {
+          ruleText = ruleText.replace(orig, data);
+        }
+        chunks.push(ruleText);
+      }
+    }
+    return chunks.join("\n");
+  }
+
+  /**
    * Render an element to a transparent-background PNG data URL.
    *
    * html-to-image serialises the DOM to an SVG <foreignObject> then loads it
@@ -123,6 +177,11 @@ export default function ExportLayout({ children, revealHref, filename, backHref,
    *      CORS failure that can occur when the renderer tries to re-fetch fonts
    *      from the tauri://localhost origin.
    *
+   * Tauri/WKWebView: buildFontEmbedCSS() pre-fetches ALL @font-face fonts as
+   * data URLs in the JavaScript context (where HTTP works) and passes them as
+   * fontEmbedCSS, so html-to-image hands the SVG renderer self-contained font
+   * data that requires no network access at render time.
+   *
    * If `cropTo` is supplied the canvas is cropped to that element's bounding
    * rect (relative to `el`) so that blank side-margins are stripped while still
    * allowing `el` to be the full-width capture root (preventing any overflow
@@ -132,44 +191,30 @@ export default function ExportLayout({ children, revealHref, filename, backHref,
     const { toCanvas } = await import("html-to-image");
     const pixelRatio = 2;
 
-    // In Tauri's WKWebView, html-to-image often cannot fetch @font-face source
-    // URLs from inside the SVG foreignObject rendering context.  The fontEmbedCSS
-    // option would fix Ezra SIL but REPLACES all auto-detected font CSS, breaking
-    // Gentium Plus and UI fonts.  Instead, temporarily inject a style tag that
-    // declares Ezra SIL as a base64 data-URL — html-to-image finds it via
-    // document.styleSheets and embeds it alongside all other fonts automatically.
-    // Data-URL src values need no network fetch, so they always succeed.
-    let injectedFontStyle: HTMLStyleElement | null = null;
-    if ("__TAURI_INTERNALS__" in window) {
-      try {
-        const fontResp = await fetch("/fonts/SILEOT.woff");
-        const fontBlob = await fontResp.blob();
-        const fontDataUrl = await new Promise<string>((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload  = () => resolve(reader.result as string);
-          reader.onerror = reject;
-          reader.readAsDataURL(fontBlob);
-        });
-        injectedFontStyle = document.createElement("style");
-        injectedFontStyle.textContent =
-          `@font-face { font-family: "Ezra SIL"; ` +
-          `src: url("${fontDataUrl}") format("woff"); ` +
-          `font-weight: 400; font-style: normal; }`;
-        document.head.appendChild(injectedFontStyle);
-      } catch { /* fall through — html-to-image will attempt its own font fetching */ }
-    }
-
     const render = (opts: object) => toCanvas(el, { pixelRatio, ...opts });
     let canvas: HTMLCanvasElement;
-    try {
-      canvas = await render({});
-    } catch {
-      // Retry without font embedding — last-resort for WKWebView environments
-      canvas = await render({ skipFonts: true });
-    } finally {
-      // Always remove the injected style, whether rendering succeeded or not
-      if (injectedFontStyle?.parentNode) {
-        injectedFontStyle.parentNode.removeChild(injectedFontStyle);
+
+    if ("__TAURI_INTERNALS__" in window) {
+      // Pre-fetch all @font-face fonts as data URLs.  fontEmbedCSS bypasses
+      // html-to-image's own fetch step so the SVG renderer receives fonts that
+      // need no further loading — working around WKWebView's foreignObject limit.
+      let fontEmbedCSS: string | undefined;
+      try {
+        const css = await buildFontEmbedCSS();
+        if (css.trim()) fontEmbedCSS = css;
+      } catch { /* fall through — let html-to-image attempt its own embedding */ }
+
+      try {
+        canvas = await render({ fontEmbedCSS });
+      } catch {
+        canvas = await render({ skipFonts: true });
+      }
+    } else {
+      try {
+        canvas = await render({});
+      } catch {
+        // Retry without font embedding — last-resort for WKWebView environments
+        canvas = await render({ skipFonts: true });
       }
     }
 
