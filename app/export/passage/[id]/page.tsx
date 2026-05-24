@@ -126,18 +126,19 @@ export default async function ExportPassagePage({ params, searchParams }: PagePr
   ];
 
   // If the caller passed ?t=ESV,NIV (written by PassageExportLink from localStorage),
-  // restrict to those abbreviations; otherwise show all translations.
-  // Fall back to all translations when the filter matches nothing — handles stale
-  // localStorage entries so the export never renders with an empty translation column.
+  // show only those translations.  No ?t= means the user has no translation
+  // active, so show nothing.  Case-insensitive comparison guards against minor
+  // casing differences between localStorage and the DB abbreviation.
+  // No fallback-to-all: showing all when only one was intended is more confusing
+  // than showing none.
   const requestedAbbrs = sp.t
     ? String(sp.t).split(",").map((a) => decodeURIComponent(a.trim())).filter(Boolean)
     : null;
-  const filtered = requestedAbbrs
-    ? allTranslations.filter((t) => requestedAbbrs.includes(t.abbreviation))
-    : allTranslations;
-  const visibleTranslations = requestedAbbrs && filtered.length === 0
-    ? allTranslations
-    : filtered;
+  const visibleTranslations = requestedAbbrs === null
+    ? []
+    : allTranslations.filter((t) =>
+        requestedAbbrs.some((abbr) => abbr.toLowerCase() === t.abbreviation.toLowerCase())
+      );
 
   // Translation verses for all covered chapters
   const translationVerseData: Record<number, TranslationVerse[]> = {};

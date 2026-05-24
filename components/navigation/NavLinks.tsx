@@ -44,20 +44,24 @@ export default function NavLinks({
 }: NavLinksProps) {
   const { t } = useTranslation();
 
-  // Append active translations as ?t=ESV,NIV so the export server page can
-  // filter to exactly what's currently displayed. Starts as plain href (matches
-  // SSR), then useEffect updates it after mount once localStorage is available.
-  const [exportHrefWithTranslations, setExportHrefWithTranslations] = useState(exportHref);
-  useEffect(() => {
+  // Build the export URL with active translations from localStorage.
+  // We read localStorage at click time (onClick) rather than relying solely on
+  // a useEffect state update, which can race against the user clicking the link
+  // before hydration settles in Tauri's WKWebView.
+  function buildExportHref(): string {
     try {
       const raw = localStorage.getItem("structura:activeTranslations");
       const abbrs: string[] = raw ? JSON.parse(raw) : [];
-      if (abbrs.length > 0) {
-        setExportHrefWithTranslations(`${exportHref}?t=${abbrs.map(encodeURIComponent).join(",")}`);
-      } else {
-        setExportHrefWithTranslations(exportHref);
-      }
-    } catch { /* ignore */ }
+      return abbrs.length > 0
+        ? `${exportHref}?t=${abbrs.map(encodeURIComponent).join(",")}`
+        : exportHref;
+    } catch { return exportHref; }
+  }
+
+  const [exportHrefWithTranslations, setExportHrefWithTranslations] = useState(exportHref);
+  useEffect(() => {
+    setExportHrefWithTranslations(buildExportHref());
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [exportHref]);
 
   return (
@@ -131,6 +135,15 @@ export default function NavLinks({
           href={exportHrefWithTranslations}
           className="text-xs px-2 py-1 rounded transition-colors"
           style={{ color: "var(--nav-fg)" }}
+          onClick={(e) => {
+            // Re-read localStorage at click time so the latest active translations
+            // are always used, even if the useEffect hasn't re-run yet.
+            const url = buildExportHref();
+            if (url !== exportHrefWithTranslations) {
+              e.preventDefault();
+              window.location.href = url;
+            }
+          }}
         >
           {t("nav.export")}
         </Link>

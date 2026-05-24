@@ -302,10 +302,13 @@ export default function ExportTextView({
           const lastWordIdx = allWordIds.indexOf(verseWords[verseWords.length - 1].wordId);
           const nextVerseFirstWordId = lastWordIdx < words.length - 1 ? words[lastWordIdx + 1].wordId : null;
 
-          const verseChapter = verseWords[0].chapter;
+          // Filter by verse only — translationFootnoteData is already keyed/fetched
+          // per chapter, so a redundant chapter check would silently drop footnotes
+          // whose stored chapter number doesn't exactly match the word's chapter
+          // (can happen with standalone-chapter USFM imports).
           const verseFootnotes = translationFootnoteData
             ? Object.values(translationFootnoteData).flat().filter(
-                (fn) => fn.chapter === verseChapter && fn.verse === verseNum
+                (fn) => fn.verse === verseNum
               )
             : [];
 

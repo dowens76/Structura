@@ -1,6 +1,7 @@
 "use client";
 
 import { useLayoutEffect, useEffect, useMemo, useRef, useState, useCallback, RefObject } from "react";
+import { flushSync } from "react-dom";
 import { hierarchy } from "d3-hierarchy";
 import type { RstRelation } from "@/lib/db/schema";
 import {
@@ -638,6 +639,36 @@ export default function RstRelationOverlay({
       if (frameRef.current) cancelAnimationFrame(frameRef.current);
     };
   }, [scheduleRemeasure, containerRef, layoutRef]);
+
+  // ── structura:print-prepare: synchronous re-measure before Tauri snapshot ──
+  // ExportLayout dispatches this event before calling invoke("print_page").
+  // We cancel any pending double-RAF and immediately re-measure using flushSync
+  // so the SVG positions are correct in the printed snapshot.
+  const printMeasureRef = useRef<() => void>(() => {});
+  // Update the ref every render so the handler always has current closure values.
+  printMeasureRef.current = () => {
+    const container = containerRef.current;
+    if (!container) return;
+    const newPos           = measureSegments(allSegIds, container);
+    const { nodes, links } = layoutTree(relations, tvRelations, paragraphFirstWordIds, newPos, isHebrew, hasTranslation);
+    flushSync(() => {
+      setPosMap(newPos);
+      setSvgH(container.scrollHeight);
+      setLayoutNodes(nodes);
+      setLayoutLinks(links);
+    });
+  };
+  useEffect(() => {
+    function handlePrintPrepare() {
+      if (frameRef.current) {
+        cancelAnimationFrame(frameRef.current);
+        frameRef.current = null;
+      }
+      printMeasureRef.current();
+    }
+    window.addEventListener("structura:print-prepare", handlePrintPrepare);
+    return () => window.removeEventListener("structura:print-prepare", handlePrintPrepare);
+  }, []); // empty deps — attach once, ref keeps content current
 
   if (!svgH) return null;
 
