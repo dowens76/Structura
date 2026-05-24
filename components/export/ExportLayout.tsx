@@ -36,44 +36,22 @@ export default function ExportLayout({ children, revealHref, filename, backHref,
     try {
       if ("__TAURI_INTERNALS__" in window) {
         // ── WKWebView / Tauri ────────────────────────────────────────────────
-        // invoking native print reflows the WKWebView to paper dimensions and
-        // applies @media print CSS — both of which shift SVG overlay coordinates
-        // that were measured at screen width.  To avoid this, we capture the
-        // current view as a PNG first, inject a full-page print overlay, and
-        // then invoke print so WKWebView prints only the PNG image.
-        const pngTarget =
-          (el?.querySelector("[data-png-target]") as HTMLElement | null) ?? el;
-        const cropTo =
-          (pngTarget?.querySelector("[data-png-crop-to]") as HTMLElement | null) ?? undefined;
-        if (!pngTarget) throw new Error("No capture target");
-
-        const dataUrl = await renderToPng(pngTarget, cropTo);
-
-        // Inject a @media print rule that hides every direct body child except
-        // our overlay div, so WKWebView prints only the captured PNG image.
-        const printStyle = document.createElement("style");
-        printStyle.textContent =
-          "@media print {\n" +
-          "  body > *:not([data-structura-print-overlay]) { display: none !important; }\n" +
-          "  [data-structura-print-overlay] { display: block !important; }\n" +
-          "}\n";
-        const printDiv = document.createElement("div");
-        printDiv.setAttribute("data-structura-print-overlay", "");
-        printDiv.style.cssText = "background:white;margin:0;padding:0;";
-        const imgEl = document.createElement("img");
-        imgEl.src = dataUrl;
-        imgEl.style.cssText = "display:block;max-width:100%;height:auto;";
-        printDiv.appendChild(imgEl);
-
-        document.head.appendChild(printStyle);
-        document.body.appendChild(printDiv);
-        try {
-          const { invoke } = await import("@tauri-apps/api/core");
-          await invoke("print_page");
-        } finally {
-          document.head.removeChild(printStyle);
-          document.body.removeChild(printDiv);
-        }
+        // WKWebView applies @media print CSS and reflows to paper dimensions
+        // when invoke("print_page") triggers the native print operation.  We
+        // pre-shrink annotation columns to match the print-CSS value, then
+        // dispatch structura:print-prepare so overlays re-measure synchronously
+        // before the dialog opens.  The matchMedia("print") change handler on
+        // each overlay fires a second time once WKWebView has completed the
+        // paper-dimension reflow, giving a final re-measure at the true printed
+        // positions before the snapshot is taken.
+        const annotCols = el
+          ? Array.from(el.querySelectorAll<HTMLElement>('[class~="w-48"]'))
+          : [];
+        annotCols.forEach(col => { col.style.width = "8rem"; });
+        window.dispatchEvent(new CustomEvent("structura:print-prepare"));
+        const { invoke } = await import("@tauri-apps/api/core");
+        await invoke("print_page");
+        annotCols.forEach(col => { col.style.width = ""; });
       } else {
         // ── Regular browser ──────────────────────────────────────────────────
         // Capture the content as a canvas image (same pipeline as PNG export),
@@ -154,12 +132,14 @@ export default function ExportLayout({ children, revealHref, filename, backHref,
     const { toCanvas } = await import("html-to-image");
     const pixelRatio = 2;
 
-    // In Tauri's WKWebView, html-to-image cannot embed external @font-face fonts
-    // (the fetch of /fonts/SILEOT.woff is blocked or silently ignored inside the
-    // canvas SVG renderer).  Pre-fetch the Ezra SIL woff file ourselves and supply
-    // it as a base64 data-URL via fontEmbedCSS so Hebrew text renders with the
-    // correct glyphs rather than a fallback serif.
-    let fontEmbedCSS: string | undefined;
+    // In Tauri's WKWebView, html-to-image often cannot fetch @font-face source
+    // URLs from inside the SVG foreignObject rendering context.  The fontEmbedCSS
+    // option would fix Ezra SIL but REPLACES all auto-detected font CSS, breaking
+    // Gentium Plus and UI fonts.  Instead, temporarily inject a style tag that
+    // declares Ezra SIL as a base64 data-URL — html-to-image finds it via
+    // document.styleSheets and embeds it alongside all other fonts automatically.
+    // Data-URL src values need no network fetch, so they always succeed.
+    let injectedFontStyle: HTMLStyleElement | null = null;
     if ("__TAURI_INTERNALS__" in window) {
       try {
         const fontResp = await fetch("/fonts/SILEOT.woff");
@@ -170,20 +150,27 @@ export default function ExportLayout({ children, revealHref, filename, backHref,
           reader.onerror = reject;
           reader.readAsDataURL(fontBlob);
         });
-        fontEmbedCSS =
+        injectedFontStyle = document.createElement("style");
+        injectedFontStyle.textContent =
           `@font-face { font-family: "Ezra SIL"; ` +
           `src: url("${fontDataUrl}") format("woff"); ` +
           `font-weight: 400; font-style: normal; }`;
+        document.head.appendChild(injectedFontStyle);
       } catch { /* fall through — html-to-image will attempt its own font fetching */ }
     }
 
     const render = (opts: object) => toCanvas(el, { pixelRatio, ...opts });
     let canvas: HTMLCanvasElement;
     try {
-      canvas = await render(fontEmbedCSS ? { fontEmbedCSS } : {});
+      canvas = await render({});
     } catch {
       // Retry without font embedding — last-resort for WKWebView environments
       canvas = await render({ skipFonts: true });
+    } finally {
+      // Always remove the injected style, whether rendering succeeded or not
+      if (injectedFontStyle?.parentNode) {
+        injectedFontStyle.parentNode.removeChild(injectedFontStyle);
+      }
     }
 
     // Crop to the inner content element's bounds if provided
@@ -310,6 +297,14 @@ export default function ExportLayout({ children, revealHref, filename, backHref,
             --accent-hover: #a87d28;
             --interlinear-color: #b04a32;
           }
+
+          /* Reduce source-text font sizes for print.  Screen values (≈22 px Hebrew,
+             ≈20 px Greek) are too large for a printed study document; 11 pt is a
+             standard body-text size.  matchMedia("print") handlers on the overlays
+             re-measure arrow positions after this reflow, so SVG paths remain
+             correctly aligned with the smaller printed text. */
+          [lang="he"], .text-hebrew { font-size: 11pt !important; }
+          [lang="grc"], .text-greek { font-size: 11pt !important; }
         }
       `}</style>
 
