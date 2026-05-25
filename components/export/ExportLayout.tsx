@@ -73,6 +73,14 @@ export default function ExportLayout({ children, revealHref, filename, backHref,
           "[lang='he'], .text-hebrew { font-size: 11pt !important; }",
           "[lang='grc'], .text-greek { font-size: 11pt !important; }",
           "[data-png-crop-to] { max-width: 42rem !important; }",
+          // WordArrowOverlay measures coordinates relative to [data-png-target]
+          // (= outerRef, the full-width wrapper div).  Without this rule,
+          // outerRef stays at full viewport width during printSim while WKWebView
+          // renders it at ≈42rem — creating a horizontal offset equal to
+          // (viewport − 42rem) / 2 for every free-form arrow path.
+          // Constraining outerRef to the same 42rem here makes the printSim
+          // coordinate origin match the WKWebView print coordinate origin exactly.
+          "[data-png-target] { max-width: 42rem !important; }",
         ].join("\n");
         document.head.appendChild(printSim);
 
@@ -396,6 +404,14 @@ export default function ExportLayout({ children, revealHref, filename, backHref,
              resolves identically in both contexts and fits within both A4 (680px)
              and US Letter (702px) printable areas without WKWebView scaling. */
           [data-png-crop-to] { max-width: 42rem !important; }
+
+          /* Constrain the outer wrapper (WordArrowOverlay's coordinate origin) to
+             the same 42rem so free-form arrow paths computed during the
+             structura:print-prepare pre-measurement land at identical pixel
+             positions in the WKWebView render.  Without this, outerRef is full
+             viewport width on screen but only ≈42rem in the print context,
+             shifting every free-form arrow by (viewport − 42rem) / 2. */
+          [data-png-target] { max-width: 42rem !important; }
 
           /* Force light-mode CSS variables so print is always black-on-white,
              even when the app is in dark mode. All children inherit from here. */
