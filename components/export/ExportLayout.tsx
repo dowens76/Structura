@@ -222,10 +222,6 @@ export default function ExportLayout({ children, revealHref, filename, backHref,
         outCanvas.width  = outW;
         outCanvas.height = outH;
         const ctx = outCanvas.getContext("2d")!;
-        // Fill with white so top/bottom margin rows and any transparent
-        // regions show as white rather than black.
-        ctx.fillStyle = "#ffffff";
-        ctx.fillRect(0, 0, outW, outH);
 
         // scrollBase: window scroll Y that puts el's top edge at viewport y=0.
         const scrollBase = savedScrollY + elRect.top;
