@@ -37,21 +37,52 @@ export default function ExportLayout({ children, revealHref, filename, backHref,
       if ("__TAURI_INTERNALS__" in window) {
         // ── WKWebView / Tauri ────────────────────────────────────────────────
         // WKWebView applies @media print CSS and reflows to paper dimensions
-        // when invoke("print_page") triggers the native print operation.  We
-        // pre-shrink annotation columns to match the print-CSS value, then
-        // dispatch structura:print-prepare so overlays re-measure synchronously
-        // before the dialog opens.  The matchMedia("print") change handler on
-        // each overlay fires a second time once WKWebView has completed the
-        // paper-dimension reflow, giving a final re-measure at the true printed
-        // positions before the snapshot is taken.
+        // when invoke("print_page") triggers the native print operation.  The
+        // tricky part: structura:print-prepare must fire AFTER the DOM reflects
+        // the print layout, so overlays measure positions that match what
+        // WKWebView will render on paper.
+        //
+        // Strategy:
+        //   1. Resize annotation columns (same as print CSS does).
+        //   2. Inject a temporary <style> that mirrors every @media print rule
+        //      that changes segment geometry (font sizes, container max-width).
+        //   3. Wait for the resulting reflow (double-RAF).
+        //   4. Dispatch structura:print-prepare — overlays now measure at
+        //      print-equivalent coordinates with flushSync.
+        //   5. Invoke the native print dialog.  WKWebView re-applies the same
+        //      @media print rules, producing no second reflow.
+        //   6. Restore the DOM after the dialog closes.
         const annotCols = el
           ? Array.from(el.querySelectorAll<HTMLElement>('[class~="w-48"]'))
           : [];
         annotCols.forEach(col => { col.style.width = "8rem"; });
-        window.dispatchEvent(new CustomEvent("structura:print-prepare"));
-        const { invoke } = await import("@tauri-apps/api/core");
-        await invoke("print_page");
-        annotCols.forEach(col => { col.style.width = ""; });
+
+        // Mirror the layout-changing subset of @media print rules so overlays
+        // re-measure at the positions WKWebView will actually render.
+        const printSim = document.createElement("style");
+        printSim.textContent = [
+          "[lang='he'], .text-hebrew { font-size: 11pt !important; }",
+          "[lang='grc'], .text-greek { font-size: 11pt !important; }",
+          "[data-png-crop-to] { max-width: 100% !important; }",
+        ].join("\n");
+        document.head.appendChild(printSim);
+
+        try {
+          // Give the font-size + max-width reflow time to complete.
+          await new Promise<void>(r =>
+            requestAnimationFrame(() => requestAnimationFrame(() => r()))
+          );
+
+          // Overlays re-measure synchronously (flushSync) at the print layout.
+          window.dispatchEvent(new CustomEvent("structura:print-prepare"));
+
+          const { invoke } = await import("@tauri-apps/api/core");
+          await invoke("print_page");
+        } finally {
+          // Restore screen layout — always runs, even if invoke() throws.
+          printSim.remove();
+          annotCols.forEach(col => { col.style.width = ""; });
+        }
       } else {
         // ── Regular browser ──────────────────────────────────────────────────
         // Capture the content as a canvas image (same pipeline as PNG export),
@@ -358,11 +389,21 @@ export default function ExportLayout({ children, revealHref, filename, backHref,
 
           /* Reduce source-text font sizes for print.  Screen values (≈22 px Hebrew,
              ≈20 px Greek) are too large for a printed study document; 11 pt is a
-             standard body-text size.  matchMedia("print") handlers on the overlays
-             re-measure arrow positions after this reflow, so SVG paths remain
-             correctly aligned with the smaller printed text. */
+             standard body-text size.  handlePdf() pre-applies these same rules
+             via a temporary <style> element so overlays can re-measure at the
+             correct print positions before the native dialog opens. */
           [lang="he"], .text-hebrew { font-size: 11pt !important; }
           [lang="grc"], .text-greek { font-size: 11pt !important; }
+
+          /* Translation footnotes: the app may be in dark mode when printing,
+             which makes dark:text-stone-400 (#a8a29e, a very light grey) nearly
+             invisible on white paper.  Force a legible dark colour here so
+             footnotes always print clearly regardless of light/dark mode. */
+          [data-seg-translation] p.italic { color: #3d3530 !important; }
+          [data-seg-translation] p.italic sup { color: #6b6058 !important; }
+          /* Keep each footnote's text on the same page — prevents a lone
+             superscript anchor appearing on one page with the text on the next. */
+          [data-seg-translation] > div { break-inside: avoid; page-break-inside: avoid; }
         }
       `}</style>
 
