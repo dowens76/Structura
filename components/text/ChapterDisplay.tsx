@@ -830,6 +830,17 @@ export default function ChapterDisplay({
   useEffect(() => { bookRef.current = book; }, [book]);
   useEffect(() => { chapterRef.current = chapter; }, [chapter]);
   useEffect(() => { textSourceRef.current = textSource; }, [textSource]);
+
+  // Keep localFootnotes in sync when navigation brings a new chapter.
+  // ChapterDisplay is keyed by workspaceId so React may reuse the same
+  // component instance across chapter navigations — the useState initial
+  // value is only applied on the very first mount, leaving localFootnotes
+  // stale for subsequent chapters.  Re-sync here whenever book or chapter
+  // changes so footnotes from server always reflect the current chapter.
+  useEffect(() => {
+    setLocalFootnotes(initialTranslationFootnotes);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [book, chapter]);
   useEffect(() => { bookMaxVersesRef.current = bookMaxVerses; }, [bookMaxVerses]);
   useEffect(() => { sortedBooksRef.current = sortedBooks; }, [sortedBooks]);
 
