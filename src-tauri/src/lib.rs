@@ -46,7 +46,7 @@ async fn print_page(app: AppHandle) -> Result<(), String> {
 
 #[cfg(target_os = "macos")]
 #[tauri::command]
-fn capture_viewport_png(app: AppHandle) -> Result<String, String> {
+async fn capture_viewport_png(app: AppHandle) -> Result<String, String> {
     use base64::Engine;
     use std::sync::mpsc;
 
@@ -110,16 +110,22 @@ fn capture_viewport_png(app: AppHandle) -> Result<String, String> {
         })
         .map_err(|e| format!("with_webview dispatch failed: {e}"))?;
 
-    // Wait up to 15 s for the completion handler to send its result.
-    rx.recv_timeout(std::time::Duration::from_secs(15))
-        .map_err(|e| format!("capture_viewport_png timed out: {e}"))
-        .and_then(|r| r) // flatten Result<Result<...>>
-        .map(|bytes| base64::engine::general_purpose::STANDARD.encode(&bytes))
+    // Offload the blocking recv to a dedicated thread so we don't stall the
+    // tokio worker.  with_webview already dispatched the snapshot work to the
+    // main thread; we just need to wait for its completion handler to reply.
+    tauri::async_runtime::spawn_blocking(move || {
+        rx.recv_timeout(std::time::Duration::from_secs(15))
+            .map_err(|e| format!("capture_viewport_png timed out: {e}"))
+            .and_then(|r| r) // flatten Result<Result<...>>
+            .map(|bytes| base64::engine::general_purpose::STANDARD.encode(&bytes))
+    })
+    .await
+    .map_err(|e| format!("spawn_blocking join error: {e}"))?
 }
 
 #[cfg(not(target_os = "macos"))]
 #[tauri::command]
-fn capture_viewport_png(_app: AppHandle) -> Result<String, String> {
+async fn capture_viewport_png(_app: AppHandle) -> Result<String, String> {
     Err("capture_viewport_png is only supported on macOS".to_string())
 }
 
