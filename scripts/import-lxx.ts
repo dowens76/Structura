@@ -80,7 +80,8 @@ sqlite.exec(`
     mood_id             INTEGER,
     stem_id             INTEGER,
     state_id            INTEGER,
-    verb_case_id        INTEGER
+    verb_case_id        INTEGER,
+    large_letters       TEXT
   );
 
   CREATE INDEX IF NOT EXISTS words_book_ch_verse_idx ON words (book_id, chapter, verse);
