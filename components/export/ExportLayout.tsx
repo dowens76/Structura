@@ -194,22 +194,38 @@ export default function ExportLayout({ children, revealHref, filename, backHref,
         const totalHeight = el.scrollHeight;
         const elLeft      = elRect.left;
 
-        // Horizontal crop: strip blank side-margins from the inner container.
-        let srcXOffset = 0;          // left offset of cropTo within el, CSS px
-        let outCSSW    = elRect.width;
+        // Margin added around the cropped content (0.10" at 96 dpi = ~10 CSS px).
+        // This prevents RST arrows (rendered outside the container via
+        // SVG overflow-visible) from being clipped at the image edges.
+        const MARGIN_CSS = Math.ceil(0.10 * 96); // ≈ 10 CSS px
+
+        // Horizontal crop: strip blank side-margins from the inner container,
+        // then expand the crop outward by MARGIN_CSS on each side so that any
+        // SVG content that renders outside the container is still captured.
+        let srcXOffset    = 0;           // left offset of crop within el, CSS px
+        let outCSSW       = elRect.width;
+        const topMarginCSS = MARGIN_CSS;
+
         if (cropTo) {
           const cRect = cropTo.getBoundingClientRect();
-          srcXOffset  = cRect.left - elLeft;
-          outCSSW     = cRect.width;
+          // Expand leftward, but not past the el's own left edge.
+          const maxLeftExpand = Math.max(0, cRect.left - elLeft);
+          const leftExpand    = Math.min(MARGIN_CSS, maxLeftExpand);
+          srcXOffset = (cRect.left - leftExpand) - elLeft;
+          outCSSW    = cRect.width + leftExpand + MARGIN_CSS;
         }
 
-        const outW = Math.round(outCSSW    * dpr);
-        const outH = Math.round(totalHeight * dpr);
+        const outW = Math.round(outCSSW                           * dpr);
+        const outH = Math.round((totalHeight + topMarginCSS + MARGIN_CSS) * dpr);
 
         const outCanvas = document.createElement("canvas");
         outCanvas.width  = outW;
         outCanvas.height = outH;
         const ctx = outCanvas.getContext("2d")!;
+        // Fill with white so top/bottom margin rows and any transparent
+        // regions show as white rather than black.
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, outW, outH);
 
         // scrollBase: window scroll Y that puts el's top edge at viewport y=0.
         const scrollBase = savedScrollY + elRect.top;
@@ -237,7 +253,8 @@ export default function ExportLayout({ children, revealHref, filename, backHref,
           const srcX = Math.round((rect.left + srcXOffset) * dpr);
           const srcY = Math.round(visibleElTop             * dpr);
           const srcH = Math.round(stripCSS                 * dpr);
-          const dstY = Math.round(destCSSY                 * dpr);
+          // Offset by topMarginCSS so the content clears the top margin row.
+          const dstY = Math.round((destCSSY + topMarginCSS) * dpr);
 
           await new Promise<void>((resolve, reject) => {
             const img = new Image();
