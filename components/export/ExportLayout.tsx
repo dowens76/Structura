@@ -59,11 +59,20 @@ export default function ExportLayout({ children, revealHref, filename, backHref,
 
         // Mirror the layout-changing subset of @media print rules so overlays
         // re-measure at the positions WKWebView will actually render.
+        //
+        // IMPORTANT: use an absolute rem value (42rem = 672px) rather than
+        // 100% for the container width.  "100%" resolves to the viewport
+        // width on screen but to the printable-area width (~680px for A4,
+        // ~702px for US Letter) in print context.  A rem value is the same
+        // in both contexts, so the pre-measurement here exactly matches what
+        // WKWebView renders — keeping RST arrows correctly anchored.
+        // 42rem ≈ 672px fits within both A4 (680px) and Letter (702px)
+        // printable widths, so no WKWebView content-scaling occurs.
         const printSim = document.createElement("style");
         printSim.textContent = [
           "[lang='he'], .text-hebrew { font-size: 11pt !important; }",
           "[lang='grc'], .text-greek { font-size: 11pt !important; }",
-          "[data-png-crop-to] { max-width: 100% !important; }",
+          "[data-png-crop-to] { max-width: 42rem !important; }",
         ].join("\n");
         document.head.appendChild(printSim);
 
@@ -366,10 +375,14 @@ export default function ExportLayout({ children, revealHref, filename, backHref,
              keeping SVG coordinates consistent with the printed layout. */
           [data-png-target] [class~="w-48"] { width: 8rem !important; }
 
-          /* Content container: fill the full printable width regardless of the
-             screen-layout max-width cap.  The browser reflows to paper width;
-             removing the cap here lets content use every available millimetre. */
-          [data-png-crop-to] { max-width: 100% !important; }
+          /* Content container: use a fixed rem width (42rem = 672px) rather than
+             100%.  "100%" would resolve to paper-printable-area width in print
+             context but viewport width on screen, so the pre-print JS measurement
+             and the actual WKWebView render would use different widths — shifting
+             RST arrows off their anchor points.  42rem is an absolute value that
+             resolves identically in both contexts and fits within both A4 (680px)
+             and US Letter (702px) printable areas without WKWebView scaling. */
+          [data-png-crop-to] { max-width: 42rem !important; }
 
           /* Force light-mode CSS variables so print is always black-on-white,
              even when the app is in dark mode. All children inherit from here. */
