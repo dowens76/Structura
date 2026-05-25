@@ -19,8 +19,14 @@ const LEVEL_WIDTH  = 18;  // px per nesting depth level
  * LTR texts: minimum left padding added to the container so the tree has room.
  * The actual padding grows automatically when the tree is deeply nested.
  * See `useRequiredGutter` below.
+ *
+ * Set to 76 so that the outermost group's spine lands at ≥ 50 px from the
+ * container left edge for all tree depths (depth=1–2 use this floor; depth≥3
+ * grow proportionally but the spine stays fixed at 50 px due to the +32
+ * clearance term in `needed` below).  50 px ≈ 3 rem keeps chips clear of the
+ * page/window edge on both screen and the 42rem export container.
  */
-const LTR_GUTTER_MIN = 72;  // px — minimum left padding for LTR view
+const LTR_GUTTER_MIN = 76;  // px — minimum left padding for LTR view
 
 /**
  * LTR/translation leaf nodes sit this many px to the left of each segment's
@@ -540,7 +546,14 @@ export default function RstRelationOverlay({
     const treeRoot = buildRstTree(relations, paragraphFirstWordIds);
     const h = hierarchy(treeRoot, (n: ReturnType<typeof buildRstTree>) => n.children);
     const depth = Math.max(h.height, 1);
-    const needed = LEAF_MARGIN + depth * LEVEL_WIDTH + 16;
+    // The +32 clearance term ensures the outermost group's spine lands at a
+    // consistent 50 px from the container's left edge for all tree depths
+    // (derivation: spine = refLeftX − 26 − (depth−2)×18; setting needed =
+    // LEAF_MARGIN + depth×LEVEL_WIDTH + 32 makes spine = 50 px for depth ≥ 2,
+    // and LTR_GUTTER_MIN = 76 covers depth = 1 with the same result).
+    // Previously +16 placed the spine at only ~34 px, crowding deep trees
+    // against the left edge of the page.
+    const needed = LEAF_MARGIN + depth * LEVEL_WIDTH + 32;
     // Minimum column gap between verse-label and source-text so the topmost
     // group chip (placed furthest from text) clears the verse-label column.
     // The chip extends CHIP_W/2 = 14 px on each side of its center; +8 px keeps
