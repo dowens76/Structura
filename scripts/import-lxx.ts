@@ -3,9 +3,11 @@
  * Source: https://github.com/eliranwong/LXX-Rahlfs-1935
  * License: CC BY-NC-SA 4.0 (non-commercial, for research use)
  *
- * Downloads and parses three files:
+ * Downloads and parses five files:
  *   - 01_wordlist_unicode/text_accented.csv    → word_id, lexeme_id, greek_text
+ *   - 02_lexemes/OSSP_keys.csv                 → word_id, lemma (Greek dictionary form)
  *   - 03a_morphology.../patched_623685.csv     → word_id, morph_code
+ *   - 07_StrongNumber/final_Strongs.csv        → word_id, Strong's number
  *   - 08_versification/001_verse_c_modified_KEEP.csv → verse_ref, first_word_id
  *
  * Run: npm run import:lxx
@@ -235,6 +237,18 @@ async function main() {
   );
   console.log(" ok");
 
+  process.stdout.write("  Lemmas (~10MB)...");
+  const lemmaPath = await downloadFile(
+    "02_lexemes/OSSP_keys.csv", "lemmas.csv"
+  );
+  console.log(" ok");
+
+  process.stdout.write("  Strong's numbers (~8MB)...");
+  const strongsPath = await downloadFile(
+    "07_StrongNumber/final_Strongs.csv", "strongs.csv"
+  );
+  console.log(" ok");
+
   // Build verse map: word_id → osisRef
   console.log("\nBuilding verse→word index...");
   const verseLines = readFileSync(verseMapPath, "utf-8").split("\n").filter(l => l.trim());
@@ -278,6 +292,28 @@ async function main() {
     morphMap.set(parseInt(idStr, 10), code.trim());
   }
   console.log(`  ${morphMap.size.toLocaleString()} morphology entries loaded`);
+
+  // Load lemmas (word_id → Greek dictionary form)
+  console.log("Loading lemmas...");
+  const lemmaLines = readFileSync(lemmaPath, "utf-8").split("\n");
+  const lemmaMap = new Map<number, string>();
+  for (const line of lemmaLines) {
+    const [idStr, lemma] = line.split("\t");
+    if (!idStr || !lemma) continue;
+    lemmaMap.set(parseInt(idStr, 10), lemma.trim());
+  }
+  console.log(`  ${lemmaMap.size.toLocaleString()} lemma entries loaded`);
+
+  // Load Strong's numbers (word_id → G-number)
+  console.log("Loading Strong's numbers...");
+  const strongsLines = readFileSync(strongsPath, "utf-8").split("\n");
+  const strongsMap = new Map<number, string>();
+  for (const line of strongsLines) {
+    const [idStr, strong] = line.split("\t");
+    if (!idStr || !strong) continue;
+    strongsMap.set(parseInt(idStr, 10), strong.trim());
+  }
+  console.log(`  ${strongsMap.size.toLocaleString()} Strong's entries loaded`);
 
   // lxx.db is freshly created — no need to clear old data
 
@@ -354,8 +390,8 @@ async function main() {
       positionInVerse: pos,
       surfaceText,
       surfaceNorm: null,
-      lemma: null,
-      strongNumber: null,
+      lemma: lemmaMap.get(wordId) ?? null,
+      strongNumber: strongsMap.get(wordId) ?? null,
       morphCode: morphCode || null,
       textSourceId:   reqLookupId("text_sources", "STEPBIBLE_LXX"),
       languageId:     reqLookupId("languages", "greek"),
