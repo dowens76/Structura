@@ -2862,6 +2862,7 @@ export default function PassageView({
 
           {/* Bold formatting mode */}
           {toolbarVis.bold && <button
+            disabled={editingWordTags}
             onClick={() => {
               setEditingBold((v) => !v);
               setEditingItalic(false);
@@ -2876,15 +2877,17 @@ export default function PassageView({
               setRstSegA(null);
               setArrowFromWordId(null);
             }}
-            data-tip={editingBold ? "Exit bold mode" : "Click words to toggle bold"}
+            data-tip={editingWordTags ? t("toolbar.titleBoldDisabled") : editingBold ? t("toolbar.titleBoldOn") : t("toolbar.titleBoldOff")}
             className={["px-2.5 py-1 rounded text-xs font-bold transition-colors",
               editingBold ? "bg-stone-800 text-white dark:bg-stone-200 dark:text-stone-900"
                 : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
+              "disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-stone-100 dark:disabled:hover:bg-stone-800",
             ].join(" ")}
           >B</button>}
 
           {/* Italic formatting mode */}
           {toolbarVis.italic && <button
+            disabled={editingWordTags}
             onClick={() => {
               setEditingItalic((v) => !v);
               setEditingBold(false);
@@ -2899,10 +2902,11 @@ export default function PassageView({
               setRstSegA(null);
               setArrowFromWordId(null);
             }}
-            data-tip={editingItalic ? "Exit italic mode" : "Click words to toggle italic"}
+            data-tip={editingWordTags ? t("toolbar.titleItalicDisabled") : editingItalic ? t("toolbar.titleItalicOn") : t("toolbar.titleItalicOff")}
             className={["px-2.5 py-1 rounded text-xs italic transition-colors",
               editingItalic ? "bg-stone-800 text-white dark:bg-stone-200 dark:text-stone-900"
                 : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
+              "disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-stone-100 dark:disabled:hover:bg-stone-800",
             ].join(" ")}
           >I</button>}
 

@@ -23,6 +23,18 @@ interface NavLinksProps {
   contPrevBook?: string | null;
   /** Last chapter of contPrevBook — only provided when chapter === 1. */
   contPrevBookLastChapter?: number | null;
+  /**
+   * Override the previous chapter number for parallel mode when versification
+   * differences mean the prev chapter is not simply `chapter - 1`.
+   * E.g. from MT Ps 11, prevParallel = 9 (since 9 was shown with 10).
+   */
+  parallelPrevChapter?: number;
+  /**
+   * Override the next chapter number for parallel mode when versification
+   * differences mean the next chapter is not simply `chapter + 1`.
+   * E.g. from MT Ps 9, nextParallel = 11 (since 10 is consumed by the Ps 9 group).
+   */
+  parallelNextChapter?: number;
 }
 
 export default function NavLinks({
@@ -40,6 +52,8 @@ export default function NavLinks({
   contNextBook = null,
   contPrevBook = null,
   contPrevBookLastChapter = null,
+  parallelPrevChapter,
+  parallelNextChapter,
 }: NavLinksProps) {
   const { t, refBookName } = useTranslation();
 
@@ -160,48 +174,54 @@ export default function NavLinks({
 
       {/* Chapter navigation (right side) */}
       <div className="ml-auto flex items-center gap-1">
-        {chapter > 1 ? (
-          <Link
-            href={`/${encodeURIComponent(osisBook)}/${textSource}/${chapter - 1}${parallelMode ? "?par=1" : ""}`}
-            className="px-2 py-1 rounded text-sm transition-colors"
-            style={{ color: "var(--nav-fg)" }}
-          >
-            ← {chapter - 1}
-          </Link>
-        ) : contPrevBook && contPrevBookLastChapter ? (
-          <Link
-            href={`/${encodeURIComponent(contPrevBook)}/${textSource}/${contPrevBookLastChapter}${parallelMode ? "?par=1" : ""}`}
-            className="px-2 py-1 rounded text-sm transition-colors"
-            style={{ color: "var(--nav-fg)" }}
-            title={`${refBookName(contPrevBook)} ${contPrevBookLastChapter}`}
-          >
-            ← {refBookName(contPrevBook)} {contPrevBookLastChapter}
-          </Link>
-        ) : null}
+        {(() => {
+          const prevCh = parallelMode && parallelPrevChapter != null ? parallelPrevChapter : chapter - 1;
+          return prevCh >= 1 ? (
+            <Link
+              href={`/${encodeURIComponent(osisBook)}/${textSource}/${prevCh}${parallelMode ? "?par=1" : ""}`}
+              className="px-2 py-1 rounded text-sm transition-colors"
+              style={{ color: "var(--nav-fg)" }}
+            >
+              ← {prevCh}
+            </Link>
+          ) : contPrevBook && contPrevBookLastChapter ? (
+            <Link
+              href={`/${encodeURIComponent(contPrevBook)}/${textSource}/${contPrevBookLastChapter}${parallelMode ? "?par=1" : ""}`}
+              className="px-2 py-1 rounded text-sm transition-colors"
+              style={{ color: "var(--nav-fg)" }}
+              title={`${refBookName(contPrevBook)} ${contPrevBookLastChapter}`}
+            >
+              ← {refBookName(contPrevBook)} {contPrevBookLastChapter}
+            </Link>
+          ) : null;
+        })()}
         <span
           className="text-sm font-medium px-2"
           style={{ color: "var(--nav-fg)" }}
         >
           {t("nav.chapter", { n: chapter })}
         </span>
-        {chapter < chapterCount ? (
-          <Link
-            href={`/${encodeURIComponent(osisBook)}/${textSource}/${chapter + 1}${parallelMode ? "?par=1" : ""}`}
-            className="px-2 py-1 rounded text-sm transition-colors"
-            style={{ color: "var(--nav-fg)" }}
-          >
-            {chapter + 1} →
-          </Link>
-        ) : contNextBook ? (
-          <Link
-            href={`/${encodeURIComponent(contNextBook)}/${textSource}/1${parallelMode ? "?par=1" : ""}`}
-            className="px-2 py-1 rounded text-sm transition-colors"
-            style={{ color: "var(--nav-fg)" }}
-            title={`${refBookName(contNextBook)} 1`}
-          >
-            {refBookName(contNextBook)} 1 →
-          </Link>
-        ) : null}
+        {(() => {
+          const nextCh = parallelMode && parallelNextChapter != null ? parallelNextChapter : chapter + 1;
+          return nextCh <= chapterCount ? (
+            <Link
+              href={`/${encodeURIComponent(osisBook)}/${textSource}/${nextCh}${parallelMode ? "?par=1" : ""}`}
+              className="px-2 py-1 rounded text-sm transition-colors"
+              style={{ color: "var(--nav-fg)" }}
+            >
+              {nextCh} →
+            </Link>
+          ) : contNextBook ? (
+            <Link
+              href={`/${encodeURIComponent(contNextBook)}/${textSource}/1${parallelMode ? "?par=1" : ""}`}
+              className="px-2 py-1 rounded text-sm transition-colors"
+              style={{ color: "var(--nav-fg)" }}
+              title={`${refBookName(contNextBook)} 1`}
+            >
+              {refBookName(contNextBook)} 1 →
+            </Link>
+          ) : null;
+        })()}
       </div>
     </>
   );

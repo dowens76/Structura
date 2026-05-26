@@ -1,8 +1,8 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
 import {
-  getChapterWords, getBook, getBooksBySource, getBooksWithWords,
+  getChapterWords, getChapterWordsRange, getBook, getBooksBySource, getBooksWithWords,
   getMaxChapterForSource, getTranslations,
   getTranslationVerses, getChapterParagraphBreaks, getCharacters,
   getChapterCharacterRefs, getChapterSpeechSections, getWordTags,
@@ -25,6 +25,13 @@ import ThemeToggle from "@/components/ThemeToggle";
 import SettingsButton from "@/components/SettingsButton";
 import WorkspaceSwitcher from "@/components/WorkspaceSwitcher";
 import { OSIS_BOOK_NAMES, OSIS_REF_BOOK_NAMES, OSHB_LXX_PARALLEL_BOOKS, CONTIGUOUS_BOOK_PAIRS, CONTIGUOUS_BOOK_PREV, canonicalPairBook } from "@/lib/utils/osis";
+import {
+  getParallelGroup,
+  canonicalizeMtChapter,
+  nextParallelMtChapter,
+  prevParallelMtChapter,
+  hasVersificationDifference,
+} from "@/lib/versification";
 import { getActiveWorkspaceId } from "@/lib/workspace";
 
 const LXX_SOURCE = "STEPBIBLE_LXX" as TextSource;
@@ -56,6 +63,21 @@ export default async function ChapterPage({ params, searchParams }: PageProps) {
   const canParallel = textSource === "OSHB" && OSHB_LXX_PARALLEL_BOOKS.has(osisBook);
   const parallelMode = !!par && canParallel;
 
+  // Versification: in parallel mode, redirect non-canonical MT chapters to their
+  // canonical entry (e.g. /Ps/OSHB/10?par=1 → /Ps/OSHB/9?par=1 since Ps 10
+  // is displayed together with Ps 9 as the LXX Ps 9 equivalent).
+  if (parallelMode && hasVersificationDifference(osisBook)) {
+    const canonical = canonicalizeMtChapter(osisBook, chapter);
+    if (canonical !== chapter) {
+      redirect(`/${encodeURIComponent(osisBook)}/OSHB/${canonical}?par=1`);
+    }
+  }
+
+  // Determine which MT and LXX chapters to fetch for the parallel display.
+  const parallelGroup = parallelMode
+    ? (getParallelGroup(osisBook, chapter) ?? { mtChapters: [chapter], lxxChapters: [chapter] })
+    : null;
+
   // For the book dropdown: LXX standalone needs all books that have LXX words.
   const sourceBooksPromise = isLXX
     ? getBooksWithWords(LXX_SOURCE)
@@ -71,12 +93,12 @@ export default async function ChapterPage({ params, searchParams }: PageProps) {
   let lxxWords: WordsArr = [];
 
   try {
-    if (parallelMode) {
+    if (parallelMode && parallelGroup) {
       [words, bookRecord, sourceBooks, lxxWords] = await Promise.all([
-        getChapterWords(osisBook, chapter, textSource),
+        getChapterWordsRange(osisBook, parallelGroup.mtChapters, textSource),
         getBook(osisBook),
         sourceBooksPromise,
-        getChapterWords(osisBook, chapter, LXX_SOURCE),
+        getChapterWordsRange(osisBook, parallelGroup.lxxChapters, LXX_SOURCE),
       ]);
     } else {
       [words, bookRecord, sourceBooks] = await Promise.all([
@@ -260,6 +282,16 @@ export default async function ChapterPage({ params, searchParams }: PageProps) {
           contNextBook={contNextBook}
           contPrevBook={contPrevBook}
           contPrevBookLastChapter={contPrevBookLastChapter}
+          parallelPrevChapter={
+            parallelMode && hasVersificationDifference(osisBook)
+              ? prevParallelMtChapter(osisBook, chapter)
+              : undefined
+          }
+          parallelNextChapter={
+            parallelMode && hasVersificationDifference(osisBook)
+              ? nextParallelMtChapter(osisBook, chapter)
+              : undefined
+          }
         />
 
         {/* Book selector dropdown */}
@@ -311,7 +343,12 @@ export default async function ChapterPage({ params, searchParams }: PageProps) {
                 className="text-xl font-bold tracking-tight"
                 style={{ color: "var(--foreground)", fontFamily: "Georgia, 'Times New Roman', serif" }}
               >
-                {bookName} <span style={{ color: "var(--accent)" }}>{chapter}</span>
+                {bookName}{" "}
+                <span style={{ color: "var(--accent)" }}>
+                  {parallelGroup && parallelGroup.mtChapters.length > 1
+                    ? `${parallelGroup.mtChapters[0]}–${parallelGroup.mtChapters[parallelGroup.mtChapters.length - 1]}`
+                    : chapter}
+                </span>
                 <span className="text-sm font-normal ml-3" style={{ color: "var(--text-muted)" }}>
                   Hebrew ‖ Septuagint
                 </span>
@@ -323,7 +360,8 @@ export default async function ChapterPage({ params, searchParams }: PageProps) {
             <div className="flex-1 min-h-0">
               <ParallelChapterView
                 osisBook={osisBook}
-                chapter={chapter}
+                oshbChapters={parallelGroup?.mtChapters ?? [chapter]}
+                lxxChapters={parallelGroup?.lxxChapters ?? [chapter]}
                 oshbWords={words}
                 lxxWords={lxxWords}
               />

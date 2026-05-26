@@ -148,6 +148,55 @@ export async function getChapterWords(
   return rows.map((r) => decodeWord(r, sourceLookups));
 }
 
+/**
+ * Fetch words for a range of chapters from one source.
+ * Returns words ordered by (chapter, verse, positionInVerse).
+ * Chapters that yield no words are simply absent from the result.
+ */
+export async function getChapterWordsRange(
+  osisBook: string,
+  chapters: number[],
+  textSource: TextSource
+): Promise<Word[]> {
+  if (chapters.length === 0) return [];
+  if (chapters.length === 1) return getChapterWords(osisBook, chapters[0], textSource);
+
+  const book = await getBook(osisBook);
+  if (!book) return [];
+
+  const chMin = Math.min(...chapters);
+  const chMax = Math.max(...chapters);
+
+  if (textSource === "STEPBIBLE_LXX") {
+    const lxxDb = getLxxDb();
+    if (!lxxDb) return [];
+    const rows = await lxxDb
+      .select()
+      .from(words)
+      .where(and(
+        eq(words.bookId, book.id),
+        gte(words.chapter, chMin),
+        lte(words.chapter, chMax),
+      ))
+      .orderBy(asc(words.chapter), asc(words.verse), asc(words.positionInVerse));
+    return rows.map((r) => decodeWord(r, lxxLookups));
+  }
+
+  const tsId = sourceLookups.textSourceByValue[textSource];
+  if (tsId == null) return [];
+  const rows = await sourceDb
+    .select()
+    .from(words)
+    .where(and(
+      eq(words.bookId, book.id),
+      gte(words.chapter, chMin),
+      lte(words.chapter, chMax),
+      eq(words.textSourceId, tsId),
+    ))
+    .orderBy(asc(words.chapter), asc(words.verse), asc(words.positionInVerse));
+  return rows.map((r) => decodeWord(r, sourceLookups));
+}
+
 export async function getWordById(wordId: string): Promise<Word | undefined> {
   if (wordId.startsWith("LXX.")) {
     const lxxDb = getLxxDb();

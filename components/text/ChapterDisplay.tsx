@@ -3422,16 +3422,18 @@ export default function ChapterDisplay({
 
               {/* Bold formatting mode */}
               {toolbarVis.bold && <button
+                disabled={editingWordTags}
                 onClick={() => {
                   if (!editingBold) deactivateIncompatible("bold");
                   setEditingBold((v) => !v);
                 }}
-                data-tip={editingBold ? t("toolbar.titleBoldOn") : t("toolbar.titleBoldOff")}
+                data-tip={editingWordTags ? t("toolbar.titleBoldDisabled") : editingBold ? t("toolbar.titleBoldOn") : t("toolbar.titleBoldOff")}
                 className={[
                   "px-3 py-1.5 rounded text-[13px] font-bold transition-colors",
                   editingBold
                     ? "bg-stone-800 text-white dark:bg-stone-200 dark:text-stone-900"
                     : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
+                  "disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-stone-100 dark:disabled:hover:bg-stone-800",
                 ].join(" ")}
               >
                 B
@@ -3439,16 +3441,18 @@ export default function ChapterDisplay({
 
               {/* Italic formatting mode */}
               {toolbarVis.italic && <button
+                disabled={editingWordTags}
                 onClick={() => {
                   if (!editingItalic) deactivateIncompatible("italic");
                   setEditingItalic((v) => !v);
                 }}
-                data-tip={editingItalic ? t("toolbar.titleItalicOn") : t("toolbar.titleItalicOff")}
+                data-tip={editingWordTags ? t("toolbar.titleItalicDisabled") : editingItalic ? t("toolbar.titleItalicOn") : t("toolbar.titleItalicOff")}
                 className={[
                   "px-3 py-1.5 rounded text-[13px] italic transition-colors",
                   editingItalic
                     ? "bg-stone-800 text-white dark:bg-stone-200 dark:text-stone-900"
                     : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
+                  "disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-stone-100 dark:disabled:hover:bg-stone-800",
                 ].join(" ")}
               >
                 I
