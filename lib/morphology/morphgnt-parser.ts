@@ -70,6 +70,7 @@ export function parseMorphgntCode(posCode: string, parseCode: string): ParsedMor
     tense: null, voice: null, mood: null, person: null,
     gender: null, wordNumber: null, verbCase: null, state: null,
     prefixes: [],
+    suffixType: null, suffixPerson: null, suffixGender: null, suffixNumber: null,
   };
 
   if (!parseCode || parseCode.length < 7) return result;

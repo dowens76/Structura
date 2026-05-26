@@ -41,12 +41,20 @@ const STATE_MAP: Record<string, string> = {
 };
 
 const PREFIX_MAP: Record<string, string> = {
-  A: "adjective prefix", C: "conjunction", D: "definite article",
-  N: "negative particle", P: "pronoun", R: "relative pronoun",
-  S: "preposition", T: "particle", b: "preposition (ב)",
-  c: "conjunction (ו)", d: "definite article", i: "preposition (ל)",
-  k: "preposition (כ)", l: "preposition (ל)", m: "preposition (מ)",
-  s: "preposition (ש)",
+  C: "conjunction", c: "conjunction (ו)",
+  R: "preposition",
+  b: "preposition (ב)", i: "preposition (ל)", k: "preposition (כ)",
+  l: "preposition (ל)", m: "preposition (מ)", s: "preposition (ש)",
+  d: "definite article", T: "definite article",
+  N: "negative particle",
+  D: "adverb", P: "pronoun",
+};
+
+const SUFFIX_TYPE_MAP: Record<string, string> = {
+  p: "pronominal suffix",
+  d: "directional",
+  h: "paragogic he",
+  n: "paragogic nun",
 };
 
 export function parseOshbMorph(morphCode: string): ParsedMorphology {
@@ -54,20 +62,51 @@ export function parseOshbMorph(morphCode: string): ParsedMorphology {
     partOfSpeech: null, stem: null, tense: null, voice: null,
     mood: null, person: null, gender: null, wordNumber: null,
     verbCase: null, state: null, prefixes: [],
+    suffixType: null, suffixPerson: null, suffixGender: null, suffixNumber: null,
   };
 
   if (!morphCode || morphCode === "NONE") return result;
 
-  // Strip leading 'H' language marker
-  let code = morphCode.startsWith("H") ? morphCode.slice(1) : morphCode;
+  // Strip leading 'H' (Hebrew) or 'A' (Aramaic) language marker
+  let code = (morphCode.startsWith("H") || morphCode.startsWith("A"))
+    ? morphCode.slice(1)
+    : morphCode;
 
-  // Split on '/' to get prefix parts and main morphology
+  // Split into morpheme parts on '/'.
+  // Structure: [prefix…] / main / [suffix…]
+  // Suffix morphemes always start with 'S' and come last.
+  // The main morpheme is the last non-suffix (non-'S') part.
   const parts = code.split("/");
-  const mainPart = parts[parts.length - 1];
-  const prefixParts = parts.slice(0, -1);
 
-  // Decode prefixes
+  // Walk backwards to separate suffix parts from the main morpheme.
+  let mainIdx = parts.length - 1;
+  while (mainIdx > 0 && parts[mainIdx].startsWith("S")) {
+    mainIdx--;
+  }
+
+  const mainPart = parts[mainIdx] ?? "";
+  const prefixParts = parts.slice(0, mainIdx);
+  const suffixParts = parts.slice(mainIdx + 1);
+
+  // Decode prefixes (keep only the first character of each prefix part for lookup)
   result.prefixes = prefixParts.map((p) => PREFIX_MAP[p[0]] ?? p).filter(Boolean);
+
+  // Decode suffix morphemes — prioritise the pronominal suffix (type 'p') for
+  // person/gender/number; record the first suffix type found.
+  for (const suf of suffixParts) {
+    if (suf.length < 2) continue;
+    const sufType = suf[1]; // e.g. 'p', 'd', 'h', 'n'
+    if (!result.suffixType) {
+      result.suffixType = SUFFIX_TYPE_MAP[sufType] ?? null;
+    }
+    if (sufType === "p") {
+      // Sp[person][gender][number]
+      result.suffixPerson = ["1", "2", "3"].includes(suf[2]) ? suf[2] : null;
+      result.suffixGender = GENDER_MAP[suf[3]] ?? null;
+      result.suffixNumber = NUMBER_MAP[suf[4]] ?? null;
+      break; // pronominal suffix carries the richest info; stop here
+    }
+  }
 
   if (!mainPart) return result;
 

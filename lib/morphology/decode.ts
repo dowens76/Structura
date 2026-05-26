@@ -14,6 +14,7 @@ const EMPTY: ParsedMorphology = {
   partOfSpeech: null, stem: null, tense: null, voice: null,
   mood: null, person: null, gender: null, wordNumber: null,
   verbCase: null, state: null, prefixes: [],
+  suffixType: null, suffixPerson: null, suffixGender: null, suffixNumber: null,
 };
 
 export function getMorphology(word: Word): ParsedMorphology {

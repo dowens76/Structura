@@ -51,6 +51,7 @@ export function parseLxxMorph(morphCode: string): ParsedMorphology {
     partOfSpeech: null, stem: null, tense: null, voice: null,
     mood: null, person: null, gender: null, wordNumber: null,
     verbCase: null, state: null, prefixes: [],
+    suffixType: null, suffixPerson: null, suffixGender: null, suffixNumber: null,
   };
 
   if (!morphCode) return result;

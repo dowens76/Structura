@@ -13,6 +13,11 @@ export interface ParsedMorphology {
   state: string | null;    // Hebrew: absolute, construct, determined
   // Prefix info (Hebrew)
   prefixes: string[];
+  // Pronominal/directional suffix (Hebrew) — attached suffix morpheme
+  suffixType: string | null;   // "pronominal suffix", "directional", "paragogic nun", etc.
+  suffixPerson: string | null; // 1, 2, 3
+  suffixGender: string | null; // masculine, feminine, common
+  suffixNumber: string | null; // singular, plural
 }
 
 export interface WordData {

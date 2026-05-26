@@ -137,6 +137,21 @@ export default function MorphologyPanel({ word, useLinguisticTerms = false, onSe
         {isHebrew && <Field label="State" value={morph.state} />}
       </div>
 
+      {/* Pronominal / directional suffix (Hebrew) */}
+      {isHebrew && morph.suffixType && (
+        <div className="mt-4">
+          <div className="text-xs font-semibold text-stone-500 dark:text-stone-400 uppercase tracking-wide mb-1">
+            Suffix
+          </div>
+          <div className="divide-y divide-stone-100 dark:divide-stone-800">
+            <Field label="Type" value={morph.suffixType} />
+            <Field label="Person" value={morph.suffixPerson ? `${morph.suffixPerson}${morph.suffixPerson === "1" ? "st" : morph.suffixPerson === "2" ? "nd" : "rd"}` : null} />
+            <Field label="Gender" value={morph.suffixGender} />
+            <Field label="Number" value={morph.suffixNumber} />
+          </div>
+        </div>
+      )}
+
       {/* Raw morph code */}
       {word.morphCode && (
         <div className="mt-4 p-2 bg-stone-50 dark:bg-stone-900 rounded text-xs font-mono text-stone-400 dark:text-stone-500">
