@@ -181,6 +181,15 @@ interface VerseDisplayProps {
   onDeleteFootnote?: (translationId: number, footnoteId: number) => void;
   /** Called when the user clicks the edit button on a footnote. */
   onEditFootnote?: (fn: TranslationFootnote) => void;
+  /** When true, the × delete button is shown on footnote chips. */
+  editingFootnotes?: boolean;
+  /**
+   * When set, this verse is in anchor-placement mode for the given footnote.
+   * Translation text words become clickable targets; clicking places the anchor.
+   */
+  anchorMoveFootnote?: { id: number; translationId: number; verse: number; abbr: string };
+  /** Called when the user clicks a word to place the footnote anchor. */
+  onMoveFootnoteAnchor?: (footnoteId: number, wordIndex: number) => void;
   /** True when at least one translation is active, even if this verse has no text yet.
    *  Used to keep the two-column layout visible and show a "start translating" hint. */
   hasActiveTranslations?: boolean;
@@ -909,6 +918,9 @@ export default function VerseDisplay({
   translationFootnotes = [] as TranslationFootnote[],
   onDeleteFootnote,
   onEditFootnote,
+  editingFootnotes = false,
+  anchorMoveFootnote,
+  onMoveFootnoteAnchor,
   hasActiveTranslations = false,
   translationVerseOffset = 0,
   translationVerseLabelFn,
@@ -2188,6 +2200,10 @@ export default function VerseDisplay({
                         fnLetter = String.fromCharCode(97 + (fnCounters[abbr]++ % 26));
                       }
 
+                      // Anchor-placement mode: this translation word is a clickable target
+                      const isAnchorMoveTarget =
+                        !!anchorMoveFootnote && anchorMoveFootnote.translationId === tvTranslationId;
+
                       return (
                         <span key={globalWi}>
                           {(isMidVerseBreak || isInterSegBreak) && (
@@ -2213,8 +2229,16 @@ export default function VerseDisplay({
                           <span
                             data-word-id={wordId}
                             style={{ ...underlineStyle, ...tvBgStyle, ...tvFormattingStyle, ...usfmStyle }}
-                            className={[tokenClassName, usfmClassName, isTvRangeStart ? "outline outline-2 outline-violet-400 bg-violet-100 dark:bg-violet-900/40" : ""].filter(Boolean).join(" ")}
-                            onClick={handleClick}
+                            className={[
+                              tokenClassName,
+                              usfmClassName,
+                              isTvRangeStart ? "outline outline-2 outline-violet-400 bg-violet-100 dark:bg-violet-900/40" : "",
+                              isAnchorMoveTarget ? "cursor-crosshair hover:ring-1 hover:ring-sky-400 hover:rounded-sm" : "",
+                            ].filter(Boolean).join(" ")}
+                            onClick={isAnchorMoveTarget
+                              ? (e) => { e.stopPropagation(); onMoveFootnoteAnchor?.(anchorMoveFootnote!.id, globalWi); }
+                              : handleClick}
+                            title={isAnchorMoveTarget ? "Click to place footnote anchor here" : undefined}
                           >
                             {tokCore}
                           </span>
@@ -2431,12 +2455,12 @@ export default function VerseDisplay({
                             title="Edit footnote"
                           >✎</button>
                         )}
-                        {onDeleteFootnote && (
+                        {editingFootnotes && onDeleteFootnote && (
                           <button
                             type="button"
                             onClick={() => onDeleteFootnote(fn.translationId, fn.id)}
-                            className="text-stone-300 hover:text-red-500 dark:text-stone-500 dark:hover:text-red-400 text-xs leading-none mt-0.5 shrink-0"
-                            title="Delete footnote"
+                            className="text-amber-400 hover:text-red-500 dark:text-amber-500 dark:hover:text-red-400 text-xs leading-none mt-0.5 shrink-0"
+                            title="Delete footnote (removes anchor from text)"
                           >×</button>
                         )}
                       </div>

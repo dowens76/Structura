@@ -31,16 +31,22 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({ footnote });
 }
 
-/** PATCH { id, content, type? } → { success: true } */
+/** PATCH { id, content, type?, wordIndex? } → { success: true } */
 export async function PATCH(req: NextRequest) {
-  const { id, content, type } = await req.json();
-  await updateTranslationFootnote(id as number, content as string, type as string | undefined);
+  const { id, content, type, wordIndex } = await req.json();
+  await updateTranslationFootnote(
+    id as number,
+    content as string,
+    type as string | undefined,
+    wordIndex as number | undefined,
+  );
   return NextResponse.json({ success: true });
 }
 
-/** DELETE { id } → { success: true } */
+/** DELETE ?id=<footnoteId> → { success: true } */
 export async function DELETE(req: NextRequest) {
-  const { id } = await req.json();
-  await deleteTranslationFootnote(id as number);
+  const id = parseInt(new URL(req.url).searchParams.get("id") ?? "0", 10);
+  if (!id) return NextResponse.json({ error: "missing id" }, { status: 400 });
+  await deleteTranslationFootnote(id);
   return NextResponse.json({ success: true });
 }

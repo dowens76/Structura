@@ -175,6 +175,11 @@ export default function ChapterDisplay({
 
   // Footnote visibility
   const [showFootnotes, setShowFootnotes] = useState(true);
+  // Editing-mode gate for destructive footnote operations (deletion).
+  // When false the × delete button is hidden; edit (✎) remains always accessible.
+  const [editingFootnotes, setEditingFootnotes] = useState(false);
+  // Anchor-move mode: ID of the footnote whose \fn \fn* is being repositioned.
+  const [fnAnchorMoveId, setFnAnchorMoveId] = useState<number | null>(null);
 
   // Version history panel state
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -735,7 +740,11 @@ export default function ChapterDisplay({
         tagFocusedFindWordRef.current();
         return;
       }
-      // Escape — close find bar
+      // Escape — cancel anchor-move mode first; then close find bar
+      if (e.key === "Escape" && fnAnchorMoveId !== null) {
+        setFnAnchorMoveId(null);
+        return;
+      }
       if (e.key === "Escape" && findOpenRef.current) {
         setFindOpen(false);
         setFindQuery("");
@@ -2848,10 +2857,46 @@ export default function ChapterDisplay({
   }
 
   // ── Footnote CRUD ────────────────────────────────────────────────────────────
+
+  /**
+   * Remove the nth occurrence (0-based) of a `\fn \fn*` marker from a verse
+   * text string.  Handles two forms:
+   *   "word \fn \fn* more"   → "word more"   (attached-to-preceding-word form)
+   *   "\fn \fn* word"        → "word"         (standalone form / fn at start)
+   * Collapses any resulting double-spaces to a single space.
+   */
+  function removeNthFnMarker(text: string, n: number): string {
+    const FN_RE = /\s*\\fn\s+\\fn\*/g;
+    let count = 0;
+    let result = text.replace(FN_RE, (match) => {
+      if (count++ === n) return "";
+      return match;
+    });
+    // Collapse double-spaces left behind
+    result = result.replace(/  +/g, " ").trim();
+    return result;
+  }
+
+  /**
+   * Returns footnotes for a given (translationId, verse) sorted by wordIndex asc,
+   * then id asc — the same order as the `\fn \fn*` markers in the verse text.
+   */
+  function sortedVerseFootnotes(translationId: number, verse: number): TranslationFootnote[] {
+    return (localFootnotes[translationId] ?? [])
+      .filter((fn) => fn.verse === verse)
+      .sort((a, b) => a.wordIndex - b.wordIndex || a.id - b.id);
+  }
+
   async function handleCreateFootnote() {
     const translation = allAvailableTranslations.find((t) => t.abbreviation === fnDialogAbbr);
     if (!translation || !fnDialogContent.trim()) return;
     try {
+      // Compute wordIndex = number of content words in the existing verse text.
+      // The \fn \fn* is appended at the very end, so it sits after all words.
+      const tvRecord = localTranslationVerseData[translation.id]?.find((tv) => tv.verse === fnDialogVerse);
+      const existingText = tvRecord?.text ?? "";
+      const wordIndex = existingText.trim().split(/\s+/).filter(Boolean).length;
+
       const res = await fetch("/api/translation-footnotes", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -2860,7 +2905,7 @@ export default function ChapterDisplay({
           osisRef: `${book}.${chapter}.${fnDialogVerse}`,
           type: fnDialogType,
           content: fnDialogContent.trim(),
-          wordIndex: 0,
+          wordIndex,
           book,
           chapter,
           verse: fnDialogVerse,
@@ -2873,9 +2918,8 @@ export default function ChapterDisplay({
           [translation.id]: [...(prev[translation.id] ?? []), created],
         }));
         // Append \fn \fn* anchor to the verse text so the superscript appears in the translation
-        const tvRecord = localTranslationVerseData[translation.id]?.find((tv) => tv.verse === fnDialogVerse);
         if (tvRecord) {
-          const newText = tvRecord.text.trimEnd() + " \\fn \\fn*";
+          const newText = existingText.trimEnd() + " \\fn \\fn*";
           await handleUpdateTranslationVerse(fnDialogAbbr, fnDialogVerse, newText);
         }
         setFnDialogOpen(false);
@@ -2916,7 +2960,75 @@ export default function ChapterDisplay({
     setFnDialogVerse(fn.verse);
     setFnDialogType(fn.type as "f" | "x");
     setFnDialogContent(fn.content);
+    setFnAnchorMoveId(null); // clear any pending move
     setFnDialogOpen(true);
+  }
+
+  /** Called from VerseDisplay when the user clicks a word during anchor-move mode. */
+  async function handleMoveFootnoteAnchor(fnId: number, newWordIndex: number) {
+    // Find the footnote record
+    let targetFn: TranslationFootnote | undefined;
+    for (const fns of Object.values(localFootnotes)) {
+      targetFn = fns.find((fn) => fn.id === fnId);
+      if (targetFn) break;
+    }
+    if (!targetFn) { setFnAnchorMoveId(null); return; }
+
+    const { translationId, verse } = targetFn;
+    const translation = allAvailableTranslations.find((t) => t.id === translationId);
+    if (!translation) { setFnAnchorMoveId(null); return; }
+
+    // Rank of this footnote among same-verse footnotes (sorted order)
+    const siblings = sortedVerseFootnotes(translationId, verse);
+    const rank = siblings.findIndex((fn) => fn.id === fnId);
+    if (rank < 0) { setFnAnchorMoveId(null); return; }
+
+    // Current verse text
+    const tvRecord = localTranslationVerseData[translationId]?.find((tv) => tv.verse === verse);
+    if (!tvRecord) { setFnAnchorMoveId(null); return; }
+
+    // Remove the nth \fn \fn* from the verse text
+    let newText = removeNthFnMarker(tvRecord.text, rank);
+
+    // Re-insert \fn \fn* after the word at newWordIndex.
+    // Split into tokens (preserving spacing).  IMPORTANT: skip raw USFM command tokens
+    // (those starting with \) when counting toward newWordIndex.  After removeNthFnMarker
+    // the remaining \fn \fn* markers are still present as raw tokens, and globalWi from
+    // VerseDisplay counts only visible/encoded words (never \fn, \fn*, \nd*, etc.).
+    const tokens = newText.split(/(\s+)/);
+    let wordCount = 0;
+    let insertPos = tokens.length; // default: append at end
+    for (let i = 0; i < tokens.length; i++) {
+      if (tokens[i].trim() && !tokens[i].startsWith("\\")) {
+        if (wordCount === newWordIndex) { insertPos = i; break; }
+        wordCount++;
+      }
+    }
+    tokens.splice(insertPos + 1, 0, " \\fn \\fn*");
+    newText = tokens.join("").replace(/  +/g, " ").trim();
+
+    try {
+      // Save updated verse text
+      await handleUpdateTranslationVerse(translation.abbreviation, verse, newText);
+
+      // Persist new wordIndex
+      await fetch("/api/translation-footnotes", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: fnId, content: targetFn.content, wordIndex: newWordIndex }),
+      });
+
+      // Update local state
+      setLocalFootnotes((prev) => {
+        const updated = { ...prev };
+        updated[translationId] = (updated[translationId] ?? []).map((fn) =>
+          fn.id === fnId ? { ...fn, wordIndex: newWordIndex } : fn
+        );
+        return updated;
+      });
+    } catch { /* ignore */ }
+
+    setFnAnchorMoveId(null);
   }
 
   async function openChapterUsfm() {
@@ -2960,6 +3072,22 @@ export default function ChapterDisplay({
   }
 
   async function handleDeleteFootnote(translationId: number, fnId: number) {
+    // First remove the \fn \fn* anchor from the verse text so no ghost marker remains.
+    const targetFn = (localFootnotes[translationId] ?? []).find((fn) => fn.id === fnId);
+    if (targetFn) {
+      const translation = allAvailableTranslations.find((t) => t.id === translationId);
+      if (translation) {
+        const siblings = sortedVerseFootnotes(translationId, targetFn.verse);
+        const rank = siblings.findIndex((fn) => fn.id === fnId);
+        const tvRecord = localTranslationVerseData[translationId]?.find((tv) => tv.verse === targetFn.verse);
+        if (tvRecord && rank >= 0) {
+          const newText = removeNthFnMarker(tvRecord.text, rank);
+          if (newText !== tvRecord.text) {
+            await handleUpdateTranslationVerse(translation.abbreviation, targetFn.verse, newText);
+          }
+        }
+      }
+    }
     try {
       await fetch(`/api/translation-footnotes?id=${fnId}`, { method: "DELETE" });
       setLocalFootnotes((prev) => ({
@@ -3026,6 +3154,7 @@ export default function ChapterDisplay({
     if (!keep.has("arrows"))      { setEditingArrows(false); setArrowFromWordId(null); }
     if (!keep.has("bold"))        setEditingBold(false);
     if (!keep.has("italic"))      setEditingItalic(false);
+    if (!keep.has("footnotes"))   { setEditingFootnotes(false); setFnAnchorMoveId(null); }
   }
 
   return (
@@ -3734,6 +3863,30 @@ export default function ChapterDisplay({
                       fn
                     </button>
                   )}
+                  {/* Edit-footnotes mode — reveals the × delete button on footnotes */}
+                  {hasActiveTranslations && showFootnotes && (
+                    <button
+                      onClick={() => setEditingFootnotes((v) => !v)}
+                      data-tip={editingFootnotes ? "Exit footnote editing" : "Edit footnotes (enable delete)"}
+                      className={[
+                        "px-2.5 py-1.5 rounded text-[11px] font-medium transition-colors",
+                        editingFootnotes
+                          ? "bg-amber-100 dark:bg-amber-900/40 text-amber-600 dark:text-amber-400 ring-1 ring-amber-400"
+                          : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
+                      ].join(" ")}
+                    >
+                      fn✎
+                    </button>
+                  )}
+                  {/* Anchor-move mode — cancel chip */}
+                  {fnAnchorMoveId !== null && (
+                    <button
+                      onClick={() => setFnAnchorMoveId(null)}
+                      className="px-2.5 py-1.5 rounded text-[11px] font-medium transition-colors bg-sky-100 dark:bg-sky-900/40 text-sky-600 dark:text-sky-400 ring-1 ring-sky-400 animate-pulse"
+                    >
+                      Click word to place anchor · Esc to cancel
+                    </button>
+                  )}
                 </div>
               )}
 
@@ -4166,6 +4319,16 @@ export default function ChapterDisplay({
                 }
                 onDeleteFootnote={(translationId, fnId) => handleDeleteFootnote(translationId, fnId)}
                 onEditFootnote={(fn) => openEditFootnote(fn)}
+                editingFootnotes={editingFootnotes}
+                anchorMoveFootnote={(() => {
+                  if (fnAnchorMoveId === null) return undefined;
+                  const fn = Object.values(localFootnotes).flat().find((f) => f.id === fnAnchorMoveId);
+                  if (!fn || fn.verse !== verseNum) return undefined;
+                  const tr = allAvailableTranslations.find((t) => t.id === fn.translationId);
+                  if (!tr) return undefined;
+                  return { id: fn.id, translationId: fn.translationId, verse: fn.verse, abbr: tr.abbreviation };
+                })()}
+                onMoveFootnoteAnchor={(fnId, wordIndex) => handleMoveFootnoteAnchor(fnId, wordIndex)}
               />
             );
           })}
@@ -4286,23 +4449,43 @@ export default function ChapterDisplay({
               className="w-full text-xs rounded border px-2 py-1.5 resize-y focus:outline-none focus:ring-1 focus:ring-sky-500"
               style={{ backgroundColor: "var(--surface-muted)", borderColor: "var(--border-muted)", color: "var(--foreground)" }}
             />
-            <div className="flex justify-end gap-2 mt-3">
-              <button
-                type="button"
-                onClick={() => { setFnDialogOpen(false); setFnEditId(null); setFnDialogContent(""); }}
-                className="px-3 py-1.5 text-xs rounded border"
-                style={{ borderColor: "var(--border-muted)", color: "var(--text-muted)" }}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={fnEditId !== null ? handleUpdateFootnote : handleCreateFootnote}
-                disabled={!fnDialogContent.trim()}
-                className="px-3 py-1.5 text-xs rounded bg-emerald-600 text-white disabled:opacity-50"
-              >
-                {fnEditId !== null ? "Save" : "Add"}
-              </button>
+            <div className="flex justify-between gap-2 mt-3">
+              <div>
+                {fnEditId !== null && (() => {
+                  const thisFn = Object.values(localFootnotes).flat().find((fn) => fn.id === fnEditId);
+                  return thisFn ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFnDialogOpen(false);
+                        setFnAnchorMoveId(fnEditId);
+                        setFnEditId(null);
+                      }}
+                      className="px-3 py-1.5 text-xs rounded border border-sky-500 text-sky-500 hover:bg-sky-500/10 transition-colors"
+                    >
+                      ⊕ Reposition anchor
+                    </button>
+                  ) : null;
+                })()}
+              </div>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => { setFnDialogOpen(false); setFnEditId(null); setFnDialogContent(""); }}
+                  className="px-3 py-1.5 text-xs rounded border"
+                  style={{ borderColor: "var(--border-muted)", color: "var(--text-muted)" }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={fnEditId !== null ? handleUpdateFootnote : handleCreateFootnote}
+                  disabled={!fnDialogContent.trim()}
+                  className="px-3 py-1.5 text-xs rounded bg-emerald-600 text-white disabled:opacity-50"
+                >
+                  {fnEditId !== null ? "Save" : "Add"}
+                </button>
+              </div>
             </div>
           </div>
         </div>

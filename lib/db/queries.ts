@@ -2025,10 +2025,15 @@ export async function updateTranslationFootnote(
   id: number,
   content: string,
   type?: string,
+  wordIndex?: number,
 ): Promise<void> {
   await userDb
     .update(translationFootnotes)
-    .set({ content, ...(type ? { type } : {}) })
+    .set({
+      content,
+      ...(type      !== undefined ? { type }      : {}),
+      ...(wordIndex !== undefined ? { wordIndex } : {}),
+    })
     .where(eq(translationFootnotes.id, id));
 }
 
