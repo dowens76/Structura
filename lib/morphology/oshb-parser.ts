@@ -21,9 +21,11 @@ const STEM_MAP: Record<string, string> = {
 };
 
 const ASPECT_MAP: Record<string, string> = {
-  p: "perfect", i: "imperfect", w: "sequential imperfect",
-  q: "sequential perfect", v: "volitional", r: "participle",
-  s: "imperative", a: "infinitive absolute", c: "infinitive construct",
+  p: "perfect", q: "sequential perfect",
+  i: "imperfect", w: "sequential imperfect",
+  h: "cohortative", j: "jussive", v: "imperative",
+  r: "active participle", s: "passive participle",
+  a: "infinitive absolute", c: "infinitive construct",
 };
 
 const GENDER_MAP: Record<string, string> = {
@@ -81,16 +83,30 @@ export function parseOshbMorph(morphCode: string): ParsedMorphology {
       result.state = STATE_MAP[rest[3]] ?? null;
       break;
 
-    case "V": // Verb
+    case "V": { // Verb
       result.partOfSpeech = "verb";
       result.stem = STEM_MAP[rest[0]] ?? rest[0] ?? null;
-      result.tense = ASPECT_MAP[rest[1]] ?? rest[1] ?? null;
-      result.person = ["1", "2", "3"].includes(rest[2]) ? rest[2] : null;
-      result.gender = GENDER_MAP[rest[3]] ?? null;
-      result.wordNumber = NUMBER_MAP[rest[4]] ?? null;
-      // State for participles
-      if (rest[5]) result.state = STATE_MAP[rest[5]] ?? null;
+      const aspect = rest[1] ?? "";
+      result.tense = ASPECT_MAP[aspect] ?? aspect ?? null;
+
+      if (aspect === "r" || aspect === "s") {
+        // Participles (active/passive): V[stem][r/s][gender][number][state]
+        // No person field — participles behave like verbal adjectives.
+        result.gender = GENDER_MAP[rest[2]] ?? null;
+        result.wordNumber = NUMBER_MAP[rest[3]] ?? null;
+        result.state = STATE_MAP[rest[4]] ?? null;
+      } else if (aspect === "a" || aspect === "c") {
+        // Infinitives: V[stem][a/c] — no person/gender/number fields
+      } else {
+        // Finite verbs (perfect, sequential perfect, imperfect, sequential
+        // imperfect, cohortative, jussive, imperative):
+        // V[stem][aspect][person][gender][number]
+        result.person = ["1", "2", "3"].includes(rest[2]) ? rest[2] : null;
+        result.gender = GENDER_MAP[rest[3]] ?? null;
+        result.wordNumber = NUMBER_MAP[rest[4]] ?? null;
+      }
       break;
+    }
 
     case "A": // Adjective — format: [type][gender][number][state]
       result.partOfSpeech = "adjective";
