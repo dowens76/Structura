@@ -184,6 +184,22 @@ interface VerseDisplayProps {
   /** True when at least one translation is active, even if this verse has no text yet.
    *  Used to keep the two-column layout visible and show a "start translating" hint. */
   hasActiveTranslations?: boolean;
+  /**
+   * When > 0 the active translation(s) use KJV-style verse numbering that is
+   * offset from the MT by this many verses (Psalm superscriptions).
+   * E.g. offset=1 means MT verse 2 = translation verse 1.
+   * Used to display the translation verse number in brackets below the MT
+   * verse number, and to suppress the "Enable editing to translate" placeholder
+   * on superscription-only verses (where no translation text is expected).
+   */
+  translationVerseOffset?: number;
+  /**
+   * When set, returns a KJV cross-chapter reference label for a given MT verse
+   * number, e.g. "1:17" for MT Jonah 2:1.  Takes precedence over
+   * `translationVerseOffset` for the bracketed-label display.
+   * Used for Jonah ch2, Joel ch3-4, Malachi ch3 tail.
+   */
+  translationVerseLabelFn?: (verseNum: number) => string | null;
 }
 
 // ── Annotation sub-components ────────────────────────────────────────────────
@@ -894,6 +910,8 @@ export default function VerseDisplay({
   onDeleteFootnote,
   onEditFootnote,
   hasActiveTranslations = false,
+  translationVerseOffset = 0,
+  translationVerseLabelFn,
 }: VerseDisplayProps) {
   const firstWordId = words[0]?.wordId;
   const verseStartsNewParagraph = firstWordId ? paragraphBreakIds.has(firstWordId) : false;
@@ -2343,6 +2361,32 @@ export default function VerseDisplay({
                   style={{ minWidth: "5rem", textAlign: "center", paddingTop: labelPaddingTop }}
                 >
                   {paraLabels[si]}
+                  {si === 0 && translationTexts.length > 0 && (() => {
+                    // Cross-chapter remap label (e.g. "[1:17]" for MT Jonah 2:1)
+                    const crossLabel = translationVerseLabelFn?.(verseNum);
+                    if (crossLabel) {
+                      return (
+                        <span
+                          className="block text-[0.7em] leading-tight mt-0.5"
+                          style={{ color: "var(--text-muted)" }}
+                        >
+                          [{crossLabel}]
+                        </span>
+                      );
+                    }
+                    // Same-chapter offset label (e.g. "[1]" for MT Ps 22:2 in ULT)
+                    if (translationVerseOffset > 0 && verseNum > translationVerseOffset) {
+                      return (
+                        <span
+                          className="block text-[0.7em] leading-tight mt-0.5"
+                          style={{ color: "var(--text-muted)" }}
+                        >
+                          [{verseNum - translationVerseOffset}]
+                        </span>
+                      );
+                    }
+                    return null;
+                  })()}
                 </span>
               )}
             </div>
@@ -2359,7 +2403,11 @@ export default function VerseDisplay({
               {tvRowContent}
               {/* Placeholder shown on the first row when a translation is active but
                   this chapter has no text yet — prompts the user to start translating. */}
-              {allTvSegs.length === 0 && si === 0 && !editingTranslation && !editingTranslationSource && (
+              {allTvSegs.length === 0 && si === 0 && !editingTranslation && !editingTranslationSource &&
+               /* Suppress for superscription-only verses — no translation text is expected
+                  when the active translation uses KJV numbering and this verse is covered
+                  by the offset (e.g. MT Ps 3:1 when ULT starts at MT verse 2). */
+               !(translationVerseOffset > 0 && verseNum <= translationVerseOffset) && (
                 <p className="text-xs italic select-none" style={{ color: "var(--text-muted)" }}>
                   Enable editing to translate
                 </p>

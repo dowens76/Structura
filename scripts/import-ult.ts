@@ -90,6 +90,8 @@ function parseUsfm(content: string): VerseEntry[] {
   let currentChapter = 0;
   let currentVerse = 0;
   let currentLines: string[] = [];
+  let inDescriptiveTitle = false;
+  let descriptiveTitleLines: string[] = [];
 
   function flush() {
     if (currentChapter > 0 && currentVerse > 0 && currentLines.length > 0) {
@@ -102,15 +104,39 @@ function parseUsfm(content: string): VerseEntry[] {
     currentLines = [];
   }
 
+  /** Emit accumulated \d content as verse 0, then reset title state. */
+  function flushTitle() {
+    if (currentChapter > 0 && descriptiveTitleLines.length > 0) {
+      const raw = descriptiveTitleLines.join(" ");
+      const text = stripUsfm(raw);
+      if (text) {
+        results.push({ chapter: currentChapter, verse: 0, text });
+      }
+    }
+    inDescriptiveTitle = false;
+    descriptiveTitleLines = [];
+  }
+
   for (const line of lines) {
     const trimmed = line.trim();
 
     // Chapter marker
     const chMatch = /^\\c\s+(\d+)/.exec(trimmed);
     if (chMatch) {
+      flushTitle();
       flush();
       currentChapter = parseInt(chMatch[1], 10);
       currentVerse = 0;
+      continue;
+    }
+
+    // Descriptive title (\d) — captured as verse 0 when it appears before the first
+    // verse in a chapter (Psalm superscriptions).  ULT spreads the title across
+    // multiple continuation lines, so we just start collecting here.
+    const dMatch = /^\\d(?:\s+(.*))?$/.exec(trimmed);
+    if (dMatch && currentChapter > 0 && currentVerse === 0) {
+      inDescriptiveTitle = true;
+      if (dMatch[1]) descriptiveTitleLines.push(dMatch[1]);
       continue;
     }
 
@@ -118,9 +144,22 @@ function parseUsfm(content: string): VerseEntry[] {
     // e.g. "\v 1 text..." (prose) or "\q1 \v 1 text..." (poetry)
     const vMatch = /(?:^|\\[a-z]+[0-9]*\s+)\\v\s+(\d+)(?:\s+(.*))?$/.exec(trimmed);
     if (vMatch) {
+      flushTitle();  // emit verse 0 if we collected a \d superscription
       flush();
       currentVerse = parseInt(vMatch[1], 10);
       if (vMatch[2]) currentLines.push(vMatch[2]);
+      continue;
+    }
+
+    // Continuation lines for a multi-line descriptive title (ULT alignment markup)
+    if (inDescriptiveTitle && currentVerse === 0 && trimmed
+        && !trimmed.startsWith("\\id") && !trimmed.startsWith("\\h")
+        && !trimmed.startsWith("\\toc") && !trimmed.startsWith("\\mt")
+        && !trimmed.startsWith("\\usfm") && !trimmed.startsWith("\\ide")
+        && !trimmed.startsWith("\\ts") && !trimmed.startsWith("\\ms")
+        && !trimmed.startsWith("\\cl") && !trimmed.startsWith("\\mr")
+        && !trimmed.startsWith("\\s")) {
+      descriptiveTitleLines.push(trimmed);
       continue;
     }
 
@@ -132,6 +171,7 @@ function parseUsfm(content: string): VerseEntry[] {
       currentLines.push(trimmed);
     }
   }
+  flushTitle();
   flush();
 
   return results;

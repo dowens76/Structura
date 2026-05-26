@@ -230,22 +230,50 @@ export async function getAvailableTranslationsForChapter(
   chapter: number,
   _workspaceId?: number
 ): Promise<Translation[]> {
-  // Match by osis_ref prefix (e.g. "1Sam.1.") — avoids dependency on book_id
-  // which may differ across database versions.
-  const prefix = `${osisBook}.${chapter}.`;
+  const instructions = getMtToKjvInstructions(osisBook, chapter);
 
-  const rows = await userDb
-    .selectDistinct({ translationId: translationVerses.translationId })
-    .from(translationVerses)
-    .where(like(translationVerses.osisRef, `${prefix}%`));
+  // Only apply cross-chapter remapping for Jonah/Joel/Malachi — same logic as
+  // getTranslationVerses.  Psalm superscription offsets are same-chapter so the
+  // simple prefix query already covers them.
+  const hasCrossChapterRemap = instructions?.some(i => i.kjvChapter !== chapter);
 
-  const ids = rows.map((r) => r.translationId);
-  if (ids.length === 0) return [];
+  let translationIds: number[];
+
+  if (!hasCrossChapterRemap) {
+    // Simple case: match by osis_ref prefix (e.g. "1Sam.1.") — avoids
+    // dependency on book_id which may differ across database versions.
+    const prefix = `${osisBook}.${chapter}.`;
+    const rows = await userDb
+      .selectDistinct({ translationId: translationVerses.translationId })
+      .from(translationVerses)
+      .where(like(translationVerses.osisRef, `${prefix}%`));
+    translationIds = rows.map((r) => r.translationId);
+  } else {
+    // Cross-chapter remap (e.g. MT Jonah 2 spans KJV Jonah 1:17 + Jonah 2:1-10).
+    // A translation "has" this chapter if it has at least one verse in any of
+    // the remapped KJV chapter/verse ranges.
+    const conditions = instructions!.map((instr) => {
+      const prefix = `${osisBook}.${instr.kjvChapter}.`;
+      const verseEnd = instr.kjvVerseEnd === 999 ? 999_999 : instr.kjvVerseEnd;
+      return and(
+        like(translationVerses.osisRef, `${prefix}%`),
+        gte(translationVerses.verse, instr.kjvVerseStart),
+        lte(translationVerses.verse, verseEnd),
+      );
+    });
+    const rows = await userDb
+      .selectDistinct({ translationId: translationVerses.translationId })
+      .from(translationVerses)
+      .where(or(...conditions));
+    translationIds = rows.map((r) => r.translationId);
+  }
+
+  if (translationIds.length === 0) return [];
 
   return userDb
     .select()
     .from(translations)
-    .where(inArray(translations.id, ids))
+    .where(inArray(translations.id, translationIds))
     .orderBy(asc(translations.abbreviation));
 }
 
@@ -272,18 +300,49 @@ export async function getTranslationVerses(
   chapter: number,
   _workspaceId?: number
 ): Promise<TranslationVerse[]> {
-  const prefix = `${osisBook}.${chapter}.`;
+  const instructions = getMtToKjvInstructions(osisBook, chapter);
 
-  return userDb
-    .select()
-    .from(translationVerses)
-    .where(
-      and(
-        eq(translationVerses.translationId, translationId),
-        like(translationVerses.osisRef, `${prefix}%`)
+  // Only apply remapping when cross-chapter instructions exist (Jonah, Joel, Malachi).
+  // Same-chapter Psalm superscription offsets are intentionally excluded — user-imported
+  // translations store their own verse numbering and shouldn't be silently re-numbered.
+  const hasCrossChapterRemap = instructions?.some(i => i.kjvChapter !== chapter);
+
+  if (!hasCrossChapterRemap) {
+    const prefix = `${osisBook}.${chapter}.`;
+    return userDb
+      .select()
+      .from(translationVerses)
+      .where(
+        and(
+          eq(translationVerses.translationId, translationId),
+          like(translationVerses.osisRef, `${prefix}%`)
+        )
       )
-    )
-    .orderBy(asc(translationVerses.verse));
+      .orderBy(asc(translationVerses.verse));
+  }
+
+  // Cross-chapter remapping (e.g. MT Jonah 2 fetches KJV Jonah 1:17 + Jonah 2:1-10).
+  // The returned `.verse` values are remapped to MT verse numbers.
+  const allResults: TranslationVerse[] = [];
+  for (const instr of instructions!) {
+    const prefix = `${osisBook}.${instr.kjvChapter}.`;
+    const verseEnd = instr.kjvVerseEnd === 999 ? 999_999 : instr.kjvVerseEnd;
+    const rows = await userDb
+      .select()
+      .from(translationVerses)
+      .where(
+        and(
+          eq(translationVerses.translationId, translationId),
+          like(translationVerses.osisRef, `${prefix}%`),
+          gte(translationVerses.verse, instr.kjvVerseStart),
+          lte(translationVerses.verse, verseEnd)
+        )
+      );
+    for (const row of rows) {
+      allResults.push({ ...row, verse: row.verse + instr.mtVerseOffset });
+    }
+  }
+  return allResults.sort((a, b) => a.verse - b.verse);
 }
 
 export async function upsertTranslation(name: string, abbreviation: string, _workspaceId?: number): Promise<number> {

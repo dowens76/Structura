@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState, useEffect, useRef, useCallback } from "react";
+import { getMtToKjvInstructions, getKjvVerseLabel } from "@/lib/versification/mt-kjv-mapping";
 import { useRouter } from "next/navigation";
 import type { Word, Character, CharacterRef, SpeechSection, WordTag, WordTagRef, RstRelation, WordArrow, LineAnnotation } from "@/lib/db/schema";
 import type { Translation, TranslationVerse, TranslationFootnote } from "@/lib/db/schema";
@@ -1184,6 +1185,36 @@ export default function ChapterDisplay({
   }, [activeTranslationVerseMap, book, chapter]);
 
   const hasActiveTranslations = activeTranslationIds.size > 0;
+
+  // Verse number offset for Psalm superscriptions: ULT/VCB don't count the
+  // superscription heading as verse 1, so MT verse N = ULT verse (N − offset).
+  // When > 0 VerseDisplay shows the translation verse number in brackets below
+  // the MT verse number (e.g. "2" with "[1]" below it for Ps 22 in ULT).
+  const translationVerseOffset = useMemo(() => {
+    if (book !== "Ps") return 0;
+    // Only apply when at least one of the active translations is ULT or VCB.
+    const hasUltOrVcb = [...activeTranslationIds].some((id) => {
+      const t = allAvailableTranslations.find((t) => t.id === id);
+      return t?.abbreviation === "ULT" || t?.abbreviation === "VCB";
+    });
+    if (!hasUltOrVcb) return 0;
+    // getMtToKjvInstructions returns a single-instruction array for Psalm offset
+    // chapters: { kjvChapter: N, kjvVerseStart: 1, kjvVerseEnd: 999, mtVerseOffset: 1|2 }
+    const instrs = getMtToKjvInstructions(book, chapter);
+    if (!instrs || instrs.length !== 1) return 0;
+    return instrs[0].mtVerseOffset; // 1 or 2
+  }, [book, chapter, activeTranslationIds, allAvailableTranslations]);
+
+  // Per-verse KJV cross-chapter reference label (e.g. "1:17" for MT Jonah 2:1).
+  // Only active for Jonah ch2, Joel ch3-4, Malachi ch3 tail — books where the
+  // chapter boundary differs between MT and KJV.  Returns undefined (no function)
+  // when no active translation exists or when the chapter has no cross-chapter remap.
+  const translationVerseLabelFn = useMemo<((v: number) => string | null) | undefined>(() => {
+    if (!hasActiveTranslations) return undefined;
+    const instrs = getMtToKjvInstructions(book, chapter);
+    if (!instrs || !instrs.some((i) => i.kjvChapter !== chapter)) return undefined;
+    return (v: number) => getKjvVerseLabel(book, chapter, v);
+  }, [book, chapter, hasActiveTranslations]);
 
   // ── Find-in-page: TV hits + combined navigation list ──────────────────────
   // Declared after activeTranslationVerseMap to avoid TDZ errors.
@@ -4047,6 +4078,8 @@ export default function ChapterDisplay({
                 showTooltips={showTooltips}
                 translationTexts={editingTranslationVerseMap.get(verseNum) ?? []}
                 hasActiveTranslations={hasActiveTranslations}
+                translationVerseOffset={translationVerseOffset}
+                translationVerseLabelFn={translationVerseLabelFn}
                 useLinguisticTerms={useLinguisticTerms}
                 paragraphBreakIds={paragraphBreakIds}
                 editingParagraphs={editingParagraphs}

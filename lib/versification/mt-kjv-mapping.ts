@@ -30,7 +30,7 @@ export interface KjvFetchInstruction {
 
 /** Psalms where ULT/VCB verse 1 = MT verse 2 (one superscription verse in MT). */
 const PS_OFFSET_1 = new Set<number>([
-  3, 4, 5, 6, 7, 8, 9, 12, 18, 19, 20, 21, 22, 30, 31, 34, 36, 38, 39, 40,
+  3, 4, 5, 6, 7, 8, 9, 12, 13, 18, 19, 20, 21, 22, 30, 31, 34, 36, 38, 39, 40,
   41, 42, 44, 45, 46, 47, 48, 49, 53, 55, 56, 57, 58, 59, 61, 62, 63, 64, 65,
   67, 68, 69, 70, 75, 76, 77, 80, 81, 83, 84, 85, 88, 89, 92, 102, 108, 140, 142,
 ]);
@@ -98,14 +98,60 @@ export function getMtToKjvInstructions(
   }
 
   // Psalms — superscription verse offset
+  // ULT/VCB store Psalm descriptive titles as verse 0 (kjvVerseStart: 0).
+  // PS_OFFSET_1: one superscription verse in MT → verse 0 + offset 1 = MT verse 1.
+  // PS_OFFSET_2: two superscription verses in MT → verse 0 maps to MT verse 1
+  //              (combined text); content verses shift by 2.
   if (book === "Ps") {
     if (PS_OFFSET_2.has(mtChapter)) {
-      return [{ kjvChapter: mtChapter, kjvVerseStart: 1, kjvVerseEnd: 999, mtVerseOffset: 2 }];
+      return [
+        { kjvChapter: mtChapter, kjvVerseStart: 0, kjvVerseEnd: 0,   mtVerseOffset: 1 },
+        { kjvChapter: mtChapter, kjvVerseStart: 1, kjvVerseEnd: 999, mtVerseOffset: 2 },
+      ];
     }
     if (PS_OFFSET_1.has(mtChapter)) {
-      return [{ kjvChapter: mtChapter, kjvVerseStart: 1, kjvVerseEnd: 999, mtVerseOffset: 1 }];
+      return [{ kjvChapter: mtChapter, kjvVerseStart: 0, kjvVerseEnd: 999, mtVerseOffset: 1 }];
     }
   }
 
   return null; // no remapping needed
+}
+
+/**
+ * Returns the KJV display label for a given MT verse in a chapter that has
+ * cross-chapter remapping (Jonah ch2, Joel ch3-4, Malachi ch3 tail).
+ *
+ * Returns a string like "1:17" when the KJV reference differs from the MT
+ * reference, so the UI can show e.g. "[1:17]" next to MT Jonah 2:1.
+ * Returns null when:
+ *  - No cross-chapter remap applies to this book+chapter, OR
+ *  - The KJV chapter:verse for this MT verse is identical to the MT chapter:verse
+ *    (i.e. no label is needed), OR
+ *  - The verse falls outside all known instruction ranges.
+ *
+ * NOTE: Psalm superscription offsets are same-chapter and are intentionally
+ * excluded — those use the simpler `translationVerseOffset` integer mechanism.
+ */
+export function getKjvVerseLabel(
+  book: string,
+  mtChapter: number,
+  mtVerse: number,
+): string | null {
+  const instrs = getMtToKjvInstructions(book, mtChapter);
+  if (!instrs) return null;
+
+  // Only applies to cross-chapter remap (Jonah/Joel/Malachi), not Psalm offsets.
+  const hasCrossChapter = instrs.some((i) => i.kjvChapter !== mtChapter);
+  if (!hasCrossChapter) return null;
+
+  for (const instr of instrs) {
+    const kjvVerse = mtVerse - instr.mtVerseOffset;
+    const verseEnd = instr.kjvVerseEnd === 999 ? 999_999 : instr.kjvVerseEnd;
+    if (kjvVerse >= instr.kjvVerseStart && kjvVerse <= verseEnd) {
+      // Suppress label when the KJV chapter:verse is identical to MT chapter:verse
+      if (instr.kjvChapter === mtChapter && kjvVerse === mtVerse) return null;
+      return `${instr.kjvChapter}:${kjvVerse}`;
+    }
+  }
+  return null;
 }
