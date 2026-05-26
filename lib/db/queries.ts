@@ -1,5 +1,6 @@
 import { eq, and, asc, inArray, or, gte, lte, gt, lt, sql, max, like } from "drizzle-orm";
 import { sourceDb, userDb, sourceLookups, lxxLookups, getLxxDb, getUltSqlite, getVcbSqlite } from "./index";
+import { getMtToKjvInstructions } from "@/lib/versification/mt-kjv-mapping";
 import type { LookupMaps } from "./index";
 import { books, words } from "./source-schema";
 import type { Word, WordRow } from "./source-schema";
@@ -1636,7 +1637,12 @@ export async function deleteLineAnnotation(id: number): Promise<void> {
 // ── ULT (UnfoldingWord Literal Text) ─────────────────────────────────────────
 
 /**
- * Synchronous — reads base verse text for a chapter from data/ult.db.
+ * Synchronous — reads base verse text for a chapter from data/ult.db,
+ * remapping KJV-style verse numbers to MT (OSHB) verse numbers where they
+ * differ (Jonah ch2 boundary, Joel ch3-4, Malachi ch3 tail, Psalm
+ * superscriptions).  The returned `.verse` values always use MT numbering so
+ * callers can align directly against OSHB words.
+ *
  * Returns an empty array if ult.db has not been imported yet.
  */
 export function getUltVerses(
@@ -1646,9 +1652,30 @@ export function getUltVerses(
   const db = getUltSqlite();
   if (!db) return [];
   try {
-    return db
-      .prepare("SELECT verse, text FROM ult_verses WHERE book = ? AND chapter = ? ORDER BY verse")
-      .all(book, chapter) as { verse: number; text: string }[];
+    const instructions = getMtToKjvInstructions(book, chapter);
+    if (!instructions) {
+      // No remapping needed — direct query.
+      return db
+        .prepare("SELECT verse, text FROM ult_verses WHERE book = ? AND chapter = ? ORDER BY verse")
+        .all(book, chapter) as { verse: number; text: string }[];
+    }
+
+    // Remap: execute one query per instruction, shift verse numbers to MT.
+    const stmt = db.prepare(
+      "SELECT verse, text FROM ult_verses WHERE book = ? AND chapter = ? AND verse >= ? AND verse <= ? ORDER BY verse"
+    );
+    const results: { verse: number; text: string }[] = [];
+    for (const instr of instructions) {
+      const verseEnd = instr.kjvVerseEnd === 999 ? 999_999 : instr.kjvVerseEnd;
+      const rows = stmt.all(book, instr.kjvChapter, instr.kjvVerseStart, verseEnd) as {
+        verse: number;
+        text: string;
+      }[];
+      for (const row of rows) {
+        results.push({ verse: row.verse + instr.mtVerseOffset, text: row.text });
+      }
+    }
+    return results.sort((a, b) => a.verse - b.verse);
   } catch {
     return [];
   }
@@ -1670,7 +1697,12 @@ export async function getUltTranslation(_workspaceId?: number): Promise<Translat
 // ── VCB (Biblica® Open Vietnamese Contemporary Bible 2015) ────────────────────
 
 /**
- * Synchronous — reads verse text for a chapter from data/vcb.db.
+ * Synchronous — reads verse text for a chapter from data/vcb.db,
+ * remapping KJV-style verse numbers to MT (OSHB) verse numbers where they
+ * differ (Jonah ch2 boundary, Joel ch3-4, Malachi ch3 tail, Psalm
+ * superscriptions).  The returned `.verse` values always use MT numbering so
+ * callers can align directly against OSHB words.
+ *
  * Returns an empty array if vcb.db has not been imported yet.
  */
 export function getVcbVerses(
@@ -1680,9 +1712,30 @@ export function getVcbVerses(
   const db = getVcbSqlite();
   if (!db) return [];
   try {
-    return db
-      .prepare("SELECT verse, text FROM vcb_verses WHERE book = ? AND chapter = ? ORDER BY verse")
-      .all(book, chapter) as { verse: number; text: string }[];
+    const instructions = getMtToKjvInstructions(book, chapter);
+    if (!instructions) {
+      // No remapping needed — direct query.
+      return db
+        .prepare("SELECT verse, text FROM vcb_verses WHERE book = ? AND chapter = ? ORDER BY verse")
+        .all(book, chapter) as { verse: number; text: string }[];
+    }
+
+    // Remap: execute one query per instruction, shift verse numbers to MT.
+    const stmt = db.prepare(
+      "SELECT verse, text FROM vcb_verses WHERE book = ? AND chapter = ? AND verse >= ? AND verse <= ? ORDER BY verse"
+    );
+    const results: { verse: number; text: string }[] = [];
+    for (const instr of instructions) {
+      const verseEnd = instr.kjvVerseEnd === 999 ? 999_999 : instr.kjvVerseEnd;
+      const rows = stmt.all(book, instr.kjvChapter, instr.kjvVerseStart, verseEnd) as {
+        verse: number;
+        text: string;
+      }[];
+      for (const row of rows) {
+        results.push({ verse: row.verse + instr.mtVerseOffset, text: row.text });
+      }
+    }
+    return results.sort((a, b) => a.verse - b.verse);
   } catch {
     return [];
   }
