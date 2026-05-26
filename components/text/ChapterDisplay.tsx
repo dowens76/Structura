@@ -35,7 +35,7 @@ import hebrewLemmas from "@/lib/data/hebrew-lemmas.json";
 import { computeSectionRanges } from "@/lib/utils/sectionRanges";
 import { generateOutline } from "@/lib/utils/outlineExport";
 import { useTranslation } from "@/lib/i18n/LocaleContext";
-import { CONTIGUOUS_BOOK_PAIRS, OSIS_BOOK_NAMES } from "@/lib/utils/osis";
+import { CONTIGUOUS_BOOK_PAIRS, OSIS_BOOK_NAMES, OSIS_REF_BOOK_NAMES } from "@/lib/utils/osis";
 
 /** Normalize text for diacritic-insensitive find-in-page matching.
  *  Strips Hebrew cantillation/vowel marks and Greek/Latin combining diacritics
@@ -473,7 +473,7 @@ export default function ChapterDisplay({
   // ── Cross-book outline extension ──────────────────────────────────────────
   // These live here (not in OutlinePane) so they survive the pane being closed/reopened.
   const continuationBook     = CONTIGUOUS_BOOK_PAIRS[book] ?? null;
-  const continuationBookName = continuationBook ? (OSIS_BOOK_NAMES[continuationBook] ?? continuationBook) : null;
+  const continuationBookName = continuationBook ? (OSIS_REF_BOOK_NAMES[continuationBook] ?? continuationBook) : null;
   const [outlineExtended,  setOutlineExtended]  = useState(false);
   const [contBreaks,       setContBreaks]       = useState<{ wordId: string; heading: string | null; level: number; chapter: number; verse: number; positionInVerse: number; thematic: boolean; thematicLetter: string | null }[]>([]);
   const [contMaxVerses,    setContMaxVerses]    = useState<Map<number, number>>(new Map());

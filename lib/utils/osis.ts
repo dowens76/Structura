@@ -104,6 +104,17 @@ export const OSIS_BOOK_NAMES: Record<string, string> = {
 };
 
 /**
+ * Reference form of book names — used when citing a specific chapter/verse,
+ * where a singular makes more sense than the plural collection name.
+ * "Psalm 23" (one poem) vs "Psalms" (the book).
+ * All books not listed here are identical to OSIS_BOOK_NAMES.
+ */
+export const OSIS_REF_BOOK_NAMES: Record<string, string> = {
+  ...OSIS_BOOK_NAMES,
+  Ps: "Psalm",
+};
+
+/**
  * Books that are narrative continuations of the preceding book and may form a
  * single passage spanning both.  The key is the FIRST book; the value is the
  * SECOND book that directly follows it.

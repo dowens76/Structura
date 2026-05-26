@@ -35,7 +35,7 @@ import { useAnnotationRange } from "@/lib/hooks/useAnnotationRange";
 import { useRstRelations } from "@/lib/hooks/useRstRelations";
 import hebrewLemmas from "@/lib/data/hebrew-lemmas.json";
 import { computeSectionRanges } from "@/lib/utils/sectionRanges";
-import { OSIS_BOOK_NAMES } from "@/lib/utils/osis";
+import { OSIS_BOOK_NAMES, OSIS_REF_BOOK_NAMES } from "@/lib/utils/osis";
 import { useTranslation } from "@/lib/i18n/LocaleContext";
 
 /** Normalize text for diacritic-insensitive find-in-page matching. */
@@ -1001,7 +1001,7 @@ export default function PassageView({
   const rangeLabel = (() => {
     if (passage.endBook && passage.endBook !== passage.book) {
       // Cross-book passage: show both book names
-      const endBkName = OSIS_BOOK_NAMES[passage.endBook] ?? passage.endBook;
+      const endBkName = OSIS_REF_BOOK_NAMES[passage.endBook] ?? passage.endBook;
       return `${bookName} ${startChapter}:${startVerse} – ${endBkName} ${endChapter}:${endVerse}`;
     }
     return startChapter === endChapter

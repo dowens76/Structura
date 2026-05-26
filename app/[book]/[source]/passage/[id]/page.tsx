@@ -31,7 +31,7 @@ import {
   getWorkspaceById,
 } from "@/lib/db/queries";
 import { getActiveWorkspaceId } from "@/lib/workspace";
-import { OSIS_BOOK_NAMES, CONTIGUOUS_BOOK_PAIRS, CONTIGUOUS_BOOK_PREV } from "@/lib/utils/osis";
+import { OSIS_BOOK_NAMES, OSIS_REF_BOOK_NAMES, CONTIGUOUS_BOOK_PAIRS, CONTIGUOUS_BOOK_PREV } from "@/lib/utils/osis";
 import type { TextSource } from "@/lib/morphology/types";
 import type { TranslationVerse, TranslationFootnote } from "@/lib/db/schema";
 import PassageView from "@/components/passage/PassageView";
@@ -272,8 +272,8 @@ export default async function PassagePage({ params, searchParams }: PageProps) {
   );
 
   // Display metadata ───────────────────────────────────────────────────────
-  const bookName    = OSIS_BOOK_NAMES[osisBook] ?? osisBook;
-  const endBookName = OSIS_BOOK_NAMES[endOsisBook] ?? endOsisBook;
+  const bookName    = OSIS_REF_BOOK_NAMES[osisBook] ?? osisBook;
+  const endBookName = OSIS_REF_BOOK_NAMES[endOsisBook] ?? endOsisBook;
   const isHebrew    = bookRecord.language === "hebrew";
 
   // Passage reference string shown in the nav bar for cross-book passages
@@ -393,7 +393,7 @@ export default async function PassagePage({ params, searchParams }: PageProps) {
 export async function generateMetadata({ params }: PageProps) {
   const { book, id: idStr } = await params;
   const osisBook = decodeURIComponent(book);
-  const bookName = OSIS_BOOK_NAMES[osisBook] ?? osisBook;
+  const bookName = OSIS_REF_BOOK_NAMES[osisBook] ?? osisBook;
   const id = parseInt(idStr, 10);
   if (!isNaN(id)) {
     const passage = await getPassage(id);
@@ -402,7 +402,7 @@ export async function generateMetadata({ params }: PageProps) {
     }
     if (passage) {
       const endBookName = passage.endBook
-        ? (OSIS_BOOK_NAMES[passage.endBook] ?? passage.endBook)
+        ? (OSIS_REF_BOOK_NAMES[passage.endBook] ?? passage.endBook)
         : bookName;
       const ref = passage.endBook && passage.endBook !== osisBook
         ? `${bookName} ${passage.startChapter}:${passage.startVerse} – ${endBookName} ${passage.endChapter}:${passage.endVerse}`

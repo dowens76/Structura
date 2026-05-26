@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useState, useEffect } from "react";
 import LanguagePicker from "@/components/ui/LanguagePicker";
 import { useTranslation } from "@/lib/i18n/LocaleContext";
-import { OSIS_BOOK_NAMES } from "@/lib/utils/osis";
 
 interface NavLinksProps {
   osisBook: string;
@@ -42,7 +41,7 @@ export default function NavLinks({
   contPrevBook = null,
   contPrevBookLastChapter = null,
 }: NavLinksProps) {
-  const { t } = useTranslation();
+  const { t, refBookName } = useTranslation();
 
   // Build the export URL with active translations from localStorage.
   // We read localStorage at click time (onClick) rather than relying solely on
@@ -174,9 +173,9 @@ export default function NavLinks({
             href={`/${encodeURIComponent(contPrevBook)}/${textSource}/${contPrevBookLastChapter}${parallelMode ? "?par=1" : ""}`}
             className="px-2 py-1 rounded text-sm transition-colors"
             style={{ color: "var(--nav-fg)" }}
-            title={`${OSIS_BOOK_NAMES[contPrevBook] ?? contPrevBook} ${contPrevBookLastChapter}`}
+            title={`${refBookName(contPrevBook)} ${contPrevBookLastChapter}`}
           >
-            ← {OSIS_BOOK_NAMES[contPrevBook] ?? contPrevBook} {contPrevBookLastChapter}
+            ← {refBookName(contPrevBook)} {contPrevBookLastChapter}
           </Link>
         ) : null}
         <span
@@ -198,9 +197,9 @@ export default function NavLinks({
             href={`/${encodeURIComponent(contNextBook)}/${textSource}/1${parallelMode ? "?par=1" : ""}`}
             className="px-2 py-1 rounded text-sm transition-colors"
             style={{ color: "var(--nav-fg)" }}
-            title={`${OSIS_BOOK_NAMES[contNextBook] ?? contNextBook} 1`}
+            title={`${refBookName(contNextBook)} 1`}
           >
-            {OSIS_BOOK_NAMES[contNextBook] ?? contNextBook} 1 →
+            {refBookName(contNextBook)} 1 →
           </Link>
         ) : null}
       </div>

@@ -5,7 +5,7 @@ import Link from "next/link";
 import type { Passage } from "@/lib/db/schema";
 import DefinePassageDialog from "./DefinePassageDialog";
 import { useTranslation } from "@/lib/i18n/LocaleContext";
-import { OSIS_BOOK_NAMES, CONTIGUOUS_BOOK_PAIRS, CONTIGUOUS_BOOK_PREV } from "@/lib/utils/osis";
+import { OSIS_REF_BOOK_NAMES, CONTIGUOUS_BOOK_PAIRS, CONTIGUOUS_BOOK_PREV } from "@/lib/utils/osis";
 
 interface Props {
   book: string;         // OSIS book code
@@ -66,9 +66,9 @@ export default function PassageNavButtons({
   }, [dropdownOpen, handleClickOutside]);
 
   function formatRef(p: Passage) {
-    const startPrefix = p.book !== book ? `${OSIS_BOOK_NAMES[p.book] ?? p.book} ` : "";
+    const startPrefix = p.book !== book ? `${OSIS_REF_BOOK_NAMES[p.book] ?? p.book} ` : "";
     if (p.endBook && p.endBook !== p.book) {
-      const endName = OSIS_BOOK_NAMES[p.endBook] ?? p.endBook;
+      const endName = OSIS_REF_BOOK_NAMES[p.endBook] ?? p.endBook;
       return `${startPrefix}${p.startChapter}:${p.startVerse} – ${endName} ${p.endChapter}:${p.endVerse}`;
     }
     const ref = p.startChapter === p.endChapter

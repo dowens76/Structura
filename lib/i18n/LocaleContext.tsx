@@ -13,7 +13,7 @@ import {
   DEFAULT_LOCALE,
   type Locale,
 } from "./translations";
-import { OSIS_BOOK_NAMES } from "@/lib/utils/osis";
+import { OSIS_BOOK_NAMES, OSIS_REF_BOOK_NAMES } from "@/lib/utils/osis";
 
 const STORAGE_KEY = "structura:locale";
 
@@ -23,7 +23,10 @@ interface LocaleContextValue {
   locale: Locale;
   setLocale: (l: Locale) => void;
   t: TFn;
+  /** Collection name — e.g. "Psalms". Use for book pickers and home grid. */
   bookName: (osisCode: string) => string;
+  /** Reference form — e.g. "Psalm 23". Use wherever a chapter+verse follows. */
+  refBookName: (osisCode: string) => string;
 }
 
 const LocaleContext = createContext<LocaleContextValue>({
@@ -31,6 +34,7 @@ const LocaleContext = createContext<LocaleContextValue>({
   setLocale: () => {},
   t: (k) => k,
   bookName: (code) => OSIS_BOOK_NAMES[code] ?? code,
+  refBookName: (code) => OSIS_REF_BOOK_NAMES[code] ?? code,
 });
 
 function makeTFn(locale: Locale): TFn {
@@ -71,8 +75,14 @@ export function LocaleProvider({ children }: { children: ReactNode }) {
     return translated !== key ? translated : (OSIS_BOOK_NAMES[osisCode] ?? osisCode);
   }, [t]);
 
+  const refBookName = useCallback((osisCode: string) => {
+    const key = `bookRefs.${osisCode}`;
+    const translated = t(key);
+    return translated !== key ? translated : bookName(osisCode);
+  }, [t, bookName]);
+
   return (
-    <LocaleContext.Provider value={{ locale, setLocale, t, bookName }}>
+    <LocaleContext.Provider value={{ locale, setLocale, t, bookName, refBookName }}>
       {children}
     </LocaleContext.Provider>
   );

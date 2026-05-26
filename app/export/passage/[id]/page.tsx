@@ -29,7 +29,7 @@ import {
 } from "@/lib/db/queries";
 import type { TranslationVerse, TranslationFootnote } from "@/lib/db/schema";
 import type { TextSource } from "@/lib/morphology/types";
-import { OSIS_BOOK_NAMES } from "@/lib/utils/osis";
+import { OSIS_REF_BOOK_NAMES } from "@/lib/utils/osis";
 import ExportLayout from "@/components/export/ExportLayout";
 import ExportTextView from "@/components/export/ExportTextView";
 import { getActiveWorkspaceId } from "@/lib/workspace";
@@ -193,7 +193,7 @@ export default async function ExportPassagePage({ params, searchParams }: PagePr
     .filter((t) => (translationVerseData[t.id]?.length ?? 0) > 0)
     .map((t) => t.abbreviation);
 
-  const bookName   = OSIS_BOOK_NAMES[osisBook] ?? osisBook;
+  const bookName   = OSIS_REF_BOOK_NAMES[osisBook] ?? osisBook;
   const isHebrew   = bookRecord.language === "hebrew";
   const authorName = await getAuthorName(workspaceId);
 
@@ -283,7 +283,7 @@ export async function generateMetadata({ params }: PageProps) {
   if (!isNaN(id)) {
     const passage = await getPassage(id);
     if (passage) {
-      const bookName = OSIS_BOOK_NAMES[passage.book] ?? passage.book;
+      const bookName = OSIS_REF_BOOK_NAMES[passage.book] ?? passage.book;
       const label    = passage.label
         || `${bookName} ${passage.startChapter}:${passage.startVerse}–${passage.endChapter}:${passage.endVerse}`;
       return { title: `Export ${label} — Structura` };

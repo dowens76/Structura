@@ -4,7 +4,7 @@ import React, { useState, useMemo } from "react";
 import Link from "next/link";
 import type { SectionRangeForOutline } from "@/lib/utils/outlineExport";
 import { generateOutline } from "@/lib/utils/outlineExport";
-import { OSIS_BOOK_NAMES } from "@/lib/utils/osis";
+import { OSIS_REF_BOOK_NAMES } from "@/lib/utils/osis";
 
 // ── Prefix helpers (mirrors outlineExport.ts) ─────────────────────────────────
 const LOWER = "abcdefghijklmnopqrstuvwxyz";
@@ -394,7 +394,7 @@ export default function OutlinePane({
                           href={`/${encodeURIComponent(item.bookCode ?? book)}/${textSource}/${item.chapter}`}
                           className="shrink-0 text-[10px] hover:underline"
                           style={{ color: "var(--text-muted)" }}
-                          title={`Go to ${item.bookCode ? (OSIS_BOOK_NAMES[item.bookCode] ?? item.bookCode) + " " : ""}chapter ${item.chapter}, verse ${item.verse}`}
+                          title={`Go to ${item.bookCode ? (OSIS_REF_BOOK_NAMES[item.bookCode] ?? item.bookCode) + " " : ""}chapter ${item.chapter}, verse ${item.verse}`}
                         >
                           {item.rangeStr}
                         </Link>

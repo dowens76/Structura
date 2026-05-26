@@ -33,8 +33,8 @@ export default function NotesPane({
   onScrollHandled,
   onClose,
 }: NotesPaneProps) {
-  const { bookName: getBookName } = useTranslation();
-  const bookName = getBookName(book);
+  const { refBookName: getRefBookName } = useTranslation();
+  const bookName = getRefBookName(book);
   const paneRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState("");

@@ -32,6 +32,13 @@ const en = {
     "1John": "1 John", "2John": "2 John", "3John": "3 John",
     Jude: "Jude", Rev: "Revelation",
   },
+  // ── Reference form of book names (singular where the collection is plural) ──
+  // Used when citing a specific chapter/verse: "Psalm 23" not "Psalms 23".
+  // Only entries that differ from the regular book name need to be listed.
+  // Typed as Partial so other locales can leave it empty.
+  bookRefs: {
+    Ps: "Psalm",
+  } as Partial<Record<string, string>>,
   // ── Book abbreviations (for scripture reference detection in notes) ──────────
   bookAbbreviations: {
     Gen:    ["Gen", "Ge", "Gn"],
@@ -530,6 +537,8 @@ const vi: Translations = {
     "1John": "1 Giăng", "2John": "2 Giăng", "3John": "3 Giăng",
     Jude: "Giu-đe", Rev: "Khải-huyền",
   },
+  // Vietnamese has no singular/plural distinction for book names, so no overrides needed.
+  bookRefs: {},
   bookAbbreviations: {
     Gen:    ["Sáng", "St", "STK"],
     Exod:   ["Xuất", "XEK", "XK"],

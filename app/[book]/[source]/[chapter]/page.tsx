@@ -24,7 +24,7 @@ import NavLinks from "@/components/navigation/NavLinks";
 import ThemeToggle from "@/components/ThemeToggle";
 import SettingsButton from "@/components/SettingsButton";
 import WorkspaceSwitcher from "@/components/WorkspaceSwitcher";
-import { OSIS_BOOK_NAMES, OSHB_LXX_PARALLEL_BOOKS, CONTIGUOUS_BOOK_PAIRS, CONTIGUOUS_BOOK_PREV, canonicalPairBook } from "@/lib/utils/osis";
+import { OSIS_BOOK_NAMES, OSIS_REF_BOOK_NAMES, OSHB_LXX_PARALLEL_BOOKS, CONTIGUOUS_BOOK_PAIRS, CONTIGUOUS_BOOK_PREV, canonicalPairBook } from "@/lib/utils/osis";
 import { getActiveWorkspaceId } from "@/lib/workspace";
 
 const LXX_SOURCE = "STEPBIBLE_LXX" as TextSource;
@@ -197,7 +197,7 @@ export default async function ChapterPage({ params, searchParams }: PageProps) {
     }
   }
 
-  const bookName = OSIS_BOOK_NAMES[osisBook] ?? osisBook;
+  const bookName = OSIS_REF_BOOK_NAMES[osisBook] ?? osisBook;
 
   // ── Cross-book chapter navigation ────────────────────────────────────────
   // At the last chapter of a first book (e.g. 1 Sam 31), "next" → 2 Sam 1.
@@ -389,7 +389,7 @@ export default async function ChapterPage({ params, searchParams }: PageProps) {
 export async function generateMetadata({ params }: PageProps) {
   const { book, chapter } = await params;
   const osisBook = decodeURIComponent(book);
-  const bookName = OSIS_BOOK_NAMES[osisBook] ?? osisBook;
+  const bookName = OSIS_REF_BOOK_NAMES[osisBook] ?? osisBook;
   return {
     title: `${bookName} ${chapter} — Structura`,
   };

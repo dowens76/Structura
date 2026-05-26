@@ -40,8 +40,8 @@ export default function ParallelChapterView({
     (a, b) => a - b
   );
 
-  const { bookName: getBookName } = useTranslation();
-  const bookName = getBookName(osisBook);
+  const { refBookName: getRefBookName } = useTranslation();
+  const bookName = getRefBookName(osisBook);
 
   function handleSelectWord(word: Word) {
     setSelectedWord(word);

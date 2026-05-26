@@ -3,6 +3,7 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import type { SearchResult } from "@/app/api/search/words/route";
 import type { LemmaSuggestion } from "@/app/api/search/lemma-suggest/route";
+import { useTranslation } from "@/lib/i18n/LocaleContext";
 
 const SOURCES = ["OSHB", "SBLGNT", "STEPBIBLE_LXX"] as const;
 type Source = typeof SOURCES[number];
@@ -133,6 +134,8 @@ function SelectFilter({
 }
 
 export default function SearchPane({ book, textSource, onClose, onResultsChange, onSaveComplete, searchRequest }: SearchPaneProps) {
+  const { refBookName } = useTranslation();
+
   // ── Restore from sessionStorage on mount ───────────────────────────────────
   const restored = useRef(false);
 
@@ -647,7 +650,7 @@ export default function SearchPane({ book, textSource, onClose, onResultsChange,
                     className="flex items-start gap-2 px-3 py-2 hover:bg-stone-50 dark:hover:bg-stone-800/50 transition-colors cursor-pointer"
                   >
                     <span className="shrink-0 text-xs font-medium text-amber-600 dark:text-amber-400 w-24 leading-5">
-                      {r.bookName} {r.chapter}:{r.verse}
+                      {refBookName(r.book)} {r.chapter}:{r.verse}
                     </span>
                     <span className="flex-1 min-w-0">
                       <span

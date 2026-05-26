@@ -28,7 +28,7 @@ import {
 } from "@/lib/db/queries";
 import type { TranslationVerse, TranslationFootnote } from "@/lib/db/schema";
 import type { TextSource } from "@/lib/morphology/types";
-import { OSIS_BOOK_NAMES } from "@/lib/utils/osis";
+import { OSIS_REF_BOOK_NAMES } from "@/lib/utils/osis";
 import ExportLayout from "@/components/export/ExportLayout";
 import ExportTextView from "@/components/export/ExportTextView";
 import { getActiveWorkspaceId } from "@/lib/workspace";
@@ -165,7 +165,7 @@ export default async function ExportChapterPage({ params, searchParams }: PagePr
     .filter((t) => (translationVerseData[t.id]?.length ?? 0) > 0)
     .map((t) => t.abbreviation);
 
-  const bookName   = OSIS_BOOK_NAMES[osisBook] ?? osisBook;
+  const bookName   = OSIS_REF_BOOK_NAMES[osisBook] ?? osisBook;
   const isHebrew   = bookRecord?.language === "hebrew";
   const filename   = `${osisBook}-${chapter}`;
   const authorName = await getAuthorName(workspaceId);
@@ -242,6 +242,6 @@ export default async function ExportChapterPage({ params, searchParams }: PagePr
 export async function generateMetadata({ params }: PageProps) {
   const { book, chapter } = await params;
   const osisBook  = decodeURIComponent(book);
-  const bookName  = OSIS_BOOK_NAMES[osisBook] ?? osisBook;
+  const bookName  = OSIS_REF_BOOK_NAMES[osisBook] ?? osisBook;
   return { title: `Export ${bookName} ${chapter} — Structura` };
 }

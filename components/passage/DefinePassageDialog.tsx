@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { CONTIGUOUS_BOOK_PAIRS, OSIS_BOOK_NAMES } from "@/lib/utils/osis";
+import { CONTIGUOUS_BOOK_PAIRS, OSIS_REF_BOOK_NAMES } from "@/lib/utils/osis";
 import { useTranslation } from "@/lib/i18n/LocaleContext";
 
 interface Props {
@@ -38,7 +38,7 @@ export default function DefinePassageDialog({
   // continuationBook: the OSIS code of the book that directly follows `book`
   // (null if there is no continuation pair)
   const continuationBook = CONTIGUOUS_BOOK_PAIRS[book] ?? null;
-  const continuationBookName = continuationBook ? (OSIS_BOOK_NAMES[continuationBook] ?? continuationBook) : null;
+  const continuationBookName = continuationBook ? (OSIS_REF_BOOK_NAMES[continuationBook] ?? continuationBook) : null;
 
   const [crossBook,         setCrossBook]         = useState(false);
   const [contChapterCount,  setContChapterCount]  = useState<number | null>(null);
