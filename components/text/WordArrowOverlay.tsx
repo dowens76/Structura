@@ -437,6 +437,13 @@ export default function WordArrowOverlay({
   measureRef.current           = measure;
   const updateSvgForPrintRef  = useRef(updateSvgForPrint);
   updateSvgForPrintRef.current = updateSvgForPrint;
+  // scheduleMeasureRef — stable ref that schedules a screen-layout re-measure.
+  // Uses measureRef so it always calls the latest measure closure.  Defined once
+  // (no per-render update needed) because it only captures stable refs.
+  const scheduleMeasureRef = useRef(() => {
+    if (frameRef.current) cancelAnimationFrame(frameRef.current);
+    frameRef.current = requestAnimationFrame(measureRef.current);
+  });
 
   useEffect(() => {
     const mql = window.matchMedia("print");
@@ -482,12 +489,22 @@ export default function WordArrowOverlay({
       updateSvgForPrintRef.current();
     }
 
+    // ExportLayout dispatches this after a double-RAF when the font-size tier
+    // changes (S/M/L selector).  The screen layout has reflowed at the new
+    // font sizes, so we kick off a normal scheduleMeasure() to update React
+    // state with the new screen-layout arrow positions.
+    function handleScreenRemeasure() {
+      scheduleMeasureRef.current();
+    }
+
     mql.addEventListener("change", handlePrintMediaChange);
     window.addEventListener("structura:print-prepare", handlePrintPrepare);
+    window.addEventListener("structura:screen-remeasure", handleScreenRemeasure);
     window.addEventListener("beforeprint", handleBeforePrint);
     return () => {
       mql.removeEventListener("change", handlePrintMediaChange);
       window.removeEventListener("structura:print-prepare", handlePrintPrepare);
+      window.removeEventListener("structura:screen-remeasure", handleScreenRemeasure);
       window.removeEventListener("beforeprint", handleBeforePrint);
     };
   }, []); // empty: attach once per mount, refs keep content current

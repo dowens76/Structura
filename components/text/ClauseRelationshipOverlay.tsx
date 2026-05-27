@@ -504,6 +504,12 @@ export default function ClauseRelationshipOverlay({
 
   const updateSvgForPrintRef = useRef(updateSvgForPrint);
   updateSvgForPrintRef.current = updateSvgForPrint;
+  // scheduleMeasureRef — stable ref for screen-layout re-measurement.
+  // Defined once; captures only stable refs so no per-render update needed.
+  const scheduleMeasureRef = useRef(() => {
+    if (frameRef.current) cancelAnimationFrame(frameRef.current);
+    frameRef.current = requestAnimationFrame(measureRef.current);
+  });
 
   useEffect(() => {
     const mql = window.matchMedia("print");
@@ -531,12 +537,21 @@ export default function ClauseRelationshipOverlay({
       updateSvgForPrintRef.current();
     }
 
+    // ExportLayout dispatches this after a double-RAF when the font-size tier
+    // changes (S/M/L selector).  Layout has reflowed — kick off scheduleMeasure()
+    // to update React state with the new screen-layout positions.
+    function onScreenRemeasure() {
+      scheduleMeasureRef.current();
+    }
+
     mql.addEventListener("change", onPrintChange);
     window.addEventListener("structura:print-prepare", onPrintPrepare);
+    window.addEventListener("structura:screen-remeasure", onScreenRemeasure);
     window.addEventListener("beforeprint", onBeforePrint);
     return () => {
       mql.removeEventListener("change", onPrintChange);
       window.removeEventListener("structura:print-prepare", onPrintPrepare);
+      window.removeEventListener("structura:screen-remeasure", onScreenRemeasure);
       window.removeEventListener("beforeprint", onBeforePrint);
     };
   }, []);

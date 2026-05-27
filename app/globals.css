@@ -329,6 +329,25 @@ body {
   background-color: rgba(161, 98, 7, 0.65);
 }
 
+/* ── Export font-size tiers ───────────────────────────────────────────────── */
+/*
+ * ExportLayout sets data-export-size="sm|md|lg" on its content wrapper.
+ * These rules propagate --hebrew-font-size, --greek-font-size, and
+ * --translation-font-size to all descendants.  Medium (the default) uses the
+ * fallback values already baked into the var() expressions throughout
+ * VerseDisplay / globals.css, so no rule is needed for it.
+ */
+[data-export-size="sm"] {
+  --hebrew-font-size: 1.1rem;
+  --greek-font-size: 1.0rem;
+  --translation-font-size: 0.75rem;
+}
+[data-export-size="lg"] {
+  --hebrew-font-size: 1.65rem;
+  --greek-font-size: 1.5rem;
+  --translation-font-size: 1.0rem;
+}
+
 /* Scripture reference decoration (ProseMirror inline decoration) */
 .scripture-ref {
   color: var(--accent);

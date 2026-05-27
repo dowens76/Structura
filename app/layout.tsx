@@ -7,7 +7,7 @@ import "@fontsource/gentium-plus/greek-ext-400.css";
 import "@fontsource/gentium-plus/latin-400.css";
 
 export const metadata: Metadata = {
-  title: "Structura — A Workbench for Scripture Study",
+  title: "Structura — A Workbench for Study of Scripture",
   description: "Visual analysis of Hebrew and Greek biblical texts with morphological data",
 };
 

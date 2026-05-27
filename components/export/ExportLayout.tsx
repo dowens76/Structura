@@ -4,6 +4,38 @@ import Link from "next/link";
 import { useRef, useState, useEffect, type ReactNode } from "react";
 import NotesExportMenu from "./NotesExportMenu";
 
+// ── Export size ─────────────────────────────────────────────────────────────
+
+type ExportSize = "sm" | "md" | "lg";
+
+/**
+ * Screen-resolution font-size CSS vars per size tier.  md uses all defaults
+ * (globals.css fallbacks), so its object is empty.
+ */
+const SCREEN_SIZE_VARS: Record<ExportSize, React.CSSProperties> = {
+  sm: {
+    "--hebrew-font-size":      "1.1rem",
+    "--greek-font-size":       "1.0rem",
+    "--translation-font-size": "0.75rem",
+  } as React.CSSProperties,
+  md: {} as React.CSSProperties,
+  lg: {
+    "--hebrew-font-size":      "1.65rem",
+    "--greek-font-size":       "1.5rem",
+    "--translation-font-size": "1.0rem",
+  } as React.CSSProperties,
+};
+
+/** Source-text font sizes for Tauri @media print pre-measurement and the
+ *  print <style> block.  11pt matches the legacy default. */
+const PRINT_SOURCE_SIZE: Record<ExportSize, string> = {
+  sm: "9pt",
+  md: "11pt",
+  lg: "13pt",
+};
+
+// ── Dark-mode vars ───────────────────────────────────────────────────────────
+
 /**
  * Dark-mode CSS variable overrides applied inline on the content wrapper
  * when the user has chosen dark export.  These cascade to all descendants,
@@ -48,12 +80,40 @@ export default function ExportLayout({ children, revealHref, filename, backHref,
   /** When true, the content wrapper gets dark CSS vars + .dark class so
    *  both the on-screen preview and all captured images use dark colours. */
   const [exportDark, setExportDark] = useState(false);
+  /** S / M / L font-size tier for export.  Applies to both PNG and PDF. */
+  const [exportSize, setExportSize] = useState<ExportSize>("md");
 
   // Mirror the current app theme on first render so the toggle starts in a
   // sensible state (dark app → dark export default; light app → light export).
   useEffect(() => {
     setExportDark(document.documentElement.classList.contains("dark"));
   }, []);
+
+  // When the font-size tier changes, CSS vars on the content wrapper update and
+  // the browser reflows text at the new sizes.  All three overlay components
+  // (WordArrowOverlay, ClauseRelationshipOverlay, RstRelationOverlay) listen for
+  // "structura:screen-remeasure" and re-run their scheduleMeasure() path so React
+  // state is updated with the new screen-layout positions.
+  //
+  // Word elements carry `transition: all 0.1s` so the font-size change animates
+  // over ~100 ms.  getBoundingClientRect() returns intermediate positions during
+  // the animation, so a plain double-RAF (~32 ms) dispatches the event while
+  // words are still mid-transition — arrows land at the wrong positions.
+  // We wait one RAF (to let the commit paint) then 160 ms (transition + margin)
+  // before dispatching so the layout is fully settled.
+  useEffect(() => {
+    let raf1: number;
+    let timeout: ReturnType<typeof setTimeout>;
+    raf1 = requestAnimationFrame(() => {
+      timeout = setTimeout(() => {
+        window.dispatchEvent(new CustomEvent("structura:screen-remeasure"));
+      }, 160);
+    });
+    return () => {
+      cancelAnimationFrame(raf1);
+      clearTimeout(timeout);
+    };
+  }, [exportSize]);
 
   async function handlePdf() {
     if (pdfStatus === "loading") return;
@@ -98,8 +158,8 @@ export default function ExportLayout({ children, revealHref, filename, backHref,
         // printable widths, so no WKWebView content-scaling occurs.
         const printSim = document.createElement("style");
         printSim.textContent = [
-          "[lang='he'], .text-hebrew { font-size: 11pt !important; }",
-          "[lang='grc'], .text-greek { font-size: 11pt !important; }",
+          `[lang='he'], .text-hebrew { font-size: ${PRINT_SOURCE_SIZE[exportSize]} !important; }`,
+          `[lang='grc'], .text-greek { font-size: ${PRINT_SOURCE_SIZE[exportSize]} !important; }`,
           "[data-png-crop-to] { max-width: 42rem !important; }",
           // WordArrowOverlay measures coordinates relative to [data-png-target]
           // (= outerRef, the full-width wrapper div).  Without this rule,
@@ -136,14 +196,15 @@ export default function ExportLayout({ children, revealHref, filename, backHref,
         // the live page — the captured image is already pixel-perfect.
         //
         // PDF is always light-mode regardless of the exportDark toggle.
-        // Temporarily strip any dark theme from the content wrapper before
-        // capturing, then restore it so the on-screen preview stays correct.
+        // Temporarily strip the dark vars from the content wrapper before
+        // capturing, then restore them — size vars are left in place because
+        // they don't affect the light/dark appearance.
         const wrapper = textRef.current;
-        const prevWrapperClass = wrapper?.className ?? "";
-        const prevWrapperStyle = wrapper?.getAttribute("style") ?? null;
         if (exportDark && wrapper) {
-          wrapper.className = "";
-          wrapper.removeAttribute("style");
+          wrapper.classList.remove("dark");
+          for (const key of Object.keys(DARK_EXPORT_STYLE)) {
+            wrapper.style.removeProperty(key);
+          }
           // Wait for the DOM to repaint in light mode before capturing.
           await new Promise<void>(r => requestAnimationFrame(() => requestAnimationFrame(() => r())));
         }
@@ -159,8 +220,10 @@ export default function ExportLayout({ children, revealHref, filename, backHref,
         } finally {
           // Always restore the dark wrapper, even if renderToPng throws.
           if (exportDark && wrapper) {
-            wrapper.className = prevWrapperClass;
-            if (prevWrapperStyle !== null) wrapper.setAttribute("style", prevWrapperStyle);
+            wrapper.classList.add("dark");
+            for (const [key, value] of Object.entries(DARK_EXPORT_STYLE)) {
+              wrapper.style.setProperty(key, value as string);
+            }
           }
         }
 
@@ -334,6 +397,16 @@ export default function ExportLayout({ children, revealHref, filename, backHref,
     const { toCanvas } = await import("html-to-image");
     const pixelRatio = 2;
     const render = (opts: object) => toCanvas(el, { pixelRatio, ...opts });
+
+    // Capture crop coordinates BEFORE the async toCanvas call.
+    // structura:screen-remeasure fires 160ms after the RAF (i.e. during the
+    // async render), causing setSvgHeight to toggle a vertical scrollbar —
+    // shifting the mx-auto crop container left/right by ~8px.  Measuring
+    // before the render ensures the canvas content and the crop rect reflect
+    // the same scroll/layout state, preventing content from being cut off.
+    const elRect   = cropTo ? el.getBoundingClientRect() : null;
+    const cropRect = cropTo ? cropTo.getBoundingClientRect() : null;
+
     let canvas: HTMLCanvasElement;
     try {
       canvas = await render({});
@@ -343,9 +416,7 @@ export default function ExportLayout({ children, revealHref, filename, backHref,
     }
 
     // Crop to the inner content element's bounds if provided
-    if (cropTo) {
-      const elRect   = el.getBoundingClientRect();
-      const cropRect = cropTo.getBoundingClientRect();
+    if (cropTo && elRect && cropRect) {
       const sx = Math.round((cropRect.left - elRect.left) * pixelRatio);
       const sy = Math.round((cropRect.top  - elRect.top)  * pixelRatio);
       const sw = Math.round(cropRect.width  * pixelRatio);
@@ -364,6 +435,15 @@ export default function ExportLayout({ children, revealHref, filename, backHref,
   async function handlePng() {
     if (!textRef.current || pngStatus === "loading") return;
     setPngStatus("loading");
+
+    // Allow any pending overlay re-measurements to settle.  When the user
+    // changes the font-size tier (S/M/L) and immediately clicks PNG, the
+    // structura:screen-remeasure RAF chain may not have committed yet.  A
+    // double-RAF here ensures the SVG arrow paths reflect the new font sizes
+    // before the canvas capture begins.  (Tauri's renderToPng already has its
+    // own double-RAF, so this only adds the guard for the browser path.)
+    await new Promise<void>(r => requestAnimationFrame(() => requestAnimationFrame(() => r())));
+
     try {
       // [data-png-target]: outerRef — full-width, so nothing can be clipped.
       // [data-png-crop-to]: containerRef (max-w-4xl) — used to trim blank side margins.
@@ -480,12 +560,13 @@ export default function ExportLayout({ children, revealHref, filename, backHref,
           }
 
           /* Reduce source-text font sizes for print.  Screen values (≈22 px Hebrew,
-             ≈20 px Greek) are too large for a printed study document; 11 pt is a
-             standard body-text size.  handlePdf() pre-applies these same rules
-             via a temporary injected stylesheet so overlays can re-measure at the
-             correct print positions before the native dialog opens. */
-          [lang="he"], .text-hebrew { font-size: 11pt !important; }
-          [lang="grc"], .text-greek { font-size: 11pt !important; }
+             ≈20 px Greek) are too large for a printed study document; the size
+             follows the S/M/L selector (9 pt / 11 pt / 13 pt).  handlePdf()
+             pre-applies these same rules via a temporary injected stylesheet so
+             overlays can re-measure at the correct print positions before the
+             native dialog opens. */
+          [lang="he"], .text-hebrew { font-size: ${PRINT_SOURCE_SIZE[exportSize]} !important; }
+          [lang="grc"], .text-greek { font-size: ${PRINT_SOURCE_SIZE[exportSize]} !important; }
 
           /* Translation footnotes: force a legible colour so they always print
              clearly regardless of light/dark mode. */
@@ -540,6 +621,31 @@ export default function ExportLayout({ children, revealHref, filename, backHref,
           >
             {exportDark ? "🌙" : "☀️"}
           </button>
+
+          {/* Font size: S / M / L */}
+          <div
+            className="flex rounded overflow-hidden border"
+            style={{ borderColor: "var(--border)" }}
+            title="Font size"
+          >
+            {(["sm", "md", "lg"] as ExportSize[]).map((sz, i) => (
+              <button
+                key={sz}
+                onClick={() => setExportSize(sz)}
+                title={sz === "sm" ? "Small font" : sz === "md" ? "Medium font" : "Large font"}
+                className={[
+                  "px-2 py-1 text-xs font-medium transition-colors leading-none",
+                  i > 0 ? "border-l" : "",
+                  exportSize === sz
+                    ? "bg-stone-600 text-white dark:bg-stone-500"
+                    : "bg-stone-100 text-stone-600 hover:bg-stone-200 dark:bg-stone-800 dark:text-stone-300 dark:hover:bg-stone-700",
+                ].join(" ")}
+                style={i > 0 ? { borderColor: "var(--border)" } : undefined}
+              >
+                {sz === "sm" ? "S" : sz === "md" ? "M" : "L"}
+              </button>
+            ))}
+          </div>
 
           <span className="w-px h-4 rounded" style={{ backgroundColor: "var(--border)" }} aria-hidden="true" />
 
@@ -600,16 +706,16 @@ export default function ExportLayout({ children, revealHref, filename, backHref,
       </div>
 
       {/* Content area.
+          data-export-size — matched by the [data-export-size="sm/lg"] CSS rules in
+          the <style> block above to set --hebrew/greek/translation-font-size vars.
           When exportDark is true:
             • className="dark"  → activates all Tailwind dark: utilities on descendants
             • DARK_EXPORT_STYLE → overrides :root CSS vars for this subtree so every
               var(--foreground) / var(--surface) / etc. resolves to the dark palette
-            • background        → fills the wrapper itself with the dark background
-          This drives both the live on-screen preview AND the captured image — the
-          WKWebView screenshot and html-to-image serialisation both read from the
-          rendered DOM, so no separate theme-switching step is needed at capture time. */}
+            • background        → fills the wrapper itself with the dark background */}
       <div
         ref={textRef}
+        data-export-size={exportSize}
         className={exportDark ? "dark" : ""}
         style={exportDark ? DARK_EXPORT_STYLE : undefined}
       >

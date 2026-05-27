@@ -733,12 +733,21 @@ export default function RstRelationOverlay({
       printMeasureRef.current();
     }
 
+    // ExportLayout dispatches this after a double-RAF when the font-size tier
+    // changes (S/M/L selector).  Layout has reflowed — kick off scheduleRemeasure()
+    // to update React state with the new screen-layout positions.
+    function handleScreenRemeasure() {
+      scheduleRemeasureRef.current();
+    }
+
     mql.addEventListener("change", handlePrintMediaChange);
     window.addEventListener("structura:print-prepare", handlePrintPrepare);
+    window.addEventListener("structura:screen-remeasure", handleScreenRemeasure);
     window.addEventListener("beforeprint", handleBeforePrint);
     return () => {
       mql.removeEventListener("change", handlePrintMediaChange);
       window.removeEventListener("structura:print-prepare", handlePrintPrepare);
+      window.removeEventListener("structura:screen-remeasure", handleScreenRemeasure);
       window.removeEventListener("beforeprint", handleBeforePrint);
     };
   }, []); // empty deps — attach once, refs keep content current
