@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useRef, useState, useEffect, type ReactNode } from "react";
 import NotesExportMenu from "./NotesExportMenu";
+import ImageExportMenu, { type ImagePreset } from "./ImageExportMenu";
+import { rgbaCanvasToTiff } from "@/lib/export/tiff-encoder";
 
 // ── Export size ─────────────────────────────────────────────────────────────
 
@@ -75,7 +77,7 @@ interface Props {
 export default function ExportLayout({ children, revealHref, filename, backHref, noteContext }: Props) {
   const textRef = useRef<HTMLDivElement>(null);
   const [pdfStatus, setPdfStatus] = useState<"idle" | "loading" | "done" | "error">("idle");
-  const [pngStatus, setPngStatus] = useState<"idle" | "loading" | "done" | "error">("idle");
+  const [imgStatus, setImgStatus] = useState<"idle" | "loading" | "done" | "error">("idle");
   const [slidesStatus, setSlidesStatus] = useState<"idle" | "loading" | "done">("idle");
   /** When true, the content wrapper gets dark CSS vars + .dark class so
    *  both the on-screen preview and all captured images use dark colours. */
@@ -292,7 +294,44 @@ export default function ExportLayout({ children, revealHref, filename, backHref,
    * If `cropTo` is supplied the output is cropped to that element's bounds
    * (used to trim blank side-margins from the max-w-4xl inner container).
    */
-  async function renderToPng(el: HTMLElement, cropTo?: HTMLElement): Promise<string> {
+  /**
+   * Browser-only: render `el` to an HTMLCanvasElement at the given pixelRatio.
+   * Crop coordinates are captured before the async toCanvas call to avoid the
+   * screen-remeasure scrollbar-shift race (see renderToPng comment).
+   */
+  async function renderToCanvas(
+    el: HTMLElement,
+    cropTo: HTMLElement | undefined,
+    pixelRatio: number,
+  ): Promise<HTMLCanvasElement> {
+    const { toCanvas } = await import("html-to-image");
+    const render = (opts: object) => toCanvas(el, { pixelRatio, ...opts });
+
+    const elRect   = cropTo ? el.getBoundingClientRect() : null;
+    const cropRect = cropTo ? cropTo.getBoundingClientRect() : null;
+
+    let canvas: HTMLCanvasElement;
+    try {
+      canvas = await render({});
+    } catch {
+      canvas = await render({ skipFonts: true });
+    }
+
+    if (cropTo && elRect && cropRect) {
+      const sx = Math.round((cropRect.left - elRect.left) * pixelRatio);
+      const sy = Math.round((cropRect.top  - elRect.top)  * pixelRatio);
+      const sw = Math.round(cropRect.width  * pixelRatio);
+      const sh = Math.round(cropRect.height * pixelRatio);
+      const cropped = document.createElement("canvas");
+      cropped.width  = sw;
+      cropped.height = sh;
+      cropped.getContext("2d")!.drawImage(canvas, sx, sy, sw, sh, 0, 0, sw, sh);
+      return cropped;
+    }
+    return canvas;
+  }
+
+  async function renderToPng(el: HTMLElement, cropTo?: HTMLElement, pixelRatio = 2): Promise<string> {
     // ── Tauri path: native WKWebView HTML renderer ───────────────────────────
     if ("__TAURI_INTERNALS__" in window) {
       const { invoke } = await import("@tauri-apps/api/core");
@@ -394,95 +433,118 @@ export default function ExportLayout({ children, revealHref, filename, backHref,
     }
 
     // ── Regular browser path: html-to-image ──────────────────────────────────
-    const { toCanvas } = await import("html-to-image");
-    const pixelRatio = 2;
-    const render = (opts: object) => toCanvas(el, { pixelRatio, ...opts });
-
-    // Capture crop coordinates BEFORE the async toCanvas call.
-    // structura:screen-remeasure fires 160ms after the RAF (i.e. during the
-    // async render), causing setSvgHeight to toggle a vertical scrollbar —
-    // shifting the mx-auto crop container left/right by ~8px.  Measuring
-    // before the render ensures the canvas content and the crop rect reflect
-    // the same scroll/layout state, preventing content from being cut off.
-    const elRect   = cropTo ? el.getBoundingClientRect() : null;
-    const cropRect = cropTo ? cropTo.getBoundingClientRect() : null;
-
-    let canvas: HTMLCanvasElement;
-    try {
-      canvas = await render({});
-    } catch {
-      // Retry without font embedding — last-resort fallback
-      canvas = await render({ skipFonts: true });
-    }
-
-    // Crop to the inner content element's bounds if provided
-    if (cropTo && elRect && cropRect) {
-      const sx = Math.round((cropRect.left - elRect.left) * pixelRatio);
-      const sy = Math.round((cropRect.top  - elRect.top)  * pixelRatio);
-      const sw = Math.round(cropRect.width  * pixelRatio);
-      const sh = Math.round(cropRect.height * pixelRatio);
-
-      const cropped = document.createElement("canvas");
-      cropped.width  = sw;
-      cropped.height = sh;
-      cropped.getContext("2d")!.drawImage(canvas, sx, sy, sw, sh, 0, 0, sw, sh);
-      return cropped.toDataURL("image/png");
-    }
-
+    // Delegates to renderToCanvas (crop-coordinate race fix lives there).
+    const canvas = await renderToCanvas(el, cropTo, pixelRatio);
     return canvas.toDataURL("image/png");
   }
 
-  async function handlePng() {
-    if (!textRef.current || pngStatus === "loading") return;
-    setPngStatus("loading");
+  /**
+   * Export the chapter/passage as an image in one of three quality presets:
+   *
+   *   "presentation" — PNG at 1× pixel ratio (compact file, screen/slide use)
+   *   "hifi"         — PNG at 1.5× (144 PPI, crisp on HiDPI / Retina screens)
+   *   "print"        — TIFF at ≈3.125× (300 DPI), CMYK colour, no compression
+   *
+   * Pixel-ratio mapping assumes a 96 CSS px/in reference density:
+   *   1  × 96 =  96 PPI  → presentation (close to the 72 PPI target)
+   *   1.5× 96 = 144 PPI  → high-fidelity
+   *   300 / 96 ≈ 3.125×  → print-ready 300 DPI
+   *
+   * The Tauri path always captures at native device DPR via WKWebView; the
+   * pixelRatio only affects the browser (html-to-image) path.
+   */
+  async function handleImageExport(preset: ImagePreset) {
+    if (!textRef.current || imgStatus === "loading") return;
+    setImgStatus("loading");
 
-    // Allow any pending overlay re-measurements to settle.  When the user
-    // changes the font-size tier (S/M/L) and immediately clicks PNG, the
-    // structura:screen-remeasure RAF chain may not have committed yet.  A
-    // double-RAF here ensures the SVG arrow paths reflect the new font sizes
-    // before the canvas capture begins.  (Tauri's renderToPng already has its
-    // own double-RAF, so this only adds the guard for the browser path.)
+    // Allow any pending overlay re-measurements to settle before capture.
     await new Promise<void>(r => requestAnimationFrame(() => requestAnimationFrame(() => r())));
 
     try {
-      // [data-png-target]: outerRef — full-width, so nothing can be clipped.
-      // [data-png-crop-to]: containerRef (max-w-4xl) — used to trim blank side margins.
+      // [data-png-target]: outerRef — full-width so nothing is clipped.
+      // [data-png-crop-to]: containerRef (max-w-4xl) — trims blank side margins.
       const pngTarget =
         (textRef.current.querySelector("[data-png-target]") as HTMLElement | null)
         ?? textRef.current;
       const cropTo =
         pngTarget.querySelector("[data-png-crop-to]") as HTMLElement | undefined ?? undefined;
-      const url = await renderToPng(pngTarget, cropTo);
 
-      // WKWebView (Tauri Mac) does not honour `<a download>` for data URLs.
-      // Detect Tauri at call-time (event handlers are always client-side) and
-      // delegate the save dialog + file write to the Rust command instead.
-      if ("__TAURI_INTERNALS__" in window) {
-        const { invoke } = await import("@tauri-apps/api/core");
-        const saved = await invoke<boolean>("save_file", {
-          filename: `structura-${filename}.png`,
-          dataUrl: url,
-          filterName: "PNG Image",
-          ext: "png",
-        });
-        if (!saved) {
-          // User cancelled — stay idle rather than showing "done"
-          setPngStatus("idle");
-          return;
+      const pixelRatio =
+        preset === "presentation" ? 1      :
+        preset === "hifi"         ? 1.5    :
+        /* print */                 300 / 96; // ≈3.125 → 300 DPI
+
+      if (preset === "print") {
+        // ── TIFF / CMYK path ────────────────────────────────────────────────
+        if ("__TAURI_INTERNALS__" in window) {
+          // Tauri captures at native DPR; load the result into a canvas so we
+          // can apply the same RGBA→CMYK conversion as the browser path.
+          const dataUrlPng = await renderToPng(pngTarget, cropTo, pixelRatio);
+          const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+            const i = new Image();
+            i.onload = () => resolve(i);
+            i.onerror = reject;
+            i.src = dataUrlPng;
+          });
+          const tmp = document.createElement("canvas");
+          tmp.width = img.width; tmp.height = img.height;
+          tmp.getContext("2d")!.drawImage(img, 0, 0);
+          const tiffBytes = rgbaCanvasToTiff(tmp, 300);
+          const blob = new Blob([tiffBytes], { type: "image/tiff" });
+          const tiffDataUrl = await new Promise<string>((resolve, reject) => {
+            const fr = new FileReader();
+            fr.onload  = () => resolve(fr.result as string);
+            fr.onerror = reject;
+            fr.readAsDataURL(blob);
+          });
+          const { invoke } = await import("@tauri-apps/api/core");
+          const saved = await invoke<boolean>("save_file", {
+            filename: `structura-${filename}.tif`,
+            dataUrl: tiffDataUrl,
+            filterName: "TIFF Image",
+            ext: "tif",
+          });
+          if (!saved) { setImgStatus("idle"); return; }
+        } else {
+          // Browser path: render to canvas, convert to CMYK TIFF, download.
+          const canvas = await renderToCanvas(pngTarget, cropTo, pixelRatio);
+          const tiffBytes = rgbaCanvasToTiff(canvas, 300);
+          const blob = new Blob([tiffBytes], { type: "image/tiff" });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = `structura-${filename}.tif`;
+          a.click();
+          URL.revokeObjectURL(url);
         }
       } else {
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = `structura-${filename}.png`;
-        a.click();
+        // ── PNG path (presentation or hifi) ─────────────────────────────────
+        const url = await renderToPng(pngTarget, cropTo, pixelRatio);
+
+        // WKWebView (Tauri Mac) does not honour `<a download>` for data URLs.
+        if ("__TAURI_INTERNALS__" in window) {
+          const { invoke } = await import("@tauri-apps/api/core");
+          const saved = await invoke<boolean>("save_file", {
+            filename: `structura-${filename}.png`,
+            dataUrl: url,
+            filterName: "PNG Image",
+            ext: "png",
+          });
+          if (!saved) { setImgStatus("idle"); return; }
+        } else {
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = `structura-${filename}.png`;
+          a.click();
+        }
       }
 
-      setPngStatus("done");
+      setImgStatus("done");
     } catch (err) {
-      console.error("PNG export failed:", err);
-      setPngStatus("error");
+      console.error("Image export failed:", err);
+      setImgStatus("error");
     }
-    setTimeout(() => setPngStatus("idle"), 3000);
+    setTimeout(() => setImgStatus("idle"), 3000);
   }
 
   async function handleSlides() {
@@ -663,20 +725,7 @@ export default function ExportLayout({ children, revealHref, filename, backHref,
                   ? "✗ PDF failed"
                   : "📄 PDF"}
           </button>
-          <button
-            className={pngStatus === "error" ? `${btnBase} bg-red-600 text-white` : btnSecondary}
-            onClick={handlePng}
-            disabled={pngStatus === "loading"}
-            title="Download a PNG screenshot of the text"
-          >
-            {pngStatus === "loading"
-              ? "Rendering…"
-              : pngStatus === "done"
-                ? "✓ PNG"
-                : pngStatus === "error"
-                  ? "✗ PNG failed"
-                  : "🖼 PNG"}
-          </button>
+          <ImageExportMenu status={imgStatus} onExport={handleImageExport} />
           {/* Slides export hidden — code preserved, not yet exposed in UI
           <button
             className={btnSecondary}
