@@ -1,8 +1,27 @@
 "use client";
 
 import Link from "next/link";
-import { useRef, useState, type ReactNode } from "react";
+import { useRef, useState, useEffect, type ReactNode } from "react";
 import NotesExportMenu from "./NotesExportMenu";
+
+/**
+ * Dark-mode CSS variable overrides applied inline on the content wrapper
+ * when the user has chosen dark export.  These cascade to all descendants,
+ * overriding the `:root` light values regardless of the app's own theme.
+ */
+const DARK_EXPORT_STYLE: React.CSSProperties = {
+  "--background":       "#111a24",
+  "--foreground":       "#ede8df",
+  "--surface":          "#1a2535",
+  "--surface-muted":    "#1f2f3f",
+  "--border":           "#2a3a4a",
+  "--border-muted":     "#3a4e62",
+  "--text-muted":       "#8a9aaa",
+  "--accent":           "#d4aa50",
+  "--accent-hover":     "#e0be70",
+  "--interlinear-color":"#c96448",
+  background:           "#111a24",
+} as React.CSSProperties;
 
 interface Props {
   children: ReactNode;
@@ -26,6 +45,15 @@ export default function ExportLayout({ children, revealHref, filename, backHref,
   const [pdfStatus, setPdfStatus] = useState<"idle" | "loading" | "done" | "error">("idle");
   const [pngStatus, setPngStatus] = useState<"idle" | "loading" | "done" | "error">("idle");
   const [slidesStatus, setSlidesStatus] = useState<"idle" | "loading" | "done">("idle");
+  /** When true, the content wrapper gets dark CSS vars + .dark class so
+   *  both the on-screen preview and all captured images use dark colours. */
+  const [exportDark, setExportDark] = useState(false);
+
+  // Mirror the current app theme on first render so the toggle starts in a
+  // sensible state (dark app → dark export default; light app → light export).
+  useEffect(() => {
+    setExportDark(document.documentElement.classList.contains("dark"));
+  }, []);
 
   async function handlePdf() {
     if (pdfStatus === "loading") return;
@@ -106,13 +134,35 @@ export default function ExportLayout({ children, revealHref, filename, backHref,
         // then print it inside a hidden iframe. This sidesteps print-CSS reflow
         // and SVG re-measurement timing issues that affect window.print() on
         // the live page — the captured image is already pixel-perfect.
-        const pngTarget =
-          (el?.querySelector("[data-png-target]") as HTMLElement | null) ?? el;
-        const cropTo =
-          (pngTarget?.querySelector("[data-png-crop-to]") as HTMLElement | null) ?? undefined;
-        if (!pngTarget) throw new Error("No capture target");
+        //
+        // PDF is always light-mode regardless of the exportDark toggle.
+        // Temporarily strip any dark theme from the content wrapper before
+        // capturing, then restore it so the on-screen preview stays correct.
+        const wrapper = textRef.current;
+        const prevWrapperClass = wrapper?.className ?? "";
+        const prevWrapperStyle = wrapper?.getAttribute("style") ?? null;
+        if (exportDark && wrapper) {
+          wrapper.className = "";
+          wrapper.removeAttribute("style");
+          // Wait for the DOM to repaint in light mode before capturing.
+          await new Promise<void>(r => requestAnimationFrame(() => requestAnimationFrame(() => r())));
+        }
 
-        const dataUrl = await renderToPng(pngTarget, cropTo);
+        let dataUrl: string;
+        try {
+          const pngTarget =
+            (el?.querySelector("[data-png-target]") as HTMLElement | null) ?? el;
+          const cropTo =
+            (pngTarget?.querySelector("[data-png-crop-to]") as HTMLElement | null) ?? undefined;
+          if (!pngTarget) throw new Error("No capture target");
+          dataUrl = await renderToPng(pngTarget, cropTo);
+        } finally {
+          // Always restore the dark wrapper, even if renderToPng throws.
+          if (exportDark && wrapper) {
+            wrapper.className = prevWrapperClass;
+            if (prevWrapperStyle !== null) wrapper.setAttribute("style", prevWrapperStyle);
+          }
+        }
 
         const iframe = document.createElement("iframe");
         iframe.style.cssText =
@@ -383,7 +433,7 @@ export default function ExportLayout({ children, revealHref, filename, backHref,
 
   return (
     <>
-      {/* Print-only CSS — white background regardless of current theme */}
+      {/* Print-only CSS — establishes the baseline light-mode print theme. */}
       <style>{`
         @media print {
           .export-toolbar { display: none !important; }
@@ -413,8 +463,8 @@ export default function ExportLayout({ children, revealHref, filename, backHref,
              shifting every free-form arrow by (viewport − 42rem) / 2. */
           [data-png-target] { max-width: 42rem !important; }
 
-          /* Force light-mode CSS variables so print is always black-on-white,
-             even when the app is in dark mode. All children inherit from here. */
+          /* Default: force light-mode CSS variables so print is black-on-white.
+             The dark-export override block below supersedes this when active. */
           [data-export-page] {
             background: white !important;
             --background: white;
@@ -432,15 +482,13 @@ export default function ExportLayout({ children, revealHref, filename, backHref,
           /* Reduce source-text font sizes for print.  Screen values (≈22 px Hebrew,
              ≈20 px Greek) are too large for a printed study document; 11 pt is a
              standard body-text size.  handlePdf() pre-applies these same rules
-             via a temporary <style> element so overlays can re-measure at the
+             via a temporary injected stylesheet so overlays can re-measure at the
              correct print positions before the native dialog opens. */
           [lang="he"], .text-hebrew { font-size: 11pt !important; }
           [lang="grc"], .text-greek { font-size: 11pt !important; }
 
-          /* Translation footnotes: the app may be in dark mode when printing,
-             which makes dark:text-stone-400 (#a8a29e, a very light grey) nearly
-             invisible on white paper.  Force a legible dark colour here so
-             footnotes always print clearly regardless of light/dark mode. */
+          /* Translation footnotes: force a legible colour so they always print
+             clearly regardless of light/dark mode. */
           [data-seg-translation] p.italic { color: #3d3530 !important; }
           [data-seg-translation] p.italic sup { color: #6b6058 !important; }
           /* Keep each footnote's text on the same page — prevents a lone
@@ -448,6 +496,7 @@ export default function ExportLayout({ children, revealHref, filename, backHref,
           [data-seg-translation] > div { break-inside: avoid; page-break-inside: avoid; }
         }
       `}</style>
+
 
       {/* Floating toolbar */}
       <div
@@ -476,6 +525,24 @@ export default function ExportLayout({ children, revealHref, filename, backHref,
           <span className="text-xs font-medium mr-1" style={{ color: "var(--text-muted)" }}>
             Export:
           </span>
+
+          {/* Dark / light export toggle */}
+          <button
+            onClick={() => setExportDark(v => !v)}
+            title={exportDark ? "Switch to light export" : "Switch to dark export"}
+            className={[
+              btnBase,
+              "w-[2.1rem] text-center",
+              exportDark
+                ? "bg-stone-800 text-amber-300 hover:bg-stone-700 ring-1 ring-stone-600"
+                : "bg-stone-100 text-stone-500 hover:bg-stone-200 dark:bg-stone-800 dark:text-stone-400 dark:hover:bg-stone-700",
+            ].join(" ")}
+          >
+            {exportDark ? "🌙" : "☀️"}
+          </button>
+
+          <span className="w-px h-4 rounded" style={{ backgroundColor: "var(--border)" }} aria-hidden="true" />
+
           <button
             className={pdfStatus === "error" ? `${btnBase} bg-red-600 text-white` : btnPrimary}
             onClick={handlePdf}
@@ -532,8 +599,20 @@ export default function ExportLayout({ children, revealHref, filename, backHref,
         </div>
       </div>
 
-      {/* Text content captured by html2canvas */}
-      <div ref={textRef}>
+      {/* Content area.
+          When exportDark is true:
+            • className="dark"  → activates all Tailwind dark: utilities on descendants
+            • DARK_EXPORT_STYLE → overrides :root CSS vars for this subtree so every
+              var(--foreground) / var(--surface) / etc. resolves to the dark palette
+            • background        → fills the wrapper itself with the dark background
+          This drives both the live on-screen preview AND the captured image — the
+          WKWebView screenshot and html-to-image serialisation both read from the
+          rendered DOM, so no separate theme-switching step is needed at capture time. */}
+      <div
+        ref={textRef}
+        className={exportDark ? "dark" : ""}
+        style={exportDark ? DARK_EXPORT_STYLE : undefined}
+      >
         {children}
       </div>
     </>

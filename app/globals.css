@@ -112,6 +112,11 @@ body {
   font-size: var(--hebrew-font-size, 1.375rem);
   line-height: var(--source-lh, 2.5);
   letter-spacing: 0.01em;
+  /* Re-evaluate at element scope so that a scoped --foreground override
+     (e.g. ExportLayout's dark-export wrapper) propagates here.  Without
+     this the colour is inherited as a computed value from <body> and
+     bypasses any ancestor custom-property overrides. */
+  color: var(--foreground);
 }
 
 /* Greek text */
@@ -120,6 +125,8 @@ body {
   font-family: "Gentium Plus", "GFS Didot", serif;
   font-size: var(--greek-font-size, 1.25rem);
   line-height: var(--source-lh, 2.25);
+  /* Same reason as .text-hebrew above */
+  color: var(--foreground);
 }
 
 /* Interlinear mode: word stacked with parsing below */
