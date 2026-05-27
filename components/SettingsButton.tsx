@@ -5,6 +5,13 @@ import { useTranslation } from "@/lib/i18n/LocaleContext";
 import type { TranslationPref } from "@/components/notes/ScriptureTooltip";
 import type { FetchBibleTranslation } from "@/app/api/fetchbible/route";
 import { LOCALES } from "@/lib/i18n/translations";
+import {
+  applyFontSettings,
+  readFontSettingsFromStorage,
+  FONT_SETTINGS_LS_KEY,
+  type FontSettings,
+} from "@/lib/fonts";
+import FontPickerDialog, { type FontLanguage } from "@/components/FontPickerDialog";
 
 export type GreekLexicon  = "AbbottSmith" | "Dodson";
 export type HebrewLexicon = "BDB" | "HebrewStrong";
@@ -98,6 +105,15 @@ export default function SettingsButton() {
   const [hiddenSources, setHiddenSources] = useState<SourceId[]>([]);
   const panelRef                      = useRef<HTMLDivElement>(null);
 
+  // Custom font settings
+  const [fontInputs, setFontInputs] = useState<Required<FontSettings>>({
+    hebrew: "", greek: "", translation: "",
+  });
+  const [savingFonts, setSavingFonts] = useState(false);
+  const [fontSaved,   setFontSaved]   = useState(false);
+  /** Which language's font picker is currently open, or null if closed. */
+  const [pickerOpen, setPickerOpen]   = useState<FontLanguage | null>(null);
+
   // Scripture tooltip preferences
   const [apiBibleKeyInput, setApiBibleKeyInput]       = useState("");
   const [hasApiBibleKey,   setHasApiBibleKey]         = useState(false);
@@ -110,6 +126,13 @@ export default function SettingsButton() {
   useEffect(() => {
     setGreekLex(getGreekLexicon());
     setHebrewLex(getHebrewLexicon());
+    // Populate font inputs from localStorage (fast, no network round-trip)
+    const saved = readFontSettingsFromStorage();
+    setFontInputs({
+      hebrew:      saved.hebrew      ?? "",
+      greek:       saved.greek       ?? "",
+      translation: saved.translation ?? "",
+    });
     fetch("/api/settings/hidden-sources")
       .then((r) => r.json())
       .then((d: { hidden?: string[] }) => {
@@ -217,6 +240,33 @@ export default function SettingsButton() {
     setHebrewLex(v);
     localStorage.setItem(HEBREW_LEX_KEY, v);
     window.dispatchEvent(new CustomEvent("structura:settingsChange", { detail: { hebrewLexicon: v } }));
+  }
+
+  async function saveFontsImmediate(inputs: Required<FontSettings>) {
+    if (savingFonts) return;
+    setSavingFonts(true);
+    try {
+      const payload: FontSettings = {
+        hebrew:      inputs.hebrew.trim()      || undefined,
+        greek:       inputs.greek.trim()       || undefined,
+        translation: inputs.translation.trim() || undefined,
+      };
+      await fetch("/api/settings/fonts", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      localStorage.setItem(FONT_SETTINGS_LS_KEY, JSON.stringify(payload));
+      applyFontSettings(payload);
+      setFontSaved(true);
+      setTimeout(() => setFontSaved(false), 2000);
+    } finally {
+      setSavingFonts(false);
+    }
+  }
+
+  function saveFonts() {
+    return saveFontsImmediate(fontInputs);
   }
 
   async function toggleHiddenSource(src: SourceId, hide: boolean) {
@@ -331,6 +381,69 @@ export default function SettingsButton() {
                 </label>
               ))}
             </div>
+          </div>
+
+          {/* Custom Fonts */}
+          <div className="pt-3 border-t" style={{ borderColor: "var(--border)" }}>
+            <p className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: "var(--text-muted)" }}>
+              Custom Fonts
+            </p>
+
+            {(
+              [
+                { key: "hebrew"      as const, label: "Hebrew",      sampleDir: "rtl" as const },
+                { key: "greek"       as const, label: "Greek",       sampleDir: "ltr" as const },
+                { key: "translation" as const, label: "Translation", sampleDir: "ltr" as const },
+              ]
+            ).map(({ key, label, sampleDir }) => {
+              const activeFont = fontInputs[key];
+              return (
+                <div key={key} className="mb-2">
+                  <p className="text-[10px] mb-1" style={{ color: "var(--text-muted)" }}>
+                    {label}
+                  </p>
+                  <div className="flex items-center gap-1">
+                    {/* Current font display — click to open picker */}
+                    <button
+                      onClick={() => setPickerOpen(key)}
+                      className="flex-1 min-w-0 text-left text-xs px-2 py-1.5 rounded border transition-colors truncate"
+                      style={{
+                        borderColor: "var(--border)",
+                        background: "var(--surface-muted)",
+                        color: activeFont ? "var(--foreground)" : "var(--text-muted)",
+                        fontFamily: activeFont || undefined,
+                        direction: sampleDir,
+                      }}
+                      title={activeFont || "Default (click to choose)"}
+                    >
+                      {activeFont || "Default"}
+                    </button>
+                    {/* Clear button — only shown when a custom font is set */}
+                    {activeFont && (
+                      <button
+                        onClick={() => {
+                          const next = { ...fontInputs, [key]: "" };
+                          setFontInputs(next);
+                          saveFontsImmediate(next);
+                        }}
+                        className="shrink-0 w-6 h-6 flex items-center justify-center rounded text-xs transition-colors"
+                        style={{ color: "var(--text-muted)" }}
+                        title="Reset to default"
+                        aria-label="Reset font"
+                      >
+                        ×
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+
+            {fontSaved && (
+              <p className="text-[10px] mt-1 text-right" style={{ color: "var(--accent)" }}>
+                ✓ Saved
+              </p>
+            )}
           </div>
 
           {/* Scripture Tooltips */}
@@ -465,6 +578,22 @@ export default function SettingsButton() {
             ))}
           </div>
         </div>
+      )}
+
+      {/* Font picker dialog — rendered outside the settings panel so it can
+          cover the full viewport as a modal overlay */}
+      {pickerOpen && (
+        <FontPickerDialog
+          language={pickerOpen}
+          current={fontInputs[pickerOpen]}
+          onApply={(family) => {
+            const next = { ...fontInputs, [pickerOpen]: family };
+            setFontInputs(next);
+            setPickerOpen(null);
+            saveFontsImmediate(next);
+          }}
+          onClose={() => setPickerOpen(null)}
+        />
       )}
     </div>
   );

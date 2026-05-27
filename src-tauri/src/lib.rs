@@ -194,6 +194,64 @@ async fn save_file(
     }
 }
 
+// ── Tauri command: list system font families ──────────────────────────────────
+//
+// WKWebView does not support the browser's Local Font Access API
+// (window.queryLocalFonts), so the font-picker dialog falls back to this
+// native command on macOS.  NSFontManager.availableFontFamilies() returns every
+// installed font family in one call; the result is sorted and deduplicated
+// before being returned to the frontend.
+
+#[cfg(target_os = "macos")]
+#[tauri::command]
+async fn list_fonts(app: AppHandle) -> Result<Vec<String>, String> {
+    use std::sync::mpsc;
+
+    let window = app
+        .get_webview_window("main")
+        .ok_or_else(|| "No main window".to_string())?;
+
+    let (tx, rx) = mpsc::channel::<Vec<String>>();
+
+    // NSFontManager must be called from the main thread.
+    // with_webview() dispatches to the main thread — the same guarantee used
+    // by capture_viewport_png.  We ignore the WKWebView parameter and just
+    // use the dispatch as a way to safely obtain MainThreadMarker.
+    window
+        .with_webview(move |_webview| {
+            use objc2::MainThreadMarker;
+            use objc2_app_kit::NSFontManager;
+
+            let families = if let Some(mtm) = MainThreadMarker::new() {
+                let fm = NSFontManager::sharedFontManager(mtm);
+                let arr = fm.availableFontFamilies();
+                let mut v: Vec<String> = (0..arr.count())
+                    .map(|i| arr.objectAtIndex(i).to_string())
+                    .collect();
+                v.sort_unstable();
+                v.dedup();
+                v
+            } else {
+                Vec::new()
+            };
+            let _ = tx.send(families);
+        })
+        .map_err(|e| format!("with_webview dispatch failed: {e}"))?;
+
+    tauri::async_runtime::spawn_blocking(move || {
+        rx.recv()
+            .unwrap_or_default()
+    })
+    .await
+    .map_err(|e| format!("list_fonts join error: {e}"))
+}
+
+#[cfg(not(target_os = "macos"))]
+#[tauri::command]
+async fn list_fonts(_app: AppHandle) -> Result<Vec<String>, String> {
+    Ok(Vec::new())
+}
+
 // ── First-run: copy user.db.template → appDataDir/user.db ───────────────────
 
 fn ensure_user_db(app: &AppHandle) -> Result<PathBuf, String> {
@@ -361,7 +419,7 @@ pub fn run() {
 
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![pick_folder, save_file, print_page, capture_viewport_png])
+        .invoke_handler(tauri::generate_handler![pick_folder, save_file, print_page, capture_viewport_png, list_fonts])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
