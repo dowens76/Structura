@@ -223,26 +223,22 @@ export default function ExportLayout({ children, revealHref, filename, backHref,
           await new Promise<void>(r => requestAnimationFrame(() => requestAnimationFrame(() => r())));
         }
 
+        const pngTargetEl = (el?.querySelector("[data-png-target]") as HTMLElement | null) ?? el;
+        const cropTo =
+          (pngTargetEl?.querySelector("[data-png-crop-to]") as HTMLElement | null) ?? undefined;
+        if (!pngTargetEl) throw new Error("No capture target");
+        const bgColor = exportBg === "transparent" ? undefined : exportBg;
         let dataUrl: string;
-        let pngTargetEl: HTMLElement | null = null;
-        let prevPdfBg = "";
         try {
-          pngTargetEl = (el?.querySelector("[data-png-target]") as HTMLElement | null) ?? el;
-          const cropTo =
-            (pngTargetEl?.querySelector("[data-png-crop-to]") as HTMLElement | null) ?? undefined;
-          if (!pngTargetEl) throw new Error("No capture target");
-          prevPdfBg = pngTargetEl.style.background;
-          pngTargetEl.style.background = exportBg === "transparent" ? "" : exportBg;
-          dataUrl = await renderToPng(pngTargetEl, cropTo);
+          dataUrl = await renderToPng(pngTargetEl, cropTo, 2, bgColor);
         } finally {
-          // Always restore the dark wrapper and png target bg, even if renderToPng throws.
+          // Always restore the dark wrapper, even if renderToPng throws.
           if (exportDark && wrapper) {
             wrapper.classList.add("dark");
             for (const [key, value] of Object.entries(DARK_EXPORT_STYLE)) {
               wrapper.style.setProperty(key, value as string);
             }
           }
-          if (pngTargetEl) pngTargetEl.style.background = prevPdfBg;
         }
 
         const iframe = document.createElement("iframe");
@@ -319,9 +315,11 @@ export default function ExportLayout({ children, revealHref, filename, backHref,
     el: HTMLElement,
     cropTo: HTMLElement | undefined,
     pixelRatio: number,
+    backgroundColor?: string,
   ): Promise<HTMLCanvasElement> {
     const { toCanvas } = await import("html-to-image");
-    const render = (opts: object) => toCanvas(el, { pixelRatio, ...opts });
+    const baseOpts = backgroundColor ? { pixelRatio, backgroundColor } : { pixelRatio };
+    const render = (opts: object) => toCanvas(el, { ...baseOpts, ...opts });
 
     const elRect   = cropTo ? el.getBoundingClientRect() : null;
     const cropRect = cropTo ? cropTo.getBoundingClientRect() : null;
@@ -347,7 +345,7 @@ export default function ExportLayout({ children, revealHref, filename, backHref,
     return canvas;
   }
 
-  async function renderToPng(el: HTMLElement, cropTo?: HTMLElement, pixelRatio = 2): Promise<string> {
+  async function renderToPng(el: HTMLElement, cropTo?: HTMLElement, pixelRatio = 2, backgroundColor?: string): Promise<string> {
     // ── Tauri path: native WKWebView HTML renderer ───────────────────────────
     if ("__TAURI_INTERNALS__" in window) {
       const { invoke } = await import("@tauri-apps/api/core");
@@ -450,7 +448,7 @@ export default function ExportLayout({ children, revealHref, filename, backHref,
 
     // ── Regular browser path: html-to-image ──────────────────────────────────
     // Delegates to renderToCanvas (crop-coordinate race fix lives there).
-    const canvas = await renderToCanvas(el, cropTo, pixelRatio);
+    const canvas = await renderToCanvas(el, cropTo, pixelRatio, backgroundColor);
     return canvas.toDataURL("image/png");
   }
 
@@ -485,12 +483,10 @@ export default function ExportLayout({ children, revealHref, filename, backHref,
       const cropTo =
         pngTarget.querySelector("[data-png-crop-to]") as HTMLElement | undefined ?? undefined;
 
-      // html-to-image captures only the element itself, not its parent's
-      // background. Apply the chosen bg directly so it appears in the output.
-      const prevPngBg = pngTarget.style.background;
-      pngTarget.style.background = exportBg === "transparent" ? "" : exportBg;
-
-      try {
+      // For the browser html-to-image path, backgroundColor is passed directly
+      // to toCanvas (the html-to-image option). For the Tauri viewport-capture
+      // path, the background is already on textRef and rendered by WKWebView.
+      const bgColor = exportBg === "transparent" ? undefined : exportBg;
 
       const pixelRatio =
         preset === "presentation" ? 1      :
@@ -530,7 +526,7 @@ export default function ExportLayout({ children, revealHref, filename, backHref,
           if (!saved) { setImgStatus("idle"); return; }
         } else {
           // Browser path: render to canvas, convert to CMYK TIFF, download.
-          const canvas = await renderToCanvas(pngTarget, cropTo, pixelRatio);
+          const canvas = await renderToCanvas(pngTarget, cropTo, pixelRatio, bgColor);
           const tiffBytes = rgbaCanvasToTiff(canvas, 300);
           const blob = new Blob([tiffBytes], { type: "image/tiff" });
           const url = URL.createObjectURL(blob);
@@ -542,7 +538,7 @@ export default function ExportLayout({ children, revealHref, filename, backHref,
         }
       } else {
         // ── PNG path (presentation or hifi) ─────────────────────────────────
-        const url = await renderToPng(pngTarget, cropTo, pixelRatio);
+        const url = await renderToPng(pngTarget, cropTo, pixelRatio, bgColor);
 
         // WKWebView (Tauri Mac) does not honour `<a download>` for data URLs.
         if ("__TAURI_INTERNALS__" in window) {
@@ -560,10 +556,6 @@ export default function ExportLayout({ children, revealHref, filename, backHref,
           a.download = `structura-${filename}.png`;
           a.click();
         }
-      }
-
-      } finally {
-        pngTarget.style.background = prevPngBg;
       }
 
       setImgStatus("done");
