@@ -10,6 +10,16 @@ import { rgbaCanvasToTiff } from "@/lib/export/tiff-encoder";
 
 type ExportSize = "sm" | "md" | "lg";
 
+// ── Export background ────────────────────────────────────────────────────────
+
+type ExportBg = "transparent" | "white" | "black";
+
+const BG_EXPORT_STYLES: Record<ExportBg, React.CSSProperties> = {
+  transparent: { background: "transparent", "--background": "transparent" } as React.CSSProperties,
+  white:       { background: "white",       "--background": "white"       } as React.CSSProperties,
+  black:       { background: "black",       "--background": "black"       } as React.CSSProperties,
+};
+
 /**
  * Screen-resolution font-size CSS vars per size tier.  md uses all defaults
  * (globals.css fallbacks), so its object is empty.
@@ -84,6 +94,8 @@ export default function ExportLayout({ children, revealHref, filename, backHref,
   const [exportDark, setExportDark] = useState(false);
   /** S / M / L font-size tier for export.  Applies to both PNG and PDF. */
   const [exportSize, setExportSize] = useState<ExportSize>("md");
+  /** Background fill: transparent (default), white, or black. */
+  const [exportBg, setExportBg] = useState<ExportBg>("transparent");
 
   // Mirror the current app theme on first render so the toggle starts in a
   // sensible state (dark app → dark export default; light app → light export).
@@ -212,21 +224,25 @@ export default function ExportLayout({ children, revealHref, filename, backHref,
         }
 
         let dataUrl: string;
+        let pngTargetEl: HTMLElement | null = null;
+        let prevPdfBg = "";
         try {
-          const pngTarget =
-            (el?.querySelector("[data-png-target]") as HTMLElement | null) ?? el;
+          pngTargetEl = (el?.querySelector("[data-png-target]") as HTMLElement | null) ?? el;
           const cropTo =
-            (pngTarget?.querySelector("[data-png-crop-to]") as HTMLElement | null) ?? undefined;
-          if (!pngTarget) throw new Error("No capture target");
-          dataUrl = await renderToPng(pngTarget, cropTo);
+            (pngTargetEl?.querySelector("[data-png-crop-to]") as HTMLElement | null) ?? undefined;
+          if (!pngTargetEl) throw new Error("No capture target");
+          prevPdfBg = pngTargetEl.style.background;
+          pngTargetEl.style.background = exportBg === "transparent" ? "" : exportBg;
+          dataUrl = await renderToPng(pngTargetEl, cropTo);
         } finally {
-          // Always restore the dark wrapper, even if renderToPng throws.
+          // Always restore the dark wrapper and png target bg, even if renderToPng throws.
           if (exportDark && wrapper) {
             wrapper.classList.add("dark");
             for (const [key, value] of Object.entries(DARK_EXPORT_STYLE)) {
               wrapper.style.setProperty(key, value as string);
             }
           }
+          if (pngTargetEl) pngTargetEl.style.background = prevPdfBg;
         }
 
         const iframe = document.createElement("iframe");
@@ -469,6 +485,13 @@ export default function ExportLayout({ children, revealHref, filename, backHref,
       const cropTo =
         pngTarget.querySelector("[data-png-crop-to]") as HTMLElement | undefined ?? undefined;
 
+      // html-to-image captures only the element itself, not its parent's
+      // background. Apply the chosen bg directly so it appears in the output.
+      const prevPngBg = pngTarget.style.background;
+      pngTarget.style.background = exportBg === "transparent" ? "" : exportBg;
+
+      try {
+
       const pixelRatio =
         preset === "presentation" ? 1      :
         preset === "hifi"         ? 1.5    :
@@ -537,6 +560,10 @@ export default function ExportLayout({ children, revealHref, filename, backHref,
           a.download = `structura-${filename}.png`;
           a.click();
         }
+      }
+
+      } finally {
+        pngTarget.style.background = prevPngBg;
       }
 
       setImgStatus("done");
@@ -709,6 +736,35 @@ export default function ExportLayout({ children, revealHref, filename, backHref,
             ))}
           </div>
 
+          {/* Background: transparent / white / black */}
+          <div
+            className="flex rounded overflow-hidden border"
+            style={{ borderColor: "var(--border)" }}
+            title="Export background"
+          >
+            {(["transparent", "white", "black"] as ExportBg[]).map((bg, i) => (
+              <button
+                key={bg}
+                onClick={() => setExportBg(bg)}
+                title={bg === "transparent" ? "Transparent background" : bg === "white" ? "White background" : "Black background"}
+                className={[
+                  "px-2 py-1 transition-colors leading-none flex items-center justify-center",
+                  i > 0 ? "border-l" : "",
+                  exportBg === bg
+                    ? "bg-stone-600 dark:bg-stone-500"
+                    : "bg-stone-100 hover:bg-stone-200 dark:bg-stone-800 dark:hover:bg-stone-700",
+                ].join(" ")}
+                style={i > 0 ? { borderColor: "var(--border)" } : undefined}
+              >
+                {bg === "transparent" ? (
+                  <span style={{ display: "inline-block", width: "0.7rem", height: "0.7rem", border: "1.5px dashed", borderColor: exportBg === bg ? "white" : "#78716c", borderRadius: "2px" }} />
+                ) : (
+                  <span style={{ display: "inline-block", width: "0.7rem", height: "0.7rem", background: bg, border: bg === "white" ? "1px solid #aaa" : "1px solid #444", borderRadius: "2px" }} />
+                )}
+              </button>
+            ))}
+          </div>
+
           <span className="w-px h-4 rounded" style={{ backgroundColor: "var(--border)" }} aria-hidden="true" />
 
           <button
@@ -766,7 +822,7 @@ export default function ExportLayout({ children, revealHref, filename, backHref,
         ref={textRef}
         data-export-size={exportSize}
         className={exportDark ? "dark" : ""}
-        style={exportDark ? DARK_EXPORT_STYLE : undefined}
+        style={{ ...(exportDark ? DARK_EXPORT_STYLE : {}), ...BG_EXPORT_STYLES[exportBg] }}
       >
         {children}
       </div>
