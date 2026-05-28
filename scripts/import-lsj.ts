@@ -49,6 +49,17 @@ function hasGreek(s: string): boolean {
   return /[Ͱ-Ͽἀ-῿]/i.test(s);
 }
 
+/** Strip redundant TEI attributes and normalize whitespace to shrink stored XML ~59%. */
+function compressXml(xml: string): string {
+  return xml
+    .replace(/ TEIform="[^"]*"/g, "")
+    .replace(/ opt="[^"]*"/g, "")
+    .replace(/ default="[^"]*"/g, "")
+    .replace(/ extent="[^"]*"/g, "")
+    .replace(/ n="urn:[^"]*"/g, "")
+    .replace(/\s+/g, " ");
+}
+
 /** Extract the value of the first occurrence of a named XML attribute. */
 function attrValue(tag: string, name: string): string {
   const re = new RegExp(`\\b${name}="([^"]*)"`, "i");
@@ -141,8 +152,8 @@ async function main() {
       const lemma       = unaccentGreek(headword);   // unaccented, lowercase
       const shortGloss  = firstTrText(entryBody).slice(0, 300) || null;
 
-      // Store the full entry XML for client-side rendering.
-      const rawXml = `<entryFree${attrsStr}>${entryBody}</entryFree>`;
+      // Store the entry XML, stripped of redundant TEI attributes (~59% smaller).
+      const rawXml = compressXml(`<entryFree${attrsStr}>${entryBody}</entryFree>`);
 
       rows.push({
         strongNumber:    entryId,      // "n1234" — unique per entry
