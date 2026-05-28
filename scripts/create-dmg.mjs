@@ -52,11 +52,27 @@ mkdirSync(DMG_DIR, { recursive: true });
 
 const DMG = path.join(DMG_DIR, `Structura_${version}_${archSuffix}.dmg`);
 
-// Detach any lingering mounted volume of the same name (Tauri's bundler may
-// have left /Volumes/Structura mounted after its own DMG creation step).
+// Detach any lingering mounted Structura volumes. Tauri's bundler may leave a
+// volume mounted under a name like "Structura 1" or "Structura" after its own
+// DMG creation step, so scan all of /Volumes/ rather than hardcoding the name.
 try {
-  execSync('hdiutil detach "/Volumes/Structura" -force', { stdio: "ignore" });
-} catch { /* not mounted — ignore */ }
+  const vols = execSync("ls /Volumes/ 2>/dev/null", { encoding: "utf-8" });
+  for (const vol of vols.split("\n")) {
+    if (vol.toLowerCase().startsWith("structura")) {
+      try {
+        execSync(`hdiutil detach "/Volumes/${vol}" -force`, { stdio: "ignore" });
+      } catch { /* ignore individual failures */ }
+    }
+  }
+} catch { /* /Volumes/ not accessible — ignore */ }
+
+// Remove the existing DMG file if present. hdiutil create -ov still fails with
+// "resource busy" when the file is held open by a previous process.
+if (existsSync(DMG)) {
+  try {
+    execSync(`rm -f "${DMG}"`, { stdio: "ignore" });
+  } catch { /* ignore */ }
+}
 
 console.log(`Creating DMG: ${path.basename(DMG)}...`);
 execSync(
