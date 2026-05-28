@@ -18,25 +18,37 @@ const DEST_DIR = path.join(ROOT, "src-tauri", "resources", "databases");
 
 mkdirSync(DEST_DIR, { recursive: true });
 
-const DBS = [
+// Required DBs — build fails if any are absent.
+const REQUIRED_DBS = [
   "source.db",
-  // Per-lexicon DBs (split from the old lexica.db):
+  // Per-lexicon DBs — created by running individual import scripts or
+  // by splitting the legacy combined DB:  npm run db:split:lexica
   "bdb.db",
   "strongs-hebrew.db",
   "dodson.db",
   "abbott-smith.db",
   "lsj.db",
   "lxx.db",
-  "ult.db",
-  "vcb.db",
 ];
+
+// Optional DBs — copied only when present; not an error if absent.
+const OPTIONAL_DBS = ["ult.db", "vcb.db"];
+
+const DBS = [...REQUIRED_DBS, ...OPTIONAL_DBS];
 
 for (const name of DBS) {
   const src  = path.join(DATA_DIR, name);
   const dest = path.join(DEST_DIR, name);
 
   if (!existsSync(src)) {
-    console.error(`ERROR: ${src} not found. Run the import scripts first.`);
+    if (OPTIONAL_DBS.includes(name)) {
+      console.log(`  ${name} ... skipped (not found)`);
+      continue;
+    }
+    const hint = ["bdb.db","strongs-hebrew.db","dodson.db","abbott-smith.db","lsj.db"].includes(name)
+      ? " Run the import scripts (npm run import:lexicon) or split the legacy DB (npm run db:split:lexica)."
+      : " Run the import scripts first.";
+    console.error(`ERROR: ${src} not found.${hint}`);
     process.exit(1);
   }
 
