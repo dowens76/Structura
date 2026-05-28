@@ -360,83 +360,64 @@ export default function ExportLayout({ children, revealHref, filename, backHref,
       const savedScrollX = window.scrollX;
       const savedScrollY = window.scrollY;
 
-      // Override the body and page-wrapper backgrounds so WKWebView snapshots
-      // render the correct export background instead of the app theme colour.
-      // These elements sit outside textRef and would otherwise bleed the app
-      // colour into the capture regardless of the textRef inline style.
       const exportPageEl = document.querySelector<HTMLElement>("[data-export-page]");
       const prevBodyBg   = document.body.style.background;
       const prevPageBg   = exportPageEl?.style.backgroundColor ?? "";
 
-      try {
-        const captureBackground = backgroundColor ?? "transparent";
-        document.body.style.background = captureBackground;
-        if (exportPageEl) exportPageEl.style.backgroundColor = captureBackground;
+      // Scroll-and-stitch helper: sets `bg` on the page, captures viewport
+      // strips, composites onto a solid-filled canvas, and returns it.
+      // WKWebView takeSnapshot() always renders over an opaque (white) native
+      // background — it does not produce transparent pixels — so we always
+      // capture with a solid bg and derive transparency in the caller when needed.
+      async function stitch(bg: string): Promise<HTMLCanvasElement> {
+        document.body.style.background = bg;
+        if (exportPageEl) exportPageEl.style.backgroundColor = bg;
 
-        // Re-measure after toolbar removal and background change so coordinates
-        // are accurate and the new backgrounds are painted.
+        // Wait for the background paint before measuring coordinates.
         await new Promise<void>(r => requestAnimationFrame(() => requestAnimationFrame(() => r())));
 
         const elRect      = el.getBoundingClientRect();
         const totalHeight = el.scrollHeight;
         const elLeft      = elRect.left;
 
-        // Margin added around the cropped content (0.10" at 96 dpi = ~10 CSS px).
-        // This prevents RST arrows (rendered outside the container via
-        // SVG overflow-visible) from being clipped at the image edges.
-        const MARGIN_CSS = Math.ceil(0.10 * 96); // ≈ 10 CSS px
-
-        // Horizontal crop: strip blank side-margins from the inner container,
-        // then expand the crop outward by MARGIN_CSS on each side so that any
-        // SVG content that renders outside the container is still captured.
-        let srcXOffset    = 0;           // left offset of crop within el, CSS px
-        let outCSSW       = elRect.width;
+        const MARGIN_CSS   = Math.ceil(0.10 * 96); // ≈ 10 CSS px
         const topMarginCSS = MARGIN_CSS;
+        let srcXOffset     = 0;
+        let outCSSW        = elRect.width;
 
         if (cropTo) {
-          const cRect = cropTo.getBoundingClientRect();
-          // Expand leftward, but not past the el's own left edge.
+          const cRect         = cropTo.getBoundingClientRect();
           const maxLeftExpand = Math.max(0, cRect.left - elLeft);
           const leftExpand    = Math.min(MARGIN_CSS, maxLeftExpand);
           srcXOffset = (cRect.left - leftExpand) - elLeft;
           outCSSW    = cRect.width + leftExpand + MARGIN_CSS;
         }
 
-        const outW = Math.round(outCSSW                           * dpr);
+        const outW = Math.round(outCSSW * dpr);
         const outH = Math.round((totalHeight + topMarginCSS + MARGIN_CSS) * dpr);
 
-        const outCanvas = document.createElement("canvas");
-        outCanvas.width  = outW;
-        outCanvas.height = outH;
-        const ctx = outCanvas.getContext("2d")!;
+        const canvas = document.createElement("canvas");
+        canvas.width  = outW;
+        canvas.height = outH;
+        const ctx = canvas.getContext("2d")!;
+        ctx.fillStyle = bg;
+        ctx.fillRect(0, 0, outW, outH);
 
-        // Fill the canvas with the background colour before compositing strips
-        // so that margin rows (above/below content) and any inter-strip gaps
-        // have the correct colour instead of remaining transparent.
-        if (backgroundColor) {
-          ctx.fillStyle = backgroundColor;
-          ctx.fillRect(0, 0, outW, outH);
-        }
-
-        // scrollBase: window scroll Y that puts el's top edge at viewport y=0.
         const scrollBase = savedScrollY + elRect.top;
         const viewH      = window.innerHeight;
-        let destCSSY     = 0; // CSS px composited into outCanvas so far
+        let destCSSY     = 0;
 
         while (destCSSY < totalHeight) {
           window.scrollTo(0, scrollBase + destCSSY);
 
-          // Wait for the scroll event, the overlays' double-RAF remeasure, and
-          // an extra settling frame so SVG arrows update before we snapshot.
           await new Promise<void>(r =>
             requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(r, 50)))
           );
 
           const b64 = await invoke<string>("capture_viewport_png");
 
-          // Re-read el position after scroll (el.top ≈ -destCSSY in viewport).
           const rect         = el.getBoundingClientRect();
-          const visibleElTop = Math.max(0, rect.top); // viewport y where el starts
+          const visibleElTop = Math.max(0, rect.top);
           const remaining    = totalHeight - destCSSY;
           const stripCSS     = Math.min(viewH - visibleElTop, remaining);
           if (stripCSS <= 0) break;
@@ -444,7 +425,6 @@ export default function ExportLayout({ children, revealHref, filename, backHref,
           const srcX = Math.round((rect.left + srcXOffset) * dpr);
           const srcY = Math.round(visibleElTop             * dpr);
           const srcH = Math.round(stripCSS                 * dpr);
-          // Offset by topMarginCSS so the content clears the top margin row.
           const dstY = Math.round((destCSSY + topMarginCSS) * dpr);
 
           await new Promise<void>((resolve, reject) => {
@@ -460,7 +440,54 @@ export default function ExportLayout({ children, revealHref, filename, backHref,
           destCSSY += stripCSS;
         }
 
-        return outCanvas.toDataURL("image/png");
+        // Reset scroll so the next stitch pass starts from a clean position.
+        window.scrollTo(savedScrollX, savedScrollY);
+        return canvas;
+      }
+
+      try {
+        if (!backgroundColor) {
+          // Transparent export — dual-pass compositing.
+          // Because WKWebView takeSnapshot() composites over the native window
+          // background (white) regardless of CSS transparency, we capture once
+          // on white and once on black, then recover true RGBA per-pixel:
+          //
+          //   on white:  p_w = c·α + 255·(1−α)
+          //   on black:  p_b = c·α
+          //   → α = 255 − (p_w − p_b)
+          //   → c = p_b / α
+          const white = await stitch("white");
+          const black = await stitch("black");
+
+          const { width: W, height: H } = white;
+          const out    = document.createElement("canvas");
+          out.width    = W;
+          out.height   = H;
+          const outCtx = out.getContext("2d")!;
+
+          const wPx  = white.getContext("2d")!.getImageData(0, 0, W, H).data;
+          const bPx  = black.getContext("2d")!.getImageData(0, 0, W, H).data;
+          const oImg = outCtx.createImageData(W, H);
+
+          for (let i = 0; i < wPx.length; i += 4) {
+            const a = Math.round(
+              255 - ((wPx[i] - bPx[i]) + (wPx[i+1] - bPx[i+1]) + (wPx[i+2] - bPx[i+2])) / 3
+            );
+            if (a > 0) {
+              const af = a / 255;
+              oImg.data[i]   = Math.min(255, Math.round(bPx[i]   / af));
+              oImg.data[i+1] = Math.min(255, Math.round(bPx[i+1] / af));
+              oImg.data[i+2] = Math.min(255, Math.round(bPx[i+2] / af));
+            }
+            oImg.data[i+3] = a;
+          }
+
+          outCtx.putImageData(oImg, 0, 0);
+          return out.toDataURL("image/png");
+        } else {
+          // Solid background — single pass.
+          return (await stitch(backgroundColor)).toDataURL("image/png");
+        }
       } finally {
         window.scrollTo(savedScrollX, savedScrollY);
         if (toolbar) toolbar.style.display = prevDisplay;
