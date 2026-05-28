@@ -1787,8 +1787,9 @@ export default function PassageView({
         case "wordTagRefs":        setWordTagRefMap(new Map()); break;
         case "lineIndents":        setLineIndentMap(new Map()); break;
         case "wordArrows":         setWordArrowsState([]); break;
-        case "rstRelations":        setRstRelations([]); break;
+        case "rstRelations":       setRstRelations([]); break;
         case "wordFormatting":     setWordFormattingMap(new Map()); break;
+        case "lineAnnotations":    setLineAnnotationsState([]); break;
       }
     }
   }
@@ -3721,7 +3722,7 @@ export default function PassageView({
           textSource={textSource}
           startChapter={passage.startChapter}
           endChapter={passage.endChapter}
-          availableCategories={["paragraphBreaks", "characterRefs", "speechSections", "wordTagRefs", "lineIndents", "rstRelations", "wordArrows"]}
+          availableCategories={["paragraphBreaks", "characterRefs", "speechSections", "wordTagRefs", "lineIndents", "rstRelations", "wordArrows", "lineAnnotations"]}
           onClose={() => setShowClearDialog(false)}
           onCleared={handleAnnotationsCleared}
         />

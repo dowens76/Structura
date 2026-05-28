@@ -2585,8 +2585,9 @@ export default function ChapterDisplay({
         case "wordTagRefs":        setWordTagRefMap(new Map()); break;
         case "lineIndents":        setLineIndentMap(new Map()); break;
         case "wordArrows":         setWordArrowsState([]); break;
-        case "rstRelations":        setRstRelations([]); break;
+        case "rstRelations":       setRstRelations([]); break;
         case "wordFormatting":     setWordFormattingMap(new Map()); break;
+        case "lineAnnotations":    setLineAnnotations([]); break;
       }
     }
   }

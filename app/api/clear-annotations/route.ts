@@ -10,6 +10,7 @@ import {
   wordFormatting,
   clauseRelationships,
   rstRelations,
+  lineAnnotations,
 } from "@/lib/db/schema";
 import { and, eq, gte, lte, type SQL } from "drizzle-orm";
 import { getActiveWorkspaceId } from "@/lib/workspace";
@@ -26,6 +27,7 @@ const VALID_CATEGORIES = [
   "wordFormatting",
   "clauseRelationships",
   "rstRelations",
+  "lineAnnotations",
 ] as const;
 type Category = (typeof VALID_CATEGORIES)[number];
 
@@ -63,13 +65,15 @@ export async function POST(req: NextRequest) {
   for (const cat of toDelete) {
     switch (cat) {
       case "paragraphBreaks":
+        // No textSource filter — getChapterParagraphBreaks loads all sources
         await userDb.delete(paragraphBreaks).where(
-          and(eq(paragraphBreaks.workspaceId, workspaceId), eq(paragraphBreaks.book, book), chapterCond(paragraphBreaks.chapter), eq(paragraphBreaks.textSource, textSource))
+          and(eq(paragraphBreaks.workspaceId, workspaceId), eq(paragraphBreaks.book, book), chapterCond(paragraphBreaks.chapter))
         );
         break;
       case "characterRefs":
+        // No textSource filter — refs are loaded cross-source (getChapterCharacterRefs has no source filter)
         await userDb.delete(characterRefs).where(
-          and(eq(characterRefs.workspaceId, workspaceId), eq(characterRefs.book, book), chapterCond(characterRefs.chapter), eq(characterRefs.textSource, textSource))
+          and(eq(characterRefs.workspaceId, workspaceId), eq(characterRefs.book, book), chapterCond(characterRefs.chapter))
         );
         break;
       case "speechSections":
@@ -78,13 +82,15 @@ export async function POST(req: NextRequest) {
         );
         break;
       case "wordTagRefs":
+        // No textSource filter — refs are loaded cross-source (getChapterWordTagRefs has no source filter)
         await userDb.delete(wordTagRefs).where(
-          and(eq(wordTagRefs.workspaceId, workspaceId), eq(wordTagRefs.book, book), chapterCond(wordTagRefs.chapter), eq(wordTagRefs.textSource, textSource))
+          and(eq(wordTagRefs.workspaceId, workspaceId), eq(wordTagRefs.book, book), chapterCond(wordTagRefs.chapter))
         );
         break;
       case "lineIndents":
+        // No textSource filter — getChapterLineIndents loads all sources
         await userDb.delete(lineIndents).where(
-          and(eq(lineIndents.workspaceId, workspaceId), eq(lineIndents.book, book), chapterCond(lineIndents.chapter), eq(lineIndents.textSource, textSource))
+          and(eq(lineIndents.workspaceId, workspaceId), eq(lineIndents.book, book), chapterCond(lineIndents.chapter))
         );
         break;
       case "wordArrows":
@@ -93,8 +99,9 @@ export async function POST(req: NextRequest) {
         );
         break;
       case "wordFormatting":
+        // No textSource filter — getChapterWordFormatting loads all sources
         await userDb.delete(wordFormatting).where(
-          and(eq(wordFormatting.workspaceId, workspaceId), eq(wordFormatting.book, book), chapterCond(wordFormatting.chapter), eq(wordFormatting.textSource, textSource))
+          and(eq(wordFormatting.workspaceId, workspaceId), eq(wordFormatting.book, book), chapterCond(wordFormatting.chapter))
         );
         break;
       case "clauseRelationships":
@@ -105,6 +112,11 @@ export async function POST(req: NextRequest) {
       case "rstRelations":
         await userDb.delete(rstRelations).where(
           and(eq(rstRelations.workspaceId, workspaceId), eq(rstRelations.book, book), chapterCond(rstRelations.chapter), eq(rstRelations.textSource, textSource))
+        );
+        break;
+      case "lineAnnotations":
+        await userDb.delete(lineAnnotations).where(
+          and(eq(lineAnnotations.workspaceId, workspaceId), eq(lineAnnotations.book, book), chapterCond(lineAnnotations.chapter), eq(lineAnnotations.textSource, textSource))
         );
         break;
     }

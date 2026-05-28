@@ -10,7 +10,8 @@ export type ClearCategory =
   | "lineIndents"
   | "wordArrows"
   | "wordFormatting"
-  | "rstRelations";
+  | "rstRelations"
+  | "lineAnnotations";
 
 const CATEGORY_META: { key: ClearCategory; label: string; icon: string }[] = [
   { key: "paragraphBreaks",    label: "Paragraph breaks",       icon: "¶"  },
@@ -21,6 +22,7 @@ const CATEGORY_META: { key: ClearCategory; label: string; icon: string }[] = [
   { key: "rstRelations",        label: "Relational arrows",       icon: "↳" },
   { key: "wordArrows",         label: "Arrows",                  icon: "↷" },
   { key: "wordFormatting",     label: "Bold / italic formatting",icon: "B" },
+  { key: "lineAnnotations",    label: "Clause labels",           icon: "≡" },
 ];
 
 interface Props {
