@@ -194,7 +194,7 @@ export default async function ExportPassagePage({ params, searchParams }: PagePr
     .map((t) => t.abbreviation);
 
   const bookName   = OSIS_REF_BOOK_NAMES[osisBook] ?? osisBook;
-  const isHebrew   = bookRecord.language === "hebrew";
+  const isHebrew   = words[0]?.language === "hebrew";
   const authorName = await getAuthorName(workspaceId);
 
   // Use first chapter for API route (single chapter passages most common)

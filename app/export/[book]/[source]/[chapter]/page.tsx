@@ -166,7 +166,7 @@ export default async function ExportChapterPage({ params, searchParams }: PagePr
     .map((t) => t.abbreviation);
 
   const bookName   = OSIS_REF_BOOK_NAMES[osisBook] ?? osisBook;
-  const isHebrew   = bookRecord?.language === "hebrew";
+  const isHebrew   = words[0]?.language === "hebrew";
   const filename   = `${osisBook}-${chapter}`;
   const authorName = await getAuthorName(workspaceId);
   const revealHref = `/api/export/reveal?book=${encodeURIComponent(osisBook)}&source=${textSource}&chapter=${chapter}`;
