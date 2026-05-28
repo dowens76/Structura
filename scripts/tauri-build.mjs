@@ -65,16 +65,7 @@ for (const db of sourceDbs) {
   }
 }
 
-// 4b. If lexica.db is present but the per-lexicon DB files haven't been split
-//     yet (e.g. on a CI runner that restored only the old combined artifact),
-//     split them now so copy-databases.mjs can find them.
-const lexicaDbPath = path.join(ROOT, "data", "lexica.db");
-const bdbDbPath    = path.join(ROOT, "data", "bdb.db");
-if (existsSync(lexicaDbPath) && !existsSync(bdbDbPath)) {
-  run("npx tsx scripts/split-lexica.ts", "Splitting lexica.db into per-lexicon databases");
-}
-
-// 4c. Copy source databases into the Tauri resource bundle
+// 4b. Copy source databases into the Tauri resource bundle
 run("node scripts/copy-databases.mjs", "Copying source databases to Tauri resources");
 
 // 5. Build Next.js (beforeBuildCommand).
