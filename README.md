@@ -37,10 +37,15 @@ If you want to give feedback about the app, share ideas for new features, or con
   - *Color* — Morphology-based highlighting; configure rules by part of speech and fine-grained morphological conditions (stem, tense, voice, mood, person, gender, number, case, state, prefix)
   - *Interlinear* — Source text with a sub-line showing lemma, Strong's number, morphological parsing code, grammatical constituent label, or a user dataset value
 - **Morphology panel** — Click any word to see its full grammatical parsing, lemma, Strong's number, and Scripture reference
+- **Lexicon pane** — The morphology panel includes lexicon entries: BDB and HALOT-style entries for Hebrew, Abbott-Smith for Greek NT words, and Liddell-Scott-Jones (LSJ) for LXX Greek; entries open inline when a word is selected
 - **Adjustable font sizes** — Independent size controls for Hebrew, Greek, and translation text
+- **Line height adjuster** — A toolbar slider adjusts the line spacing of the text in real time
+- **Custom fonts** — Open Settings to choose a different typeface for Hebrew, Greek, and translation text independently; fonts are applied immediately and persist across sessions; in the Tauri app the picker lists every font installed on the system
 - **Hebrew verb terminology toggle** — Switch between traditional labels (perfect/imperfect) and Hebrew-specific labels (Qatal/Yiqtol/Wayyiqtol/Weqatal)
+- **Large letters** — Scribal large letters (litterae maiusculae) in the Masoretic Text are rendered at increased size in the OSHB display
 - **Tooltips** — Hover over any word for parsing information (when enabled)
 - **Dark mode** — Full light/dark theme support
+- **Hide source texts** — Settings lets you hide any of the three source texts (Hebrew, LXX, Greek NT) from the navigation; useful for installations focused on a single corpus
 - **Parallel view** — Side-by-side OSHB Hebrew and LXX Septuagint for books shared between the two
 - **Find in text** — Press Ctrl/Cmd+F to open a search bar that highlights all matches in the current chapter or passage; navigate matches with Ctrl/Cmd+G (forward) and Ctrl/Cmd+Shift+G (back); works across source and translation text with diacritic-insensitive matching
 - **Keyboard navigation** — F8 / Ctrl+F8 moves to the next / previous chapter; F9 / Ctrl+F9 moves to the next / previous book
@@ -81,10 +86,14 @@ The **🔗 Copy Link** button in the toolbar copies the current page URL with `?
 
 - **Built-in ULT** — The UnfoldingWord Literal Text (English, 31,102 verses, all 66 books) is bundled and available immediately in the translation picker
 - **Built-in VCB** — The Biblica® Open Vietnamese Contemporary Bible 2015 (Vietnamese, 31,096 verses, all 66 books) is bundled alongside the ULT
-- **Import translations** — Paste any translation with verse numbers and text (one chapter at a time), or import USFM-formatted translation text
+- **Import translations** — Paste any translation with verse numbers and text (one chapter at a time), or import USFM-formatted translation text; conflict detection warns when imported verses would overwrite existing edits
 - **Parallel display** — One or more translations shown alongside the source text in both chapter and passage views
-- **In-place editing** — Edit translation text directly in the view; edits are saved and override the built-in base text
+- **In-place editing** — Edit translation text directly in the view; edits autosave and override the built-in base text; empty verses can be created for books not fully covered by the import
 - **Translation-specific formatting** — Independent paragraph breaks, indentation, and bold/italic per translation
+- **Translation footnotes** — Footnotes attached to specific words in a translation verse are displayed inline (superscript anchor with expandable note); included in PDF and PNG exports
+- **USFM export** — Export a full translation or selected books to USFM files; multi-book selections download as a ZIP archive
+- **Manage Translations** — A dedicated dialog on the home screen lets you rename translations, change their abbreviation, and delete them
+- **Translation-only workspaces** — A workspace can be set to "translation-only" mode, which hides source language texts and focuses entirely on the translation; useful for translation teams working without the original languages
 - **Workspace-independent** — Imported translations are shared across all workspaces; importing once makes a translation available everywhere
 
 ### Interlinear Sub-modes
@@ -154,7 +163,13 @@ The key is stored locally in the app's database and is never sent anywhere excep
 
 ### Export & Backup
 
-- **PDF and PNG export** — Export a passage or chapter to a PDF file or PNG image, preserving all visual annotations
+- **PDF export** — Export a passage or chapter to a print-ready PDF; uses the native print dialog so you can choose paper size, margins, and destination
+- **PNG export** — Export a passage or chapter as a PNG image; options in the export toolbar control the output:
+  - *Light / dark* — Toggle between light and dark colour scheme for the exported image
+  - *Background* — Choose transparent, white, or black background
+  - *Font size* — S / M / L tiers scale source and translation text for the export
+  - *Quality preset* — **Presentation** (screen resolution PNG), **High-fidelity** (1.5×, 144 PPI PNG for HiDPI / Retina), or **Print** (300 DPI CMYK TIFF suitable for professional printing)
+- **Footnotes in export** — Translation footnotes are rendered in the PDF and PNG output when present
 - **Manual backup** — Download a complete snapshot of all workspaces, annotations, translations, and settings as a `.db` file
 - **Manual restore** — Upload a previously downloaded `.db` backup to replace the current database
 - **Automatic backups** — Schedule periodic backups to a local folder; configurable interval (daily / weekly / custom hours), retention policy (keep all / keep N / smart tiered), and a native OS folder picker; runs while the app is open
