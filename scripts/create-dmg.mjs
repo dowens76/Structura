@@ -52,6 +52,12 @@ mkdirSync(DMG_DIR, { recursive: true });
 
 const DMG = path.join(DMG_DIR, `Structura_${version}_${archSuffix}.dmg`);
 
+// Detach any lingering mounted volume of the same name (Tauri's bundler may
+// have left /Volumes/Structura mounted after its own DMG creation step).
+try {
+  execSync('hdiutil detach "/Volumes/Structura" -force', { stdio: "ignore" });
+} catch { /* not mounted — ignore */ }
+
 console.log(`Creating DMG: ${path.basename(DMG)}...`);
 execSync(
   `hdiutil create -volname "Structura" -srcfolder "${APP}" -ov -format UDZO "${DMG}"`,
