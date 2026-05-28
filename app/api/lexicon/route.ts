@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { lexicaDb } from "@/lib/db";
+import { getLexiconDbForSource, getLexiconDbsForLanguage } from "@/lib/db";
 import { lexiconEntries } from "@/lib/db/schema";
 import { eq, and } from "drizzle-orm";
 
@@ -16,44 +16,62 @@ export async function GET(request: NextRequest) {
   const strong = searchParams.get("strong")?.trim() ?? null;
   const source = searchParams.get("source")?.trim() ?? null;
 
-  if ((!lemma && !strong) || !lexicaDb) {
+  if (!lemma && !strong) {
     return NextResponse.json({ entry: null });
   }
 
   // ── Lemma-based lookup (Greek) ────────────────────────────────────────────
   if (lemma) {
+    // Try the requested source DB first (or the legacy combined DB).
     if (source) {
-      const preferred = await lexicaDb
+      const db = getLexiconDbForSource(source);
+      if (db) {
+        const rows = await db
+          .select()
+          .from(lexiconEntries)
+          .where(and(eq(lexiconEntries.lemma, lemma), eq(lexiconEntries.source, source)))
+          .limit(1);
+        if (rows.length > 0) return NextResponse.json({ entry: rows[0] });
+      }
+    }
+
+    // Fan out over all Greek lexicon DBs for the fallback.
+    for (const { db } of getLexiconDbsForLanguage("greek")) {
+      const rows = await db
         .select()
         .from(lexiconEntries)
-        .where(and(eq(lexiconEntries.lemma, lemma), eq(lexiconEntries.source, source)))
+        .where(eq(lexiconEntries.lemma, lemma))
         .limit(1);
-      if (preferred.length > 0) return NextResponse.json({ entry: preferred[0] });
+      if (rows.length > 0) return NextResponse.json({ entry: rows[0] });
     }
-    const fallback = await lexicaDb
-      .select()
-      .from(lexiconEntries)
-      .where(eq(lexiconEntries.lemma, lemma))
-      .limit(1);
-    return NextResponse.json({ entry: fallback[0] ?? null });
+
+    return NextResponse.json({ entry: null });
   }
 
   // ── Strong-number-based lookup (Hebrew) ───────────────────────────────────
   const primary = strong!.split(/[/,\s]/)[0].trim();
 
   if (source) {
-    const preferred = await lexicaDb
-      .select()
-      .from(lexiconEntries)
-      .where(and(eq(lexiconEntries.strongNumber, primary), eq(lexiconEntries.source, source)))
-      .limit(1);
-    if (preferred.length > 0) return NextResponse.json({ entry: preferred[0] });
+    const db = getLexiconDbForSource(source);
+    if (db) {
+      const rows = await db
+        .select()
+        .from(lexiconEntries)
+        .where(and(eq(lexiconEntries.strongNumber, primary), eq(lexiconEntries.source, source)))
+        .limit(1);
+      if (rows.length > 0) return NextResponse.json({ entry: rows[0] });
+    }
   }
 
-  const results = await lexicaDb
-    .select()
-    .from(lexiconEntries)
-    .where(eq(lexiconEntries.strongNumber, primary))
-    .limit(1);
-  return NextResponse.json({ entry: results[0] ?? null });
+  // Fan out over all Hebrew lexicon DBs.
+  for (const { db } of getLexiconDbsForLanguage("hebrew")) {
+    const rows = await db
+      .select()
+      .from(lexiconEntries)
+      .where(eq(lexiconEntries.strongNumber, primary))
+      .limit(1);
+    if (rows.length > 0) return NextResponse.json({ entry: rows[0] });
+  }
+
+  return NextResponse.json({ entry: null });
 }

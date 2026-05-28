@@ -37,7 +37,11 @@
     "resources": {
       "resources/server": "server",
       "resources/databases/source.db": "databases/source.db",
-      "resources/databases/lexica.db": "databases/lexica.db",
+      "resources/databases/bdb.db": "databases/bdb.db",
+      "resources/databases/strongs-hebrew.db": "databases/strongs-hebrew.db",
+      "resources/databases/dodson.db": "databases/dodson.db",
+      "resources/databases/abbott-smith.db": "databases/abbott-smith.db",
+      "resources/databases/lsj.db": "databases/lsj.db",
       "resources/databases/lxx.db": "databases/lxx.db",
       "resources/databases/ult.db": "databases/ult.db",
       "resources/databases/vcb.db": "databases/vcb.db",

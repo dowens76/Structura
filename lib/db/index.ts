@@ -12,11 +12,23 @@ const USER_DATA_DIR = process.env.STRUCTURA_USER_DATA_DIR
   ?? path.join(process.cwd(), "data");
 
 const SOURCE_DB_PATH  = path.join(RESOURCES_DIR, "source.db");
-const LEXICA_DB_PATH  = path.join(RESOURCES_DIR, "lexica.db");
+const LEXICA_DB_PATH  = path.join(RESOURCES_DIR, "lexica.db");  // legacy fallback only
 const LXX_DB_PATH     = path.join(RESOURCES_DIR, "lxx.db");
 const ULT_DB_PATH     = path.join(RESOURCES_DIR, "ult.db");
 const VCB_DB_PATH     = path.join(RESOURCES_DIR, "vcb.db");
 const USER_DB_PATH    = path.join(USER_DATA_DIR,  "user.db");
+
+// Per-lexicon DB paths (one file per lexicon source).
+const LEXICON_DB_PATHS: Record<string, string> = {
+  BDB:          path.join(RESOURCES_DIR, "bdb.db"),
+  HebrewStrong: path.join(RESOURCES_DIR, "strongs-hebrew.db"),
+  Dodson:       path.join(RESOURCES_DIR, "dodson.db"),
+  AbbottSmith:  path.join(RESOURCES_DIR, "abbott-smith.db"),
+  LSJ:          path.join(RESOURCES_DIR, "lsj.db"),
+};
+
+export const HEBREW_LEXICON_SOURCES = ["BDB", "HebrewStrong"] as const;
+export const GREEK_LEXICON_SOURCES  = ["AbbottSmith", "Dodson", "LSJ"] as const;
 
 // ── Lookup maps ───────────────────────────────────────────────────────────────
 
@@ -115,6 +127,9 @@ let _userSqlite:  Database.Database | null = null;
 let _ultSqlite:   Database.Database | null = null;
 let _vcbSqlite:   Database.Database | null = null;
 
+// Per-lexicon DB cache: keyed by source name.
+const _lexiconDbCache = new Map<string, ReturnType<typeof drizzle<typeof lexicaSchema>> | null>();
+
 export function getSourceDb() {
   if (!_sourceDb) {
     const sqlite = new Database(SOURCE_DB_PATH, { readonly: true });
@@ -131,6 +146,64 @@ export function getLexicaDb() {
     _lexicaDb = drizzle(sqlite, { schema: lexicaSchema });
   }
   return _lexicaDb;
+}
+
+/**
+ * Return the Drizzle DB instance for a single named lexicon source,
+ * e.g. "BDB", "AbbottSmith", "LSJ".
+ * Returns null if the per-lexicon DB file does not exist.
+ */
+export function getLexiconDb(
+  source: string,
+): ReturnType<typeof drizzle<typeof lexicaSchema>> | null {
+  if (_lexiconDbCache.has(source)) return _lexiconDbCache.get(source)!;
+  const dbPath = LEXICON_DB_PATHS[source];
+  if (!dbPath || !fs.existsSync(dbPath)) {
+    _lexiconDbCache.set(source, null);
+    return null;
+  }
+  const sqlite = new Database(dbPath, { readonly: true });
+  const db = drizzle(sqlite, { schema: lexicaSchema });
+  _lexiconDbCache.set(source, db);
+  return db;
+}
+
+/**
+ * Resolve a lexicon DB for a given source name.
+ * 1. Try the per-lexicon DB file (e.g. bdb.db, lsj.db).
+ * 2. Fall back to the legacy combined lexica.db if the per-lexicon file is absent.
+ * Returns null only when neither file exists.
+ */
+export function getLexiconDbForSource(
+  source: string | null | undefined,
+): ReturnType<typeof drizzle<typeof lexicaSchema>> | null {
+  if (source) {
+    const per = getLexiconDb(source);
+    if (per) return per;
+  }
+  return getLexicaDb();
+}
+
+/**
+ * Return all available lexicon DBs for the given language.
+ * Prefers per-lexicon DB files; falls back to the legacy combined lexica.db
+ * only when no per-lexicon files exist at all.
+ */
+export function getLexiconDbsForLanguage(
+  language: "hebrew" | "greek",
+): Array<{ db: ReturnType<typeof drizzle<typeof lexicaSchema>>; source: string }> {
+  const sources: readonly string[] =
+    language === "hebrew" ? HEBREW_LEXICON_SOURCES : GREEK_LEXICON_SOURCES;
+
+  const perDbs = sources.flatMap((s) => {
+    const db = getLexiconDb(s);
+    return db ? [{ db, source: s }] : [];
+  });
+  if (perDbs.length > 0) return perDbs;
+
+  // Fall back to the legacy combined DB (no per-lexicon files present).
+  const legacy = getLexicaDb();
+  return legacy ? [{ db: legacy, source: "legacy" }] : [];
 }
 
 export function getLxxDb(): ReturnType<typeof drizzle<typeof sourceSchema>> | null {
@@ -368,7 +441,6 @@ export function getVcbSqlite(): Database.Database | null {
 }
 
 export const sourceDb     = getSourceDb();
-export const lexicaDb     = getLexicaDb()!;
 export const userDb       = getUserDb();
 export const userSqlite   = getUserSqlite();
 export const sourceLookups = loadLookupMaps(SOURCE_DB_PATH); // tense map: X=perfect, Y=pluperfect

@@ -14,8 +14,9 @@ import { mkdirSync, existsSync, writeFileSync, readFileSync } from "fs";
 import path from "path";
 import * as schema from "../lib/db/schema";
 import { sql } from "drizzle-orm";
+import { ensureLexiconTable } from "./_ensure-lexicon-table";
 
-const LEXICA_DB_PATH = path.join(process.cwd(), "data", "lexica.db");
+const DODSON_DB_PATH = path.join(process.cwd(), "data", "dodson.db");
 const SOURCE_DB_PATH = path.join(process.cwd(), "data", "source.db");
 const CACHE_DIR  = path.join(process.cwd(), "data", "sources", "lexicon");
 const CACHE_FILE = path.join(CACHE_DIR, "dodson.xml");
@@ -68,8 +69,9 @@ async function main() {
 
   console.log(`  Found ${entries.length} entries`);
 
-  const sqlite = new Database(LEXICA_DB_PATH);
+  const sqlite = new Database(DODSON_DB_PATH);
   sqlite.pragma("journal_mode = WAL");
+  ensureLexiconTable(sqlite);
   const db = drizzle(sqlite, { schema });
 
   let inserted = 0;
@@ -157,15 +159,15 @@ async function main() {
 
   // ── Back-fill strong_number on SBLGNT words via lemma → lexicon match ───────
   console.log("Back-filling strong_number on SBLGNT words …");
-  // Ensure an index on lemma exists in lexica.db so the correlated subquery is fast.
+  // Ensure an index on lemma exists in dodson.db so the correlated subquery is fast.
   sqlite.exec(
     `CREATE INDEX IF NOT EXISTS lex_lemma_idx ON lexicon_entries(lemma, language)`
   );
   // Open source.db for the words back-fill (separate database).
   const sourceSqlite = new Database(SOURCE_DB_PATH);
   sourceSqlite.pragma("journal_mode = WAL");
-  // Attach lexica.db so the correlated subquery can reference it.
-  sourceSqlite.exec(`ATTACH DATABASE '${LEXICA_DB_PATH.replace(/'/g, "''")}' AS lexica`);
+  // Attach dodson.db so the correlated subquery can reference it.
+  sourceSqlite.exec(`ATTACH DATABASE '${DODSON_DB_PATH.replace(/'/g, "''")}' AS lexica`);
   const sblgntSourceId = (
     sourceSqlite.prepare(`SELECT id FROM text_sources WHERE value = 'SBLGNT' LIMIT 1`).get() as { id: number } | undefined
   )?.id;

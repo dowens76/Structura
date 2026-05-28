@@ -164,7 +164,7 @@ export default function MorphologyPanel({ word, useLinguisticTerms = false, onSe
         <LexiconPane strongNumber={word.strongNumber} isHebrew={true} />
       )}
       {!isHebrew && word.lemma && (
-        <LexiconPane wordLemma={word.lemma} isHebrew={false} />
+        <LexiconPane wordLemma={word.lemma} isHebrew={false} textSource={word.textSource} />
       )}
 
       {/* Word ID */}

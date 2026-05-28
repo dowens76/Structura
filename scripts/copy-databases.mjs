@@ -18,7 +18,18 @@ const DEST_DIR = path.join(ROOT, "src-tauri", "resources", "databases");
 
 mkdirSync(DEST_DIR, { recursive: true });
 
-const DBS = ["source.db", "lexica.db", "lxx.db", "ult.db", "vcb.db"];
+const DBS = [
+  "source.db",
+  // Per-lexicon DBs (split from the old lexica.db):
+  "bdb.db",
+  "strongs-hebrew.db",
+  "dodson.db",
+  "abbott-smith.db",
+  "lsj.db",
+  "lxx.db",
+  "ult.db",
+  "vcb.db",
+];
 
 for (const name of DBS) {
   const src  = path.join(DATA_DIR, name);

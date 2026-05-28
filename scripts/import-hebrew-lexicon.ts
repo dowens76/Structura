@@ -11,8 +11,9 @@ import { mkdirSync, existsSync, writeFileSync, readFileSync } from "fs";
 import path from "path";
 import * as schema from "../lib/db/schema";
 import { sql } from "drizzle-orm";
+import { ensureLexiconTable } from "./_ensure-lexicon-table";
 
-const DB_PATH    = path.join(process.cwd(), "data", "lexica.db");
+const DB_PATH    = path.join(process.cwd(), "data", "bdb.db");
 const CACHE_DIR  = path.join(process.cwd(), "data", "sources", "lexicon");
 const CACHE_FILE = path.join(CACHE_DIR, "DictBDB.json");
 const SOURCE_URL =
@@ -80,6 +81,7 @@ async function main() {
 
   const sqlite = new Database(DB_PATH);
   sqlite.pragma("journal_mode = WAL");
+  ensureLexiconTable(sqlite);
   const db = drizzle(sqlite, { schema });
 
   let inserted = 0;

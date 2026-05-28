@@ -8,6 +8,7 @@ interface LexiconPaneProps {
   wordLemma?: string | null;    // Greek: look up by lemma (SBLGNT / LXX)
   strongNumber?: string | null; // Hebrew: look up by Strong's number
   isHebrew: boolean;
+  textSource?: string;          // e.g. "STEPBIBLE_LXX" — auto-selects LSJ
 }
 
 interface Suggestion {
@@ -135,16 +136,106 @@ function ensureAbbottSmithCss() {
   cssInjected = true;
 }
 
+// ── LSJ XML → HTML converter ──────────────────────────────────────────────────
+
+const LSJ_CSS = `
+.lsj-entry { font-family: serif; line-height: 1.55; font-size: 0.85rem; }
+.lsj-orth { font-family: "Gentium Plus", "GFS Didot", serif; font-weight: bold; font-size: 1.05em; }
+.lsj-itype { font-style: italic; color: #888; }
+.lsj-pos { color: #15803d; font-style: italic; }
+.lsj-sense-1 { margin: 0.5em 0 0.25em 0.75em; }
+.lsj-sense-2 { margin: 0.2em 0 0.1em 1.5em; }
+.lsj-sense-n { font-weight: bold; margin-right: 0.2em; }
+.lsj-tr { font-style: italic; }
+.lsj-greek { font-family: "Gentium Plus", "GFS Didot", serif; }
+.lsj-latin { font-style: italic; }
+.lsj-bibl { color: #aaa; font-size: 0.8em; }
+.lsj-ref { color: #888; }
+.lsj-etym { color: #777; font-style: italic; }
+.dark .lsj-itype { color: #999; }
+.dark .lsj-bibl { color: #555; }
+.dark .lsj-ref { color: #666; }
+.dark .lsj-etym { color: #666; }
+`;
+
+let lsjCssInjected = false;
+function ensureLsjCss() {
+  if (lsjCssInjected || typeof document === "undefined") return;
+  if (document.getElementById("lsj-scoped-css")) { lsjCssInjected = true; return; }
+  const style = document.createElement("style");
+  style.id = "lsj-scoped-css";
+  style.textContent = LSJ_CSS;
+  document.head.appendChild(style);
+  lsjCssInjected = true;
+}
+
+function convertLsjNode(node: ChildNode): string {
+  if (node.nodeType === Node.TEXT_NODE) return node.textContent ?? "";
+  if (node.nodeType !== Node.ELEMENT_NODE) return "";
+  const el = node as Element;
+  const tag = el.localName;
+  const ch = () => Array.from(el.childNodes).map(convertLsjNode).join("");
+
+  switch (tag) {
+    case "entryFree": return `<div class="lsj-entry">${ch()}</div>`;
+    case "orth":   return `<span class="lsj-orth">${ch()}</span>`;
+    case "itype":  return `<span class="lsj-itype"> (${ch()})</span>`;
+    case "pos":    return `<span class="lsj-pos">${ch()}</span>`;
+    case "sense": {
+      const n     = el.getAttribute("n");
+      const level = parseInt(el.getAttribute("level") ?? "1", 10);
+      const cls   = level <= 1 ? "lsj-sense-1" : "lsj-sense-2";
+      return `<div class="${cls}">${n ? `<span class="lsj-sense-n">${escHtml(n)}</span>` : ""}${ch()}</div>`;
+    }
+    case "tr":    return `<span class="lsj-tr">${ch()}</span>`;
+    case "foreign": {
+      const lang = el.getAttribute("lang") ?? "";
+      if (lang === "greek") return `<span class="lsj-greek">${ch()}</span>`;
+      if (lang === "la" || lang === "latin") return `<em class="lsj-latin">${ch()}</em>`;
+      return `<em>${ch()}</em>`;
+    }
+    case "bibl":      return `<span class="lsj-bibl">(${ch()})</span>`;
+    case "author":    return ch();
+    case "title":     return `<em>${ch()}</em>`;
+    case "biblScope": return ch();
+    case "ref":       return `<span class="lsj-ref">${ch()}</span>`;
+    case "etym":      return `<span class="lsj-etym">${ch()}</span>`;
+    case "emph":      return `<em>${ch()}</em>`;
+    case "hi": {
+      const rend = el.getAttribute("rend") ?? "";
+      if (rend === "superscript") return `<sup>${ch()}</sup>`;
+      if (rend === "subscript")   return `<sub>${ch()}</sub>`;
+      return ch();
+    }
+    case "lb": return "<br/>";
+    case "cb": return "";
+    case "pb": return "";
+    default:   return ch();
+  }
+}
+
+function lsjXmlToHtml(xml: string): string {
+  try {
+    const doc = new DOMParser().parseFromString(xml, "text/xml");
+    if (doc.querySelector("parsererror")) return "";
+    return convertLsjNode(doc.documentElement);
+  } catch {
+    return "";
+  }
+}
+
 // ── Entry display ─────────────────────────────────────────────────────────────
 
 function EntryDisplay({
   entry,
   isHebrew,
   abbottHtml,
+  lsjHtml,
 }: {
   entry: LexiconEntry | null | "loading";
   isHebrew: boolean;
   abbottHtml: string;
+  lsjHtml: string;
 }) {
   if (entry === "loading") {
     return (
@@ -168,6 +259,7 @@ function EntryDisplay({
     entry.source === "HebrewStrong" ? "Strong's Hebrew Dictionary (1894)" :
     entry.source === "Dodson"       ? "Dodson Greek Lexicon" :
     entry.source === "AbbottSmith"  ? "Abbott-Smith" :
+    entry.source === "LSJ"          ? "Liddell-Scott-Jones (LSJ)" :
     (entry.source ?? "");
 
   if (entry.source === "HebrewStrong" && entry.definition) {
@@ -212,6 +304,28 @@ function EntryDisplay({
           className="abbott-smith-entry"
           // eslint-disable-next-line react/no-danger
           dangerouslySetInnerHTML={{ __html: abbottHtml || "" }}
+        />
+        <p className="text-[10px] text-stone-300 dark:text-stone-700 mt-3">{sourceName}</p>
+      </div>
+    );
+  }
+
+  if (entry.source === "LSJ") {
+    return (
+      <div className="mt-3">
+        {entry.transliteration && (
+          <div className="text-2xl leading-snug mb-1 lexicon-greek" lang="grc">
+            {entry.transliteration}
+          </div>
+        )}
+        {entry.shortGloss && (
+          <p className="text-sm font-semibold text-stone-800 dark:text-stone-200 mb-2">
+            {entry.shortGloss}
+          </p>
+        )}
+        <div
+          // eslint-disable-next-line react/no-danger
+          dangerouslySetInnerHTML={{ __html: lsjHtml || "" }}
         />
         <p className="text-[10px] text-stone-300 dark:text-stone-700 mt-3">{sourceName}</p>
       </div>
@@ -280,12 +394,15 @@ function EntryDisplay({
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export default function LexiconPane({ wordLemma, strongNumber, isHebrew }: LexiconPaneProps) {
+export default function LexiconPane({ wordLemma, strongNumber, isHebrew, textSource }: LexiconPaneProps) {
+  const isLxx = textSource === "STEPBIBLE_LXX";
+
   const [entry, setEntry]           = useState<LexiconEntry | null | "loading">("loading");
   const [lexiconSource, setSource]  = useState<string>(() =>
-    isHebrew ? getHebrewLexicon() : getGreekLexicon()
+    isHebrew ? getHebrewLexicon() : isLxx ? "LSJ" : getGreekLexicon()
   );
   const [abbottHtml, setAbbottHtml] = useState("");
+  const [lsjHtml,    setLsjHtml]    = useState("");
 
   // ── Navigation state ───────────────────────────────────────────────────────
   // overrideLookup is set when the user manually navigates; null = use props.
@@ -337,9 +454,10 @@ export default function LexiconPane({ wordLemma, strongNumber, isHebrew }: Lexic
     function onSettingsChange(e: Event) {
       const detail = (e as CustomEvent<Record<string, string>>).detail;
       if (isHebrew && detail.hebrewLexicon) setSource(detail.hebrewLexicon);
-      else if (!isHebrew && detail.greekLexicon) setSource(detail.greekLexicon);
+      // LXX always uses LSJ; only update source for SBLGNT Greek
+      else if (!isHebrew && !isLxx && detail.greekLexicon) setSource(detail.greekLexicon);
     }
-  }, [isHebrew]);
+  }, [isHebrew, isLxx]);
 
   useEffect(() => {
     const lookupKey = resolvedStrong ?? resolvedLemma ?? "";
@@ -370,6 +488,15 @@ export default function LexiconPane({ wordLemma, strongNumber, isHebrew }: Lexic
     }
     ensureAbbottSmithCss();
     setAbbottHtml(teiXmlToHtml(entry.definition));
+  }, [entry]);
+
+  // LSJ conversion
+  useEffect(() => {
+    if (!entry || entry === "loading" || entry.source !== "LSJ" || !entry.definition) {
+      setLsjHtml(""); return;
+    }
+    ensureLsjCss();
+    setLsjHtml(lsjXmlToHtml(entry.definition));
   }, [entry]);
 
   // ── Navigation helpers ─────────────────────────────────────────────────────
@@ -589,7 +716,7 @@ export default function LexiconPane({ wordLemma, strongNumber, isHebrew }: Lexic
       </div>
 
       {/* Entry content */}
-      <EntryDisplay entry={entry} isHebrew={isHebrew} abbottHtml={abbottHtml} />
+      <EntryDisplay entry={entry} isHebrew={isHebrew} abbottHtml={abbottHtml} lsjHtml={lsjHtml} />
     </div>
   );
 }

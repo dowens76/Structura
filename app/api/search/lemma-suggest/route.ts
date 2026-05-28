@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { eq, and, like, inArray, sql } from "drizzle-orm";
-import { sourceDb, lexicaDb, sourceLookups } from "@/lib/db";
+import { sourceDb, sourceLookups, getLexiconDbsForLanguage } from "@/lib/db";
 import { words } from "@/lib/db/source-schema";
 import { lexiconEntries } from "@/lib/db/lexica-schema";
 
@@ -48,24 +48,35 @@ async function fetchGlosses(
   language: "hebrew" | "greek",
 ): Promise<Map<string, string>> {
   const glossMap = new Map<string, string>();
-  if (!lexicaDb || strongNums.length === 0) return glossMap;
+  if (strongNums.length === 0) return glossMap;
 
-  const lexRows = await lexicaDb
-    .select({ strongNumber: lexiconEntries.strongNumber, shortGloss: lexiconEntries.shortGloss, source: lexiconEntries.source })
-    .from(lexiconEntries)
-    .where(and(inArray(lexiconEntries.strongNumber, strongNums), eq(lexiconEntries.language, language)));
+  const dbs = getLexiconDbsForLanguage(language);
+  if (dbs.length === 0) return glossMap;
 
-  const hebrewPriority: Record<string, number> = { BDB: 0, HebrewStrong: 1 };
-  const greekPriority: Record<string, number> = { AbottSmith: 0, GreekStrong: 1 };
-  const priority = language === "hebrew" ? hebrewPriority : greekPriority;
+  // Priority: BDB > HebrewStrong for Hebrew; AbbottSmith > Dodson for Greek.
+  const priority: Record<string, number> =
+    language === "hebrew"
+      ? { BDB: 0, HebrewStrong: 1 }
+      : { AbbottSmith: 0, Dodson: 1, LSJ: 2 };
 
-  for (const row of lexRows) {
-    if (!row.strongNumber || !row.shortGloss) continue;
-    const existing = glossMap.has(row.strongNumber);
-    const existingPriority = existing ? (priority[row.source ?? ""] ?? 99) : Infinity;
-    const thisPriority = priority[row.source ?? ""] ?? 99;
-    if (!existing || thisPriority < existingPriority) {
-      glossMap.set(row.strongNumber, row.shortGloss);
+  for (const { db, source } of dbs) {
+    const lexRows = await db
+      .select({
+        strongNumber: lexiconEntries.strongNumber,
+        shortGloss:   lexiconEntries.shortGloss,
+        source:       lexiconEntries.source,
+      })
+      .from(lexiconEntries)
+      .where(and(inArray(lexiconEntries.strongNumber, strongNums), eq(lexiconEntries.language, language)));
+
+    const thisPriority = priority[source] ?? 99;
+    for (const row of lexRows) {
+      if (!row.strongNumber || !row.shortGloss) continue;
+      const existing = glossMap.has(row.strongNumber);
+      const existingPriority = existing ? (priority[row.source ?? ""] ?? 99) : Infinity;
+      if (!existing || thisPriority < existingPriority) {
+        glossMap.set(row.strongNumber, row.shortGloss);
+      }
     }
   }
   return glossMap;
@@ -111,31 +122,38 @@ export async function GET(request: NextRequest) {
 
   // ── Hebrew text prefix search — query lexicon for dictionary-form lemmas ─────
   if (isHebrew(q)) {
-    if (!lexicaDb) return NextResponse.json({ suggestions: [] });
+    const hebrewDbs = getLexiconDbsForLanguage("hebrew");
+    if (hebrewDbs.length === 0) return NextResponse.json({ suggestions: [] });
 
     const consonantal = isConsonantalHebrew(q);
     // For consonantal queries, fetch all entries starting with the first consonant
-    // then filter in JS by comparing stripped lemmas. Prefix with % anchor on first consonant.
+    // then filter in JS by comparing stripped lemmas.
     const firstConsonant = q[0];
     const dbQuery = consonantal
       ? like(lexiconEntries.lemma, `${firstConsonant}%`)
       : like(lexiconEntries.lemma, `${q}%`);
 
-    const lexRows = await lexicaDb
-      .select({ strongNumber: lexiconEntries.strongNumber, lemma: lexiconEntries.lemma, shortGloss: lexiconEntries.shortGloss, source: lexiconEntries.source })
-      .from(lexiconEntries)
-      .where(and(eq(lexiconEntries.language, "hebrew"), dbQuery))
-      .orderBy(sql`length(${lexiconEntries.lemma})`, lexiconEntries.lemma)
-      .limit(consonantal ? 500 : limit * 3);
+    type LexRow = { strongNumber: string | null; lemma: string | null; shortGloss: string | null; source: string | null };
+    const allRows: LexRow[] = [];
+
+    for (const { db } of hebrewDbs) {
+      const rows = await db
+        .select({ strongNumber: lexiconEntries.strongNumber, lemma: lexiconEntries.lemma, shortGloss: lexiconEntries.shortGloss, source: lexiconEntries.source })
+        .from(lexiconEntries)
+        .where(and(eq(lexiconEntries.language, "hebrew"), dbQuery))
+        .orderBy(sql`length(${lexiconEntries.lemma})`, lexiconEntries.lemma)
+        .limit(consonantal ? 500 : limit * 3);
+      allRows.push(...rows);
+    }
 
     // For consonantal queries, filter by stripping vowels from the lemma
     const filtered = consonantal
-      ? lexRows.filter((r) => r.lemma && stripVowels(r.lemma).startsWith(q))
-      : lexRows;
+      ? allRows.filter((r) => r.lemma && stripVowels(r.lemma).startsWith(q))
+      : allRows;
 
     // Deduplicate by strongNumber, preferring BDB then HebrewStrong
     const priority: Record<string, number> = { BDB: 0, HebrewStrong: 1 };
-    const best = new Map<string, typeof lexRows[0]>();
+    const best = new Map<string, LexRow>();
     for (const row of filtered) {
       if (!row.strongNumber || !row.lemma) continue;
       const existing = best.get(row.strongNumber);

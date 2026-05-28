@@ -13,8 +13,9 @@ import { writeFileSync, mkdirSync } from "fs";
 import path from "path";
 import * as schema from "../lib/db/schema";
 import { sql } from "drizzle-orm";
+import { ensureLexiconTable } from "./_ensure-lexicon-table";
 
-const DB_PATH    = path.join(process.cwd(), "data", "lexica.db");
+const DB_PATH    = path.join(process.cwd(), "data", "abbott-smith.db");
 const CACHE_DIR  = path.join(process.cwd(), "data", "sources", "lexicon");
 const XML_FILE   = path.join(CACHE_DIR, "abbott-smith.tei_lemma.xml");
 const SOURCE_URL = "https://raw.githubusercontent.com/translatable-exegetical-tools/Abbott-Smith/master/abbott-smith.tei_lemma.xml";
@@ -51,6 +52,7 @@ async function main() {
 
   const sqlite = new Database(DB_PATH);
   sqlite.pragma("journal_mode = WAL");
+  ensureLexiconTable(sqlite);
   const db = drizzle(sqlite, { schema });
 
   // Remove existing AbbottSmith entries for a clean re-import.
