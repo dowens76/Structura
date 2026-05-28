@@ -360,8 +360,21 @@ export default function ExportLayout({ children, revealHref, filename, backHref,
       const savedScrollX = window.scrollX;
       const savedScrollY = window.scrollY;
 
+      // Override the body and page-wrapper backgrounds so WKWebView snapshots
+      // render the correct export background instead of the app theme colour.
+      // These elements sit outside textRef and would otherwise bleed the app
+      // colour into the capture regardless of the textRef inline style.
+      const exportPageEl = document.querySelector<HTMLElement>("[data-export-page]");
+      const prevBodyBg   = document.body.style.background;
+      const prevPageBg   = exportPageEl?.style.backgroundColor ?? "";
+
       try {
-        // Re-measure after toolbar removal so coordinates are accurate.
+        const captureBackground = backgroundColor ?? "transparent";
+        document.body.style.background = captureBackground;
+        if (exportPageEl) exportPageEl.style.backgroundColor = captureBackground;
+
+        // Re-measure after toolbar removal and background change so coordinates
+        // are accurate and the new backgrounds are painted.
         await new Promise<void>(r => requestAnimationFrame(() => requestAnimationFrame(() => r())));
 
         const elRect      = el.getBoundingClientRect();
@@ -396,6 +409,14 @@ export default function ExportLayout({ children, revealHref, filename, backHref,
         outCanvas.width  = outW;
         outCanvas.height = outH;
         const ctx = outCanvas.getContext("2d")!;
+
+        // Fill the canvas with the background colour before compositing strips
+        // so that margin rows (above/below content) and any inter-strip gaps
+        // have the correct colour instead of remaining transparent.
+        if (backgroundColor) {
+          ctx.fillStyle = backgroundColor;
+          ctx.fillRect(0, 0, outW, outH);
+        }
 
         // scrollBase: window scroll Y that puts el's top edge at viewport y=0.
         const scrollBase = savedScrollY + elRect.top;
@@ -443,6 +464,8 @@ export default function ExportLayout({ children, revealHref, filename, backHref,
       } finally {
         window.scrollTo(savedScrollX, savedScrollY);
         if (toolbar) toolbar.style.display = prevDisplay;
+        document.body.style.background = prevBodyBg;
+        if (exportPageEl) exportPageEl.style.backgroundColor = prevPageBg;
       }
     }
 
