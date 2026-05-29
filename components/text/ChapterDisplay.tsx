@@ -88,6 +88,14 @@ interface ChapterDisplayProps {
   vcbBaseVerses?: { verse: number; text: string }[];
   /** The Translation record for VCB in user.db (null if not imported). */
   vcbTranslation?: Translation | null;
+  /** Reconstructed verse texts from lxx.db for showing LXX in the translation column. */
+  lxxBaseVerses?: { verse: number; text: string }[];
+  /** Per-verse LXX Word arrays for word-token rendering and TC marking. */
+  lxxVerseWords?: Map<number, import("@/lib/db/source-schema").Word[]>;
+  /** The Translation record for LXX in user.db (null if lxx.db unavailable). */
+  lxxTranslation?: Translation | null;
+  /** Pre-fetched text critical marks for this chapter. */
+  initialTextCriticalMarks?: { wordId: string; markType: string; textSource: string }[];
   /** Optional heading strip (book title, chapter number, word count) rendered
    *  above the toolbar; hidden automatically in presentation mode. */
   headingSlot?: React.ReactNode;
@@ -150,6 +158,10 @@ export default function ChapterDisplay({
   ultTranslation = null,
   vcbBaseVerses = [],
   vcbTranslation = null,
+  lxxBaseVerses = [],
+  lxxVerseWords,
+  lxxTranslation = null,
+  initialTextCriticalMarks = [],
   headingSlot,
   initialTranslationFootnotes = {},
   translationOnly = false,
@@ -211,6 +223,14 @@ export default function ChapterDisplay({
   const [searchHits, setSearchHits] = useState<Set<string>>(new Set());
   const [searchRequest, setSearchRequest] = useState<{ query: string; source: string; nonce: number } | null>(null);
   const [notesScrollVerse, setNotesScrollVerse] = useState<number | null>(null);
+
+  // ── Text Critical Markup ─────────────────────────────────────────────────────
+  const [tcMarkMap, setTcMarkMap] = useState<Map<string, string>>(
+    () => new Map(initialTextCriticalMarks.map(m => [m.wordId, m.markType]))
+  );
+  const [editingTc, setEditingTc] = useState(false);
+  const [activeTcMark, setActiveTcMark] = useState<"lxx_unique" | "mt_unique" | "same_different">("lxx_unique");
+
   // RST source-pad: dynamically sized so group chips never overlap verse labels
   const [rstSourcePad, setRstSourcePad] = useState(0);
 
@@ -567,10 +587,29 @@ export default function ChapterDisplay({
       data = { ...data, [vcbId]: merged };
     }
 
+    if (lxxTranslation && lxxBaseVerses.length > 0) {
+      const lxxId = lxxTranslation.id;
+      const editedMap = new Map(
+        (data[lxxId] ?? []).map((v) => [v.verse, v])
+      );
+      const merged: TranslationVerse[] = lxxBaseVerses.map((base, i) => {
+        return editedMap.get(base.verse) ?? {
+          id: -(i + 1),
+          workspaceId: lxxTranslation.workspaceId,
+          translationId: lxxId,
+          osisRef: `${book}.${chapter}.${base.verse}`,
+          bookId: 0, chapter,
+          verse: base.verse,
+          text: base.text,
+        };
+      });
+      data = { ...data, [lxxId]: merged };
+    }
+
     return data;
   // Only recalculate when book/chapter/translation IDs change (navigation); not on every keystroke.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [book, chapter, ultTranslation?.id, vcbTranslation?.id]);
+  }, [book, chapter, ultTranslation?.id, vcbTranslation?.id, lxxTranslation?.id]);
 
   const [localTranslationVerseData, setLocalTranslationVerseData] = useState(initialTranslationVerseData);
   const [editingTranslation, setEditingTranslation] = useState(false);
@@ -1130,16 +1169,21 @@ export default function ChapterDisplay({
     if (includeVcb && !list.some((t) => t.id === vcbTranslation!.id)) {
       list = [...list, vcbTranslation!];
     }
+    const includeLxx = lxxTranslation && lxxBaseVerses.length > 0;
+    if (includeLxx && !list.some((t) => t.id === lxxTranslation!.id)) {
+      list = [...list, lxxTranslation!];
+    }
     return list;
-  }, [availableTranslations, ultTranslation, ultBaseVerses.length, vcbTranslation, vcbBaseVerses.length, translationOnly]);
+  }, [availableTranslations, ultTranslation, ultBaseVerses.length, vcbTranslation, vcbBaseVerses.length, lxxTranslation, lxxBaseVerses.length, translationOnly]);
 
   // Set of system translation IDs — shown with a "built-in" badge in the picker
   const systemTranslationIds = useMemo(
     () => new Set([
       ...(ultTranslation ? [ultTranslation.id] : []),
       ...(vcbTranslation ? [vcbTranslation.id] : []),
+      ...(lxxTranslation ? [lxxTranslation.id] : []),
     ]),
-    [ultTranslation, vcbTranslation]
+    [ultTranslation, vcbTranslation, lxxTranslation]
   );
 
   // Resolve stored abbreviations → numeric IDs for the current chapter's translations
@@ -1194,12 +1238,17 @@ export default function ChapterDisplay({
       }
       for (const tv of deduped.values()) {
         const existing = map.get(tv.verse) ?? [];
-        existing.push({ abbr: t.abbreviation, text: tv.text, translationId: t.id });
+        const entry: TranslationTextEntry = { abbr: t.abbreviation, text: tv.text, translationId: t.id };
+        // Attach LXX word tokens so the translation column can render them individually.
+        if (t.abbreviation === "LXX" && lxxVerseWords) {
+          entry.words = lxxVerseWords.get(tv.verse);
+        }
+        existing.push(entry);
         map.set(tv.verse, existing);
       }
     }
     return map;
-  }, [activeTranslationIds, allAvailableTranslations, localTranslationVerseData]);
+  }, [activeTranslationIds, allAvailableTranslations, localTranslationVerseData, lxxVerseWords]);
 
   // When editing, every verse gets entries for all active translations (empty where no data yet).
   const editingTranslationVerseMap = useMemo(() => {
@@ -1433,6 +1482,10 @@ export default function ChapterDisplay({
     }
     if (editingWordTags) {
       handleToggleWordTagRef(word, shiftHeld);
+      return;
+    }
+    if (editingTc) {
+      handleToggleTcMark(word);
       return;
     }
     setSelectedWord(word);
@@ -2794,6 +2847,50 @@ export default function ChapterDisplay({
     return handleToggleFormattingById(word.wordId, textSource);
   }
 
+  // ── Text Critical Mark handlers ────────────────────────────────────────────
+  async function handleToggleTcMark(word: Word) {
+    const { wordId, textSource: wordTextSource } = word;
+    const current = tcMarkMap.get(wordId);
+    if (current === activeTcMark) {
+      // Remove mark
+      setTcMarkMap((prev) => { const m = new Map(prev); m.delete(wordId); return m; });
+      fetch("/api/text-critical-marks", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ wordId }),
+      }).catch(() => {});
+    } else {
+      // Assign active mark
+      setTcMarkMap((prev) => new Map(prev).set(wordId, activeTcMark));
+      fetch("/api/text-critical-marks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ wordId, markType: activeTcMark, textSource: wordTextSource, book, chapter }),
+      }).catch(() => {});
+    }
+  }
+
+  // Called from VerseDisplay when user clicks an LXX word token in the translation column.
+  function handleTcMarkLxxWord(wordId: string, wordTextSource: string) {
+    if (!editingTc) return;
+    const current = tcMarkMap.get(wordId);
+    if (current === activeTcMark) {
+      setTcMarkMap((prev) => { const m = new Map(prev); m.delete(wordId); return m; });
+      fetch("/api/text-critical-marks", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ wordId }),
+      }).catch(() => {});
+    } else {
+      setTcMarkMap((prev) => new Map(prev).set(wordId, activeTcMark));
+      fetch("/api/text-critical-marks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ wordId, markType: activeTcMark, textSource: wordTextSource, book, chapter }),
+      }).catch(() => {});
+    }
+  }
+
   // ── Translation verse text edit handler ────────────────────────────────────
   async function handleUpdateTranslationVerse(abbr: string, verse: number, newText: string, record = true) {
     const translation = allAvailableTranslations.find((t) => t.abbreviation === abbr);
@@ -3664,6 +3761,64 @@ export default function ChapterDisplay({
                 I
               </button>}
 
+              {/* Text Critical markup mode */}
+              <button
+                onClick={() => setEditingTc((v) => !v)}
+                data-tip={editingTc ? "Exit text-critical mode" : "Text critical markup (MT/LXX)"}
+                className={[
+                  "px-3 py-1.5 rounded text-[13px] font-bold transition-colors",
+                  editingTc
+                    ? "bg-indigo-600 text-white"
+                    : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
+                ].join(" ")}
+              >
+                TC
+              </button>
+              {editingTc && (
+                <>
+                  <button
+                    onClick={() => setActiveTcMark("lxx_unique")}
+                    data-tip="LXX Unique (green)"
+                    className={[
+                      "w-7 h-7 rounded transition-colors border-2",
+                      activeTcMark === "lxx_unique"
+                        ? "border-green-600 bg-green-600"
+                        : "border-green-600 bg-transparent hover:bg-green-100 dark:hover:bg-green-900",
+                    ].join(" ")}
+                    style={{ color: "#16a34a" }}
+                    title="LXX Unique (green)"
+                  >
+                    <span className="sr-only">LXX Unique</span>
+                  </button>
+                  <button
+                    onClick={() => setActiveTcMark("mt_unique")}
+                    data-tip="MT Unique (red)"
+                    className={[
+                      "w-7 h-7 rounded transition-colors border-2",
+                      activeTcMark === "mt_unique"
+                        ? "border-red-600 bg-red-600"
+                        : "border-red-600 bg-transparent hover:bg-red-100 dark:hover:bg-red-900",
+                    ].join(" ")}
+                    title="MT Unique (red)"
+                  >
+                    <span className="sr-only">MT Unique</span>
+                  </button>
+                  <button
+                    onClick={() => setActiveTcMark("same_different")}
+                    data-tip="Same meaning, different form (yellow)"
+                    className={[
+                      "w-7 h-7 rounded transition-colors border-2",
+                      activeTcMark === "same_different"
+                        ? "border-yellow-500 bg-yellow-500"
+                        : "border-yellow-500 bg-transparent hover:bg-yellow-100 dark:hover:bg-yellow-900",
+                    ].join(" ")}
+                    title="Same meaning, different form (yellow)"
+                  >
+                    <span className="sr-only">Same Meaning</span>
+                  </button>
+                </>
+              )}
+
               {/* Character reference tag mode */}
               {toolbarVis.refs && <button
                 onClick={() => {
@@ -4350,6 +4505,9 @@ export default function ChapterDisplay({
                 onUpdateAnnotation={handleUpdateAnnotation}
                 onExpandAnnotationRange={handleExpandAnnotationRange}
                 showAnnotationCol={editingAnnotations || lineAnnotations.length > 0}
+                tcMarkMap={tcMarkMap}
+                editingTc={editingTc}
+                onTcMarkWord={handleTcMarkLxxWord}
                 onVerseClick={(v) => {
                   setNotesOpen(true);
                   setNotesScrollVerse(v);

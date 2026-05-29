@@ -33,6 +33,8 @@ interface WordTokenProps {
   // Bold / italic formatting
   wordFormatting?: { isBold: boolean; isItalic: boolean } | null;
   editingFormatting?: boolean;
+  // Text critical markup overline
+  tcMark?: string | null;
   // Interlinear sub-mode
   interlinearSubMode?: InterlinearSubMode;
   constituentLabel?: string | null;
@@ -293,6 +295,7 @@ export default function WordToken({
   highlightWordTagIds,
   wordFormatting,
   editingFormatting,
+  tcMark,
   interlinearSubMode = "lemma",
   constituentLabel,
   datasetValue,
@@ -355,7 +358,20 @@ export default function WordToken({
     fontStyle:  wordFormatting?.isItalic ? "italic" : undefined,
   };
 
-  const style: React.CSSProperties = { ...colorStyle, ...underlineStyle, ...formattingStyle };
+  // ── Text critical markup overline ───────────────────────────────────────────
+  const TC_COLORS: Record<string, string> = {
+    lxx_unique:     "#16a34a",  // green-600
+    mt_unique:      "#dc2626",  // red-600
+    same_different: "#ca8a04",  // yellow-600
+  };
+  const tcStyle: React.CSSProperties = tcMark ? {
+    textDecorationLine:      "overline",
+    textDecorationStyle:     "solid",
+    textDecorationColor:     TC_COLORS[tcMark] ?? "#888",
+    textDecorationThickness: "2.5px",
+  } : {};
+
+  const style: React.CSSProperties = { ...colorStyle, ...underlineStyle, ...formattingStyle, ...tcStyle };
 
   const isInterlinear = displayMode === "interlinear";
 

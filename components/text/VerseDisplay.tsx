@@ -126,6 +126,10 @@ interface VerseDisplayProps {
   // Bold / italic formatting
   wordFormattingMap?: Map<string, { isBold: boolean; isItalic: boolean }>;
   editingFormatting?: boolean;
+  // Text critical markup
+  tcMarkMap?: Map<string, string>;
+  editingTc?: boolean;
+  onTcMarkWord?: (wordId: string, textSource: string) => void;
   // Interlinear sub-mode
   interlinearSubMode?: InterlinearSubMode;
   constituentLabelMap?: Map<string, string>;
@@ -877,6 +881,9 @@ export default function VerseDisplay({
   onSetSegmentTvIndent,
   wordFormattingMap = new Map() as Map<string, { isBold: boolean; isItalic: boolean }>,
   editingFormatting = false,
+  tcMarkMap,
+  editingTc = false,
+  onTcMarkWord,
   interlinearSubMode = "lemma" as InterlinearSubMode,
   constituentLabelMap = new Map<string, string>(),
   datasetEntryMap = new Map<string, string>(),
@@ -1673,6 +1680,7 @@ export default function VerseDisplay({
               highlightWordTagIds={highlightWordTagIds}
               wordFormatting={wordFormattingMap.get(word.wordId) ?? null}
               editingFormatting={editingFormatting}
+              tcMark={tcMarkMap?.get(word.wordId) ?? null}
               interlinearSubMode={interlinearSubMode}
               constituentLabel={constituentLabelMap.get(word.wordId)}
               datasetValue={datasetEntryMap.get(word.wordId)}
@@ -1904,7 +1912,7 @@ export default function VerseDisplay({
     return { display: token, marker: null };
   }
 
-  const allTvSegs = translationTexts.map(({ abbr, text, translationId }) => {
+  const allTvSegs = translationTexts.map(({ abbr, text, translationId, words: tvWords }) => {
     const encoded = encodeUsfmTokens(text);
     const embeddedFnCount = (encoded.match(/«fn»/g) ?? []).length;
     // Split on whitespace first, then split each token after any mid-word em-dash
@@ -1924,7 +1932,7 @@ export default function VerseDisplay({
       cur.push(token);
     });
     if (cur.length > 0) segs.push({ startIdx: curStart, tokens: cur });
-    return { abbr, text, translationId, embeddedFnCount, tvSegs: segs };
+    return { abbr, text, translationId, embeddedFnCount, tvSegs: segs, tvWords };
   });
 
   // Per-translation footnote letter counter (a, b, c…). Mutable during render.
@@ -1958,7 +1966,7 @@ export default function VerseDisplay({
         // Translation content for this row:
         //   • All rows except the last get only tvSegs[si] (if it exists).
         //   • The last source row gets tvSegs[si…end] (all remaining tv paragraphs).
-        const tvRowContent = allTvSegs.map(({ abbr, text: tvFullText, translationId: tvTranslationId, embeddedFnCount, tvSegs }) => {
+        const tvRowContent = allTvSegs.map(({ abbr, text: tvFullText, translationId: tvTranslationId, embeddedFnCount, tvSegs, tvWords }) => {
           const isLastRow = si === sourceSegments.length - 1;
           const rowSegs: TvSeg[] = si < sourceSegments.length - 1
             ? (tvSegs[si] ? [tvSegs[si]] : [])
@@ -2032,7 +2040,43 @@ export default function VerseDisplay({
                   {abbr}
                 </span>
               )}
-              {hasContent && (
+              {/* LXX word-token rendering (when words are attached to the entry) */}
+              {tvWords && tvWords.length > 0 && (
+                <p
+                  className="text-greek"
+                  style={{
+                    color: "var(--foreground)",
+                    lineHeight: "var(--translation-line-height, var(--source-row-height, 1.625))",
+                    paddingLeft: tvIndentLevel > 0 ? `${tvIndentLevel * 2}rem` : undefined,
+                  }}
+                >
+                  {tvWords.map((lxxWord, wi) => {
+                    const tcMark = tcMarkMap?.get(lxxWord.wordId) ?? null;
+                    const TC_COLORS: Record<string, string> = {
+                      lxx_unique: "#16a34a", mt_unique: "#dc2626", same_different: "#ca8a04",
+                    };
+                    const overlineStyle: React.CSSProperties = tcMark ? {
+                      textDecorationLine: "overline",
+                      textDecorationStyle: "solid",
+                      textDecorationColor: TC_COLORS[tcMark] ?? "#888",
+                      textDecorationThickness: "2.5px",
+                      cursor: editingTc ? "pointer" : undefined,
+                    } : { cursor: editingTc ? "pointer" : undefined };
+                    return (
+                      <span key={lxxWord.wordId}>
+                        <span
+                          style={overlineStyle}
+                          onClick={editingTc ? () => onTcMarkWord?.(lxxWord.wordId, lxxWord.textSource) : undefined}
+                        >
+                          {lxxWord.surfaceText.replace(/\//g, "")}
+                        </span>
+                        {wi < tvWords.length - 1 ? " " : ""}
+                      </span>
+                    );
+                  })}
+                </p>
+              )}
+              {!tvWords && hasContent && (
                 <p
                   style={{
                     color: "var(--foreground)",
@@ -2279,6 +2323,7 @@ export default function VerseDisplay({
         });
 
         // Uses --source-half-leading (set by parent, scales with lineHeightMultiplier);
+
         // fallback replicates the 2.5× / 2.25× default line-height used when no parent sets it.
         const labelPaddingTop = isHebrew
           ? "var(--source-half-leading, calc(0.75 * var(--hebrew-font-size, 1.375rem)))"

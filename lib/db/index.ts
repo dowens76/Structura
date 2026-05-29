@@ -122,6 +122,7 @@ export { USER_DB_PATH };
 let _sourceDb:    ReturnType<typeof drizzle<typeof sourceSchema>> | null = null;
 let _lexicaDb:    ReturnType<typeof drizzle<typeof lexicaSchema>> | null = null;
 let _lxxDb:       ReturnType<typeof drizzle<typeof sourceSchema>> | null = null;
+let _lxxSqlite:   Database.Database | null = null;
 let _userDb:      ReturnType<typeof drizzle<typeof userSchema>>   | null = null;
 let _userSqlite:  Database.Database | null = null;
 let _ultSqlite:   Database.Database | null = null;
@@ -211,8 +212,16 @@ export function getLxxDb(): ReturnType<typeof drizzle<typeof sourceSchema>> | nu
   if (!fs.existsSync(LXX_DB_PATH)) return null;
   const sqlite = new Database(LXX_DB_PATH, { readonly: true });
   sqlite.pragma("foreign_keys = ON");
+  _lxxSqlite = sqlite;
   _lxxDb = drizzle(sqlite, { schema: sourceSchema });
   return _lxxDb;
+}
+
+/** Raw better-sqlite3 connection to lxx.db (initialises getLxxDb if needed). */
+export function getLxxSqlite(): Database.Database | null {
+  if (_lxxSqlite) return _lxxSqlite;
+  getLxxDb(); // ensures _lxxSqlite is populated
+  return _lxxSqlite;
 }
 
 function migrateUserDb(sqlite: Database.Database): void {

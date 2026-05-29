@@ -1,10 +1,10 @@
 import { eq, and, asc, inArray, or, gte, lte, gt, lt, sql, max, like } from "drizzle-orm";
-import { sourceDb, userDb, sourceLookups, lxxLookups, getLxxDb, getUltSqlite, getVcbSqlite } from "./index";
+import { sourceDb, userDb, sourceLookups, lxxLookups, getLxxDb, getLxxSqlite, getUltSqlite, getVcbSqlite, getUserSqlite } from "./index";
 import { getMtToKjvInstructions } from "@/lib/versification/mt-kjv-mapping";
 import type { LookupMaps } from "./index";
 import { books, words } from "./source-schema";
 import type { Word, WordRow } from "./source-schema";
-import { translations, translationVerses, paragraphBreaks, paragraphHeadings, characters, characterRefs, speechSections, wordTags, wordTagRefs, lineIndents, sceneBreaks, passages, clauseRelationships, rstRelations, wordArrows, wordFormatting, lineAnnotations, bookGroupings, appSettings, translationFootnotes, translationVersions, workspaces, users } from "./user-schema";
+import { translations, translationVerses, paragraphBreaks, paragraphHeadings, characters, characterRefs, speechSections, wordTags, wordTagRefs, lineIndents, sceneBreaks, passages, clauseRelationships, rstRelations, wordArrows, wordFormatting, lineAnnotations, bookGroupings, appSettings, translationFootnotes, translationVersions, workspaces, users, textCriticalMarks } from "./user-schema";
 import type { Book, Translation, TranslationVerse, Character, CharacterRef, SpeechSection, WordTag, WordTagRef, Passage, ClauseRelationship, RstRelation, WordArrow, LineAnnotation, BookGrouping, TranslationFootnote, TranslationVersion } from "./schema";
 import type { TextSource, Testament } from "@/lib/morphology/types";
 
@@ -2089,4 +2089,125 @@ export async function updateTranslationVersionLabel(
 
 export async function deleteTranslationVersion(id: number): Promise<void> {
   await userDb.delete(translationVersions).where(eq(translationVersions.id, id));
+}
+
+// ── LXX as Translation Column ─────────────────────────────────────────────────
+
+/**
+ * Fetch or create the LXX built-in Translation record (mirrors getUltTranslation).
+ * Creating it on first use keeps user.db clean until the feature is actually used.
+ */
+export async function getLxxTranslation(): Promise<Translation | null> {
+  const result = await userDb
+    .select()
+    .from(translations)
+    .where(eq(translations.abbreviation, "LXX"))
+    .limit(1);
+  if (result[0]) return result[0];
+  try {
+    const ins = await userDb
+      .insert(translations)
+      .values({ workspaceId: 1, name: "Septuagint (LXX)", abbreviation: "LXX", language: "greek" })
+      .returning();
+    return ins[0] ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Reconstruct verse text strings from lxx.db words for a given book/chapter.
+ * Words are joined with spaces. Returns [] if lxx.db is unavailable or book not found.
+ */
+export function getLxxVerseTexts(
+  book: string,
+  chapter: number
+): { verse: number; text: string }[] {
+  const sqlite = getLxxSqlite();
+  if (!sqlite) return [];
+  try {
+    const bookRow = sqlite
+      .prepare("SELECT id FROM books WHERE osis_code = ?")
+      .get(book) as { id: number } | undefined;
+    if (!bookRow) return [];
+
+    const rows = sqlite
+      .prepare(
+        "SELECT verse, surface_text FROM words WHERE book_id = ? AND chapter = ? ORDER BY verse, position_in_verse"
+      )
+      .all(bookRow.id, chapter) as { verse: number; surface_text: string }[];
+
+    const byVerse = new Map<number, string[]>();
+    for (const r of rows) {
+      const t = r.surface_text.replace(/\//g, "").trim();
+      if (!t) continue;
+      const arr = byVerse.get(r.verse);
+      if (arr) arr.push(t);
+      else byVerse.set(r.verse, [t]);
+    }
+
+    return [...byVerse.entries()]
+      .sort(([a], [b]) => a - b)
+      .map(([verse, tokens]) => ({ verse, text: tokens.join(" ") }));
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Return LXX words grouped by verse for a book/chapter.
+ * Used to render word tokens in the translation column for TC marking.
+ */
+export async function getLxxVerseWords(
+  book: string,
+  chapter: number
+): Promise<Map<number, Word[]>> {
+  const allWords = await getChapterWords(book, chapter, "STEPBIBLE_LXX" as TextSource);
+  const byVerse = new Map<number, Word[]>();
+  for (const w of allWords) {
+    const arr = byVerse.get(w.verse);
+    if (arr) arr.push(w);
+    else byVerse.set(w.verse, [w]);
+  }
+  return byVerse;
+}
+
+// ── Text Critical Marks ───────────────────────────────────────────────────────
+
+export function getChapterTextCriticalMarks(
+  book: string,
+  chapter: number,
+  workspaceId: number
+): { wordId: string; markType: string; textSource: string }[] {
+  return getUserSqlite()
+    .prepare(
+      "SELECT word_id as wordId, mark_type as markType, text_source as textSource FROM text_critical_marks WHERE workspace_id = ? AND book = ? AND chapter = ?"
+    )
+    .all(workspaceId, book, chapter) as { wordId: string; markType: string; textSource: string }[];
+}
+
+export async function upsertTextCriticalMark(
+  wordId: string,
+  markType: string,
+  textSource: string,
+  book: string,
+  chapter: number,
+  workspaceId: number
+): Promise<void> {
+  await userDb
+    .insert(textCriticalMarks)
+    .values({ workspaceId, wordId, markType, textSource, book, chapter })
+    .onConflictDoUpdate({
+      target: [textCriticalMarks.workspaceId, textCriticalMarks.wordId],
+      set: { markType, textSource, book, chapter },
+    });
+}
+
+export async function deleteTextCriticalMark(
+  wordId: string,
+  workspaceId: number
+): Promise<void> {
+  await userDb
+    .delete(textCriticalMarks)
+    .where(and(eq(textCriticalMarks.workspaceId, workspaceId), eq(textCriticalMarks.wordId, wordId)));
 }

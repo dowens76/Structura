@@ -12,6 +12,8 @@ import {
   getUltVerses, getUltTranslation, getVcbVerses, getVcbTranslation, getGroupedBooksFor,
   getChapterTranslationFootnotes,
   getWorkspaceById,
+  getLxxVerseTexts, getLxxVerseWords, getLxxTranslation,
+  getChapterTextCriticalMarks,
 } from "@/lib/db/queries";
 import type { TranslationVerse, TranslationFootnote } from "@/lib/db/schema";
 import type { TextSource } from "@/lib/morphology/types";
@@ -141,6 +143,10 @@ export default async function ChapterPage({ params, searchParams }: PageProps) {
   let ultTranslation: Awaited<ReturnType<typeof getUltTranslation>> = null;
   let vcbBaseVerses: { verse: number; text: string }[] = [];
   let vcbTranslation: Awaited<ReturnType<typeof getVcbTranslation>> = null;
+  let lxxBaseVerses: { verse: number; text: string }[] = [];
+  let lxxVerseWords: Map<number, import("@/lib/db/source-schema").Word[]> = new Map();
+  let lxxTranslation: Awaited<ReturnType<typeof getLxxTranslation>> = null;
+  let initialTextCriticalMarks: { wordId: string; markType: string; textSource: string }[] = [];
 
   // Build the full set of books that share a character/word-tag pool with this
   // book.  Includes: the hardcoded contiguous sibling (1Sam↔2Sam etc.) PLUS
@@ -217,6 +223,20 @@ export default async function ChapterPage({ params, searchParams }: PageProps) {
         );
       }
     }
+
+    // LXX as translation column (OSHB OT chapters only)
+    if (textSource === "OSHB") {
+      lxxBaseVerses = getLxxVerseTexts(osisBook, chapter);
+      if (lxxBaseVerses.length > 0) {
+        [lxxVerseWords, lxxTranslation] = await Promise.all([
+          getLxxVerseWords(osisBook, chapter),
+          getLxxTranslation(),
+        ]);
+      }
+    }
+
+    // Text critical marks (both OSHB and LXX word marks for this chapter)
+    initialTextCriticalMarks = getChapterTextCriticalMarks(osisBook, chapter, workspaceId);
   }
 
   const bookName = OSIS_REF_BOOK_NAMES[osisBook] ?? osisBook;
@@ -380,6 +400,10 @@ export default async function ChapterPage({ params, searchParams }: PageProps) {
             ultTranslation={ultTranslation}
             vcbBaseVerses={vcbBaseVerses}
             vcbTranslation={vcbTranslation}
+            lxxBaseVerses={lxxBaseVerses}
+            lxxVerseWords={lxxVerseWords}
+            lxxTranslation={lxxTranslation}
+            initialTextCriticalMarks={initialTextCriticalMarks}
             initialParagraphBreakIds={initialParagraphBreakIds}
             initialCharacters={initialCharacters}
             initialCharacterRefs={initialCharacterRefs}

@@ -86,6 +86,8 @@ export interface TranslationTextEntry {
   abbr: string;
   text: string;
   translationId: number;
+  /** Present for LXX: enables word-token rendering and per-word TC marking. */
+  words?: import("@/lib/db/source-schema").Word[];
 }
 
 export interface GrammarFilterState {

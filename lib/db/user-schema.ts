@@ -541,6 +541,29 @@ export const appSettings = sqliteTable("app_settings", {
   value: text("value").notNull(),
 });
 
+// ─── Text Critical Markup ──────────────────────────────────────────────────
+
+/** Per-word text-critical marks for comparing MT (OSHB) with LXX. */
+export const textCriticalMarks = sqliteTable(
+  "text_critical_marks",
+  {
+    id:          integer("id").primaryKey({ autoIncrement: true }),
+    workspaceId: integer("workspace_id").notNull().default(1)
+                   .references(() => workspaces.id, { onDelete: "cascade" }),
+    wordId:      text("word_id").notNull(),
+    // 'lxx_unique' = green, 'mt_unique' = red, 'same_different' = yellow
+    markType:    text("mark_type").notNull(),
+    textSource:  text("text_source").notNull(),
+    book:        text("book").notNull(),
+    chapter:     integer("chapter").notNull(),
+    createdAt:   text("created_at").$defaultFn(() => new Date().toISOString()),
+  },
+  (t) => [
+    uniqueIndex("tcm_ws_word_idx").on(t.workspaceId, t.wordId),
+    index("tcm_book_ch_idx").on(t.book, t.chapter),
+  ]
+);
+
 // ─── Types ─────────────────────────────────────────────────────────────────
 
 export type User = typeof users.$inferSelect;
@@ -573,3 +596,4 @@ export type WordDatasetEntry = typeof wordDatasetEntries.$inferSelect;
 export type BookGrouping = typeof bookGroupings.$inferSelect;
 export type TranslationFootnote = typeof translationFootnotes.$inferSelect;
 export type TranslationVersion = typeof translationVersions.$inferSelect;
+export type TextCriticalMark = typeof textCriticalMarks.$inferSelect;
