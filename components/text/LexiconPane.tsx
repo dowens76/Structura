@@ -156,6 +156,13 @@ const LSJ_CSS = `
 .dark .lsj-bibl { color: #555; }
 .dark .lsj-ref { color: #666; }
 .dark .lsj-etym { color: #666; }
+/* STEPBible HTML format — Level tags rendered as indented blocks */
+.lsj-entry .lsj-level-2 { display: block; margin-top: 0.4em; margin-left: 0.5em; }
+.lsj-entry .lsj-level-3 { display: block; margin-top: 0.25em; margin-left: 1em; }
+.lsj-entry .lsj-level-4 { display: block; margin-top: 0.15em; margin-left: 1.5em; }
+/* Citation tooltips: muted colour, pointer cursor so the title hint is discoverable */
+.lsj-entry span[title] { color: #888; font-size: 0.8em; cursor: help; }
+.dark .lsj-entry span[title] { color: #555; }
 `;
 
 let lsjCssInjected = false;
@@ -215,6 +222,18 @@ function convertLsjNode(node: ChildNode): string {
 }
 
 function lsjXmlToHtml(xml: string): string {
+  if (!xml) return "";
+  // STEPBible format: definition is already HTML (starts with <b> or similar tags).
+  // Legacy Perseus format: definition is TEI XML (starts with <entryFree).
+  if (!xml.trimStart().startsWith("<entryFree")) {
+    // Convert STEPBible's custom Level tags to styled divs and strip __ indent markers.
+    const html = xml
+      .replace(/<Level2>([\s\S]*?)<\/Level2>/gi, '<div class="lsj-level-2">$1</div>')
+      .replace(/<Level3>([\s\S]*?)<\/Level3>/gi, '<div class="lsj-level-3">$1</div>')
+      .replace(/<Level4>([\s\S]*?)<\/Level4>/gi, '<div class="lsj-level-4">$1</div>')
+      .replace(/__+/g, "");
+    return `<div class="lsj-entry">${html}</div>`;
+  }
   try {
     const doc = new DOMParser().parseFromString(xml, "text/xml");
     if (doc.querySelector("parsererror")) return "";

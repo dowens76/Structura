@@ -241,6 +241,12 @@ export default function HomeContent({ otBooks, ntBooks, lxxBooks, translationOnl
           <p>{t("home.footerHebrew")}</p>
           <p>{t("home.footerGreek")}</p>
           <p>{t("home.footerLxx")}</p>
+          <p className="mt-2 font-medium">{t("home.footerLexicaHeading")}</p>
+          <p>{t("home.footerLexBdb")}</p>
+          <p>{t("home.footerLexStrongs")}</p>
+          <p>{t("home.footerLexDodson")}</p>
+          <p>{t("home.footerLexAbbottSmith")}</p>
+          <p>{t("home.footerLexLsj")}</p>
         </footer>
       </div>
 

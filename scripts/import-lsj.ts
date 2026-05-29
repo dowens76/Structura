@@ -1,21 +1,30 @@
 /**
- * Import script: Liddell-Scott-Jones Greek Lexicon (Unicode edition)
- * Source: https://github.com/gcelano/LSJ_GreekUnicode
+ * Import script: Liddell-Scott-Jones Greek Lexicon
+ * Source: STEPBible-Data (CC BY)
+ * https://github.com/STEPBible/STEPBible-Data/tree/master/Lexicons
  *
- * Downloads 27 XML files (grc.lsj.perseus-eng1.xml … eng27.xml),
- * parses each <entryFree> element, and stores entries in lsj.db.
+ * Ingests two tab-separated files:
+ *   TFLSJ  0-5624  — original Strong's G0001–G5624
+ *   TFLSJ extra    — extended Strong's G6000–G21502 (LXX / proper nouns)
  *
- * Lemma key design
- * ----------------
- * LXX words are stored with *unaccented* lowercase lemmas (e.g. "αρχη").
- * The LSJ headwords are fully accented (e.g. "ἀρχή").  To make the
- * lookup work without changing the API, we strip diacritical marks and
- * lowercase the LSJ headword before storing it in the `lemma` column.
- * The original accented headword goes in `transliteration` for display.
+ * Column layout (0-indexed):
+ *   0  eStrong       — extended Strong's (G0001, G6002 …)
+ *   1  dStrong       — display form with sense notes
+ *   2  uStrong       — unique per sub-entry (G0001G, G0001H, H0175 …)
+ *   3  Greek         — lexical form(s), comma-separated if multiple
+ *   4  Transliteration
+ *   5  Morph
+ *   6  Gloss         — one-word brief gloss
+ *   7  LSJ Meaning   — full HTML entry
  *
- * The `strong_number` column (NOT NULL, unique with source) is populated
- * with the entry's `id` attribute (e.g. "n1234"), which is globally
- * unique within the LSJ corpus.
+ * Storage schema
+ * ──────────────
+ *   strong_number   = uStrong  (unique per sub-entry)
+ *   lemma           = unaccented, lowercase first Greek form (for lookup)
+ *   transliteration = accented first Greek form (for display)
+ *   pronunciation   = Latin transliteration (col 4)
+ *   short_gloss     = col 6
+ *   definition      = sanitised HTML from col 7
  *
  * Run: npm run import:lsj
  */
@@ -30,48 +39,55 @@ import { ensureLexiconTable } from "./_ensure-lexicon-table";
 
 const DB_PATH   = path.join(process.cwd(), "data", "lsj.db");
 const CACHE_DIR = path.join(process.cwd(), "data", "sources", "lexicon", "lsj");
-const BASE_URL  = "https://raw.githubusercontent.com/gcelano/LSJ_GreekUnicode/master";
-const FILE_COUNT = 27;
+
+const BASE_URL  = "https://raw.githubusercontent.com/STEPBible/STEPBible-Data/master/Lexicons/";
+
+// File 1 has a double space before "0-5624" in the filename.
+const FILES = [
+  {
+    filename: "TFLSJ  0-5624 - Translators Formatted full LSJ Bible lexicon - STEPBible.org CC BY.txt",
+    label: "TFLSJ 0-5624",
+  },
+  {
+    filename: "TFLSJ extra - Translators Formatted full LSJ Bible lexicon - STEPBible.org CC BY.txt",
+    label: "TFLSJ extra",
+  },
+];
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 /** Strip Greek diacritical marks (polytonic + combining) and lowercase. */
 function unaccentGreek(s: string): string {
-  return s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+  return s.normalize("NFD").replace(/[̀-ͯ᷀-᷿⃐-⃿]/g, "").toLowerCase();
 }
 
-/** Remove trailing ASCII digits used in LSJ to disambiguate homophones. */
-function stripTrailingDigits(s: string): string {
-  return s.replace(/\d+$/, "").trim();
+/**
+ * Extract the primary Greek form from the Greek column.
+ * The field may contain comma-separated alternatives, e.g. "α, Ἀλφα" or "βίβλος, ου, ἡ".
+ * We take the first token and strip trailing punctuation.
+ */
+function primaryGreekForm(greek: string): string {
+  return greek.split(",")[0].trim().replace(/[.·;:!?]+$/, "").trim();
 }
 
-function hasGreek(s: string): boolean {
-  return /[Ͱ-Ͽἀ-῿]/i.test(s);
-}
-
-/** Strip redundant TEI attributes and normalize whitespace to shrink stored XML ~59%. */
-function compressXml(xml: string): string {
-  return xml
-    .replace(/ TEIform="[^"]*"/g, "")
-    .replace(/ opt="[^"]*"/g, "")
-    .replace(/ default="[^"]*"/g, "")
-    .replace(/ extent="[^"]*"/g, "")
-    .replace(/ n="urn:[^"]*"/g, "")
-    .replace(/\s+/g, " ");
-}
-
-/** Extract the value of the first occurrence of a named XML attribute. */
-function attrValue(tag: string, name: string): string {
-  const re = new RegExp(`\\b${name}="([^"]*)"`, "i");
-  const m = tag.match(re);
-  return m ? m[1] : "";
-}
-
-/** Return the plain-text content of the first <tr> element in `xml`. */
-function firstTrText(xml: string): string {
-  const m = xml.match(/<tr\b[^>]*>([\s\S]*?)<\/tr>/i);
-  if (!m) return "";
-  return m[1].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+/**
+ * Sanitise the STEPBible HTML for safe inline rendering.
+ * - Converts javascript:void(0) anchors to <span> (keeps the title tooltip).
+ * - Strips any remaining href attributes that look unsafe.
+ */
+function sanitiseHtml(html: string): string {
+  // <a href="javascript:...">text</a>  →  <span title="...">text</span>
+  html = html.replace(
+    /<a\b([^>]*?)href="javascript:[^"]*"([^>]*?)>([\s\S]*?)<\/a>/gi,
+    (_, before, after, content) => {
+      const titleMatch = (before + after).match(/title="([^"]*)"/i);
+      const titleAttr  = titleMatch ? ` title="${titleMatch[1]}"` : "";
+      return `<span${titleAttr}>${content}</span>`;
+    },
+  );
+  // Remove any residual javascript: hrefs that weren't caught above.
+  html = html.replace(/\shref="javascript:[^"]*"/gi, "");
+  return html;
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────────
@@ -90,7 +106,7 @@ async function main() {
 
   let totalInserted = 0;
   let totalSkipped  = 0;
-  const BATCH = 300;
+  const BATCH = 500;
   const rows: (typeof schema.lexiconEntries.$inferInsert)[] = [];
 
   function flush() {
@@ -102,9 +118,9 @@ async function main() {
         set: {
           lemma:           sql`excluded.lemma`,
           transliteration: sql`excluded.transliteration`,
+          pronunciation:   sql`excluded.pronunciation`,
           shortGloss:      sql`excluded.short_gloss`,
           definition:      sql`excluded.definition`,
-          source:          sql`excluded.source`,
         },
       })
       .run();
@@ -112,57 +128,65 @@ async function main() {
     rows.length = 0;
   }
 
-  for (let i = 1; i <= FILE_COUNT; i++) {
-    const filename  = `grc.lsj.perseus-eng${i}.xml`;
+  for (const { filename, label } of FILES) {
     const cachePath = path.join(CACHE_DIR, filename);
-    const url       = `${BASE_URL}/${filename}`;
+    const url = BASE_URL + encodeURIComponent(filename);
 
     if (!existsSync(cachePath)) {
-      process.stdout.write(`Downloading ${filename} … `);
+      process.stdout.write(`Downloading ${label} … `);
       const res = await fetch(url);
       if (!res.ok) throw new Error(`HTTP ${res.status} fetching ${url}`);
-      const xml = await res.text();
-      writeFileSync(cachePath, xml, "utf-8");
-      process.stdout.write(`${(xml.length / 1024).toFixed(0)} KB cached\n`);
+      const text = await res.text();
+      writeFileSync(cachePath, text, "utf-8");
+      process.stdout.write(`${(text.length / 1024).toFixed(0)} KB cached\n`);
     } else {
-      process.stdout.write(`Using cached ${filename}\n`);
+      process.stdout.write(`Using cached ${label}\n`);
     }
 
-    const xml = readFileSync(cachePath, "utf-8");
+    const text  = readFileSync(cachePath, "utf-8");
+    const lines = text.split(/\r?\n/);
 
-    // Extract each <entryFree …>…</entryFree> block.
-    const entryRe = /<entryFree\b([^>]*)>([\s\S]*?)<\/entryFree>/g;
-    let match: RegExpExecArray | null;
     let fileEntries = 0;
     let fileSkipped = 0;
+    let inData      = false;
 
-    while ((match = entryRe.exec(xml)) !== null) {
-      const attrsStr  = match[1];
-      const entryBody = match[2];
+    for (const line of lines) {
+      // Data starts after the "===" separator that follows the column headers.
+      if (!inData) {
+        if (/^={5,}/.test(line)) inData = true;
+        continue;
+      }
 
-      const entryId = attrValue(attrsStr, "id").trim();
-      const rawKey  = attrValue(attrsStr, "key").trim();
+      if (!line.trim()) continue;
 
-      if (!entryId || !rawKey) { fileSkipped++; continue; }
+      const cols = line.split("\t");
+      if (cols.length < 7) { fileSkipped++; continue; }
 
-      // Headword: strip trailing disambiguation digit, must contain Greek.
-      const headword = stripTrailingDigits(rawKey);
-      if (!hasGreek(headword)) { fileSkipped++; continue; }
+      const eStrong = cols[0]?.trim();
+      const uStrong = cols[2]?.trim();
+      const greek   = cols[3]?.trim();
+      const translit = cols[4]?.trim();
+      const gloss   = cols[6]?.trim();
+      const lsjHtml = cols[7]?.trim() ?? "";
 
-      const lemma       = unaccentGreek(headword);   // unaccented, lowercase
-      const shortGloss  = firstTrText(entryBody).slice(0, 300) || null;
+      // Skip lines that don't look like data entries.
+      if (!eStrong || !/^[GH]\d/.test(eStrong)) { fileSkipped++; continue; }
+      if (!uStrong || !greek) { fileSkipped++; continue; }
 
-      // Store the entry XML, stripped of redundant TEI attributes (~59% smaller).
-      const rawXml = compressXml(`<entryFree${attrsStr}>${entryBody}</entryFree>`);
+      const primaryForm   = primaryGreekForm(greek);
+      const lemma         = unaccentGreek(primaryForm);
+      if (!lemma) { fileSkipped++; continue; }
+
+      const definition = lsjHtml ? sanitiseHtml(lsjHtml) : null;
 
       rows.push({
-        strongNumber:    entryId,      // "n1234" — unique per entry
+        strongNumber:    uStrong,
         language:        "greek",
-        lemma,                         // unaccented for LXX lemma matching
-        transliteration: headword,     // accented headword for display
-        pronunciation:   null,
-        shortGloss,
-        definition:      rawXml,
+        lemma,
+        transliteration: primaryForm,
+        pronunciation:   translit || null,
+        shortGloss:      gloss || null,
+        definition,
         usage:           null,
         source:          "LSJ",
       });
@@ -173,18 +197,15 @@ async function main() {
 
     flush();
     totalSkipped += fileSkipped;
-    process.stdout.write(
-      `  → ${fileEntries.toLocaleString()} entries parsed, ${fileSkipped} skipped\n`
-    );
+    console.log(`  → ${fileEntries.toLocaleString()} entries parsed, ${fileSkipped} skipped`);
   }
 
   console.log(`\nDone: ${totalInserted.toLocaleString()} LSJ entries imported, ${totalSkipped} skipped.`);
 
-  // Verify a sample.
   const sample = sqlite
-    .prepare(`SELECT id, strong_number, lemma, transliteration, short_gloss
+    .prepare(`SELECT strong_number, lemma, transliteration, short_gloss
               FROM lexicon_entries WHERE source = 'LSJ' LIMIT 5`)
-    .all() as { id: number; strong_number: string; lemma: string; transliteration: string; short_gloss: string }[];
+    .all() as { strong_number: string; lemma: string; transliteration: string; short_gloss: string }[];
   console.log("\nSample entries:");
   for (const s of sample) {
     console.log(`  [${s.strong_number}] ${s.transliteration} → ${s.lemma} | ${s.short_gloss}`);
