@@ -238,9 +238,13 @@ export default function HomeContent({ otBooks, ntBooks, lxxBooks, translationOnl
         )}
 
         <footer className="mt-8 pt-6 border-t text-xs space-y-1" style={{ borderColor: "var(--border)", color: "var(--text-muted)" }}>
+          <p className="font-semibold">{t("home.footerLicenses")}</p>
+          <p className="mt-2 font-medium">{t("home.footerBiblesHeading")}</p>
           <p>{t("home.footerHebrew")}</p>
           <p>{t("home.footerGreek")}</p>
           <p>{t("home.footerLxx")}</p>
+          {ultBooks.length > 0 && <p>{t("home.footerUlt")}</p>}
+          {vcbBooks.length > 0 && <p>{t("home.footerVcb")}</p>}
           <p className="mt-2 font-medium">{t("home.footerLexicaHeading")}</p>
           <p>{t("home.footerLexBdb")}</p>
           <p>{t("home.footerLexStrongs")}</p>

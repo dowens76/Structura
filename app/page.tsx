@@ -30,10 +30,9 @@ export default async function Home() {
       return ai - bi;
     });
 
-    if (translationOnly) {
-      ultBooks = getUltBooks();
-      vcbBooks = getVcbBooks();
-    }
+    // Always fetch so footer can show license lines when installed.
+    ultBooks = getUltBooks();
+    vcbBooks = getVcbBooks();
   } catch {
     // DB not initialized yet
   }
