@@ -52,7 +52,7 @@ export default function TranslationPicker({
   useEffect(() => {
     if (!open || !containerRef.current) return;
     const rect = containerRef.current.getBoundingClientRect();
-    setAlignLeft(rect.right < 320);
+    setAlignLeft(rect.left < 320);
   }, [open]);
 
   // Close on outside click or Escape
