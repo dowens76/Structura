@@ -23,6 +23,8 @@ interface NotesPaneProps {
   scrollToVerse: number | null;
   onScrollHandled: () => void;
   onClose: () => void;
+  synced: boolean;
+  onSyncToggle: () => void;
 }
 
 export default function NotesPane({
@@ -32,6 +34,8 @@ export default function NotesPane({
   scrollToVerse,
   onScrollHandled,
   onClose,
+  synced,
+  onSyncToggle,
 }: NotesPaneProps) {
   const { refBookName: getRefBookName } = useTranslation();
   const bookName = getRefBookName(book);
@@ -206,6 +210,22 @@ export default function NotesPane({
             </button>
           </>
         )}
+        <button
+          onClick={onSyncToggle}
+          title={synced ? "Unsync notes from scroll position" : "Sync notes to scroll position"}
+          className={[
+            "w-6 h-6 flex items-center justify-center rounded transition-colors shrink-0",
+            synced
+              ? "bg-blue-500 text-white"
+              : "text-stone-400 hover:text-stone-600 dark:hover:text-stone-200 hover:bg-stone-100 dark:hover:bg-stone-800",
+          ].join(" ")}
+        >
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"
+               strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
+            <path d="M2 8h12M10 5l3 3-3 3" />
+            <path d="M6 11L3 8l3-3" />
+          </svg>
+        </button>
         <button
           onClick={() => setSearchOpen((v) => !v)}
           title={searchOpen ? "Close search" : "Search notes"}

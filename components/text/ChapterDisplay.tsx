@@ -200,6 +200,12 @@ export default function ChapterDisplay({
   const [selectedWord, setSelectedWord] = useState<Word | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
   const [notesOpen, setNotesOpen] = useState(false);
+  const [notesSynced, setNotesSynced] = useState(() => {
+    try { return localStorage.getItem("structura:notesSynced") === "true"; } catch { return false; }
+  });
+  const visibleVersesRef = useRef(new Set<number>());
+  const notesSyncedRef   = useRef(notesSynced);
+  const syncTimerRef     = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [bibleOpen, setBibleOpen] = useState(false);
   const [searchHits, setSearchHits] = useState<Set<string>>(new Set());
@@ -306,6 +312,14 @@ export default function ChapterDisplay({
 
   // ── Search hit highlighting ──────────────────────────────────────────────────
   /** Called by SearchPane whenever results change. Filters to words in this chapter. */
+  const toggleNotesSync = useCallback(() => {
+    setNotesSynced((prev) => {
+      const next = !prev;
+      try { localStorage.setItem("structura:notesSynced", String(next)); } catch {}
+      return next;
+    });
+  }, []);
+
   const handleSearchResults = useCallback((allResults: import("@/app/api/search/words/route").SearchResult[]) => {
     const normalizedSource = textSource === "LXX" ? "STEPBIBLE_LXX" : textSource;
     const hits = new Set<string>();
@@ -840,6 +854,7 @@ export default function ChapterDisplay({
   useEffect(() => { bookRef.current = book; }, [book]);
   useEffect(() => { chapterRef.current = chapter; }, [chapter]);
   useEffect(() => { textSourceRef.current = textSource; }, [textSource]);
+  useEffect(() => { notesSyncedRef.current = notesSynced; }, [notesSynced]);
 
   // Keep localFootnotes in sync when navigation brings a new chapter.
   // ChapterDisplay is keyed by workspaceId so React may reuse the same
@@ -968,6 +983,36 @@ export default function ChapterDisplay({
     return map;
   }, [words]);
   const verseNums = useMemo(() => [...verseGroups.keys()].sort((a, b) => a - b), [verseGroups]);
+
+  // Track topmost visible verse via IntersectionObserver and sync the notes
+  // pane when notesSynced is on. Uses a ref for the synced flag to avoid
+  // recreating the observer on every toggle.
+  // Placed after verseNums so the dependency is in scope.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!notesOpen) return;
+    visibleVersesRef.current.clear();
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        const m = entry.target.id.match(/^verse-(\d+)$/);
+        if (!m) return;
+        const v = parseInt(m[1]);
+        if (entry.isIntersecting) visibleVersesRef.current.add(v);
+        else visibleVersesRef.current.delete(v);
+      });
+      if (!notesSyncedRef.current || visibleVersesRef.current.size === 0) return;
+      if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
+      syncTimerRef.current = setTimeout(() => {
+        if (!notesSyncedRef.current || visibleVersesRef.current.size === 0) return;
+        setNotesScrollVerse(Math.min(...visibleVersesRef.current));
+      }, 300);
+    }, { threshold: 0.1 });
+    document.querySelectorAll("[id^='verse-']").forEach((el) => observer.observe(el));
+    return () => {
+      observer.disconnect();
+      if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
+    };
+  }, [notesOpen, verseNums]);
 
   // Find-in-page: source word hits (ordered by position in chapter)
   // Find-in-page: source word hits (ordered by position in chapter).
@@ -4502,6 +4547,8 @@ export default function ChapterDisplay({
             scrollToVerse={notesScrollVerse}
             onScrollHandled={() => setNotesScrollVerse(null)}
             onClose={() => setNotesOpen(false)}
+            synced={notesSynced}
+            onSyncToggle={toggleNotesSync}
           />
         </ResizablePane>
       )}

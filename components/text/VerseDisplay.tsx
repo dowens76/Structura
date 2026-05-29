@@ -1749,7 +1749,7 @@ export default function VerseDisplay({
   // the placeholder column stays visible.
   if (translationTexts.length === 0 && !hasActiveTranslations) {
     return (
-      <div className={`${verseStartsNewParagraph ? "mt-5" : ""} ${(speechContinuesIntoNext || annotContinuesIntoNext) ? "" : "mb-4"}`}>
+      <div id={`verse-${verseNum}`} className={`${verseStartsNewParagraph ? "mt-5" : ""} ${(speechContinuesIntoNext || annotContinuesIntoNext) ? "" : "mb-4"}`}>
         {verseStartsNewParagraph && firstWordId && renderSegSeparator(firstWordId)}
         {sourceSegments.map((seg, si) => {
           const { layers, isSegStart } = getSegSpeech(seg, si);
