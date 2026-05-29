@@ -397,6 +397,21 @@ function _migrateUserDbInner(sqlite: Database.Database): void {
     CREATE INDEX IF NOT EXISTS tv_ver_ws_trans_idx ON translation_versions(workspace_id, translation_id);
   `);
 
+  sqlite.exec(`
+    CREATE TABLE IF NOT EXISTS text_critical_marks (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      workspace_id INTEGER NOT NULL DEFAULT 1 REFERENCES workspaces(id) ON DELETE CASCADE,
+      word_id      TEXT    NOT NULL,
+      mark_type    TEXT    NOT NULL,
+      text_source  TEXT    NOT NULL,
+      book         TEXT    NOT NULL,
+      chapter      INTEGER NOT NULL,
+      created_at   TEXT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS tcm_ws_word_idx ON text_critical_marks(workspace_id, word_id);
+    CREATE INDEX IF NOT EXISTS tcm_book_ch_idx ON text_critical_marks(book, chapter);
+  `);
+
   // Seed VCB translation record if vcb.db is present but the translations row is missing
   if (fs.existsSync(VCB_DB_PATH)) {
     const existing = sqlite.prepare("SELECT id FROM translations WHERE abbreviation = 'VCB' LIMIT 1").get();
