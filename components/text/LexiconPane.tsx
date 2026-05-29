@@ -160,9 +160,9 @@ const LSJ_CSS = `
 .lsj-entry .lsj-level-2 { display: block; margin-top: 0.4em; margin-left: 0.5em; }
 .lsj-entry .lsj-level-3 { display: block; margin-top: 0.25em; margin-left: 1em; }
 .lsj-entry .lsj-level-4 { display: block; margin-top: 0.15em; margin-left: 1.5em; }
-/* Citation tooltips: muted colour, pointer cursor so the title hint is discoverable */
-.lsj-entry span[title] { color: #888; font-size: 0.8em; cursor: help; }
-.dark .lsj-entry span[title] { color: #555; }
+/* Citation spans */
+.lsj-entry .lsj-cite { color: #888; font-size: 0.8em; }
+.dark .lsj-entry .lsj-cite { color: #555; }
 `;
 
 let lsjCssInjected = false;

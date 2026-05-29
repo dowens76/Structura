@@ -64,6 +64,9 @@ for (const name of DBS) {
   const destDb = new Database(dest);
   destDb.pragma("wal_checkpoint(TRUNCATE)");
   destDb.pragma("journal_mode=DELETE");
+  // VACUUM reclaims free pages that the backup API copies verbatim from the
+  // source (e.g. pages freed by a previous DELETE-and-reimport run).
+  destDb.prepare("VACUUM").run();
   destDb.close();
   console.log(" done");
 }

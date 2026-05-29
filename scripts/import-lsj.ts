@@ -72,18 +72,15 @@ function primaryGreekForm(greek: string): string {
 
 /**
  * Sanitise the STEPBible HTML for safe inline rendering.
- * - Converts javascript:void(0) anchors to <span> (keeps the title tooltip).
- * - Strips any remaining href attributes that look unsafe.
+ * - Converts javascript:void(0) anchors to <span class="lsj-cite"> (drops
+ *   the verbose title attribute — it accounts for ~51% of definition bytes).
+ * - Strips any remaining unsafe href attributes.
  */
 function sanitiseHtml(html: string): string {
-  // <a href="javascript:...">text</a>  →  <span title="...">text</span>
+  // <a href="javascript:..." title="...">text</a>  →  <span class="lsj-cite">text</span>
   html = html.replace(
-    /<a\b([^>]*?)href="javascript:[^"]*"([^>]*?)>([\s\S]*?)<\/a>/gi,
-    (_, before, after, content) => {
-      const titleMatch = (before + after).match(/title="([^"]*)"/i);
-      const titleAttr  = titleMatch ? ` title="${titleMatch[1]}"` : "";
-      return `<span${titleAttr}>${content}</span>`;
-    },
+    /<a\b[^>]*?href="javascript:[^"]*"[^>]*>([\s\S]*?)<\/a>/gi,
+    (_, content) => `<span class="lsj-cite">${content}</span>`,
   );
   // Remove any residual javascript: hrefs that weren't caught above.
   html = html.replace(/\shref="javascript:[^"]*"/gi, "");
@@ -201,6 +198,10 @@ async function main() {
   }
 
   console.log(`\nDone: ${totalInserted.toLocaleString()} LSJ entries imported, ${totalSkipped} skipped.`);
+
+  process.stdout.write("VACUUMing database … ");
+  sqlite.prepare("VACUUM").run();
+  console.log("done");
 
   const sample = sqlite
     .prepare(`SELECT strong_number, lemma, transliteration, short_gloss
