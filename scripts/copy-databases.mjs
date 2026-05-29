@@ -2,8 +2,10 @@
  * copy-databases.mjs
  *
  * Copies source databases from data/ into src-tauri/resources/databases/
- * using SQLite's online backup API so each copy is fully checkpointed
- * (no WAL sidecar needed) and safe to bundle.
+ * using SQLite's online backup API, then converts each copy to DELETE
+ * journal mode so no WAL sidecar files are needed.  This is required for
+ * Linux AppImage where databases live on a read-only squashfs — SQLite
+ * cannot create the WAL-index (.db-shm) on a read-only filesystem.
  *
  * Run automatically as part of: npm run tauri:build
  */
@@ -56,6 +58,13 @@ for (const name of DBS) {
   const db = new Database(src, { readonly: true });
   await db.backup(dest);
   db.close();
+  // The backup inherits WAL journal mode from the source. On Linux AppImage
+  // the databases live on a read-only squashfs, so SQLite can't create the
+  // WAL-index (.db-shm) file — converting to DELETE mode avoids this entirely.
+  const destDb = new Database(dest);
+  destDb.pragma("wal_checkpoint(TRUNCATE)");
+  destDb.pragma("journal_mode=DELETE");
+  destDb.close();
   console.log(" done");
 }
 
