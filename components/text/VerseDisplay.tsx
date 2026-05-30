@@ -1932,7 +1932,25 @@ export default function VerseDisplay({
       cur.push(token);
     });
     if (cur.length > 0) segs.push({ startIdx: curStart, tokens: cur });
-    return { abbr, text, translationId, embeddedFnCount, tvSegs: segs, tvWords };
+
+    // Split LXX words into segments mirroring the tvSegs logic.
+    type TvWordSeg = { startIdx: number; words: import("@/lib/db/source-schema").Word[] };
+    const tvWordSegs: TvWordSeg[] = [];
+    if (tvWords && tvWords.length > 0) {
+      let wCur: typeof tvWords = [];
+      let wStart = 0;
+      tvWords.forEach((word, wi) => {
+        if (wi > 0 && paragraphBreakIds.has(`tv:${abbr}:${book}.${chapter}.${verseNum}.${wi}`)) {
+          tvWordSegs.push({ startIdx: wStart, words: wCur });
+          wCur = [];
+          wStart = wi;
+        }
+        wCur.push(word);
+      });
+      if (wCur.length > 0) tvWordSegs.push({ startIdx: wStart, words: wCur });
+    }
+
+    return { abbr, text, translationId, embeddedFnCount, tvSegs: segs, tvWords, tvWordSegs };
   });
 
   // Per-translation footnote letter counter (a, b, c…). Mutable during render.
@@ -1966,11 +1984,15 @@ export default function VerseDisplay({
         // Translation content for this row:
         //   • All rows except the last get only tvSegs[si] (if it exists).
         //   • The last source row gets tvSegs[si…end] (all remaining tv paragraphs).
-        const tvRowContent = allTvSegs.map(({ abbr, text: tvFullText, translationId: tvTranslationId, embeddedFnCount, tvSegs, tvWords }) => {
+        const tvRowContent = allTvSegs.map(({ abbr, text: tvFullText, translationId: tvTranslationId, embeddedFnCount, tvSegs, tvWords, tvWordSegs }) => {
           const isLastRow = si === sourceSegments.length - 1;
           const rowSegs: TvSeg[] = si < sourceSegments.length - 1
             ? (tvSegs[si] ? [tvSegs[si]] : [])
             : tvSegs.slice(si);
+          // LXX word segments for this row: row si gets tvWordSegs[si]; last row gets overflow.
+          const rowWordSegs = tvWordSegs.length > 0
+            ? (isLastRow ? tvWordSegs.slice(si) : (tvWordSegs[si] ? [tvWordSegs[si]] : []))
+            : [];
           // Only show footnote anchors when there are visible footnotes for this translation.
           // translationFootnotes is passed as [] by the parent when showFootnotes is false.
           const showFnAnchors = translationFootnotes.some((f) => f.translationId === tvTranslationId);
@@ -2041,39 +2063,178 @@ export default function VerseDisplay({
                 </span>
               )}
               {/* LXX word-token rendering (when words are attached to the entry) */}
-              {tvWords && tvWords.length > 0 && (
+              {rowWordSegs.length > 0 && (
                 <p
                   className="text-greek"
                   style={{
                     color: "var(--foreground)",
                     lineHeight: "var(--translation-line-height, var(--source-row-height, 1.625))",
                     paddingLeft: tvIndentLevel > 0 ? `${tvIndentLevel * 2}rem` : undefined,
+                    cursor: editingParagraphs ? "crosshair" : undefined,
                   }}
                 >
-                  {tvWords.map((lxxWord, wi) => {
-                    const tcMark = tcMarkMap?.get(lxxWord.wordId) ?? null;
-                    const TC_COLORS: Record<string, string> = {
-                      lxx_unique: "#16a34a", mt_unique: "#dc2626", same_different: "#ca8a04",
-                    };
-                    const overlineStyle: React.CSSProperties = tcMark ? {
-                      textDecorationLine: "overline",
-                      textDecorationStyle: "solid",
-                      textDecorationColor: TC_COLORS[tcMark] ?? "#888",
-                      textDecorationThickness: "2.5px",
-                      cursor: editingTc ? "pointer" : undefined,
-                    } : { cursor: editingTc ? "pointer" : undefined };
-                    return (
-                      <span key={lxxWord.wordId}>
-                        <span
-                          style={overlineStyle}
-                          onClick={editingTc ? () => onTcMarkWord?.(lxxWord.wordId, lxxWord.textSource) : undefined}
-                        >
-                          {lxxWord.surfaceText.replace(/\//g, "")}
+                  {rowWordSegs.flatMap((wordSeg, segIdx) =>
+                    wordSeg.words.map((lxxWord, localWi) => {
+                      const globalWi = wordSeg.startIdx + localWi;
+                      const tvWordId = `tv:${abbr}:${book}.${chapter}.${verseNum}.${globalWi}`;
+                      const isInterSegBreak = segIdx > 0 && localWi === 0;
+                      const isLastInSeg = localWi === wordSeg.words.length - 1;
+                      const isLastOverall = segIdx === rowWordSegs.length - 1 && isLastInSeg;
+
+                      // ── TC overline (uses raw LXX word ID) ──────────────────
+                      const tcMark = tcMarkMap?.get(lxxWord.wordId) ?? null;
+                      const TC_COLORS: Record<string, string> = {
+                        lxx_unique: "#16a34a", mt_unique: "#dc2626", same_different: "#ca8a04",
+                      };
+
+                      // ── Character ref underline (uses tv: word ID) ───────────
+                      const ref = characterRefMap.get(tvWordId);
+                      const char1 = ref ? characterMap.get(ref.character1Id) : null;
+                      const char2 = ref?.character2Id != null ? characterMap.get(ref.character2Id) : null;
+                      const underlineStyle: React.CSSProperties = char1 && char2 ? {
+                        backgroundImage: `repeating-linear-gradient(to right, ${char1.color} 0px, ${char1.color} 4px, ${char2.color} 4px, ${char2.color} 8px)`,
+                        backgroundSize: "100% 2px",
+                        backgroundPosition: "center bottom",
+                        backgroundRepeat: "no-repeat",
+                        paddingBottom: "2px",
+                      } : char1 ? {
+                        backgroundImage: `linear-gradient(to right, ${char1.color}, ${char1.color})`,
+                        backgroundSize: "100% 2px",
+                        backgroundPosition: "center bottom",
+                        backgroundRepeat: "no-repeat",
+                        paddingBottom: "2px",
+                      } : {};
+
+                      // ── Word/concept tag highlight (uses tv: word ID) ─────────
+                      const tvTagRef = wordTagRefMap.get(tvWordId);
+                      const tvTag = tvTagRef ? wordTagMap.get(tvTagRef.tagId) : null;
+                      const isTvTagHighlighted = !!tvTag && highlightWordTagIds.has(tvTag.id);
+                      const isTokenHighlighted = findHits?.has(tvWordId) ?? false;
+
+                      // ── Look-ahead for annotation continuity ──────────────────
+                      // Used to style the inter-word space so underlines/highlights
+                      // are unbroken across consecutive same-annotation words.
+                      const nextTvWordId = isLastOverall ? null
+                        : `tv:${abbr}:${book}.${chapter}.${verseNum}.${globalWi + 1}`;
+                      const prevTvWordId = globalWi === 0 ? null
+                        : `tv:${abbr}:${book}.${chapter}.${verseNum}.${globalWi - 1}`;
+
+                      const nextRef  = nextTvWordId ? characterRefMap.get(nextTvWordId) : null;
+                      const sameCharAsNext = ref != null && nextRef != null &&
+                        ref.character1Id === nextRef.character1Id &&
+                        (ref.character2Id ?? null) === (nextRef.character2Id ?? null);
+
+                      const prevRef  = prevTvWordId ? characterRefMap.get(prevTvWordId) : null;
+                      const sameCharAsPrev = ref != null && prevRef != null &&
+                        ref.character1Id === prevRef.character1Id &&
+                        (ref.character2Id ?? null) === (prevRef.character2Id ?? null);
+
+                      const nextTagRef  = nextTvWordId ? wordTagRefMap.get(nextTvWordId) : null;
+                      const nextTag = nextTagRef ? wordTagMap.get(nextTagRef.tagId) : null;
+                      const sameTagAsNext = tvTag != null && nextTag != null && tvTag.id === nextTag.id;
+
+                      const prevTagRef  = prevTvWordId ? wordTagRefMap.get(prevTvWordId) : null;
+                      const prevTag = prevTagRef ? wordTagMap.get(prevTagRef.tagId) : null;
+                      const sameTagAsPrev = tvTag != null && prevTag != null && tvTag.id === prevTag.id;
+
+                      // ── Formatting (bold / italic) (uses tv: word ID) ─────────
+                      const tvFormatting = wordFormattingMap.get(tvWordId);
+                      const formattingStyle: React.CSSProperties = {
+                        fontWeight: tvFormatting?.isBold ? "bold" : undefined,
+                        fontStyle: tvFormatting?.isItalic ? "italic" : undefined,
+                      };
+
+                      // ── Combined background colour (with shaped border-radius) ─
+                      const tagBgColor = tvTag
+                        ? (isTvTagHighlighted ? `${tvTag.color}55` : `${tvTag.color}28`)
+                        : null;
+                      // Shape the border-radius so consecutive same-tag spans join seamlessly.
+                      const tagBorderRadius = tagBgColor
+                        ? (sameTagAsPrev && sameTagAsNext ? "0"
+                          : sameTagAsPrev ? "0 3px 3px 0"
+                          : sameTagAsNext ? "3px 0 0 3px"
+                          : "3px")
+                        : undefined;
+                      const tvBgStyle: React.CSSProperties = isTokenHighlighted
+                        ? { backgroundColor: "rgba(251, 191, 36, 0.45)", borderRadius: "3px" }
+                        : tagBgColor && !isTokenHighlighted
+                          ? { backgroundColor: tagBgColor, borderRadius: tagBorderRadius }
+                          : {};
+
+                      // ── Styled space for annotation continuity ────────────────
+                      const spaceStyle: React.CSSProperties | undefined =
+                        sameCharAsNext && char1
+                          ? { ...underlineStyle, whiteSpace: "pre" }
+                          : sameTagAsNext && tagBgColor
+                          ? { backgroundColor: tagBgColor, whiteSpace: "pre" }
+                          : undefined;
+
+                      // ── Combined span style ───────────────────────────────────
+                      const spanStyle: React.CSSProperties = {
+                        ...(tcMark ? {
+                          textDecorationLine: "overline",
+                          textDecorationStyle: "solid" as const,
+                          textDecorationColor: TC_COLORS[tcMark] ?? "#888",
+                          textDecorationThickness: "2.5px",
+                        } : {}),
+                        ...underlineStyle,
+                        ...tvBgStyle,
+                        ...formattingStyle,
+                        cursor: editingTc || editingParagraphs || editingFormatting || editingRefs || editingWordTags || editingArrows
+                          ? "crosshair" : editingScenes ? "pointer" : undefined,
+                      };
+
+                      const isTvRangeStart = tvWordId === tagRangeStartWordId;
+
+                      // ── Click handler ─────────────────────────────────────────
+                      const handleClick = editingTc
+                        ? () => onTcMarkWord?.(lxxWord.wordId, lxxWord.textSource)
+                        : editingParagraphs && globalWi > 0
+                        ? () => onToggleTranslationParagraphBreak(tvWordId, abbr)
+                        : editingArrows
+                        ? () => onSelectArrowWordById?.(tvWordId)
+                        : editingFormatting
+                        ? () => onSelectTranslationWord(tvWordId, abbr)
+                        : editingRefs
+                        ? (e: React.MouseEvent) => onSelectTranslationWord(tvWordId, abbr, e.shiftKey)
+                        : editingWordTags
+                        ? (e: React.MouseEvent) => onSelectTranslationWord(tvWordId, abbr, e.shiftKey)
+                        : editingScenes && firstWordId
+                        ? (e: React.MouseEvent) => { e.stopPropagation(); if (!(sceneBreakMap.get(firstWordId)?.length)) onToggleSceneBreak?.(firstWordId, 1, verseNum); }
+                        : undefined;
+
+                      return (
+                        <span key={lxxWord.wordId}>
+                          {isInterSegBreak && (
+                            <>
+                              <br />
+                              {editingParagraphs && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => { e.stopPropagation(); onToggleTranslationParagraphBreak(tvWordId, abbr); }}
+                                  title="Remove paragraph break"
+                                  className="mx-1 flex items-center justify-center w-4 h-4 rounded-full bg-amber-400 text-white text-[11px] leading-none hover:bg-amber-500 shrink-0 inline-flex"
+                                >×</button>
+                              )}
+                            </>
+                          )}
+                          <span
+                            style={spanStyle}
+                            data-word-id={tvWordId}
+                            data-range-start={isTvRangeStart ? "true" : undefined}
+                            onClick={handleClick as React.MouseEventHandler<HTMLSpanElement> | undefined}
+                          >
+                            {lxxWord.surfaceText.replace(/\//g, "")}
+                          </span>
+                          {!isLastOverall && (
+                            spaceStyle
+                              ? <span style={spaceStyle}>{" "}</span>
+                              : " "
+                          )}
                         </span>
-                        {wi < tvWords.length - 1 ? " " : ""}
-                      </span>
-                    );
-                  })}
+                      );
+                    })
+                  )}
                 </p>
               )}
               {!tvWords && hasContent && (
@@ -2112,19 +2273,16 @@ export default function VerseDisplay({
                         paddingBottom: "2px",
                       } : {};
 
-                      // Look ahead: if the next token shares the same character ref,
-                      // emit a styled space so the underline is continuous.
+                      // Look ahead/behind for annotation continuity across spaces.
                       const nextWordId = `tv:${abbr}:${book}.${chapter}.${verseNum}.${globalWi + 1}`;
+                      const prevWordId = `tv:${abbr}:${book}.${chapter}.${verseNum}.${globalWi - 1}`;
+
+                      // Character ref continuity
                       const nextRef = characterRefMap.get(nextWordId) ?? null;
                       const sameCharAsNext =
-                        ref != null &&
-                        nextRef != null &&
+                        ref != null && nextRef != null &&
                         ref.character1Id === nextRef.character1Id &&
                         (ref.character2Id ?? null) === (nextRef.character2Id ?? null);
-                      const tvSpaceStyle: React.CSSProperties | undefined =
-                        sameCharAsNext && char1
-                          ? { ...underlineStyle, whiteSpace: "pre" }
-                          : undefined;
 
                       const isTokenHighlighted = highlightCharIds.size > 0 && ref != null && (
                         highlightCharIds.has(ref.character1Id) ||
@@ -2135,9 +2293,29 @@ export default function VerseDisplay({
                       const tvTag = tvTagRef ? wordTagMap.get(tvTagRef.tagId) : null;
                       const isTvTagHighlighted = !!tvTag && highlightWordTagIds.has(tvTag.id);
 
+                      // Word tag continuity
+                      const nextTagRef = wordTagRefMap.get(nextWordId);
+                      const nextTag = nextTagRef ? wordTagMap.get(nextTagRef.tagId) : null;
+                      const sameTagAsNext = tvTag != null && nextTag != null && tvTag.id === nextTag.id;
+
+                      const prevTagRef = wordTagRefMap.get(prevWordId);
+                      const prevTag = prevTagRef ? wordTagMap.get(prevTagRef.tagId) : null;
+                      const sameTagAsPrev = tvTag != null && prevTag != null && tvTag.id === prevTag.id;
+
                       // Find-in-page highlight takes top priority
                       const isTvFindFocus = findFocusId != null && findFocusId === wordId;
                       const isTvFindHit   = !isTvFindFocus && (findHits?.has(wordId) ?? false);
+
+                      // Tag background color and shaped border-radius for continuity
+                      const tagBgColor = tvTag
+                        ? (isTvTagHighlighted ? `${tvTag.color}55` : `${tvTag.color}28`)
+                        : null;
+                      const tagBorderRadius = tagBgColor
+                        ? (sameTagAsPrev && sameTagAsNext ? "0"
+                          : sameTagAsPrev ? "0 3px 3px 0"
+                          : sameTagAsNext ? "3px 0 0 3px"
+                          : "3px")
+                        : undefined;
 
                       // Background-colour highlight (find > char ref > word tag)
                       const tvBgStyle: React.CSSProperties = isTvFindFocus
@@ -2146,14 +2324,17 @@ export default function VerseDisplay({
                           ? { backgroundColor: "rgba(251, 191, 36, 0.45)", borderRadius: "3px" }
                           : isTokenHighlighted
                             ? { backgroundColor: "rgba(253, 224, 71, 0.45)", borderRadius: "3px" }
-                            : tvTag && !isTokenHighlighted
-                              ? {
-                                  backgroundColor: isTvTagHighlighted
-                                    ? `${tvTag.color}55`
-                                    : `${tvTag.color}28`,
-                                  borderRadius: "3px",
-                                }
+                            : tagBgColor && !isTokenHighlighted
+                              ? { backgroundColor: tagBgColor, borderRadius: tagBorderRadius }
                               : {};
+
+                      // Styled space: char-ref underline takes priority, then word-tag bg
+                      const tvSpaceStyle: React.CSSProperties | undefined =
+                        sameCharAsNext && char1
+                          ? { ...underlineStyle, whiteSpace: "pre" }
+                          : sameTagAsNext && tagBgColor
+                          ? { backgroundColor: tagBgColor, whiteSpace: "pre" }
+                          : undefined;
 
                       // Within a tvSeg, localWi > 0 could still have a break (defensive)
                       const isMidVerseBreak = localWi > 0 && paragraphBreakIds.has(wordId);

@@ -20,7 +20,8 @@ export interface RstTypeEntry {
 export const RELATIONSHIP_TYPES: RstTypeEntry[] = [
   // Coordinate
   { key: "contrast",     label: "Contrast",      category: "coordinate",  abbr: "Ctr", color: "#DC2626", isBuiltIn: true },
-  { key: "coordination", label: "Sequence",        category: "coordinate",  abbr: "Seq", color: "#16A34A", isBuiltIn: true },
+  { key: "coordination", label: "Sequence",       category: "coordinate",  abbr: "Seq", color: "#16A34A", isBuiltIn: true },
+  { key: "progression",  label: "Progression",   category: "coordinate",  abbr: "Prg", color: "#0EA5E9", isBuiltIn: true },
   // Subordinate
   { key: "cause",        label: "Cause/Reason",   category: "subordinate", abbr: "Cau", color: "#EA580C", isBuiltIn: true },
   { key: "comparison",   label: "Comparison",     category: "subordinate", abbr: "Cmp", color: "#7C3AED", isBuiltIn: true },

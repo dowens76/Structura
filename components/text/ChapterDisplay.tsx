@@ -1272,15 +1272,22 @@ export default function ChapterDisplay({
     const verseNums = [...activeTranslationVerseMap.keys()].sort((a, b) => a - b);
     for (const verseNum of verseNums) {
       const entries = activeTranslationVerseMap.get(verseNum) ?? [];
-      for (const { abbr, text } of entries) {
-        const tokens = text
-          .split(/\s+/)
-          .filter(Boolean)
-          .flatMap((t) => t.split(/(?<=\u2014)(?=.)/));
+      for (const { abbr, text, words: tvWords } of entries) {
         let list = map.get(abbr);
         if (!list) { list = []; map.set(abbr, list); }
-        for (let wi = 0; wi < tokens.length; wi++) {
-          list.push(`tv:${abbr}:${book}.${chapter}.${verseNum}.${wi}`);
+        if (tvWords && tvWords.length > 0) {
+          // LXX: use the actual word array rather than text tokens
+          for (let wi = 0; wi < tvWords.length; wi++) {
+            list.push(`tv:${abbr}:${book}.${chapter}.${verseNum}.${wi}`);
+          }
+        } else {
+          const tokens = text
+            .split(/\s+/)
+            .filter(Boolean)
+            .flatMap((t) => t.split(/(?<=\u2014)(?=.)/));
+          for (let wi = 0; wi < tokens.length; wi++) {
+            list.push(`tv:${abbr}:${book}.${chapter}.${verseNum}.${wi}`);
+          }
         }
       }
     }
