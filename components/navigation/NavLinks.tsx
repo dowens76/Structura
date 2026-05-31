@@ -12,6 +12,7 @@ interface NavLinksProps {
   chapterCount: number;
   isLXX: boolean;
   canParallel: boolean;
+  lxxHasOshb: boolean;
   parallelMode: boolean;
   oshbHref: string;
   lxxHref: string;
@@ -44,6 +45,7 @@ export default function NavLinks({
   chapterCount,
   isLXX,
   canParallel,
+  lxxHasOshb,
   parallelMode,
   oshbHref,
   lxxHref,
@@ -80,7 +82,7 @@ export default function NavLinks({
   return (
     <>
       {/* Source-switch links */}
-      {isLXX && canParallel && (
+      {isLXX && lxxHasOshb && (
         <Link
           href={oshbHref}
           className="text-xs px-2 py-1 rounded transition-colors"
@@ -91,24 +93,14 @@ export default function NavLinks({
         </Link>
       )}
       {textSource === "OSHB" && canParallel && !parallelMode && (
-        <>
-          <Link
-            href={parallelHref}
-            className="text-xs px-2 py-1 rounded transition-colors"
-            style={{ color: "var(--nav-fg)" }}
-            title={t("nav.titleParallelLxx")}
-          >
-            {t("nav.parallelLxx")}
-          </Link>
-          <Link
-            href={lxxHref}
-            className="text-xs px-2 py-1 rounded transition-colors"
-            style={{ color: "var(--nav-fg)" }}
-            title={t("nav.titleSwitchLxx")}
-          >
-            {t("nav.switchToLxx")}
-          </Link>
-        </>
+        <Link
+          href={lxxHref}
+          className="text-xs px-2 py-1 rounded transition-colors"
+          style={{ color: "var(--nav-fg)" }}
+          title={t("nav.titleSwitchLxx")}
+        >
+          {t("nav.switchToLxx")}
+        </Link>
       )}
       {parallelMode && (
         <Link

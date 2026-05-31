@@ -63,6 +63,7 @@ export default async function ChapterPage({ params, searchParams }: PageProps) {
   // Triggered by ?par=1 when viewing an OSHB book that has LXX data.
   const isLXX = textSource === LXX_SOURCE;
   const canParallel = textSource === "OSHB" && OSHB_LXX_PARALLEL_BOOKS.has(osisBook);
+  const lxxHasOshb = isLXX && OSHB_LXX_PARALLEL_BOOKS.has(osisBook);
   const parallelMode = !!par && canParallel;
 
   // Versification: in parallel mode, redirect non-canonical MT chapters to their
@@ -294,6 +295,7 @@ export default async function ChapterPage({ params, searchParams }: PageProps) {
           chapterCount={chapterCount}
           isLXX={isLXX}
           canParallel={canParallel}
+          lxxHasOshb={lxxHasOshb}
           parallelMode={parallelMode}
           oshbHref={oshbHref}
           lxxHref={lxxHref}
