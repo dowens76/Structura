@@ -54,6 +54,12 @@
       "signingIdentity": "Developer ID Application: DANIEL C OWENS (5QS52T7HF4)",
       "entitlements": "entitlements.plist",
       "minimumSystemVersion": "10.15"
+    },
+    "dmg": {
+      "background": "icons/dmg-background.png",
+      "windowSize": { "width": 660, "height": 420 },
+      "appPosition": { "x": 165, "y": 285 },
+      "applicationFolderPosition": { "x": 495, "y": 285 }
     }
   }
 }
