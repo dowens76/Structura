@@ -369,8 +369,15 @@ export default async function PassagePage({ params, searchParams }: PageProps) {
           currentPassageId={id}
         />
 
-        {/* Right side: workspace, settings, theme */}
+        {/* Right side: exit passage, workspace, settings, theme */}
         <div className="ml-auto flex items-center gap-1">
+          <Link
+            href={`/${encodeURIComponent(osisBook)}/${textSource}/${passage.startChapter}`}
+            className="text-xs px-2 py-1 rounded border transition-colors"
+            style={{ borderColor: "var(--border)", color: "var(--nav-fg)" }}
+          >
+            ✕ Exit Passage
+          </Link>
           <WorkspaceSwitcher activeWorkspaceId={workspaceId} />
           <SettingsButton />
           <ThemeToggle />
