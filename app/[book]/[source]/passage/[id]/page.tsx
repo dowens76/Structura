@@ -5,6 +5,7 @@ import {
   getPassage,
   getPassageWords,
   getBook,
+  getBooksBySource,
   getChapterMaxVerse,
   getCharacters,
   getWordTags,
@@ -39,6 +40,9 @@ import PassageNavButtons from "@/components/passage/PassageNavButtons";
 import ThemeToggle from "@/components/ThemeToggle";
 import SettingsButton from "@/components/SettingsButton";
 import PassageExportLink from "@/components/passage/PassageExportLink";
+import BookDropdown from "@/components/navigation/BookDropdown";
+import ChapterDropdown from "@/components/navigation/ChapterDropdown";
+import WorkspaceSwitcher from "@/components/WorkspaceSwitcher";
 
 interface PageProps {
   params: Promise<{ book: string; source: string; id: string }>;
@@ -60,9 +64,10 @@ export default async function PassagePage({ params, searchParams }: PageProps) {
   const workspace = await getWorkspaceById(workspaceId).catch(() => null);
   const translationOnly = workspace?.translationOnly ?? false;
 
-  const [passage, bookRecord] = await Promise.all([
+  const [passage, bookRecord, sourceBooks] = await Promise.all([
     getPassage(id),
     getBook(osisBook),
+    getBooksBySource(source),
   ]);
 
   if (!passage || !bookRecord) notFound();
@@ -288,6 +293,7 @@ export default async function PassagePage({ params, searchParams }: PageProps) {
         className="shrink-0 border-b px-4 py-0 flex items-center gap-3 h-12"
         style={{ borderColor: "var(--nav-border)", backgroundColor: "var(--nav-bg)" }}
       >
+        {/* Logo */}
         <Link href="/" className="shrink-0 flex items-center" aria-label="Structura home">
           <Image
             src="/structura-icon.svg"
@@ -301,9 +307,7 @@ export default async function PassagePage({ params, searchParams }: PageProps) {
 
         <span style={{ color: "var(--nav-border)" }} className="text-lg select-none">|</span>
 
-        <span className="text-sm font-semibold" style={{ color: "var(--nav-fg-muted)" }}>
-          {crossBookRef ?? bookName}
-        </span>
+        {/* Source badge */}
         <span
           className="text-xs px-1.5 py-0.5 rounded font-mono"
           style={{ backgroundColor: "rgba(200,155,60,0.18)", color: "var(--accent)" }}
@@ -311,13 +315,10 @@ export default async function PassagePage({ params, searchParams }: PageProps) {
           {textSource}
         </span>
 
-        <Link
-          href="/import"
-          className="text-xs px-2 py-1 rounded transition-colors"
-          style={{ color: "var(--nav-fg)" }}
-        >
-          + Import
-        </Link>
+        {/* Passage reference */}
+        <span className="text-sm font-semibold" style={{ color: "var(--nav-fg-muted)" }}>
+          {crossBookRef ?? bookName}
+        </span>
 
         {/* Export link */}
         <PassageExportLink passageId={id} />
@@ -330,6 +331,24 @@ export default async function PassagePage({ params, searchParams }: PageProps) {
           chapterCount={bookRecord.chapterCount}
           currentPassageId={id}
         />
+
+        {/* Book selector dropdown */}
+        <BookDropdown
+          books={sourceBooks ?? []}
+          currentOsisBook={osisBook}
+          textSource={textSource}
+        />
+
+        {/* Chapter selector dropdown */}
+        <ChapterDropdown
+          chapter={passage.startChapter}
+          chapterCount={bookRecord.chapterCount}
+          osisBook={osisBook}
+          textSource={textSource}
+        />
+
+        {/* Workspace switcher */}
+        <WorkspaceSwitcher activeWorkspaceId={workspaceId} />
 
         {/* Settings + Theme + Back to chapter */}
         <div className="ml-auto flex items-center gap-1">
