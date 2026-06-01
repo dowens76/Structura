@@ -75,8 +75,7 @@ if (existsSync(DMG)) {
 // Applications alias center: (495, 285) ← same as tauri.conf.json applicationFolderPosition
 const spec = {
   title: "Structura",
-  background: path.join(ROOT, "src-tauri/icons/dmg-background.png"),
-  "background-2x": path.join(ROOT, "src-tauri/icons/dmg-background@2x.png"),
+  background: path.join(ROOT, "src-tauri/icons/dmg-background@2x.png"),
   "icon-size": 80,
   window: { size: { width: 660, height: 420 } },
   contents: [
