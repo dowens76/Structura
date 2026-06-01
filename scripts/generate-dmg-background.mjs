@@ -1,63 +1,91 @@
-// Generates src-tauri/icons/dmg-background.png (660x420) and dmg-background@2x.png (1320x840)
-// Brand colors: bg #1f2f3f, gold #c89b3c, cream #e2dbd4
-import sharp from 'sharp';
-import { readFileSync } from 'fs';
-import { fileURLToPath } from 'url';
-import path from 'path';
+/**
+ * generate-dmg-background.mjs
+ *
+ * Generates DMG background PNGs (1x and 2x) using sharp + SVG.
+ * No Python or system dependencies — only sharp, which is already
+ * a project dependency.
+ *
+ * Outputs:
+ *   src-tauri/icons/dmg-background.png      (660×420, 1x)
+ *   src-tauri/icons/dmg-background@2x.png   (1320×840, 2x Retina)
+ */
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const root = path.resolve(__dirname, '..');
+import sharp from "sharp";
+import { writeFileSync } from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
+
+const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
+
+const BG     = "#f8f6f2";
+const ACCENT = "#c89b3c";
+const BORDER = "#ddd8ce";
+const TEXT   = "#1f2f3f";
 
 const W = 660, H = 420;
+const APP_X = 165, APP_Y = 285;
+const FOL_X = 495;
+const ICON_SIZE = 120;
+const ICON_TOP  = 24;
+const ARROW_Y   = APP_Y - 6;
+const ARROW_X1  = APP_X + 52;
+const ARROW_X2  = FOL_X - 52;
+const HEAD      = 10;
+const SEP_Y     = ICON_TOP + ICON_SIZE + 18;
+const LABEL_Y   = APP_Y + 46;
+const FONT_SZ   = 11;
 
-// The full logo SVG (dark variant — cream/gold on transparent) scaled to fit nicely
-const logoSvg = readFileSync(path.join(root, 'public/structura-full-logo-dark.svg'));
+async function render(scale) {
+  const w   = W * scale,          h   = H * scale;
+  const ic  = ICON_SIZE * scale,  it  = ICON_TOP * scale;
+  const icx = (W / 2) * scale;
+  const ay  = ARROW_Y   * scale;
+  const ax1 = ARROW_X1  * scale,  ax2 = ARROW_X2 * scale;
+  const hd  = HEAD      * scale;
+  const sy  = SEP_Y     * scale;
+  const ly  = LABEL_Y   * scale;
+  const fs  = FONT_SZ   * scale;
+  const sw  = Math.max(1, scale);
 
-// Scale logo to 480w, centered horizontally, vertically in upper portion
-const logoW = 480, logoH = Math.round(480 * (420 / 900));
+  const arrowHead = [
+    `M ${ax2} ${ay} L ${ax2 - hd} ${ay - hd * 0.6}`,
+    `M ${ax2} ${ay} L ${ax2 - hd} ${ay + hd * 0.6}`,
+  ].join(" ");
 
-async function generate(scale = 1) {
-  const w = W * scale, h = H * scale;
-  const lw = logoW * scale, lh = logoH * scale;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}">
+    <rect width="${w}" height="${h}" fill="${BG}"/>
+    <line x1="${40 * scale}" y1="${sy}" x2="${(W - 40) * scale}" y2="${sy}"
+          stroke="${BORDER}" stroke-width="${sw}"/>
+    <line x1="${ax1}" y1="${ay}" x2="${ax2}" y2="${ay}"
+          stroke="${ACCENT}" stroke-width="${sw * 2}" stroke-opacity="0.8"/>
+    <path d="${arrowHead}" stroke="${ACCENT}" stroke-width="${sw * 2}" stroke-opacity="0.8"
+          fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+    <text x="${APP_X * scale}" y="${ly}" text-anchor="middle"
+          font-family="Helvetica Neue,Helvetica,Arial,sans-serif"
+          font-size="${fs}" fill="${TEXT}" fill-opacity="0.55">Structura</text>
+    <text x="${FOL_X * scale}" y="${ly}" text-anchor="middle"
+          font-family="Helvetica Neue,Helvetica,Arial,sans-serif"
+          font-size="${fs}" fill="${TEXT}" fill-opacity="0.55">Applications</text>
+  </svg>`;
 
-  // Render SVG logo at target size
-  const logoPng = await sharp(logoSvg)
-    .resize(lw, lh)
+  const iconPath = path.join(ROOT, "src-tauri/icons/icon.png");
+  const iconBuf = await sharp(iconPath)
+    .resize(ic, ic, { fit: "contain" })
     .png()
     .toBuffer();
 
-  // Background: solid #1f2f3f
-  const bg = {
-    create: { width: w, height: h, channels: 3, background: { r: 0x1f, g: 0x2f, b: 0x3f } }
-  };
-
-  // Subtle horizontal rule below logo — a thin gold line
-  const lineY = Math.round((lh + (h - lh) / 2 - 20) * 0.72);
-  const lineW = Math.round(lw * 0.6);
-  const lineX = Math.round((w - lineW) / 2);
-  const lineSvg = Buffer.from(
-    `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}">` +
-    `<line x1="${lineX}" y1="${lineY}" x2="${lineX + lineW}" y2="${lineY}" ` +
-    `stroke="#c89b3c" stroke-width="${scale}" stroke-linecap="round" opacity="0.5"/>` +
-    `</svg>`
-  );
-
-  const logoX = Math.round((w - lw) / 2);
-  const logoY = Math.round((h - lh) / 2) - Math.round(20 * scale);
-
-  const outFile = path.join(root, 'src-tauri/icons',
-    scale === 1 ? 'dmg-background.png' : 'dmg-background@2x.png');
-
-  await sharp(bg)
-    .composite([
-      { input: logoPng, left: logoX, top: logoY },
-      { input: lineSvg, left: 0, top: 0 },
-    ])
+  return sharp(Buffer.from(svg))
     .png()
-    .toFile(outFile);
-
-  console.log(`Written: ${outFile} (${w}x${h})`);
+    .composite([{ input: iconBuf, left: Math.round(icx - ic / 2), top: it }])
+    .png({ compressionLevel: 9 })
+    .toBuffer();
 }
 
-await generate(1);
-await generate(2);
+console.log("Generating DMG background images…");
+for (const [scale, name] of [[1, "dmg-background.png"], [2, "dmg-background@2x.png"]]) {
+  const buf = await render(scale);
+  const out = path.join(ROOT, "src-tauri/icons", name);
+  writeFileSync(out, buf);
+  console.log(`  Wrote ${name}  (${W * scale}x${H * scale})`);
+}
+console.log("Done.");

@@ -135,7 +135,7 @@ if (process.platform === "darwin") {
 
 // 10. macOS: regenerate DMG background images from the app icon + brand colors
 if (process.platform === "darwin") {
-  run("python3 scripts/generate-dmg-background.py", "Generating DMG background");
+  run("node scripts/generate-dmg-background.mjs", "Generating DMG background");
 }
 
 // 11. Tauri build — platform-specific bundle targets
