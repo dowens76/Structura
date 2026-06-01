@@ -9,6 +9,7 @@ export type ClearCategory =
   | "wordTagRefs"
   | "lineIndents"
   | "wordArrows"
+  | "clauseRelationships"
   | "wordFormatting"
   | "rstRelations"
   | "lineAnnotations";
@@ -19,6 +20,7 @@ const CATEGORY_META: { key: ClearCategory; label: string; icon: string }[] = [
   { key: "speechSections",     label: "Speech sections",         icon: "💬" },
   { key: "wordTagRefs",        label: "Word / concept tags",     icon: "🏷" },
   { key: "lineIndents",        label: "Indentations",            icon: "⇥" },
+  { key: "clauseRelationships", label: "Clause relationships",    icon: "⌐" },
   { key: "rstRelations",        label: "Relational arrows",       icon: "↳" },
   { key: "wordArrows",         label: "Arrows",                  icon: "↷" },
   { key: "wordFormatting",     label: "Bold / italic formatting",icon: "B" },

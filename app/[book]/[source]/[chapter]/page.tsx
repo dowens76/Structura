@@ -7,7 +7,7 @@ import {
   getTranslationVerses, getChapterParagraphBreaks, getCharacters,
   getChapterCharacterRefs, getChapterSpeechSections, getWordTags,
   getChapterWordTagRefs, getChapterLineIndents, getChapterRstRelations,
-  getChapterWordArrows, getChapterWordFormatting, getChapterSceneBreaks,
+  getChapterWordArrows, getChapterClauseRelationships, getChapterWordFormatting, getChapterSceneBreaks,
   getChapterLineAnnotations, getBookSceneBreaks, getBookChapterMaxVerses,
   getUltVerses, getUltTranslation, getVcbVerses, getVcbTranslation, getGroupedBooksFor,
   getChapterTranslationFootnotes,
@@ -133,6 +133,7 @@ export default async function ChapterPage({ params, searchParams }: PageProps) {
   let initialRstRelations:   Awaited<ReturnType<typeof getChapterRstRelations>> = [];
   let initialTvRstRelations: Awaited<ReturnType<typeof getChapterRstRelations>> = [];
   let initialWordArrows: Awaited<ReturnType<typeof getChapterWordArrows>> = [];
+  let initialClauseRelationships: Awaited<ReturnType<typeof getChapterClauseRelationships>> = [];
   let initialWordFormatting: { wordId: string; isBold: boolean; isItalic: boolean }[] = [];
   let initialSceneBreaks: Awaited<ReturnType<typeof getChapterSceneBreaks>> = [];
   let initialLineAnnotations: Awaited<ReturnType<typeof getChapterLineAnnotations>> = [];
@@ -161,7 +162,7 @@ export default async function ChapterPage({ params, searchParams }: PageProps) {
     [availableTranslations, initialParagraphBreakIds, initialCharacters,
      initialCharacterRefs, initialSpeechSections,
      initialWordTags, initialWordTagRefs, initialLineIndents,
-     initialRstRelations, initialTvRstRelations, initialWordArrows, initialWordFormatting,
+     initialRstRelations, initialTvRstRelations, initialWordArrows, initialClauseRelationships, initialWordFormatting,
      initialSceneBreaks, initialLineAnnotations,
      bookSceneBreaks, bookMaxVerses] = await Promise.all([
       getTranslations(workspaceId),
@@ -175,6 +176,7 @@ export default async function ChapterPage({ params, searchParams }: PageProps) {
       getChapterRstRelations(osisBook, chapter, textSource, workspaceId),
       getChapterRstRelations(osisBook, chapter, `tv:${textSource}`, workspaceId),
       getChapterWordArrows(osisBook, chapter, textSource, workspaceId),
+      getChapterClauseRelationships(osisBook, chapter, textSource, workspaceId),
       getChapterWordFormatting(osisBook, chapter, workspaceId),
       getChapterSceneBreaks(osisBook, chapter, workspaceId),
       getChapterLineAnnotations(osisBook, chapter, textSource, workspaceId),
@@ -414,6 +416,7 @@ export default async function ChapterPage({ params, searchParams }: PageProps) {
             initialRstRelations={initialRstRelations}
             initialTvRstRelations={initialTvRstRelations}
             initialWordArrows={initialWordArrows}
+            initialClauseRelationships={initialClauseRelationships}
             initialWordFormatting={initialWordFormatting}
             initialSceneBreaks={initialSceneBreaks}
             initialLineAnnotations={initialLineAnnotations}

@@ -2460,6 +2460,9 @@ export default function PassageView({
           onEditRstGroup={handleEditRstGroup}
           onUpdateRstIntersectPoint={handleUpdateRstIntersectPoint}
           onRequiredSourcePad={setRstSourcePad}
+          clauseRelationships={[]}
+          onDeleteClauseRelationship={async () => {}}
+          hasSource={true}
           wordArrows={wordArrowsState}
           editingArrows={editingArrows}
           arrowFromWordId={arrowFromWordId}
