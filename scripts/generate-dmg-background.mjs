@@ -43,33 +43,48 @@ const LOGO_TOP = 24;
 const LOGO_LEFT = Math.round((W - LOGO_W) / 2);  // 50
 
 const SEP_Y  = LOGO_TOP + LOGO_H + 14;           // ≈ 299
-const ARROW_Y  = APP_Y - 6;
-const ARROW_X1 = APP_X + 52;
-const ARROW_X2 = FOL_X - 52;
-const HEAD     = 10;
+
+// Filled arrow polygon centered between the two icon positions.
+// All values at 1x; multiplied by scale at render time.
+const ARR_CX    = Math.round((APP_X + FOL_X) / 2); // 330 — horizontal center
+const ARR_CY    = APP_Y;                            // 400 — vertical center (same as icons)
+const ARR_W     = 120;  // total width  (tip-to-tail)
+const ARR_H     = 32;   // total height (arrowhead top to bottom)
+const ARR_NECK  = 14;   // shaft height
+const ARR_SPLIT = 0.62; // fraction of width where shaft ends / arrowhead begins
 
 async function render(scale) {
   const w   = W * scale, h = H * scale;
   const sw  = Math.max(1, scale);
 
-  const ay  = ARROW_Y   * scale;
-  const ax1 = ARROW_X1  * scale, ax2 = ARROW_X2 * scale;
-  const hd  = HEAD      * scale;
-  const sy  = SEP_Y     * scale;
+  const sy  = SEP_Y * scale;
 
-  const arrowHead = [
-    `M ${ax2} ${ay} L ${ax2 - hd} ${ay - hd * 0.6}`,
-    `M ${ax2} ${ay} L ${ax2 - hd} ${ay + hd * 0.6}`,
+  // Filled arrow polygon (all coords scaled)
+  const cx  = ARR_CX    * scale;
+  const cy  = ARR_CY    * scale;
+  const hw  = (ARR_W / 2) * scale;           // half-width
+  const hh  = (ARR_H / 2) * scale;           // half-height
+  const hn  = (ARR_NECK / 2) * scale;        // half-neck height
+  const sx  = cx - hw;                        // shaft left
+  const jx  = cx - hw + ARR_W * ARR_SPLIT * scale; // junction x (shaft→head)
+  const tx  = cx + hw;                        // tip x
+  // Polygon points (right-pointing arrow):
+  // tail-top → junction-top → head-top → tip → head-bottom → junction-bottom → tail-bottom
+  const pts = [
+    `${sx},${cy - hn}`,
+    `${jx},${cy - hn}`,
+    `${jx},${cy - hh}`,
+    `${tx},${cy}`,
+    `${jx},${cy + hh}`,
+    `${jx},${cy + hn}`,
+    `${sx},${cy + hn}`,
   ].join(" ");
 
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}">
     <rect width="${w}" height="${h}" fill="${BG}"/>
     <line x1="${40 * scale}" y1="${sy}" x2="${(W - 40) * scale}" y2="${sy}"
           stroke="${BORDER}" stroke-width="${sw}"/>
-    <line x1="${ax1}" y1="${ay}" x2="${ax2}" y2="${ay}"
-          stroke="${ACCENT}" stroke-width="${sw * 2}" stroke-opacity="0.8"/>
-    <path d="${arrowHead}" stroke="${ACCENT}" stroke-width="${sw * 2}" stroke-opacity="0.8"
-          fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+    <polygon points="${pts}" fill="${ACCENT}" opacity="0.85"/>
   </svg>`;
 
   // Rasterise the full Structura SVG logo at the target size
