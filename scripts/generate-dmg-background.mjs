@@ -28,6 +28,7 @@ const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const BG     = "#f8f6f2";
 const ACCENT = "#c89b3c";
 const BORDER = "#ddd8ce";
+const TEXT   = "#1f2f3f";
 
 // Window dimensions — must match create-dmg.mjs window.size
 export const W = 660, H = 480;
@@ -80,10 +81,17 @@ async function render(scale) {
     `${sx},${cy + hn}`,
   ].join(" ");
 
+  // Instruction text sits midway between separator and icons
+  const instrY = Math.round((SEP_Y + (APP_Y - ARR_H / 2 - 8)) / 2) * scale;
+  const instrFS = 13 * scale;
+
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}">
     <rect width="${w}" height="${h}" fill="${BG}"/>
     <line x1="${40 * scale}" y1="${sy}" x2="${(W - 40) * scale}" y2="${sy}"
           stroke="${BORDER}" stroke-width="${sw}"/>
+    <text x="${(W / 2) * scale}" y="${instrY}" text-anchor="middle"
+          font-family="Helvetica Neue,Helvetica,Arial,sans-serif"
+          font-size="${instrFS}" fill="${TEXT}" fill-opacity="0.65">Click and drag the Structura app to your Applications folder.</text>
     <polygon points="${pts}" fill="${ACCENT}" opacity="0.85"/>
   </svg>`;
 
