@@ -117,7 +117,7 @@ export default function PassageNavButtons({
                   return (
                     <Link
                       key={p.id}
-                      href={`/${encodeURIComponent(book)}/${textSource}/passage/${p.id}`}
+                      href={`/${encodeURIComponent(p.book)}/${textSource}/passage/${p.id}`}
                       onClick={() => setDropdownOpen(false)}
                       className="flex items-baseline gap-2 px-4 py-2.5 hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors border-b last:border-0"
                       style={{

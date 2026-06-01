@@ -36,7 +36,7 @@ import hebrewLemmas from "@/lib/data/hebrew-lemmas.json";
 import { computeSectionRanges } from "@/lib/utils/sectionRanges";
 import { generateOutline } from "@/lib/utils/outlineExport";
 import { useTranslation } from "@/lib/i18n/LocaleContext";
-import { CONTIGUOUS_BOOK_PAIRS, OSIS_BOOK_NAMES, OSIS_REF_BOOK_NAMES } from "@/lib/utils/osis";
+import { CONTIGUOUS_BOOK_PAIRS, CONTIGUOUS_BOOK_PREV, OSIS_BOOK_NAMES, OSIS_REF_BOOK_NAMES } from "@/lib/utils/osis";
 
 /** Normalize text for diacritic-insensitive find-in-page matching.
  *  Strips Hebrew cantillation/vowel marks and Greek/Latin combining diacritics
@@ -541,6 +541,24 @@ export default function ChapterDisplay({
       .catch(() => setContDataLoaded(true))
       .finally(() => setLoadingCont(false));
   }, [outlineExtended, continuationBook, contDataLoaded, textSource]);
+
+  // ── Cross-book outline predecessor (e.g. 1 Sam when viewing 2 Sam) ───────
+  const predecessorBook     = CONTIGUOUS_BOOK_PREV[book] ?? null;
+  const predecessorBookName = predecessorBook ? (OSIS_REF_BOOK_NAMES[predecessorBook] ?? predecessorBook) : null;
+  const [outlinePredecessorShown, setOutlinePredecessorShown] = useState(false);
+  const [predBreaks,    setPredBreaks]    = useState<{ wordId: string; heading: string | null; level: number; chapter: number; verse: number; positionInVerse: number; thematic: boolean; thematicLetter: string | null }[]>([]);
+  const [predDataLoaded, setPredDataLoaded] = useState(false);
+  const [loadingPred,    setLoadingPred]    = useState(false);
+
+  useEffect(() => {
+    if (!outlinePredecessorShown || !predecessorBook || predDataLoaded) return;
+    setLoadingPred(true);
+    fetch(`/api/book-scene-breaks?book=${encodeURIComponent(predecessorBook)}&source=${encodeURIComponent(textSource)}`)
+      .then((r) => r.json())
+      .then((data) => { setPredBreaks(data.breaks ?? []); setPredDataLoaded(true); })
+      .catch(() => setPredDataLoaded(true))
+      .finally(() => setLoadingPred(false));
+  }, [outlinePredecessorShown, predecessorBook, predDataLoaded, textSource]);
 
   // ── Translation text editing ───────────────────────────────────────────────
   // Local mutable copy of translationVerseData so edits can be reflected immediately.
@@ -3499,7 +3517,7 @@ export default function ChapterDisplay({
               </button>}
 
               {/* Outline sidebar toggle */}
-              {toolbarVis.outline && (sceneBreakMap.size > 0 || bookSceneBreaks.length > 0) && (
+              {toolbarVis.outline && (sceneBreakMap.size > 0 || bookSceneBreaks.length > 0 || !!predecessorBook) && (
                 <button
                   type="button"
                   onClick={() => setOutlineOpen((v) => !v)}
@@ -4760,6 +4778,12 @@ export default function ChapterDisplay({
             continuationBreaks={contBreaks}
             crossBookRangeKeys={crossBookRangeKeys}
             loadingContinuation={loadingCont}
+            predecessorBook={predecessorBook}
+            predecessorBookName={predecessorBookName}
+            predecessorBreaks={predBreaks}
+            outlinePredecessorShown={outlinePredecessorShown}
+            onTogglePredecessorShown={setOutlinePredecessorShown}
+            loadingPredecessor={loadingPred}
           />
         </ResizablePane>
       )}

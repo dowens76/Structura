@@ -85,6 +85,13 @@ interface OutlinePaneProps {
   /** When provided (passage view), all breaks whose chapter is in this set are treated as
    *  "current" (scroll behaviour) instead of the single `chapter` prop value. */
   passageChapters?: Set<number>;
+  // ── Predecessor book (e.g. 1 Sam when viewing 2 Sam) ─────────────────────
+  predecessorBook?: string | null;
+  predecessorBookName?: string | null;
+  predecessorBreaks?: { wordId: string; heading: string | null; level: number; chapter: number; verse: number; positionInVerse: number; thematic: boolean; thematicLetter: string | null }[];
+  outlinePredecessorShown?: boolean;
+  onTogglePredecessorShown?: (v: boolean) => void;
+  loadingPredecessor?: boolean;
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -108,6 +115,12 @@ export default function OutlinePane({
   wordPositionMap,
   loadingContinuation = false,
   passageChapters,
+  predecessorBook = null,
+  predecessorBookName = null,
+  predecessorBreaks = [],
+  outlinePredecessorShown = false,
+  onTogglePredecessorShown,
+  loadingPredecessor = false,
 }: OutlinePaneProps) {
   const [editKey, setEditKey]       = useState<string | null>(null); // `${wordId}:${level}`
   const [editDraft, setEditDraft]   = useState("");
@@ -122,6 +135,11 @@ export default function OutlinePane({
   // Merge current-chapter live state with book-wide static data
   const sortedBreaks = useMemo<RawBreak[]>(() => {
     const list: RawBreak[] = [];
+    if (outlinePredecessorShown) {
+      for (const b of predecessorBreaks) {
+        list.push({ ...b, bookCode: predecessorBook ?? undefined });
+      }
+    }
     for (const b of bookSceneBreaks) {
       if (b.chapter !== chapter) list.push(b);
     }
@@ -136,9 +154,9 @@ export default function OutlinePane({
       }
     }
     list.sort((a, b) => {
-      // Continuation-book items always sort after current-book items
-      const aIdx = a.bookCode ? 1 : 0;
-      const bIdx = b.bookCode ? 1 : 0;
+      // Predecessor-book items always sort before current-book; continuation after
+      const aIdx = a.bookCode === predecessorBook ? -1 : a.bookCode ? 1 : 0;
+      const bIdx = b.bookCode === predecessorBook ? -1 : b.bookCode ? 1 : 0;
       if (aIdx !== bIdx) return aIdx - bIdx;
       return a.chapter !== b.chapter ? a.chapter - b.chapter :
              a.verse   !== b.verse   ? a.verse   - b.verse   :
@@ -146,7 +164,7 @@ export default function OutlinePane({
              a.level   - b.level;
     });
     return list;
-  }, [bookSceneBreaks, sceneBreakMap, chapter, outlineExtended, continuationBreaks, continuationBook, wordPositionMap]);
+  }, [bookSceneBreaks, sceneBreakMap, chapter, outlineExtended, continuationBreaks, continuationBook, wordPositionMap, outlinePredecessorShown, predecessorBreaks, predecessorBook]);
 
   // Precompute per-verse sub-verse letters: for each (bookCode,chapter,verse), sort breaks by
   // positionInVerse and assign "" (pos 1) or "b","c",… (subsequent mid-verse positions).
@@ -304,6 +322,26 @@ export default function OutlinePane({
           </button>
         </div>
       </div>
+
+      {/* "Include [PredecessorBook]" toggle — only when a contiguous predecessor book exists */}
+      {predecessorBook && onTogglePredecessorShown && (
+        <div
+          className="shrink-0 px-4 py-2 border-b flex items-center gap-2"
+          style={{ borderColor: "var(--border)" }}
+        >
+          <label className="flex items-center gap-2 cursor-pointer select-none text-xs" style={{ color: "var(--text-muted)" }}>
+            <input
+              type="checkbox"
+              checked={outlinePredecessorShown}
+              onChange={(e) => onTogglePredecessorShown(e.target.checked)}
+              className="rounded"
+            />
+            Include{" "}
+            <span style={{ color: "var(--foreground)" }}>{predecessorBookName}</span>
+            {loadingPredecessor && <span className="opacity-50">…</span>}
+          </label>
+        </div>
+      )}
 
       {/* "Extend into [Book]" toggle — only when a contiguous successor book exists */}
       {continuationBook && (
