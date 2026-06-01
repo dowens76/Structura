@@ -70,17 +70,15 @@ if (existsSync(DMG)) {
 }
 
 // appdmg spec — see https://github.com/LinusU/node-appdmg
-// Window: 660×420, matching dmg-background.png dimensions
-// App icon center:          (165, 285)  ← same as tauri.conf.json appPosition
-// Applications alias center: (495, 285) ← same as tauri.conf.json applicationFolderPosition
+// Window and icon positions must match generate-dmg-background.mjs constants.
 const spec = {
   title: "Structura",
   background: path.join(ROOT, "src-tauri/icons/dmg-background@2x.png"),
   "icon-size": 80,
-  window: { size: { width: 660, height: 420 } },
+  window: { size: { width: 660, height: 480 } },
   contents: [
-    { x: 165, y: 285, type: "file", path: APP },
-    { x: 495, y: 285, type: "link", path: "/Applications" },
+    { x: 165, y: 400, type: "file", path: APP },
+    { x: 495, y: 400, type: "link", path: "/Applications" },
   ],
 };
 

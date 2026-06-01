@@ -56,9 +56,9 @@
       "minimumSystemVersion": "10.15",
       "dmg": {
         "background": "icons/dmg-background.png",
-        "windowSize": { "width": 660, "height": 420 },
-        "appPosition": { "x": 165, "y": 285 },
-        "applicationFolderPosition": { "x": 495, "y": 285 }
+        "windowSize": { "width": 660, "height": 480 },
+        "appPosition": { "x": 165, "y": 400 },
+        "applicationFolderPosition": { "x": 495, "y": 400 }
       }
     }
   }

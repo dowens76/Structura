@@ -5,13 +5,21 @@
  * No Python or system dependencies — only sharp, which is already
  * a project dependency.
  *
+ * Layout (1x):
+ *   Window:  660 × 480
+ *   Logo:    560 × 261 px (structura-full-logo.svg, aspect 900:420), centered, top=24
+ *   Sep:     y=299
+ *   Icons:   APP_X=165 APP_Y=400  FOL_X=495 FOL_Y=400
+ *   Arrow:   between the two icon positions
+ *   Labels:  none — Finder renders its own labels below each icon
+ *
  * Outputs:
- *   src-tauri/icons/dmg-background.png      (660×420, 1x)
- *   src-tauri/icons/dmg-background@2x.png   (1320×840, 2x Retina)
+ *   src-tauri/icons/dmg-background.png      (660×480, 1x)
+ *   src-tauri/icons/dmg-background@2x.png   (1320×960, 2x Retina)
  */
 
 import sharp from "sharp";
-import { writeFileSync } from "fs";
+import { readFileSync, writeFileSync } from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 
@@ -20,32 +28,34 @@ const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const BG     = "#f8f6f2";
 const ACCENT = "#c89b3c";
 const BORDER = "#ddd8ce";
-const TEXT   = "#1f2f3f";
 
-const W = 660, H = 420;
-const APP_X = 165, APP_Y = 285;
-const FOL_X = 495;
-const ICON_SIZE = 120;
-const ICON_TOP  = 24;
-const ARROW_Y   = APP_Y - 6;
-const ARROW_X1  = APP_X + 52;
-const ARROW_X2  = FOL_X - 52;
-const HEAD      = 10;
-const SEP_Y     = ICON_TOP + ICON_SIZE + 18;
-const LABEL_Y   = APP_Y + 46;
-const FONT_SZ   = 11;
+// Window dimensions — must match create-dmg.mjs window.size
+export const W = 660, H = 480;
+
+// Icon center positions — must match create-dmg.mjs contents[].x/y
+export const APP_X = 165, APP_Y = 400;
+export const FOL_X = 495, FOL_Y = 400;
+
+// Logo dimensions at 1x (SVG viewBox 900×420, rendered at width 560)
+const LOGO_W   = 560;
+const LOGO_H   = Math.round(LOGO_W * 420 / 900); // ≈ 261
+const LOGO_TOP = 24;
+const LOGO_LEFT = Math.round((W - LOGO_W) / 2);  // 50
+
+const SEP_Y  = LOGO_TOP + LOGO_H + 14;           // ≈ 299
+const ARROW_Y  = APP_Y - 6;
+const ARROW_X1 = APP_X + 52;
+const ARROW_X2 = FOL_X - 52;
+const HEAD     = 10;
 
 async function render(scale) {
-  const w   = W * scale,          h   = H * scale;
-  const ic  = ICON_SIZE * scale,  it  = ICON_TOP * scale;
-  const icx = (W / 2) * scale;
+  const w   = W * scale, h = H * scale;
+  const sw  = Math.max(1, scale);
+
   const ay  = ARROW_Y   * scale;
-  const ax1 = ARROW_X1  * scale,  ax2 = ARROW_X2 * scale;
+  const ax1 = ARROW_X1  * scale, ax2 = ARROW_X2 * scale;
   const hd  = HEAD      * scale;
   const sy  = SEP_Y     * scale;
-  const ly  = LABEL_Y   * scale;
-  const fs  = FONT_SZ   * scale;
-  const sw  = Math.max(1, scale);
 
   const arrowHead = [
     `M ${ax2} ${ay} L ${ax2 - hd} ${ay - hd * 0.6}`,
@@ -60,23 +70,22 @@ async function render(scale) {
           stroke="${ACCENT}" stroke-width="${sw * 2}" stroke-opacity="0.8"/>
     <path d="${arrowHead}" stroke="${ACCENT}" stroke-width="${sw * 2}" stroke-opacity="0.8"
           fill="none" stroke-linecap="round" stroke-linejoin="round"/>
-    <text x="${APP_X * scale}" y="${ly}" text-anchor="middle"
-          font-family="Helvetica Neue,Helvetica,Arial,sans-serif"
-          font-size="${fs}" fill="${TEXT}" fill-opacity="0.55">Structura</text>
-    <text x="${FOL_X * scale}" y="${ly}" text-anchor="middle"
-          font-family="Helvetica Neue,Helvetica,Arial,sans-serif"
-          font-size="${fs}" fill="${TEXT}" fill-opacity="0.55">Applications</text>
   </svg>`;
 
-  const iconPath = path.join(ROOT, "src-tauri/icons/icon.png");
-  const iconBuf = await sharp(iconPath)
-    .resize(ic, ic, { fit: "contain" })
+  // Rasterise the full Structura SVG logo at the target size
+  const logoSvg = readFileSync(path.join(ROOT, "public/structura-full-logo.svg"));
+  const logoBuf = await sharp(logoSvg, { density: 300 })
+    .resize(LOGO_W * scale, LOGO_H * scale, { fit: "fill" })
     .png()
     .toBuffer();
 
   return sharp(Buffer.from(svg))
     .png()
-    .composite([{ input: iconBuf, left: Math.round(icx - ic / 2), top: it }])
+    .composite([{
+      input: logoBuf,
+      left: LOGO_LEFT * scale,
+      top:  LOGO_TOP  * scale,
+    }])
     .png({ compressionLevel: 9 })
     .toBuffer();
 }
