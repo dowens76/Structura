@@ -133,6 +133,11 @@ if (process.platform === "darwin") {
   }
 }
 
+// 10. macOS: regenerate DMG background images from the app icon + brand colors
+if (process.platform === "darwin") {
+  run("python3 scripts/generate-dmg-background.py", "Generating DMG background");
+}
+
 // 11. Tauri build — platform-specific bundle targets
 //    macOS:   build .app only (we create the DMG manually to fix server/ first)
 //    Windows: NSIS installer
@@ -177,6 +182,11 @@ try {
 // 12. macOS: fix flattened server/ directory inside .app bundle
 if (process.platform === "darwin") {
   run("node scripts/fix-app-bundle.mjs", "Fixing .app bundle server/ structure");
+}
+
+// 13. macOS: create the drag-and-drop DMG installer
+if (process.platform === "darwin") {
+  run("node scripts/create-dmg.mjs", "Creating DMG installer");
 }
 
 console.log("\n✓ tauri:build complete.");
