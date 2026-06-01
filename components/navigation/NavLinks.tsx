@@ -150,8 +150,8 @@ export default function NavLinks({
       {/* Language picker */}
       <LanguagePicker />
 
-      {/* Chapter navigation (right side) */}
-      <div className="ml-auto flex items-center gap-1">
+      {/* Chapter navigation */}
+      <div className="flex items-center gap-1">
         {(() => {
           const prevCh = parallelMode && parallelPrevChapter != null ? parallelPrevChapter : chapter - 1;
           return prevCh >= 1 ? (

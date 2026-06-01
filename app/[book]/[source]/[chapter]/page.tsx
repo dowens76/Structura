@@ -342,14 +342,12 @@ export default async function ChapterPage({ params, searchParams }: PageProps) {
           />
         )}
 
-        {/* Workspace switcher */}
-        <WorkspaceSwitcher activeWorkspaceId={workspaceId} />
-
-        {/* Settings */}
-        <SettingsButton />
-
-        {/* Theme toggle */}
-        <ThemeToggle />
+        {/* Right side: workspace, settings, theme */}
+        <div className="ml-auto flex items-center gap-1">
+          <WorkspaceSwitcher activeWorkspaceId={workspaceId} />
+          <SettingsButton />
+          <ThemeToggle />
+        </div>
       </nav>}
 
       {/* Text content */}

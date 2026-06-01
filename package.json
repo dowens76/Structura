@@ -38,7 +38,7 @@
     "build:node-binary": "node scripts/download-node-binary.mjs",
     "tauri:dev": "tauri dev",
     "tauri:build": "node scripts/tauri-build.mjs",
-    "tauri:dmg": "node scripts/create-dmg.mjs"
+    "tauri:dmg": "node scripts/generate-dmg-background.mjs && node scripts/create-dmg.mjs"
   },
   "dependencies": {
     "@fontsource/gentium-plus": "^5.2.7",

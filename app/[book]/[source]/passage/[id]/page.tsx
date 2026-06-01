@@ -369,20 +369,11 @@ export default async function PassagePage({ params, searchParams }: PageProps) {
           currentPassageId={id}
         />
 
-        {/* Workspace switcher */}
-        <WorkspaceSwitcher activeWorkspaceId={workspaceId} />
-
-        {/* Settings + Theme + Back to chapter */}
+        {/* Right side: workspace, settings, theme */}
         <div className="ml-auto flex items-center gap-1">
+          <WorkspaceSwitcher activeWorkspaceId={workspaceId} />
           <SettingsButton />
           <ThemeToggle />
-          <Link
-            href={`/${encodeURIComponent(osisBook)}/${textSource}/${passage.startChapter}`}
-            className="text-xs px-2 py-1 rounded transition-colors"
-            style={{ color: "var(--nav-fg)" }}
-          >
-            ← Ch. {passage.startChapter}
-          </Link>
         </div>
       </nav>}
 
