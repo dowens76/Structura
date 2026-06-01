@@ -47,13 +47,12 @@ export default function DefinePassageDialog({
   const [loadingContCount,  setLoadingContCount]  = useState(false);
 
   // ── Other state ────────────────────────────────────────────────────────────
-  const [label,        setLabel]        = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error,        setError]        = useState<string | null>(null);
 
   const firstInputRef = useRef<HTMLInputElement>(null);
 
-  // Focus label input on open
+  // Focus first chapter input on open
   useEffect(() => {
     firstInputRef.current?.focus();
   }, []);
@@ -143,7 +142,6 @@ export default function DefinePassageDialog({
         body: JSON.stringify({
           book,
           textSource,
-          label: label.trim(),
           startChapter,
           startVerse,
           endBook:    crossBook ? continuationBook : null,
@@ -208,25 +206,6 @@ export default function DefinePassageDialog({
         {/* Form */}
         <form onSubmit={handleSubmit} className="px-5 py-5 space-y-5">
 
-          {/* Label */}
-          <div className="space-y-1">
-            <label className="block text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>
-              {t("definePassage.labelHeading")}
-            </label>
-            <input
-              ref={firstInputRef}
-              type="text"
-              value={label}
-              onChange={(e) => setLabel(e.target.value)}
-              placeholder={t("definePassage.labelPlaceholder")}
-              className="w-full px-3 py-1.5 rounded border text-sm"
-              style={{ ...inputStyle }}
-            />
-            <p className="text-[11px]" style={{ color: "var(--text-muted)" }}>
-              {t("definePassage.labelHint")}
-            </p>
-          </div>
-
           {/* Range */}
           <div className="space-y-3">
             <div className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>
@@ -241,6 +220,7 @@ export default function DefinePassageDialog({
               <div className="flex items-center gap-1.5">
                 <span className="text-xs" style={{ color: "var(--text-muted)" }}>{t("definePassage.chAbbr")}</span>
                 <input
+                  ref={firstInputRef}
                   type="number"
                   min={1}
                   max={chapterCount}

@@ -128,10 +128,7 @@ export default function PassageNavButtons({
                       {isActive && (
                         <span className="text-[9px] shrink-0" style={{ color: "var(--accent)" }}>▶</span>
                       )}
-                      <span className="flex-1 text-sm truncate" style={{ color: isActive ? "var(--accent)" : "var(--foreground)" }}>
-                        {p.label || <em style={{ color: "var(--text-muted)" }}>{t("passages.untitled")}</em>}
-                      </span>
-                      <span className="text-[11px] font-mono shrink-0" style={{ color: "var(--text-muted)" }}>
+                      <span className="flex-1 text-sm font-mono truncate" style={{ color: isActive ? "var(--accent)" : "var(--foreground)" }}>
                         {formatRef(p)}
                       </span>
                     </Link>
