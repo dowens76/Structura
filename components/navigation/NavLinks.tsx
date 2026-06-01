@@ -115,27 +115,13 @@ export default function NavLinks({
 
       {/* Utility links */}
       <Link
-        href="/export/lists"
-        className="text-xs px-2 py-1 rounded transition-colors"
-        style={{ color: "var(--nav-fg)" }}
-      >
-        Lists
-      </Link>
-      <Link
         href="/import"
         className="text-xs px-2 py-1 rounded transition-colors"
         style={{ color: "var(--nav-fg)" }}
       >
         {t("nav.import")}
       </Link>
-      <Link
-        href="/backup"
-        className="text-xs px-2 py-1 rounded transition-colors"
-        style={{ color: "var(--nav-fg)" }}
-      >
-        {t("nav.backup")}
-      </Link>
-      {!parallelMode && (
+{!parallelMode && (
         <Link
           href={exportHrefWithTranslations}
           className="text-xs px-2 py-1 rounded transition-colors"

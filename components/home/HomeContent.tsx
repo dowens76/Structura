@@ -202,6 +202,13 @@ export default function HomeContent({ otBooks, ntBooks, lxxBooks, translationOnl
               Export USFM
             </Link>
             <Link
+              href="/export/lists"
+              className="text-xs px-3 py-1.5 rounded border transition-colors"
+              style={{ borderColor: "var(--border)", backgroundColor: "var(--surface)", color: "var(--foreground)" }}
+            >
+              Export Lists
+            </Link>
+            <Link
               href="/backup"
               className="text-xs px-3 py-1.5 rounded border transition-colors"
               style={{ borderColor: "var(--border)", backgroundColor: "var(--surface)", color: "var(--foreground)" }}
