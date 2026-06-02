@@ -213,7 +213,7 @@ export default function ChapterDisplay({
   const [panelOpen, setPanelOpen] = useState(false);
   const [notesOpen, setNotesOpen] = useState(false);
   const [notesSynced, setNotesSynced] = useState(() => {
-    try { return localStorage.getItem("structura:notesSynced") === "true"; } catch { return false; }
+    try { const v = localStorage.getItem("structura:notesSynced"); return v === null ? true : v === "true"; } catch { return true; }
   });
   const visibleVersesRef = useRef(new Set<number>());
   const notesSyncedRef   = useRef(notesSynced);
