@@ -30,6 +30,8 @@ interface PassageNotesPaneProps {
   scrollToVerse: VerseRef | null;
   onScrollHandled: () => void;
   onClose: () => void;
+  synced?: boolean;
+  onSyncToggle?: () => void;
 }
 
 export default function PassageNotesPane({
@@ -42,6 +44,8 @@ export default function PassageNotesPane({
   scrollToVerse,
   onScrollHandled,
   onClose,
+  synced = false,
+  onSyncToggle,
 }: PassageNotesPaneProps) {
   const paneRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
@@ -239,6 +243,24 @@ export default function PassageNotesPane({
         >
           🔍
         </button>
+        {onSyncToggle && (
+          <button
+            onClick={onSyncToggle}
+            title={synced ? "Unsync notes from scroll position" : "Sync notes to scroll position"}
+            className={[
+              "w-6 h-6 flex items-center justify-center rounded transition-colors shrink-0",
+              synced
+                ? "bg-blue-500 text-white"
+                : "text-stone-400 hover:text-stone-600 dark:hover:text-stone-200 hover:bg-stone-100 dark:hover:bg-stone-800",
+            ].join(" ")}
+          >
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"
+                 strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
+              <path d="M2 8h12M10 5l3 3-3 3" />
+              <path d="M6 11L3 8l3-3" />
+            </svg>
+          </button>
+        )}
         <button
           onClick={onClose}
           className="text-stone-400 hover:text-stone-600 dark:hover:text-stone-200 text-lg leading-none shrink-0"

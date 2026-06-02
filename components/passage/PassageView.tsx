@@ -3978,6 +3978,8 @@ export default function PassageView({
             scrollToVerse={notesScrollVerse}
             onScrollHandled={() => setNotesScrollVerse(null)}
             onClose={() => setNotesOpen(false)}
+            synced={notesSynced}
+            onSyncToggle={toggleNotesSync}
           />
         </ResizablePane>
       )}
