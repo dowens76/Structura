@@ -37,7 +37,6 @@ interface ImportForm {
     characters: boolean;
     lineIndents: boolean;
     wordArrows: boolean;
-    clauseRelationships: boolean;
     rstRelations: boolean;
     notes: boolean;
     passages: boolean;
@@ -175,7 +174,6 @@ const defaultImportForm: ImportForm = {
     characters: true,
     lineIndents: true,
     wordArrows: true,
-    clauseRelationships: true,
     rstRelations: true,
     notes: true,
     passages: true,
@@ -191,7 +189,6 @@ const DATA_TYPE_KEYS: { key: keyof ImportForm["dataTypes"]; tKey: string }[] = [
   { key: "characters", tKey: "account.dataTypeCharacters" },
   { key: "lineIndents", tKey: "account.dataTypeLineIndents" },
   { key: "wordArrows", tKey: "account.dataTypeWordArrows" },
-  { key: "clauseRelationships", tKey: "account.dataTypeClauseRelationships" },
   { key: "rstRelations", tKey: "account.dataTypeRstRelations" },
   { key: "notes", tKey: "account.dataTypeNotes" },
   { key: "passages", tKey: "account.dataTypePassages" },

@@ -16,7 +16,6 @@ import {
   getTranslations,
   getTranslationVerses,
   getChapterTranslationFootnotes,
-  getChapterClauseRelationships,
   getChapterWordArrows,
   getChapterSceneBreaks,
   getChapterLineAnnotations,
@@ -83,7 +82,6 @@ export default async function ExportPassagePage({ params, searchParams }: PagePr
           getChapterLineIndents(osisBook, ch, workspaceId),
           getChapterWordFormatting(osisBook, ch, workspaceId),
           getChapterSceneBreaks(osisBook, ch, workspaceId),
-          getChapterClauseRelationships(osisBook, ch, textSource, workspaceId),
           getChapterWordArrows(osisBook, ch, textSource, workspaceId),
           getChapterLineAnnotations(osisBook, ch, textSource, workspaceId),
           getChapterRstRelations(osisBook, ch, textSource, workspaceId),
@@ -101,10 +99,9 @@ export default async function ExportPassagePage({ params, searchParams }: PagePr
   const lineIndents         = perChapterResults.flatMap(([,,,, l]) => l);
   const wordFormatting      = perChapterResults.flatMap(([,,,,, f]) => f);
   const sceneBreaks         = perChapterResults.flatMap(([,,,,,, sb]) => sb);
-  const clauseRelationships = perChapterResults.flatMap(([,,,,,,, cr]) => cr);
-  const wordArrows          = perChapterResults.flatMap(([,,,,,,,, wa]) => wa);
-  const lineAnnotations     = perChapterResults.flatMap(([,,,,,,,,, la]) => la);
-  const rstRelations        = perChapterResults.flatMap(([,,,,,,,,,, rr]) => rr);
+  const wordArrows          = perChapterResults.flatMap(([,,,,,,, wa]) => wa);
+  const lineAnnotations     = perChapterResults.flatMap(([,,,,,,,, la]) => la);
+  const rstRelations        = perChapterResults.flatMap(([,,,,,,,,, rr]) => rr);
 
   // Include built-in ULT and VCB translations (same as ChapterDisplay does).
   const ultBaseVersesByChapter = new Map(
@@ -267,7 +264,6 @@ export default async function ExportPassagePage({ params, searchParams }: PagePr
           availableTranslations={visibleTranslations}
           translationVerseData={translationVerseData}
           translationFootnoteData={translationFootnoteData}
-          clauseRelationships={clauseRelationships}
           wordArrows={wordArrows}
           lineAnnotations={lineAnnotations}
           rstRelations={rstRelations}

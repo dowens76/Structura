@@ -3,7 +3,7 @@
 import { useMemo, useState, useEffect, useRef, useCallback } from "react";
 import { getMtToKjvInstructions, getKjvVerseLabel } from "@/lib/versification/mt-kjv-mapping";
 import { useRouter } from "next/navigation";
-import type { Word, Character, CharacterRef, SpeechSection, WordTag, WordTagRef, RstRelation, WordArrow, LineAnnotation, ClauseRelationship } from "@/lib/db/schema";
+import type { Word, Character, CharacterRef, SpeechSection, WordTag, WordTagRef, RstRelation, WordArrow, LineAnnotation } from "@/lib/db/schema";
 import type { Translation, TranslationVerse, TranslationFootnote } from "@/lib/db/schema";
 import type { DisplayMode, GrammarFilterState, TranslationTextEntry, InterlinearSubMode } from "@/lib/morphology/types";
 import VerseDisplay from "./VerseDisplay";
@@ -75,7 +75,6 @@ interface ChapterDisplayProps {
   initialRstRelations: RstRelation[];
   initialTvRstRelations?: RstRelation[];
   initialWordArrows: WordArrow[];
-  initialClauseRelationships: ClauseRelationship[];
   initialWordFormatting: { wordId: string; isBold: boolean; isItalic: boolean }[];
   initialSceneBreaks: { wordId: string; heading: string | null; level: number; verse: number; outOfSequence: boolean; extendedThrough: number | null; thematic: boolean; thematicLetter: string | null }[];
   initialLineAnnotations: LineAnnotation[];
@@ -150,7 +149,6 @@ export default function ChapterDisplay({
   initialRstRelations,
   initialTvRstRelations = [],
   initialWordArrows,
-  initialClauseRelationships,
   initialWordFormatting,
   initialSceneBreaks,
   initialLineAnnotations,
@@ -460,18 +458,6 @@ export default function ChapterDisplay({
     textSource,
     getChapterForWord: () => chapter,
   });
-
-  // ── Clause relationships state ────────────────────────────────────────────
-  const [clauseRelationshipsState, setClauseRelationshipsState] = useState<ClauseRelationship[]>(initialClauseRelationships);
-
-  async function handleDeleteClauseRelationship(id: number) {
-    await fetch("/api/clause-relationships", {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id }),
-    });
-    setClauseRelationshipsState((prev) => prev.filter((r) => r.id !== id));
-  }
 
   // ── Word formatting (bold / italic) state ─────────────────────────────────
   const [wordFormattingMap, setWordFormattingMap] = useState<Map<string, { isBold: boolean; isItalic: boolean }>>(
@@ -2722,7 +2708,6 @@ export default function ChapterDisplay({
         case "wordTagRefs":        setWordTagRefMap(new Map()); break;
         case "lineIndents":        setLineIndentMap(new Map()); break;
         case "wordArrows":         setWordArrowsState([]); break;
-        case "clauseRelationships": setClauseRelationshipsState([]); break;
         case "rstRelations":       setRstRelations([]); break;
         case "wordFormatting":     setWordFormattingMap(new Map()); break;
         case "lineAnnotations":    setLineAnnotations([]); break;
@@ -3370,9 +3355,6 @@ export default function ChapterDisplay({
             onEditRstGroup={handleEditRstGroup}
             onUpdateRstIntersectPoint={handleUpdateRstIntersectPoint}
             onRequiredSourcePad={setRstSourcePad}
-            clauseRelationships={clauseRelationshipsState}
-            onDeleteClauseRelationship={handleDeleteClauseRelationship}
-            hasSource={!hideSourceText}
             wordArrows={wordArrowsState}
             editingArrows={editingArrows}
             arrowFromWordId={arrowFromWordId}

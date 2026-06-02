@@ -105,7 +105,7 @@ export default function ExportLayout({ children, revealHref, filename, backHref,
 
   // When the font-size tier changes, CSS vars on the content wrapper update and
   // the browser reflows text at the new sizes.  All three overlay components
-  // (WordArrowOverlay, ClauseRelationshipOverlay, RstRelationOverlay) listen for
+  // (WordArrowOverlay, RstRelationOverlay) listen for
   // "structura:screen-remeasure" and re-run their scheduleMeasure() path so React
   // state is updated with the new screen-layout positions.
   //

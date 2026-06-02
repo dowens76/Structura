@@ -11,8 +11,7 @@
 import type { RefObject } from "react";
 import RstRelationOverlay from "./RstRelationOverlay";
 import WordArrowOverlay from "./WordArrowOverlay";
-import ClauseRelationshipOverlay from "./ClauseRelationshipOverlay";
-import type { RstRelation, WordArrow, RstCustomType, ClauseRelationship } from "@/lib/db/schema";
+import type { RstRelation, WordArrow, RstCustomType } from "@/lib/db/schema";
 import type { ArrowPatch } from "@/lib/hooks/useWordArrows";
 
 export interface ChapterOverlaysProps {
@@ -39,11 +38,6 @@ export interface ChapterOverlaysProps {
   onEditRstGroup?: (groupId: string) => void;
   onUpdateRstIntersectPoint?: (id: number, intersectPoint: "start" | "mid" | "end") => Promise<void>;
   onRequiredSourcePad?: (pad: number) => void;
-
-  // ── Clause relationship overlay ──────────────────────────────────────────────
-  clauseRelationships: ClauseRelationship[];
-  onDeleteClauseRelationship: (id: number) => Promise<void>;
-  hasSource: boolean;
 
   // ── Word-arrow overlay ───────────────────────────────────────────────────────
   wordArrows: WordArrow[];
@@ -83,9 +77,6 @@ export default function ChapterOverlays({
   onEditRstGroup,
   onUpdateRstIntersectPoint,
   onRequiredSourcePad,
-  clauseRelationships,
-  onDeleteClauseRelationship,
-  hasSource,
   wordArrows,
   editingArrows,
   arrowFromWordId,
@@ -119,19 +110,7 @@ export default function ChapterOverlays({
         customTypes={customRstTypes}
         onRequiredSourcePad={onRequiredSourcePad}
       />
-      <ClauseRelationshipOverlay
-        relationships={clauseRelationships}
-        containerRef={containerRef}
-        isHebrew={isHebrew}
-        hasTranslation={hasTranslation}
-        hasSource={hasSource}
-        editing={editingRst}
-        paragraphFirstWordIds={paragraphFirstWordIds}
-        selectedSegWordId={null}
-        onSelectSegment={() => {}}
-        onDeleteRelationship={onDeleteClauseRelationship}
-      />
-      <WordArrowOverlay
+<WordArrowOverlay
         arrows={wordArrows}
         containerRef={containerRef}
         layoutRef={layoutRef}

@@ -15,7 +15,6 @@ import {
   getTranslations,
   getTranslationVerses,
   getChapterTranslationFootnotes,
-  getChapterClauseRelationships,
   getChapterWordArrows,
   getChapterSceneBreaks,
   getChapterLineAnnotations,
@@ -73,7 +72,6 @@ export default async function ExportChapterPage({ params, searchParams }: PagePr
     wordFormatting,
     sceneBreaks,
     availableTranslations,
-    clauseRelationships,
     wordArrows,
     lineAnnotations,
     rstRelations,
@@ -88,7 +86,6 @@ export default async function ExportChapterPage({ params, searchParams }: PagePr
     getChapterWordFormatting(osisBook, chapter, workspaceId),
     getChapterSceneBreaks(osisBook, chapter, workspaceId),
     getTranslations(workspaceId),
-    getChapterClauseRelationships(osisBook, chapter, textSource, workspaceId),
     getChapterWordArrows(osisBook, chapter, textSource, workspaceId),
     getChapterLineAnnotations(osisBook, chapter, textSource, workspaceId),
     getChapterRstRelations(osisBook, chapter, textSource, workspaceId),
@@ -229,7 +226,6 @@ export default async function ExportChapterPage({ params, searchParams }: PagePr
           availableTranslations={visibleTranslations}
           translationVerseData={translationVerseData}
           translationFootnoteData={translationFootnoteData}
-          clauseRelationships={clauseRelationships}
           wordArrows={wordArrows}
           lineAnnotations={lineAnnotations}
           rstRelations={rstRelations}

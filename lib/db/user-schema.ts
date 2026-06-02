@@ -231,26 +231,6 @@ export const passages = sqliteTable(
   (t) => [index("passages_book_src_idx").on(t.book, t.textSource)]
 );
 
-export const clauseRelationships = sqliteTable(
-  "clause_relationships",
-  {
-    id:            integer("id").primaryKey({ autoIncrement: true }),
-    workspaceId:   integer("workspace_id").notNull().default(1)
-                     .references(() => workspaces.id, { onDelete: "cascade" }),
-    fromSegWordId: text("from_seg_word_id").notNull(),
-    toSegWordId:   text("to_seg_word_id").notNull(),
-    relType:       text("rel_type").notNull(),
-    textSource:    text("text_source").notNull(),
-    book:          text("book").notNull(),
-    chapter:       integer("chapter").notNull(),
-    // Where the satellite arm connects to the nested bracket's vertical spine
-    // when the satellite segment is itself the nucleus of another bracket.
-    // "start" = top corner, "mid" = midpoint, "end" = bottom corner.
-    intersectPoint: text("intersect_point").notNull().default("mid"),
-    createdAt:     text("created_at").$defaultFn(() => new Date().toISOString()),
-  },
-  (t) => [index("clrel_book_ch_src_idx").on(t.book, t.chapter, t.textSource)]
-);
 
 export const rstRelations = sqliteTable(
   "rst_relations",
@@ -582,7 +562,6 @@ export type WordTagRef = typeof wordTagRefs.$inferSelect;
 export type LineIndent = typeof lineIndents.$inferSelect;
 export type SceneBreak = typeof sceneBreaks.$inferSelect;
 export type Passage = typeof passages.$inferSelect;
-export type ClauseRelationship = typeof clauseRelationships.$inferSelect;
 export type RstRelation = typeof rstRelations.$inferSelect;
 export type WordArrow = typeof wordArrows.$inferSelect;
 export type WordFormatting = typeof wordFormatting.$inferSelect;

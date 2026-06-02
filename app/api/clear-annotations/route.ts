@@ -8,7 +8,6 @@ import {
   lineIndents,
   wordArrows,
   wordFormatting,
-  clauseRelationships,
   rstRelations,
   lineAnnotations,
 } from "@/lib/db/schema";
@@ -25,7 +24,6 @@ const VALID_CATEGORIES = [
   "lineIndents",
   "wordArrows",
   "wordFormatting",
-  "clauseRelationships",
   "rstRelations",
   "lineAnnotations",
 ] as const;
@@ -102,11 +100,6 @@ export async function POST(req: NextRequest) {
         // No textSource filter — getChapterWordFormatting loads all sources
         await userDb.delete(wordFormatting).where(
           and(eq(wordFormatting.workspaceId, workspaceId), eq(wordFormatting.book, book), chapterCond(wordFormatting.chapter))
-        );
-        break;
-      case "clauseRelationships":
-        await userDb.delete(clauseRelationships).where(
-          and(eq(clauseRelationships.workspaceId, workspaceId), eq(clauseRelationships.book, book), chapterCond(clauseRelationships.chapter), eq(clauseRelationships.textSource, textSource))
         );
         break;
       case "rstRelations":

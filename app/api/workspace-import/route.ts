@@ -15,7 +15,6 @@ import {
   speechSections,
   lineIndents,
   wordArrows,
-  clauseRelationships,
   rstRelations,
   rstCustomTypes,
   notes,
@@ -42,7 +41,6 @@ type DataType =
   | "characters"
   | "lineIndents"
   | "wordArrows"
-  | "clauseRelationships"
   | "rstRelations"
   | "notes"
   | "passages";
@@ -255,26 +253,6 @@ async function importWordArrows(
   if (rows.length > 0) {
     await userDb
       .insert(wordArrows)
-      .values(rows.map((r) => ({ ...r, id: undefined, workspaceId: tgt })));
-  }
-  return rows.length;
-}
-
-async function importClauseRelationships(
-  src: number,
-  tgt: number,
-  chapters: Chapter[]
-): Promise<number> {
-  if (chapters.length === 0) return 0;
-
-  const cond = chapterCondition(clauseRelationships, src, chapters);
-  if (!cond) return 0;
-  let rows = await userDb.select().from(clauseRelationships).where(cond);
-  rows = filterByChapters(rows, chapters);
-
-  if (rows.length > 0) {
-    await userDb
-      .insert(clauseRelationships)
       .values(rows.map((r) => ({ ...r, id: undefined, workspaceId: tgt })));
   }
   return rows.length;
@@ -724,13 +702,6 @@ export async function POST(request: NextRequest) {
         break;
       case "wordArrows":
         count = await importWordArrows(
-          sourceWorkspaceId,
-          targetWorkspaceId,
-          chapters
-        );
-        break;
-      case "clauseRelationships":
-        count = await importClauseRelationships(
           sourceWorkspaceId,
           targetWorkspaceId,
           chapters

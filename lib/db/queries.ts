@@ -4,8 +4,8 @@ import { getMtToKjvInstructions } from "@/lib/versification/mt-kjv-mapping";
 import type { LookupMaps } from "./index";
 import { books, words } from "./source-schema";
 import type { Word, WordRow } from "./source-schema";
-import { translations, translationVerses, paragraphBreaks, paragraphHeadings, characters, characterRefs, speechSections, wordTags, wordTagRefs, lineIndents, sceneBreaks, passages, clauseRelationships, rstRelations, wordArrows, wordFormatting, lineAnnotations, bookGroupings, appSettings, translationFootnotes, translationVersions, workspaces, users, textCriticalMarks } from "./user-schema";
-import type { Book, Translation, TranslationVerse, Character, CharacterRef, SpeechSection, WordTag, WordTagRef, Passage, ClauseRelationship, RstRelation, WordArrow, LineAnnotation, BookGrouping, TranslationFootnote, TranslationVersion } from "./schema";
+import { translations, translationVerses, paragraphBreaks, paragraphHeadings, characters, characterRefs, speechSections, wordTags, wordTagRefs, lineIndents, sceneBreaks, passages, rstRelations, wordArrows, wordFormatting, lineAnnotations, bookGroupings, appSettings, translationFootnotes, translationVersions, workspaces, users, textCriticalMarks } from "./user-schema";
+import type { Book, Translation, TranslationVerse, Character, CharacterRef, SpeechSection, WordTag, WordTagRef, Passage, RstRelation, WordArrow, LineAnnotation, BookGrouping, TranslationFootnote, TranslationVersion } from "./schema";
 import type { TextSource, Testament } from "@/lib/morphology/types";
 
 // ── Decode helpers ────────────────────────────────────────────────────────────
@@ -1370,59 +1370,6 @@ export async function getPassageWords(
     ...startRows.map((r) => decodeWord(r, maps)),
     ...endRows.map((r) => decodeWord(r, maps)),
   ];
-}
-
-// ── Clause Relationships ──────────────────────────────────────────────────────
-
-export async function getChapterClauseRelationships(
-  book: string,
-  chapter: number,
-  textSource: string,
-  workspaceId: number
-): Promise<ClauseRelationship[]> {
-  return userDb
-    .select()
-    .from(clauseRelationships)
-    .where(
-      and(
-        eq(clauseRelationships.workspaceId, workspaceId),
-        eq(clauseRelationships.book, book),
-        eq(clauseRelationships.chapter, chapter),
-        eq(clauseRelationships.textSource, textSource)
-      )
-    );
-}
-
-export async function createClauseRelationship(
-  fromSegWordId: string,
-  toSegWordId: string,
-  relType: string,
-  book: string,
-  chapter: number,
-  textSource: string,
-  workspaceId: number
-): Promise<ClauseRelationship> {
-  const [row] = await userDb
-    .insert(clauseRelationships)
-    .values({ fromSegWordId, toSegWordId, relType, book, chapter, textSource, workspaceId })
-    .returning();
-  return row;
-}
-
-export async function deleteClauseRelationship(id: number): Promise<void> {
-  await userDb.delete(clauseRelationships).where(eq(clauseRelationships.id, id));
-}
-
-export async function updateClauseRelationshipIntersect(
-  id: number,
-  intersectPoint: "start" | "mid" | "end",
-): Promise<ClauseRelationship> {
-  const [row] = await userDb
-    .update(clauseRelationships)
-    .set({ intersectPoint })
-    .where(eq(clauseRelationships.id, id))
-    .returning();
-  return row;
 }
 
 // ── RST Relations ─────────────────────────────────────────────────────────────

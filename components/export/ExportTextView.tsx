@@ -3,13 +3,12 @@
 import { useMemo, useRef, useState, useEffect } from "react";
 import type {
   Word, Character, CharacterRef, SpeechSection,
-  WordTag, WordTagRef, ClauseRelationship, WordArrow, LineAnnotation, RstRelation, RstCustomType,
+  WordTag, WordTagRef, WordArrow, LineAnnotation, RstRelation, RstCustomType,
   TranslationFootnote,
 } from "@/lib/db/schema";
 import type { TranslationTextEntry } from "@/lib/morphology/types";
 import type { Translation, TranslationVerse } from "@/lib/db/schema";
 import VerseDisplay from "@/components/text/VerseDisplay";
-import ClauseRelationshipOverlay from "@/components/text/ClauseRelationshipOverlay";
 import WordArrowOverlay from "@/components/text/WordArrowOverlay";
 import RstRelationOverlay from "@/components/text/RstRelationOverlay";
 import { RELATIONSHIP_TYPES } from "@/lib/morphology/clauseRelationships";
@@ -32,7 +31,6 @@ interface Props {
   availableTranslations: Translation[];
   translationVerseData: Record<number, TranslationVerse[]>;
   translationFootnoteData?: Record<number, TranslationFootnote[]>;
-  clauseRelationships: ClauseRelationship[];
   wordArrows: WordArrow[];
   lineAnnotations: LineAnnotation[];
   rstRelations: RstRelation[];
@@ -55,14 +53,13 @@ export default function ExportTextView({
   availableTranslations,
   translationVerseData,
   translationFootnoteData,
-  clauseRelationships,
   wordArrows,
   lineAnnotations,
   rstRelations,
 }: Props) {
   // ── Refs for overlay positioning ─────────────────────────────────────────
   // outerRef: non-clipping wrapper — WordArrowOverlay SVG positions relative to this
-  // containerRef: content container — ClauseRelationshipOverlay SVG + DOM queries
+  // containerRef: content container — overlay SVGs + DOM queries
   const outerRef     = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -168,7 +165,7 @@ export default function ExportTextView({
     return m;
   }, [sceneBreaks]);
 
-  // First word of every paragraph segment — needed by ClauseRelationshipOverlay
+  // First word of every paragraph segment — needed by RstRelationOverlay
   const paragraphFirstWordIds = useMemo(() => {
     if (!words.length) return [];
     return words
@@ -264,21 +261,9 @@ export default function ExportTextView({
         hasTranslation={hasTranslation}
       />
 
-      {/* containerRef: content container — ClauseRelationshipOverlay SVG is absolute inside this */}
+      {/* containerRef: content container — overlay SVGs are absolute inside this */}
       {/* data-png-crop-to: ExportLayout uses this rect to strip empty side margins from the PNG */}
       <div ref={containerRef} className="relative px-6 py-6 max-w-4xl mx-auto" data-png-crop-to="true">
-        <ClauseRelationshipOverlay
-          relationships={clauseRelationships}
-          containerRef={containerRef}
-          isHebrew={isHebrew}
-          hasTranslation={hasTranslation}
-          hasSource={true}
-          editing={false}
-          paragraphFirstWordIds={paragraphFirstWordIds}
-          selectedSegWordId={null}
-          onSelectSegment={noop}
-          onDeleteRelationship={noop}
-        />
         <RstRelationOverlay
           relations={rstRelations}
           containerRef={containerRef}

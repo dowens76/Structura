@@ -258,10 +258,6 @@ function _migrateUserDbInner(sqlite: Database.Database): void {
   if (!tagCols.includes("lemmas"))
     try { sqlite.exec("ALTER TABLE word_tags ADD COLUMN lemmas TEXT"); } catch { /* already exists */ }
 
-  const clrelCols = (sqlite.prepare("PRAGMA table_info(clause_relationships)").all() as { name: string }[]).map(r => r.name);
-  if (!clrelCols.includes("intersect_point"))
-    try { sqlite.exec("ALTER TABLE clause_relationships ADD COLUMN intersect_point TEXT NOT NULL DEFAULT 'mid'"); } catch { /* already exists */ }
-
   const rstCols = (sqlite.prepare("PRAGMA table_info(rst_relations)").all() as { name: string }[]).map(r => r.name);
   if (!rstCols.includes("intersect_point"))
     try { sqlite.exec("ALTER TABLE rst_relations ADD COLUMN intersect_point TEXT NOT NULL DEFAULT 'mid'"); } catch { /* already exists */ }

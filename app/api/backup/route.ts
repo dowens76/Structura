@@ -38,7 +38,7 @@ const REQUIRED_TABLES = [
   "translations", "translation_verses",
   "paragraph_breaks", "characters", "character_refs", "speech_sections",
   "word_tags", "word_tag_refs", "line_indents", "scene_breaks",
-  "passages", "clause_relationships", "rst_relations", "word_arrows",
+  "passages", "rst_relations", "word_arrows",
   "line_annotations", "rst_custom_types", "notes", "word_formatting",
   "constituent_labels", "word_datasets", "word_dataset_entries",
 ];
