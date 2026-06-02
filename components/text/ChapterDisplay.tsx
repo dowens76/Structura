@@ -4248,7 +4248,7 @@ export default function ChapterDisplay({
         {showRstPicker && (
           <div
             className="border-b border-[var(--border)] px-4 py-2 flex flex-col gap-2 shrink-0"
-            style={{ backgroundColor: "var(--nav-bg)" }}
+            style={{ backgroundColor: "var(--nav-bg)", flexDirection: "column" }}
           >
             {/* Coordinate row */}
             <div className="flex flex-wrap gap-1.5 items-center">
@@ -4312,7 +4312,7 @@ export default function ChapterDisplay({
         {rstEditGroupId && (
           <div
             className="border-b border-[var(--border)] px-4 py-2 flex flex-col gap-2 shrink-0"
-            style={{ backgroundColor: "var(--nav-bg)" }}
+            style={{ backgroundColor: "var(--nav-bg)", flexDirection: "column" }}
           >
             {/* Coordinate row */}
             <div className="flex flex-wrap gap-1.5 items-center">
