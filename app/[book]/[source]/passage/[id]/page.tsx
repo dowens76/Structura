@@ -20,12 +20,15 @@ import {
   getUltTranslation,
   getVcbVerses,
   getVcbTranslation,
+  getLxxVerseTexts,
+  getLxxTranslation,
   getChapterRstRelations,
   getChapterWordArrows,
   getChapterWordFormatting,
   getChapterSceneBreaks,
   getChapterLineAnnotations,
   getChapterTranslationFootnotes,
+  getChapterTextCriticalMarks,
   getBookSceneBreaks,
   getBookChapterMaxVerses,
   getGroupedBooksFor,
@@ -259,11 +262,36 @@ export default async function PassagePage({ params, searchParams }: PageProps) {
     }
   }
 
+  // ── LXX ────────────────────────────────────────────────────────────────────
+  const lxxBaseVerses: { chapter: number; verse: number; text: string }[] = [];
+  let lxxTranslation: Awaited<ReturnType<typeof getLxxTranslation>> = null;
+  for (const { book: entryBook, chapter: ch } of chapterEntries) {
+    const verses = getLxxVerseTexts(entryBook, ch);
+    for (const v of verses) lxxBaseVerses.push({ ...v, chapter: ch });
+  }
+  if (lxxBaseVerses.length > 0) {
+    lxxTranslation = await getLxxTranslation();
+    if (lxxTranslation !== null) {
+      const lxxEditsPerEntry = await Promise.all(
+        chapterEntries.map(({ book: entryBook, chapter: ch }) =>
+          getTranslationVerses(lxxTranslation!.id, entryBook, ch)
+        )
+      );
+      translationVerseData[lxxTranslation.id] = lxxEditsPerEntry.flat();
+    }
+  }
+
+  // ── Text Critical Marks ────────────────────────────────────────────────────
+  const initialTextCriticalMarks = chapterEntries.flatMap(({ book: entryBook, chapter: ch }) =>
+    getChapterTextCriticalMarks(entryBook, ch, workspaceId)
+  );
+
   // ── Translation footnotes ──────────────────────────────────────────────────
   const allTranslationsForFootnotes = [
     ...availableTranslations,
     ...(ultTranslation ? [ultTranslation] : []),
     ...(vcbTranslation ? [vcbTranslation] : []),
+    ...(lxxTranslation ? [lxxTranslation] : []),
   ];
   const initialTranslationFootnotes: Record<number, TranslationFootnote[]> = {};
   await Promise.all(
@@ -412,6 +440,9 @@ export default async function PassagePage({ params, searchParams }: PageProps) {
           ultTranslation={ultTranslation}
           vcbBaseVerses={vcbBaseVerses}
           vcbTranslation={vcbTranslation}
+          lxxBaseVerses={lxxBaseVerses}
+          lxxTranslation={lxxTranslation}
+          initialTextCriticalMarks={initialTextCriticalMarks}
           initialRstRelations={initialRstRelations}
           initialWordArrows={initialWordArrows}
           initialWordFormatting={initialWordFormatting}

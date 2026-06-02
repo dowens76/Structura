@@ -37,6 +37,7 @@ import hebrewLemmas from "@/lib/data/hebrew-lemmas.json";
 import { computeSectionRanges } from "@/lib/utils/sectionRanges";
 import { OSIS_BOOK_NAMES, OSIS_REF_BOOK_NAMES } from "@/lib/utils/osis";
 import { useTranslation } from "@/lib/i18n/LocaleContext";
+import { getMtToKjvInstructions, getKjvVerseLabel } from "@/lib/versification/mt-kjv-mapping";
 
 /** Normalize text for diacritic-insensitive find-in-page matching. */
 function normalizeForSearch(text: string): string {
@@ -108,6 +109,9 @@ interface Props {
   // VCB (built-in Vietnamese) translation
   vcbBaseVerses?: { chapter: number; verse: number; text: string }[];
   vcbTranslation?: Translation | null;
+  // LXX (built-in Septuagint) translation
+  lxxBaseVerses?: { chapter: number; verse: number; text: string }[];
+  lxxTranslation?: Translation | null;
   // RST relations + word arrows
   initialRstRelations: RstRelation[];
   initialWordArrows: WordArrow[];
@@ -117,6 +121,8 @@ interface Props {
   initialSceneBreaks: { wordId: string; heading: string | null; level: number; verse: number; outOfSequence: boolean; extendedThrough: number | null }[];
   // Line annotations (plot / theme / desc)
   initialLineAnnotations: LineAnnotation[];
+  // Text critical marks (MT/LXX comparison)
+  initialTextCriticalMarks?: { wordId: string; markType: string; textSource: string }[];
   // Book-wide breaks + max verses for cross-chapter range computation
   bookSceneBreaks: { wordId: string; level: number; chapter: number; verse: number; extendedThrough: number | null }[];
   bookMaxVerses: Map<number, number>;
@@ -155,6 +161,9 @@ export default function PassageView({
   ultTranslation = null,
   vcbBaseVerses = [],
   vcbTranslation = null,
+  lxxBaseVerses = [],
+  lxxTranslation = null,
+  initialTextCriticalMarks = [],
   initialRstRelations,
   initialWordArrows,
   initialWordFormatting,
@@ -194,6 +203,12 @@ export default function PassageView({
   const [selectedWord, setSelectedWord] = useState<Word | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
   const [notesOpen, setNotesOpen] = useState(false);
+  const [notesSynced, setNotesSynced] = useState(() => {
+    try { return localStorage.getItem("structura:notesSynced") === "true"; } catch { return false; }
+  });
+  const visibleVersesRef = useRef(new Set<string>());
+  const notesSyncedRef   = useRef(notesSynced);
+  const syncTimerRef     = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [bibleOpen, setBibleOpen] = useState(false);
   const [searchHits, setSearchHits] = useState<Set<string>>(new Set());
@@ -227,6 +242,17 @@ export default function PassageView({
       setTimeout(() => setLinkCopied(false), 2000);
     });
   }
+  // Text Critical Markup
+  const [tcMarkMap, setTcMarkMap] = useState<Map<string, string>>(
+    () => new Map(initialTextCriticalMarks.map(m => [m.wordId, m.markType]))
+  );
+  const [editingTc, setEditingTc] = useState(false);
+  const [activeTcMark, setActiveTcMark] = useState<"lxx_unique" | "mt_unique" | "same_different">("lxx_unique");
+
+  // Footnote anchor-move mode and editing gate
+  const [fnAnchorMoveId, setFnAnchorMoveId] = useState<number | null>(null);
+  const [editingFootnotes, setEditingFootnotes] = useState(false);
+
   // Translation footnotes
   const [localFootnotes, setLocalFootnotes] = useState<Record<number, TranslationFootnote[]>>(initialTranslationFootnotes);
   const [fnDialogOpen, setFnDialogOpen] = useState(false);
@@ -309,6 +335,10 @@ export default function PassageView({
     setLineHeightMultiplier(readLocal<number>("structura:lineHeightMultiplier", 1.0));
     setHideSourceText(readLocal<boolean>("structura:hideSourceText", translationOnly));
     setToolbarVis({ ...DEFAULT_TOOLBAR_VIS, ...readLocal<Partial<ToolbarVisibility>>("structura:toolbarVisibility", {}) });
+    // Auto-reopen search pane if a previous search was persisted
+    try {
+      if (sessionStorage.getItem("structura.search")) setSearchOpen(true);
+    } catch { /* ignore */ }
   }, []);
 
   // ── Editing mode toggles ──────────────────────────────────────────────────
@@ -507,10 +537,30 @@ export default function PassageView({
       data = { ...data, [vcbId]: merged };
     }
 
+    if (lxxTranslation && lxxBaseVerses.length > 0) {
+      const lxxId = lxxTranslation.id;
+      const editedMap = new Map(
+        (data[lxxId] ?? []).map((v) => [`${v.chapter}:${v.verse}`, v])
+      );
+      const merged: TranslationVerse[] = lxxBaseVerses.map((base, i) => {
+        return editedMap.get(`${base.chapter}:${base.verse}`) ?? {
+          id: -(i + 1),
+          workspaceId: lxxTranslation.workspaceId,
+          translationId: lxxId,
+          osisRef: `${osisBook}.${base.chapter}.${base.verse}`,
+          bookId: 0,
+          chapter: base.chapter,
+          verse: base.verse,
+          text: base.text,
+        };
+      });
+      data = { ...data, [lxxId]: merged };
+    }
+
     return data;
   // Only recalculate on passage identity / translation change.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [passage.id, ultTranslation?.id, vcbTranslation?.id]);
+  }, [passage.id, ultTranslation?.id, vcbTranslation?.id, lxxTranslation?.id]);
 
   const [editingTranslation, setEditingTranslation] = useState(false);
   const [localTranslationVerseData, setLocalTranslationVerseData] = useState(initialTranslationVerseData);
@@ -528,15 +578,20 @@ export default function PassageView({
     if (includeVcb && !list.some((t) => t.id === vcbTranslation!.id)) {
       list = [...list, vcbTranslation!];
     }
+    const includeLxx = lxxTranslation && lxxBaseVerses.length > 0;
+    if (includeLxx && !list.some((t) => t.id === lxxTranslation!.id)) {
+      list = [...list, lxxTranslation!];
+    }
     return list;
-  }, [availableTranslations, ultTranslation, ultBaseVerses.length, vcbTranslation, vcbBaseVerses.length, translationOnly]);
+  }, [availableTranslations, ultTranslation, ultBaseVerses.length, vcbTranslation, vcbBaseVerses.length, lxxTranslation, lxxBaseVerses.length, translationOnly]);
 
   const systemTranslationIds = useMemo(
     () => new Set([
       ...(ultTranslation ? [ultTranslation.id] : []),
       ...(vcbTranslation ? [vcbTranslation.id] : []),
+      ...(lxxTranslation ? [lxxTranslation.id] : []),
     ]),
-    [ultTranslation, vcbTranslation]
+    [ultTranslation, vcbTranslation, lxxTranslation]
   );
 
   // ── Overlay ref ────────────────────────────────────────────────────────────
@@ -575,6 +630,7 @@ export default function PassageView({
   useEffect(() => { findOpenRef.current = findOpen; }, [findOpen]);
   useEffect(() => { editingRefsRef.current = editingRefs; }, [editingRefs]);
   useEffect(() => { editingWordTagsRef.current = editingWordTags; }, [editingWordTags]);
+  useEffect(() => { notesSyncedRef.current = notesSynced; }, [notesSynced]);
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
@@ -615,15 +671,17 @@ export default function PassageView({
         tagFocusedFindWordRef.current();
         return;
       }
-      // Escape — close find bar
-      if (e.key === "Escape" && findOpenRef.current) {
-        setFindOpen(false);
-        setFindQuery("");
+      // Escape — cancel anchor-move first, then close find bar
+      if (e.key === "Escape") {
+        if (fnAnchorMoveId !== null) { setFnAnchorMoveId(null); return; }
+        if (findOpenRef.current) { setFindOpen(false); setFindQuery(""); }
       }
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
+  // fnAnchorMoveId intentionally in deps so Escape handler sees latest value
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fnAnchorMoveId]);
 
   // Fetch custom RST types on mount
   useEffect(() => {
@@ -691,22 +749,7 @@ export default function PassageView({
       .map((w) => w.wordId);
   }, [words, findQuery]);
 
-  const findHitSet = useMemo(() => new Set(findHitIds), [findHitIds]);
-  const findFocusId = findHitIds[findFocusIdx % Math.max(findHitIds.length, 1)] ?? null;
-
-  // Keep refs in sync for the static keydown listener
-  useEffect(() => { findHitIdsRef.current = findHitIds; }, [findHitIds]);
-
-  // Sync findFocusId ref for keyboard handler
-  useEffect(() => { findFocusIdRef.current = findFocusId; }, [findFocusId]);
-
-  // Scroll focused find hit into view
-  useEffect(() => {
-    if (!findFocusId) return;
-    document
-      .querySelector(`[data-word-id="${CSS.escape(findFocusId)}"]`)
-      ?.scrollIntoView({ behavior: "smooth", block: "center" });
-  }, [findFocusId]);
+  // findTvHitIds / findHitSetFull / findAllHitIds / findFocusId declared after activeTranslationVerseMap
 
   // ── Verse groups keyed by "chapter:verse" (for speech section handler) ────
   const chapterVerseGroups = useMemo(() => {
@@ -747,10 +790,51 @@ export default function PassageView({
   const isMultiChapter = orderedVerses.length > 0 &&
     orderedVerses[orderedVerses.length - 1].ch !== orderedVerses[0].ch;
 
+  // Track visible verses for notes-sync scroll (keyed by "chapter:verse")
+  useEffect(() => {
+    if (!notesOpen) return;
+    visibleVersesRef.current.clear();
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        const key = (entry.target as HTMLElement).dataset.passageVerseKey;
+        if (!key) return;
+        if (entry.isIntersecting) visibleVersesRef.current.add(key);
+        else visibleVersesRef.current.delete(key);
+      });
+      if (!notesSyncedRef.current || visibleVersesRef.current.size === 0) return;
+      if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
+      syncTimerRef.current = setTimeout(() => {
+        if (!notesSyncedRef.current || visibleVersesRef.current.size === 0) return;
+        const keys = [...visibleVersesRef.current];
+        // Sort by chapter then verse numerically
+        keys.sort((a, b) => {
+          const [ac, av] = a.split(":").map(Number);
+          const [bc, bv] = b.split(":").map(Number);
+          return ac !== bc ? ac - bc : av - bv;
+        });
+        const parts = keys[0].split(":");
+        const ch = parseInt(parts[0]);
+        const v  = parseInt(parts[1]);
+        if (!isNaN(ch) && !isNaN(v)) setNotesScrollVerse({ ch, v });
+      }, 300);
+    }, { threshold: 0.1 });
+    document.querySelectorAll("[data-passage-verse-key]").forEach((el) => observer.observe(el));
+    return () => {
+      observer.disconnect();
+      if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
+    };
+  }, [notesOpen, orderedVerses]);
+
   // ── Character map ─────────────────────────────────────────────────────────
   const characterMap = useMemo(
     () => new Map(characters.map((c) => [c.id, c])),
     [characters]
+  );
+
+  // Word position map — used by OutlinePane for dot placement
+  const wordPositionMap = useMemo(
+    () => new Map(words.map((w) => [w.wordId, w.positionInVerse])),
+    [words]
   );
 
   // ── wordId → SpeechSection[] sorted largest-range-first (outermost → innermost) ──
@@ -892,6 +976,110 @@ export default function PassageView({
 
   const hasActiveTranslations = activeTranslationIds.size > 0;
 
+  // ── Find-in-page: TV hits + combined navigation (declared after activeTranslationVerseMap) ──
+  const findTvHitIds = useMemo<string[]>(() => {
+    if (!findQuery.trim()) return [];
+    const q = normalizeForSearch(findQuery);
+    if (!q) return [];
+    const hits: string[] = [];
+    const vKeys = [...activeTranslationVerseMap.keys()].sort();
+    for (const key of vKeys) {
+      for (const { abbr, text } of activeTranslationVerseMap.get(key) ?? []) {
+        const cvParts = key.split(":");
+        const ch = cvParts[0];
+        const v  = cvParts[1];
+        const tokens = text.split(/\s+/).filter(Boolean).flatMap((t) => t.split(/(?<=—)(?=.)/));
+        tokens.forEach((token, wi) => {
+          if (normalizeForSearch(token).includes(q)) {
+            hits.push(`tv:${abbr}:${osisBook}.${ch}.${v}.${wi}`);
+          }
+        });
+      }
+    }
+    return hits;
+  }, [activeTranslationVerseMap, osisBook, findQuery]);
+
+  // Combined hit set for highlighting (source + translation)
+  const findHitSetFull = useMemo(() => {
+    const s = new Set(findHitIds);
+    for (const id of findTvHitIds) s.add(id);
+    return s;
+  }, [findHitIds, findTvHitIds]);
+
+  // Merged navigation list: source hits then TV hits, ordered by chapter:verse
+  const findAllHitIds = useMemo<string[]>(() => {
+    const findHitIdSet = new Set(findHitIds);
+    const srcByVerse = new Map<string, string[]>();
+    for (const w of words) {
+      if (findHitIdSet.has(w.wordId)) {
+        const key = `${w.chapter}:${w.verse}`;
+        const arr = srcByVerse.get(key) ?? [];
+        arr.push(w.wordId);
+        srcByVerse.set(key, arr);
+      }
+    }
+    const tvByVerse = new Map<string, string[]>();
+    for (const id of findTvHitIds) {
+      const parts = id.split(":");    // ["tv", abbr, "book.ch.v.wi"]
+      const dotParts = parts[2]?.split(".") ?? [];
+      if (dotParts.length >= 3) {
+        const key = `${dotParts[1]}:${dotParts[2]}`;
+        const arr = tvByVerse.get(key) ?? [];
+        arr.push(id);
+        tvByVerse.set(key, arr);
+      }
+    }
+    const allKeys = [...new Set([...srcByVerse.keys(), ...tvByVerse.keys()])].sort((a, b) => {
+      const [ac, av] = a.split(":").map(Number);
+      const [bc, bv] = b.split(":").map(Number);
+      return ac !== bc ? ac - bc : av - bv;
+    });
+    const result: string[] = [];
+    for (const key of allKeys) {
+      result.push(...(srcByVerse.get(key) ?? []));
+      result.push(...(tvByVerse.get(key) ?? []));
+    }
+    return result;
+  }, [words, findHitIds, findTvHitIds]);
+
+  const findFocusId = findAllHitIds[findFocusIdx % Math.max(findAllHitIds.length, 1)] ?? null;
+
+  // Keep refs in sync for the static keydown listener
+  useEffect(() => { findHitIdsRef.current = findAllHitIds; }, [findAllHitIds]);
+  useEffect(() => { setFindFocusIdx(0); }, [findAllHitIds.length]);
+  useEffect(() => { findFocusIdRef.current = findFocusId; }, [findFocusId]);
+
+  // Scroll to focused hit whenever it changes
+  useEffect(() => {
+    if (!findFocusId) return;
+    document
+      .querySelector(`[data-word-id="${CSS.escape(findFocusId)}"]`)
+      ?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [findFocusId]);
+
+  // Psalm verse offset: MT verse N vs ULT/VCB verse N−offset for chapters with superscriptions.
+  const translationVerseOffset = useMemo(() => {
+    if (osisBook !== "Ps") return 0;
+    const hasUltOrVcb = [...activeTranslationIds].some((id) => {
+      const tr = allAvailableTranslations.find((t) => t.id === id);
+      return tr?.abbreviation === "ULT" || tr?.abbreviation === "VCB";
+    });
+    if (!hasUltOrVcb) return 0;
+    // For multi-chapter passages only apply offset when a single chapter is visible
+    // (passage might span chapters with different offsets; use startChapter as representative)
+    const instrs = getMtToKjvInstructions(osisBook, passage.startChapter);
+    if (!instrs || instrs.length !== 1) return 0;
+    return instrs[0].mtVerseOffset;
+  }, [osisBook, passage.startChapter, activeTranslationIds, allAvailableTranslations]);
+
+  // KJV cross-chapter verse label function (e.g. Jonah 2:1 in MT = Jonah 1:17 in KJV).
+  const translationVerseLabelFn = useMemo<((v: number) => string | null) | undefined>(() => {
+    if (!hasActiveTranslations) return undefined;
+    const instrs = getMtToKjvInstructions(osisBook, passage.startChapter);
+    if (!instrs || !instrs.some((i) => i.kjvChapter !== passage.startChapter)) return undefined;
+    return (v: number) => getKjvVerseLabel(osisBook, passage.startChapter, v);
+  }, [osisBook, passage.startChapter, hasActiveTranslations]);
+
   function toggleTranslation(id: number) {
     const abbr = allAvailableTranslations.find((t) => t.id === id)?.abbreviation;
     if (!abbr) return;
@@ -1009,11 +1197,21 @@ export default function PassageView({
       : `${bookName} ${startChapter}:${startVerse} – ${endChapter}:${endVerse}`;
   })();
 
+  // ── toggleNotesSync ────────────────────────────────────────────────────────
+  const toggleNotesSync = useCallback(() => {
+    setNotesSynced((prev) => {
+      const next = !prev;
+      try { localStorage.setItem("structura:notesSynced", String(next)); } catch {}
+      return next;
+    });
+  }, []);
+
   // ── Word selection dispatcher ─────────────────────────────────────────────
   function handleSelectWord(word: Word, shiftHeld = false) {
     if (editingArrows) { handleSelectArrowWordById(word.wordId); return; }
     if (editingParagraphs) { handleToggleParagraphBreak(word.wordId); return; }
     if (editingBold || editingItalic) { handleToggleWordFormatting(word); return; }
+    if (editingTc) { handleToggleTcMark(word); return; }
     if (editingRefs) { if (activeCharId === null) return; handleToggleCharacterRef(word); return; }
     if (editingSpeech) { if (activeCharId === null) return; handleToggleSpeechSection(word, shiftHeld); return; }
     if (editingWordTags) { handleToggleWordTagRef(word); return; }
@@ -2018,6 +2216,100 @@ export default function PassageView({
     return handleToggleFormattingById(word.wordId, textSource);
   }
 
+  // ── Text Critical Mark handlers ────────────────────────────────────────────
+  async function handleToggleTcMark(word: Word) {
+    const { wordId, textSource: wordTextSource } = word;
+    const ch = wordToChapter.get(wordId) ?? passage.startChapter;
+    const current = tcMarkMap.get(wordId);
+    if (current === activeTcMark) {
+      setTcMarkMap((prev) => { const m = new Map(prev); m.delete(wordId); return m; });
+      fetch("/api/text-critical-marks", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ wordId }),
+      }).catch(() => {});
+    } else {
+      setTcMarkMap((prev) => new Map(prev).set(wordId, activeTcMark));
+      fetch("/api/text-critical-marks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ wordId, markType: activeTcMark, textSource: wordTextSource, book: osisBook, chapter: ch }),
+      }).catch(() => {});
+    }
+  }
+
+  // ── Footnote anchor-move helpers ───────────────────────────────────────────
+  function removeNthFnMarker(text: string, n: number): string {
+    const FN_RE = /\s*\\fn\s+\\fn\*/g;
+    let count = 0;
+    let result = text.replace(FN_RE, (match) => {
+      if (count++ === n) return "";
+      return match;
+    });
+    result = result.replace(/  +/g, " ").trim();
+    return result;
+  }
+
+  function sortedVerseFootnotes(translationId: number, verse: number): TranslationFootnote[] {
+    return (localFootnotes[translationId] ?? [])
+      .filter((fn) => fn.verse === verse)
+      .sort((a, b) => (a as { wordIndex?: number }).wordIndex! - (b as { wordIndex?: number }).wordIndex! || a.id - b.id);
+  }
+
+  async function handleMoveFootnoteAnchor(fnId: number, newWordIndex: number) {
+    let targetFn: TranslationFootnote | undefined;
+    for (const fns of Object.values(localFootnotes)) {
+      targetFn = fns.find((fn) => fn.id === fnId);
+      if (targetFn) break;
+    }
+    if (!targetFn) { setFnAnchorMoveId(null); return; }
+
+    const { translationId, verse } = targetFn;
+    const translation = allAvailableTranslations.find((t) => t.id === translationId);
+    if (!translation) { setFnAnchorMoveId(null); return; }
+
+    const siblings = sortedVerseFootnotes(translationId, verse);
+    const rank = siblings.findIndex((fn) => fn.id === fnId);
+    if (rank < 0) { setFnAnchorMoveId(null); return; }
+
+    const tvRecord = localTranslationVerseData[translationId]?.find((tv) => tv.verse === verse);
+    if (!tvRecord) { setFnAnchorMoveId(null); return; }
+
+    let newText = removeNthFnMarker(tvRecord.text, rank);
+
+    const tokens = newText.split(/(\s+)/);
+    let wordCount = 0;
+    let insertPos = tokens.length;
+    for (let i = 0; i < tokens.length; i++) {
+      if (tokens[i].trim() && !tokens[i].startsWith("\\")) {
+        if (wordCount === newWordIndex) { insertPos = i + 1; break; }
+        wordCount++;
+      }
+    }
+    tokens.splice(insertPos, 0, " \\fn \\fn*");
+    newText = tokens.join("").replace(/  +/g, " ").trim();
+
+    await handleUpdateTranslationVerse(translation.abbreviation, verse, newText);
+    try {
+      await fetch("/api/translation-footnotes", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: fnId, wordIndex: newWordIndex }),
+      });
+      setLocalFootnotes((prev) => {
+        const updated = { ...prev };
+        for (const tid of Object.keys(updated)) {
+          updated[Number(tid)] = (updated[Number(tid)] ?? []).map((fn) =>
+            fn.id === fnId ? { ...fn, wordIndex: newWordIndex } : fn
+          );
+        }
+        return updated;
+      });
+    } catch { /* ignore */ }
+
+    setFnAnchorMoveId(null);
+  }
+
   // ── Translation verse editing ──────────────────────────────────────────────
   async function handleUpdateTranslationVerse(abbr: string, verse: number, newText: string) {
     const translation = allAvailableTranslations.find((t) => t.abbreviation === abbr);
@@ -2294,10 +2586,26 @@ export default function PassageView({
     setFnDialogVerse(fn.verse);
     setFnDialogType(fn.type as "f" | "x");
     setFnDialogContent(fn.content);
+    setFnAnchorMoveId(null);
     setFnDialogOpen(true);
   }
 
   async function handleDeleteFootnote(translationId: number, fnId: number) {
+    const targetFn = (localFootnotes[translationId] ?? []).find((fn) => fn.id === fnId);
+    if (targetFn) {
+      const translation = allAvailableTranslations.find((t) => t.id === translationId);
+      if (translation) {
+        const siblings = sortedVerseFootnotes(translationId, targetFn.verse);
+        const rank = siblings.findIndex((fn) => fn.id === fnId);
+        const tvRecord = localTranslationVerseData[translationId]?.find((tv) => tv.verse === targetFn.verse);
+        if (tvRecord && rank >= 0) {
+          const newText = removeNthFnMarker(tvRecord.text, rank);
+          if (newText !== tvRecord.text) {
+            await handleUpdateTranslationVerse(translation.abbreviation, targetFn.verse, newText);
+          }
+        }
+      }
+    }
     try {
       await fetch(`/api/translation-footnotes?id=${fnId}`, { method: "DELETE" });
       setLocalFootnotes((prev) => ({
@@ -2912,6 +3220,31 @@ export default function PassageView({
             ].join(" ")}
           >I</button>}
 
+          {/* Text critical markup mode */}
+          {toolbarVis.refs && <button
+            onClick={() => setEditingTc((v) => !v)}
+            data-tip={editingTc ? "Exit text-critical mode" : "Text critical markup (MT/LXX)"}
+            className={[
+              "px-2.5 py-1 rounded text-xs font-bold transition-colors",
+              editingTc
+                ? "bg-indigo-600 text-white"
+                : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
+            ].join(" ")}
+          >TC</button>}
+          {editingTc && (
+            <>
+              <button onClick={() => setActiveTcMark("lxx_unique")} data-tip="LXX Unique (green)"
+                className={["w-7 h-7 rounded transition-colors border-2", activeTcMark === "lxx_unique" ? "border-green-600 bg-green-600" : "border-green-600 bg-transparent hover:bg-green-100 dark:hover:bg-green-900"].join(" ")}
+                title="LXX Unique"><span className="sr-only">LXX Unique</span></button>
+              <button onClick={() => setActiveTcMark("mt_unique")} data-tip="MT Unique (red)"
+                className={["w-7 h-7 rounded transition-colors border-2", activeTcMark === "mt_unique" ? "border-red-600 bg-red-600" : "border-red-600 bg-transparent hover:bg-red-100 dark:hover:bg-red-900"].join(" ")}
+                title="MT Unique"><span className="sr-only">MT Unique</span></button>
+              <button onClick={() => setActiveTcMark("same_different")} data-tip="Same meaning, different form (yellow)"
+                className={["w-7 h-7 rounded transition-colors border-2", activeTcMark === "same_different" ? "border-yellow-500 bg-yellow-500" : "border-yellow-500 bg-transparent hover:bg-yellow-100 dark:hover:bg-yellow-900"].join(" ")}
+                title="Same Meaning"><span className="sr-only">Same Meaning</span></button>
+            </>
+          )}
+
           {/* Character reference mode */}
           {toolbarVis.refs && <button
             onClick={() => {
@@ -2990,6 +3323,18 @@ export default function PassageView({
 
           {/* Notes / Search / Bible panel toggles */}
           <div className="border-l border-[var(--border)] pl-3 ml-1 flex items-center gap-1">
+            {toolbarVis.notes && notesOpen && (
+              <button
+                onClick={toggleNotesSync}
+                data-tip={notesSynced ? "Notes scroll sync ON — click to disable" : "Notes scroll sync OFF — click to enable"}
+                className={[
+                  "px-2.5 py-1 rounded text-xs font-medium transition-colors",
+                  notesSynced
+                    ? "bg-amber-500 text-white"
+                    : "bg-stone-100 dark:bg-stone-800 text-stone-500 dark:text-stone-400 hover:bg-stone-200 dark:hover:bg-stone-700",
+                ].join(" ")}
+              >⇅</button>
+            )}
             {toolbarVis.notes && <button
               onClick={() => setNotesOpen((v) => !v)}
               data-tip={notesOpen ? "Hide notes pane" : "Show notes pane"}
@@ -3113,6 +3458,26 @@ export default function PassageView({
                       : "bg-stone-300 dark:bg-stone-600 text-stone-500 dark:text-stone-400",
                   ].join(" ")}
                 >fn</button>
+              )}
+              {/* Footnote editing mode — enables delete buttons */}
+              {hasActiveTranslations && editingTranslation && (
+                <button
+                  onClick={() => setEditingFootnotes((v) => !v)}
+                  data-tip={editingFootnotes ? "Exit footnote editing (hide delete buttons)" : "Enter footnote editing (show delete buttons)"}
+                  className={["px-2.5 py-1.5 rounded text-xs font-medium transition-colors",
+                    editingFootnotes
+                      ? "bg-amber-100 dark:bg-amber-900/40 text-amber-600 dark:text-amber-400 ring-1 ring-amber-400"
+                      : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
+                  ].join(" ")}
+                >fn✎</button>
+              )}
+              {fnAnchorMoveId !== null && (
+                <button
+                  onClick={() => setFnAnchorMoveId(null)}
+                  className="px-2.5 py-1.5 rounded text-[11px] font-medium transition-colors bg-sky-100 dark:bg-sky-900/40 text-sky-600 dark:text-sky-400 ring-1 ring-sky-400 animate-pulse"
+                >
+                  Click word to place anchor · Esc to cancel
+                </button>
               )}
             </div>
           )}
@@ -3418,10 +3783,10 @@ export default function PassageView({
           <FindBar
             query={findQuery}
             onChange={(q) => setFindQuery(q)}
-            hitCount={findHitIds.length}
+            hitCount={findAllHitIds.length}
             focusIdx={findFocusIdx}
-            onPrev={() => setFindFocusIdx((i) => (i - 1 + Math.max(findHitIds.length, 1)) % Math.max(findHitIds.length, 1))}
-            onNext={() => setFindFocusIdx((i) => (i + 1) % Math.max(findHitIds.length, 1))}
+            onPrev={() => setFindFocusIdx((i) => (i - 1 + Math.max(findAllHitIds.length, 1)) % Math.max(findAllHitIds.length, 1))}
+            onNext={() => setFindFocusIdx((i) => (i + 1) % Math.max(findAllHitIds.length, 1))}
             onClose={() => { setFindOpen(false); setFindQuery(""); }}
             inputRef={findInputRef}
             canTag={editingRefs || editingWordTags}
@@ -3462,7 +3827,7 @@ export default function PassageView({
               const prev = orderedVerses[idx - 1];
               const next = orderedVerses[idx + 1];
               return (
-                <div key={`${verse.ch}:${verse.v}`}>
+                <div key={`${verse.ch}:${verse.v}`} data-passage-verse-key={`${verse.ch}:${verse.v}`}>
                   {/* Chapter heading — only shown for multi-chapter passages, not in presentation mode */}
                   {isMultiChapter && isFirstOfChapter && !presentationMode && (
                     <h2
@@ -3552,7 +3917,7 @@ export default function PassageView({
                     hasActiveTranslations={hasActiveTranslations}
                     showAtnachBreaks={showAtnachBreaks}
                     tagRangeStartWordId={refRangeStart ?? wordTagRangeStart}
-                    findHits={findHitSet}
+                    findHits={findHitSetFull}
                     findFocusId={findFocusId}
                     interlinearSubMode={interlinearSubMode}
                     constituentLabelMap={constituentLabelMap}
@@ -3568,6 +3933,19 @@ export default function PassageView({
                           )
                         : []
                     }
+                    tcMarkMap={tcMarkMap}
+                    editingFootnotes={editingFootnotes}
+                    anchorMoveFootnote={(() => {
+                      if (fnAnchorMoveId === null) return undefined;
+                      const fn = Object.values(localFootnotes).flat().find((f) => f.id === fnAnchorMoveId);
+                      if (!fn || fn.verse !== verse.v) return undefined;
+                      const tr = allAvailableTranslations.find((t) => t.id === fn.translationId);
+                      if (!tr) return undefined;
+                      return { id: fn.id, translationId: fn.translationId, verse: fn.verse, abbr: tr.abbreviation };
+                    })()}
+                    onMoveFootnoteAnchor={(fnId, wordIndex) => handleMoveFootnoteAnchor(fnId, wordIndex)}
+                    translationVerseOffset={translationVerseOffset}
+                    translationVerseLabelFn={translationVerseLabelFn}
                     onDeleteFootnote={(translationId, fnId) => handleDeleteFootnote(translationId, fnId)}
                     onEditFootnote={(fn) => openEditFootnote(fn)}
                     onVerseClick={(v) => {
@@ -3632,9 +4010,9 @@ export default function PassageView({
             book={osisBook}
             chapter={-1}
             textSource={textSource}
-            sceneBreakMap={new Map()}
+            sceneBreakMap={sceneBreakMap}
             bookSceneBreaks={outlineBreaksForPane}
-            wordPositionMap={new Map()}
+            wordPositionMap={wordPositionMap}
             sectionRanges={sectionRanges}
             onUpdateCurrentHeading={handleUpdateSceneHeading}
             onDeleteCurrentBreak={handleDeleteSceneBreakForOutline}
