@@ -959,12 +959,14 @@ export default function RstRelationOverlay({
         let pathD: string;
         if (isSubordinate) {
           const nucX = nucleusXByGroup.get(key) ?? spineX;
-          // outerX: one LEVEL_WIDTH beyond the nucleus spine — anchoring to the
-          // nucleus prevents the corner from drifting to the far edge of the
-          // gutter when the satellite is more deeply nested than the nucleus.
+          // outerX: furthest-out of [nucleus − LW] and [satellite − LW].
+          // When the satellite is a deeply nested group its spine is already
+          // further from the text than nucX − LW, so we push the corner past
+          // it so that the outer relation's elbow stays visually outside the
+          // inner bracket rather than appearing inside it.
           const outerX = (isHebrew && !lk.isTrans)
-            ? nucX + LEVEL_WIDTH
-            : nucX - LEVEL_WIDTH;
+            ? Math.max(nucX + LEVEL_WIDTH, armX2 + LEVEL_WIDTH)
+            : Math.min(nucX - LEVEL_WIDTH, armX2 - LEVEL_WIDTH);
           pathD = `M ${nucX},${lk.y1} H ${outerX} V ${lk.y2} H ${armX2}`;
         } else {
           pathD = `M ${spineX},${lk.y1} V ${armY} H ${armX2}`;
@@ -1014,8 +1016,8 @@ export default function RstRelationOverlay({
         if (isSubordinate) {
           const nucX = nucleusXByGroup.get(key) ?? spineX;
           armStartX = (isHebrew && !lk.isTrans)
-            ? nucX + LEVEL_WIDTH
-            : nucX - LEVEL_WIDTH;
+            ? Math.max(nucX + LEVEL_WIDTH, armX2 + LEVEL_WIDTH)
+            : Math.min(nucX - LEVEL_WIDTH, armX2 - LEVEL_WIDTH);
         } else {
           armStartX = spineX;
         }
@@ -1127,8 +1129,8 @@ export default function RstRelationOverlay({
           : undefined;
         const subCornerX = (isSubordGroup && subNucX !== undefined)
           ? ((isHebrew && !n.isTrans)
-              ? subNucX + LEVEL_WIDTH
-              : subNucX - LEVEL_WIDTH)
+              ? Math.max(subNucX + LEVEL_WIDTH, satArmX2 !== undefined ? satArmX2 + LEVEL_WIDTH : subNucX + LEVEL_WIDTH)
+              : Math.min(subNucX - LEVEL_WIDTH, satArmX2 !== undefined ? satArmX2 - LEVEL_WIDTH : subNucX - LEVEL_WIDTH))
           : subNucX;
         const chipX    = subCornerX !== undefined
           ? (isHebrew && !n.isTrans)
