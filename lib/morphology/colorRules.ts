@@ -105,6 +105,7 @@ export const RULE_PALETTE: string[] = [
   "#3b82f6", // blue
   "#8b5cf6", // violet
   "#ec4899", // pink
+  "#6b7280", // gray
 ];
 
 // ── Field definitions ─────────────────────────────────────────────────────────

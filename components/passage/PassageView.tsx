@@ -2752,7 +2752,12 @@ export default function PassageView({
 
           {/* Paragraph edit mode */}
           {toolbarVis.paragraphs && <button
-            onClick={() => setEditingParagraphs((v) => !v)}
+            onClick={() => {
+              setEditingParagraphs((v) => !v);
+              setEditingBold(false); setEditingItalic(false);
+              setEditingRefs(false); setEditingSpeech(false); setSpeechRangeStart(null);
+              setEditingWordTags(false); setPendingWordTag(false);
+            }}
             data-tip={editingParagraphs ? "Exit paragraph edit mode" : "Enter paragraph edit mode — click any word to start/remove a paragraph there"}
             className={["px-2.5 py-1 rounded text-xs font-medium transition-colors",
               editingParagraphs ? "bg-amber-500 text-white"
@@ -2863,10 +2868,8 @@ export default function PassageView({
 
           {/* Bold formatting mode */}
           {toolbarVis.bold && <button
-            disabled={editingWordTags}
             onClick={() => {
               setEditingBold((v) => !v);
-              setEditingItalic(false);
               setEditingParagraphs(false);
               setEditingRefs(false);
               setEditingSpeech(false);
@@ -2875,23 +2878,21 @@ export default function PassageView({
               setEditingRst(false);
               setEditingArrows(false);
               setSpeechRangeStart(null);
+              setPendingWordTag(false);
               setRstSegA(null);
               setArrowFromWordId(null);
             }}
-            data-tip={editingWordTags ? t("toolbar.titleBoldDisabled") : editingBold ? t("toolbar.titleBoldOn") : t("toolbar.titleBoldOff")}
+            data-tip={editingBold ? t("toolbar.titleBoldOn") : t("toolbar.titleBoldOff")}
             className={["px-2.5 py-1 rounded text-xs font-bold transition-colors",
               editingBold ? "bg-stone-800 text-white dark:bg-stone-200 dark:text-stone-900"
                 : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
-              "disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-stone-100 dark:disabled:hover:bg-stone-800",
             ].join(" ")}
           >B</button>}
 
           {/* Italic formatting mode */}
           {toolbarVis.italic && <button
-            disabled={editingWordTags}
             onClick={() => {
               setEditingItalic((v) => !v);
-              setEditingBold(false);
               setEditingParagraphs(false);
               setEditingRefs(false);
               setEditingSpeech(false);
@@ -2900,14 +2901,14 @@ export default function PassageView({
               setEditingRst(false);
               setEditingArrows(false);
               setSpeechRangeStart(null);
+              setPendingWordTag(false);
               setRstSegA(null);
               setArrowFromWordId(null);
             }}
-            data-tip={editingWordTags ? t("toolbar.titleItalicDisabled") : editingItalic ? t("toolbar.titleItalicOn") : t("toolbar.titleItalicOff")}
+            data-tip={editingItalic ? t("toolbar.titleItalicOn") : t("toolbar.titleItalicOff")}
             className={["px-2.5 py-1 rounded text-xs italic transition-colors",
               editingItalic ? "bg-stone-800 text-white dark:bg-stone-200 dark:text-stone-900"
                 : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
-              "disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-stone-100 dark:disabled:hover:bg-stone-800",
             ].join(" ")}
           >I</button>}
 
@@ -2915,8 +2916,10 @@ export default function PassageView({
           {toolbarVis.refs && <button
             onClick={() => {
               setEditingRefs((v) => !v);
-              setEditingSpeech(false); setEditingWordTags(false);
-              setPendingWordTag(false); setSpeechRangeStart(null);
+              setEditingBold(false); setEditingItalic(false);
+              setEditingParagraphs(false);
+              setEditingSpeech(false); setSpeechRangeStart(null);
+              setEditingWordTags(false); setPendingWordTag(false);
             }}
             data-tip={editingRefs ? "Exit reference tagging" : "Tag words as referring to a character"}
             className={["px-2.5 py-1 rounded text-xs font-medium transition-colors",
@@ -2929,8 +2932,10 @@ export default function PassageView({
           {toolbarVis.speech && <button
             onClick={() => {
               setEditingSpeech((v) => !v);
-              setEditingRefs(false); setEditingWordTags(false);
-              setPendingWordTag(false); setSpeechRangeStart(null);
+              setEditingBold(false); setEditingItalic(false);
+              setEditingParagraphs(false);
+              setEditingRefs(false); setSpeechRangeStart(null);
+              setEditingWordTags(false); setPendingWordTag(false);
             }}
             data-tip={editingSpeech ? "Exit speech tagging" : "Mark word ranges as spoken by a character (two clicks: start then end)"}
             className={["px-2.5 py-1 rounded text-xs font-medium transition-colors",
@@ -2943,9 +2948,11 @@ export default function PassageView({
           {toolbarVis.wordTags && <button
             onClick={() => {
               setEditingWordTags((v) => !v);
-              setEditingRefs(false); setEditingSpeech(false);
-              setEditingIndents(false); setSpeechRangeStart(null);
-              setPendingWordTag(false); setEditingArrows(false); setArrowFromWordId(null);
+              setEditingBold(false); setEditingItalic(false);
+              setEditingParagraphs(false);
+              setEditingRefs(false); setEditingSpeech(false); setSpeechRangeStart(null);
+              setEditingIndents(false); setPendingWordTag(false);
+              setEditingArrows(false); setArrowFromWordId(null);
             }}
             data-tip={editingWordTags ? "Exit word/concept tag mode" : "Tag words or concepts with colour highlights"}
             className={["px-2.5 py-1 rounded text-xs font-medium transition-colors",
