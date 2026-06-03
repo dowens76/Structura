@@ -10,17 +10,17 @@ import type { NoteSection } from "@/lib/export/generate-docx";
 export const dynamic = "force-dynamic";
 
 // POST /api/export/notes
-// Body: { keys: string[]; title: string; format: "docx" | "odt" }
+// Body: { keys: string[]; title: string; format: "docx" | "odt"; metaKey?: string }
 // Returns binary file download.
 export async function POST(request: NextRequest) {
-  let body: { keys?: string[]; title?: string; format?: string };
+  let body: { keys?: string[]; title?: string; format?: string; metaKey?: string };
   try {
     body = await request.json();
   } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const { keys, title = "Notes", format } = body;
+  const { keys, title = "Notes", format, metaKey } = body;
 
   if (!Array.isArray(keys) || keys.length === 0) {
     return NextResponse.json({ error: "No keys provided" }, { status: 400 });
@@ -31,11 +31,12 @@ export async function POST(request: NextRequest) {
 
   const workspaceId = await getActiveWorkspaceId();
 
-  // Fetch notes from DB.
+  // Fetch notes from DB (include metaKey if provided).
+  const allFetchKeys = metaKey ? [...keys, metaKey] : keys;
   const rows = await userDb
     .select({ key: notes.key, content: notes.content })
     .from(notes)
-    .where(and(inArray(notes.key, keys), eq(notes.workspaceId, workspaceId)));
+    .where(and(inArray(notes.key, allFetchKeys), eq(notes.workspaceId, workspaceId)));
 
   const contentByKey = new Map(rows.map((r) => [r.key, r.content]));
 
@@ -65,20 +66,27 @@ export async function POST(request: NextRequest) {
   const multiChapter = chapters.size > 1;
 
   function keyToLabel(key: string): string {
-    const [type, ref] = key.split(":");
+    const parts = key.split(":");
+    const type = parts[0];
+    // sermon:chapter:Gen.1 or sermon:passage:42
+    if (type === "sermon") {
+      const subType = parts[1] ?? "";
+      return subType === "passage" ? "Teaching Outline (Passage)" : "Teaching Outline";
+    }
+    const ref = parts[1];
     if (!ref) return key;
-    const parts = ref.split(".");
+    const refParts = ref.split(".");
     switch (type) {
       case "passage":
         return "Passage Note";
       case "chapter": {
-        const ch = parseInt(parts[parts.length - 1], 10);
+        const ch = parseInt(refParts[refParts.length - 1], 10);
         return isNaN(ch) ? "Chapter Note" : `Chapter ${ch}`;
       }
       case "verse": {
-        if (parts.length < 2) return "Verse";
-        const v  = parseInt(parts[parts.length - 1], 10);
-        const ch = parseInt(parts[parts.length - 2], 10);
+        if (refParts.length < 2) return "Verse";
+        const v  = parseInt(refParts[refParts.length - 1], 10);
+        const ch = parseInt(refParts[refParts.length - 2], 10);
         if (multiChapter && !isNaN(ch)) return `Chapter ${ch} · Verse ${v}`;
         return isNaN(v) ? "Verse" : `Verse ${v}`;
       }
@@ -87,10 +95,38 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  const sections: NoteSection[] = keys.map((key) => ({
+  const metaSections: NoteSection[] = [];
+  if (metaKey) {
+    const metaContent = contentByKey.get(metaKey) ?? "{}";
+    try {
+      const m = JSON.parse(metaContent);
+      if (m && typeof m === "object" && !m.type) {
+        if (m.mainIdea?.trim()) {
+          metaSections.push({
+            label: "Main Idea",
+            content: JSON.stringify({ type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: m.mainIdea }] }] }),
+          });
+        }
+        if (Array.isArray(m.customFields)) {
+          for (const f of m.customFields) {
+            if (f.value?.trim()) {
+              metaSections.push({
+                label: f.name || "Field",
+                content: JSON.stringify({ type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: f.value }] }] }),
+              });
+            }
+          }
+        }
+      }
+    } catch { /* ignore */ }
+  }
+
+  const regularSections: NoteSection[] = keys.map((key) => ({
     label:   keyToLabel(key),
     content: contentByKey.get(key) ?? "{}",
   }));
+
+  const sections: NoteSection[] = [...metaSections, ...regularSections];
 
   // Check at least one section has content.
   const { tiptapIsEmpty } = await import("@/lib/export/tiptap-utils");

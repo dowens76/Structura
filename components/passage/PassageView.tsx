@@ -790,6 +790,13 @@ export default function PassageView({
   const isMultiChapter = orderedVerses.length > 0 &&
     orderedVerses[orderedVerses.length - 1].ch !== orderedVerses[0].ch;
 
+  // True when the passage covers exactly one full chapter (verse 1 through the last verse)
+  const isWholeChapter = !isMultiChapter &&
+    !passage.endBook &&
+    orderedVerses.length > 0 &&
+    orderedVerses[0].v === 1 &&
+    orderedVerses[orderedVerses.length - 1].v === maxVerseOfStartChapter;
+
   // Track visible verses for notes-sync scroll (keyed by "chapter:verse")
   useEffect(() => {
     if (!notesOpen) return;
@@ -3975,6 +3982,8 @@ export default function PassageView({
             bookName={bookName}
             orderedVerses={orderedVerses}
             isMultiChapter={isMultiChapter}
+            isWholeChapter={isWholeChapter}
+            wholeChapterNum={isWholeChapter ? passage.startChapter : undefined}
             scrollToVerse={notesScrollVerse}
             onScrollHandled={() => setNotesScrollVerse(null)}
             onClose={() => setNotesOpen(false)}

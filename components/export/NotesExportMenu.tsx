@@ -7,11 +7,12 @@ interface Props {
   noteKeys: string[];
   title: string;
   filename: string;
+  metaKey?: string;
 }
 
 type Status = "idle" | "loading" | "done" | "empty";
 
-export default function NotesExportMenu({ noteKeys, title, filename }: Props) {
+export default function NotesExportMenu({ noteKeys, title, filename, metaKey }: Props) {
   const [open, setOpen] = useState(false);
   const [docxStatus, setDocxStatus] = useState<Status>("idle");
   const [odtStatus,  setOdtStatus]  = useState<Status>("idle");
@@ -38,7 +39,7 @@ export default function NotesExportMenu({ noteKeys, title, filename }: Props) {
       const res = await fetch("/api/export/notes", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ keys: noteKeys, title, format }),
+        body: JSON.stringify({ keys: noteKeys, title, format, metaKey }),
       });
       if (res.status === 404) {
         setStatus("empty");
@@ -68,20 +69,25 @@ export default function NotesExportMenu({ noteKeys, title, filename }: Props) {
     setOpen(false);
     try {
       // Fetch raw note content from the notes API.
-      const url = `/api/notes?keys=${encodeURIComponent(noteKeys.join(","))}`;
+      const allKeys = metaKey ? [metaKey, ...noteKeys] : noteKeys;
+      const url = `/api/notes?keys=${encodeURIComponent(allKeys.join(","))}`;
       const res = await fetch(url);
       const data: Record<string, { content: string }> = await res.json();
 
-      // Check for any non-empty notes.
-      const hasAny = noteKeys.some((k) => !tiptapIsEmpty(data[k]?.content ?? "{}"));
+      // Check for any non-empty notes (exclude meta key from TipTap empty check).
+      const hasAny = noteKeys.some((k) => !tiptapIsEmpty(data[k]?.content ?? "{}"))
+        || (metaKey ? !isMetaEmpty(data[metaKey]?.content ?? "{}") : false);
       if (!hasAny) {
         setCopyStatus("empty");
         setTimeout(() => setCopyStatus("idle"), 3000);
         return;
       }
 
-      // Build HTML document.
+      // Build HTML document — summary section first, then regular notes.
       let html = `<h1>${esc(title)}</h1>\n`;
+      if (metaKey) {
+        html += metaToHtml(data[metaKey]?.content ?? "{}");
+      }
       for (const key of noteKeys) {
         const content = data[key]?.content ?? "{}";
         if (tiptapIsEmpty(content)) continue;
@@ -108,6 +114,36 @@ export default function NotesExportMenu({ noteKeys, title, filename }: Props) {
 
   function esc(s: string) {
     return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+
+  function isMetaEmpty(content: string): boolean {
+    try {
+      const m = JSON.parse(content);
+      if (m && typeof m === "object" && !m.type) {
+        if (m.mainIdea?.trim()) return false;
+        if (Array.isArray(m.customFields) && m.customFields.some((f: { value?: string }) => f.value?.trim())) return false;
+      }
+    } catch { /* ignore */ }
+    return true;
+  }
+
+  function metaToHtml(content: string): string {
+    try {
+      const m = JSON.parse(content);
+      if (!m || typeof m !== "object" || m.type) return "";
+      let out = "";
+      if (m.mainIdea?.trim()) {
+        out += `<h2>${esc("Main Idea")}</h2><p>${esc(m.mainIdea)}</p>\n`;
+      }
+      if (Array.isArray(m.customFields)) {
+        for (const f of m.customFields) {
+          if (f.value?.trim()) {
+            out += `<h2>${esc(f.name || "Field")}</h2><p>${esc(f.value)}</p>\n`;
+          }
+        }
+      }
+      return out;
+    } catch { return ""; }
   }
 
   const btnBase =

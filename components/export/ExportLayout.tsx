@@ -81,6 +81,8 @@ interface Props {
     title: string;
     /** All note keys to include (chapter + verse keys in order) */
     keys: string[];
+    /** Key for the meta blob (main idea + custom fields) — rendered as structured sections */
+    metaKey?: string;
   };
 }
 
@@ -846,6 +848,7 @@ export default function ExportLayout({ children, revealHref, filename, backHref,
                 noteKeys={noteContext.keys}
                 title={noteContext.title}
                 filename={filename}
+                metaKey={noteContext.metaKey}
               />
             </>
           )}

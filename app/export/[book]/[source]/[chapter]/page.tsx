@@ -173,9 +173,11 @@ export default async function ExportChapterPage({ params, searchParams }: PagePr
   const noteContext = {
     title: `${bookName} ${chapter}`,
     keys: [
+      `sermon:chapter:${osisBook}.${chapter}`,
       `chapter:${osisBook}.${chapter}`,
       ...verseNums.map((v) => `verse:${osisBook}.${chapter}.${v}`),
     ],
+    metaKey: `meta:chapter:${osisBook}.${chapter}`,
   };
 
   return (

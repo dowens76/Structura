@@ -25,6 +25,7 @@ import {
   getUltVerses,
   getVcbTranslation,
   getVcbVerses,
+  getChapterMaxVerse,
 } from "@/lib/db/queries";
 import type { TranslationVerse, TranslationFootnote } from "@/lib/db/schema";
 import type { TextSource } from "@/lib/morphology/types";
@@ -208,13 +209,28 @@ export default async function ExportPassagePage({ params, searchParams }: PagePr
       const [bc, bv] = b.split(":").map(Number);
       return ac !== bc ? ac - bc : av - bv;
     });
+
+  // Determine if passage is exactly one whole chapter (same logic as PassageView).
+  const isWholeChapter = chapterRange.length === 1 &&
+    !passage.endBook &&
+    passage.startVerse === 1 &&
+    passage.endVerse === await getChapterMaxVerse(osisBook, passage.startChapter, textSource);
+  const overviewMetaKey = isWholeChapter
+    ? `meta:chapter:${osisBook}.${passage.startChapter}`
+    : `meta:passage:${id}`;
+  const overviewSermonKey = isWholeChapter
+    ? `sermon:chapter:${osisBook}.${passage.startChapter}`
+    : `sermon:passage:${id}`;
+
   const noteContext = {
     title: passageLabel,
     keys: [
+      overviewSermonKey,
       `passage:${id}`,
       ...chapterRange.map((ch) => `chapter:${osisBook}.${ch}`),
       ...verseRefsSorted.map((ref) => { const [ch, v] = ref.split(":"); return `verse:${osisBook}.${ch}.${v}`; }),
     ],
+    metaKey: overviewMetaKey,
   };
 
   return (

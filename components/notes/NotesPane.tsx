@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import NoteEditor from "./NoteEditor";
+import ChapterSummarySection from "./ChapterSummarySection";
 import { useTranslation } from "@/lib/i18n/LocaleContext";
 import { extractTextFromTipTap } from "@/lib/utils/tiptap-text";
 
@@ -249,6 +250,13 @@ export default function NotesPane({
 
       {/* Scrollable content */}
       <div className="flex-1 overflow-y-auto" ref={paneRef}>
+        <ChapterSummarySection
+          metaKey={`meta:chapter:${book}.${chapter}`}
+          sermonKey={`sermon:chapter:${book}.${chapter}`}
+          book={book}
+          chapter={chapter}
+          searchQuery={q || undefined}
+        />
         {!loaded ? (
           <div className="px-4 py-6 text-xs text-stone-400 dark:text-stone-500">Loading…</div>
         ) : (

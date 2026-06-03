@@ -100,7 +100,7 @@ const SearchHighlightExtension = Extension.create({
 interface NoteEditorProps {
   /** Unique DB key for this note (e.g. "verse:Gen.1.1") */
   noteKey: string;
-  noteType: "verse" | "chapter" | "passage";
+  noteType: "verse" | "chapter" | "passage" | "sermon" | "meta";
   /** Initial Tiptap JSON string from DB (may be "{}" for empty) */
   initialContent: string;
   book?: string;

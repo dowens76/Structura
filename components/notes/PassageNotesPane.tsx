@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import NoteEditor from "./NoteEditor";
+import ChapterSummarySection from "./ChapterSummarySection";
 import { extractTextFromTipTap } from "@/lib/utils/tiptap-text";
 
 interface VerseRef { ch: number; v: number; }
@@ -26,6 +27,10 @@ interface PassageNotesPaneProps {
   /** Ordered list of { ch, v } for all verses in the passage */
   orderedVerses: VerseRef[];
   isMultiChapter: boolean;
+  /** True when the passage covers exactly one full chapter */
+  isWholeChapter?: boolean;
+  /** The chapter number when isWholeChapter is true */
+  wholeChapterNum?: number;
   /** Verse to scroll to when a verse number is clicked in the text */
   scrollToVerse: VerseRef | null;
   onScrollHandled: () => void;
@@ -41,6 +46,8 @@ export default function PassageNotesPane({
   bookName,
   orderedVerses,
   isMultiChapter,
+  isWholeChapter = false,
+  wholeChapterNum,
   scrollToVerse,
   onScrollHandled,
   onClose,
@@ -272,6 +279,15 @@ export default function PassageNotesPane({
 
       {/* Scrollable content */}
       <div className="flex-1 overflow-y-auto" ref={paneRef}>
+        <ChapterSummarySection
+          metaKey={isWholeChapter && wholeChapterNum != null
+            ? `meta:chapter:${book}.${wholeChapterNum}`
+            : `meta:passage:${passageId}`}
+          sermonKey={isWholeChapter && wholeChapterNum != null
+            ? `sermon:chapter:${book}.${wholeChapterNum}`
+            : `sermon:passage:${passageId}`}
+          searchQuery={q || undefined}
+        />
         {!loaded ? (
           <div className="px-4 py-6 text-xs text-stone-400 dark:text-stone-500">Loading…</div>
         ) : (
