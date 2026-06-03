@@ -101,11 +101,21 @@ export default async function ExportChapterPage({ params, searchParams }: PagePr
     ultBaseVerses.length > 0 ? getUltTranslation(workspaceId) : Promise.resolve(null),
     vcbBaseVerses.length > 0 ? getVcbTranslation(workspaceId) : Promise.resolve(null),
   ]);
-  const allTranslations = [
+  // Merge ULT/VCB with user translations, then deduplicate by abbreviation so a
+  // custom translation named the same as a built-in never creates two entries with
+  // the same key in the rendered translation list.
+  const allTranslationsRaw = [
     ...(ultTranslation && !availableTranslations.some(t => t.id === ultTranslation.id) ? [ultTranslation] : []),
     ...availableTranslations,
     ...(vcbTranslation && !availableTranslations.some(t => t.id === vcbTranslation.id) ? [vcbTranslation] : []),
   ];
+  const _seenAbbr = new Set<string>();
+  const allTranslations = allTranslationsRaw.filter(t => {
+    const key = t.abbreviation.toLowerCase();
+    if (_seenAbbr.has(key)) return false;
+    _seenAbbr.add(key);
+    return true;
+  });
 
   // If the caller passed ?t=ESV,NIV (written by NavLinks from localStorage),
   // show only those translations.  No ?t= means the user has no translation
