@@ -4006,7 +4006,7 @@ export default function ChapterDisplay({
                       onClick={() => { setEditingTranslation((v) => !v); setEditingTranslationSource(false); }}
                       data-tip={editingTranslation ? t("toolbar.titleEditTranslationOn") : t("toolbar.titleEditTranslationOff")}
                       className={[
-                        "px-3 py-1.5 rounded text-[13px] font-medium transition-colors",
+                        "px-4 py-2 rounded text-[17px] font-medium transition-colors",
                         editingTranslation
                           ? "bg-sky-600 text-white"
                           : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
@@ -4018,8 +4018,8 @@ export default function ChapterDisplay({
                   {hasActiveTranslations && (
                     <button
                       onClick={openChapterUsfm}
-                      data-tip="View / edit chapter USFM source"
-                      className="px-2.5 py-1.5 rounded text-[12px] font-mono font-medium transition-colors bg-stone-100 dark:bg-stone-800 text-stone-500 dark:text-stone-400 hover:bg-stone-200 dark:hover:bg-stone-700"
+                      data-tip="View / edit USFM source"
+                      className="px-3 py-2 rounded text-[16px] font-mono font-medium transition-colors bg-stone-100 dark:bg-stone-800 text-stone-500 dark:text-stone-400 hover:bg-stone-200 dark:hover:bg-stone-700"
                     >
                       {"‹›"}
                     </button>
@@ -4031,7 +4031,7 @@ export default function ChapterDisplay({
                       <button
                         onMouseDown={(e) => { e.preventDefault(); applyNdMarker(); }}
                         data-tip="Wrap selection as Divine Name (small caps) — \nd...\nd*"
-                        className="px-2.5 py-1.5 rounded text-[11px] font-bold font-mono tracking-wider transition-colors bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-amber-100 hover:text-amber-700 dark:hover:bg-amber-900 dark:hover:text-amber-300"
+                        className="px-3 py-2 rounded text-[14px] font-bold font-mono tracking-wider transition-colors bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-amber-100 hover:text-amber-700 dark:hover:bg-amber-900 dark:hover:text-amber-300"
                         style={{ fontVariant: "small-caps" }}
                       >
                         nd
@@ -4080,7 +4080,7 @@ export default function ChapterDisplay({
                       onClick={() => setShowFootnotes((v) => !v)}
                       data-tip={showFootnotes ? "Hide footnotes" : "Show footnotes"}
                       className={[
-                        "px-2.5 py-1.5 rounded text-[11px] font-medium transition-colors",
+                        "px-3 py-2 rounded text-[14px] font-medium transition-colors",
                         showFootnotes
                           ? "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700"
                           : "bg-stone-300 dark:bg-stone-600 text-stone-500 dark:text-stone-400",
@@ -4095,7 +4095,7 @@ export default function ChapterDisplay({
                       onClick={() => setEditingFootnotes((v) => !v)}
                       data-tip={editingFootnotes ? "Exit footnote editing" : "Edit footnotes (enable delete)"}
                       className={[
-                        "px-2.5 py-1.5 rounded text-[11px] font-medium transition-colors",
+                        "px-3 py-2 rounded text-[14px] font-medium transition-colors",
                         editingFootnotes
                           ? "bg-amber-100 dark:bg-amber-900/40 text-amber-600 dark:text-amber-400 ring-1 ring-amber-400"
                           : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
@@ -4158,7 +4158,7 @@ export default function ChapterDisplay({
               onClick={() => setShowToolbarCustomizer((v) => !v)}
               data-tip="Customize toolbar"
               className={[
-                "px-3 py-1.5 rounded text-[20px] font-medium transition-colors",
+                "px-4 py-2 rounded text-[17px] font-medium transition-colors",
                 showToolbarCustomizer
                   ? "bg-stone-300 dark:bg-stone-600 text-stone-700 dark:text-stone-200"
                   : "bg-stone-100 dark:bg-stone-800 text-stone-500 dark:text-stone-400 hover:bg-stone-200 dark:hover:bg-stone-700",

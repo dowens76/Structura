@@ -3387,7 +3387,7 @@ export default function PassageView({
                 <button
                   onClick={() => { setEditingTranslation((v) => !v); setEditingTranslationSource(false); }}
                   data-tip={editingTranslation ? "Exit translation edit mode" : "Edit translation text"}
-                  className={["px-2.5 py-1 rounded text-xs font-medium transition-colors",
+                  className={["px-3 py-1.5 rounded text-[16px] font-medium transition-colors",
                     editingTranslation ? "bg-sky-600 text-white"
                       : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
                   ].join(" ")}
@@ -3414,7 +3414,7 @@ export default function PassageView({
                   <button
                     onMouseDown={(e) => { e.preventDefault(); applyNdMarker(); }}
                     data-tip="Wrap selection as Divine Name (small caps) — \nd...\nd*"
-                    className="px-2.5 py-1.5 rounded text-[11px] font-bold font-mono tracking-wider transition-colors bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-amber-100 hover:text-amber-700 dark:hover:bg-amber-900 dark:hover:text-amber-300"
+                    className="px-3 py-2 rounded text-[14px] font-bold font-mono tracking-wider transition-colors bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-amber-100 hover:text-amber-700 dark:hover:bg-amber-900 dark:hover:text-amber-300"
                     style={{ fontVariant: "small-caps" }}
                   >nd</button>
                   <button
@@ -3452,7 +3452,7 @@ export default function PassageView({
                 <button
                   onClick={() => setShowFootnotes((v) => !v)}
                   data-tip={showFootnotes ? "Hide footnotes" : "Show footnotes"}
-                  className={["px-2.5 py-1.5 rounded text-xs font-medium transition-colors",
+                  className={["px-3 py-2 rounded text-[16px] font-medium transition-colors",
                     showFootnotes
                       ? "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700"
                       : "bg-stone-300 dark:bg-stone-600 text-stone-500 dark:text-stone-400",
@@ -3464,7 +3464,7 @@ export default function PassageView({
                 <button
                   onClick={() => setEditingFootnotes((v) => !v)}
                   data-tip={editingFootnotes ? "Exit footnote editing (hide delete buttons)" : "Enter footnote editing (show delete buttons)"}
-                  className={["px-2.5 py-1.5 rounded text-xs font-medium transition-colors",
+                  className={["px-3 py-2 rounded text-[16px] font-medium transition-colors",
                     editingFootnotes
                       ? "bg-amber-100 dark:bg-amber-900/40 text-amber-600 dark:text-amber-400 ring-1 ring-amber-400"
                       : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
@@ -3520,7 +3520,7 @@ export default function PassageView({
               onClick={() => setShowToolbarCustomizer((v) => !v)}
               data-tip="Customize toolbar"
               className={[
-                "px-2.5 py-1 rounded text-lg font-medium transition-colors",
+                "px-3 py-1.5 rounded text-[23px] font-medium transition-colors",
                 showToolbarCustomizer
                   ? "bg-stone-300 dark:bg-stone-600 text-stone-700 dark:text-stone-200"
                   : "bg-stone-100 dark:bg-stone-800 text-stone-500 dark:text-stone-400 hover:bg-stone-200 dark:hover:bg-stone-700",
