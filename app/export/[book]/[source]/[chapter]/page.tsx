@@ -32,7 +32,7 @@ import { OSIS_REF_BOOK_NAMES } from "@/lib/utils/osis";
 import ExportLayout, { type ExportPrintHeader } from "@/components/export/ExportLayout";
 import ExportTextView from "@/components/export/ExportTextView";
 import { getActiveWorkspaceId } from "@/lib/workspace";
-import { extractTextFromTipTap } from "@/lib/utils/tiptap-text";
+import { tiptapToHtml } from "@/lib/utils/tiptap-text";
 
 interface PageProps {
   params: Promise<{ book: string; source: string; chapter: string }>;
@@ -189,14 +189,14 @@ export default async function ExportChapterPage({ params, searchParams }: PagePr
   const rawMeta = noteContents[metaKey] ?? "{}";
   let parsedMeta: { mainIdea?: string; customFields?: Array<{ id: string; name: string; value: string }> } = {};
   try { parsedMeta = JSON.parse(rawMeta); } catch { /* ignore */ }
-  const outlineText = extractTextFromTipTap(noteContents[sermonKey] ?? "{}");
+  const outlineHtml = tiptapToHtml(noteContents[sermonKey] ?? "{}");
 
   const printHeader: ExportPrintHeader = {
     title: `${bookName} ${chapter}`,
     subtitle: `Structura · ${[textSource, ...activeTranslationAbbrevs].join(" – ")}`,
     authorName: authorName || undefined,
     mainIdea: parsedMeta.mainIdea || undefined,
-    outlineText: outlineText || undefined,
+    outlineHtml: outlineHtml || undefined,
     customFields: parsedMeta.customFields ?? [],
   };
 

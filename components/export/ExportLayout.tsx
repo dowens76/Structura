@@ -7,8 +7,24 @@ import ImageExportMenu, { type ImagePreset } from "./ImageExportMenu";
 import { rgbaCanvasToTiff } from "@/lib/export/tiff-encoder";
 
 // ── Export size ─────────────────────────────────────────────────────────────
+// L (13pt) has been intentionally excluded: its 1.5rem screen font creates
+// layout proportions that don't carry cleanly to print, and 13pt is too large
+// for a dense study-document layout.  S (9pt) and M (11pt) cover the realistic
+// range for both browser-path (html-to-image) and Tauri (WKWebView) PDF export.
 
-type ExportSize = "sm" | "md" | "lg";
+type ExportSize = "sm" | "md";
+
+// ── Paper size ───────────────────────────────────────────────────────────────
+
+type PaperSize = "letter" | "a4";
+
+/** Max content width per paper size, matching the printable area.
+ *  Letter (702px ≈ 43.9rem): 42rem leaves ~0.95rem centering margin each side.
+ *  A4    (680px ≈ 42.5rem): 40rem leaves ~1.25rem centering margin each side. */
+const PRINT_CONTENT_WIDTH: Record<PaperSize, string> = {
+  letter: "42rem",
+  a4:     "40rem",
+};
 
 // ── Export background ────────────────────────────────────────────────────────
 
@@ -31,11 +47,6 @@ const SCREEN_SIZE_VARS: Record<ExportSize, React.CSSProperties> = {
     "--translation-font-size": "0.75rem",
   } as React.CSSProperties,
   md: {} as React.CSSProperties,
-  lg: {
-    "--hebrew-font-size":      "1.65rem",
-    "--greek-font-size":       "1.5rem",
-    "--translation-font-size": "1.0rem",
-  } as React.CSSProperties,
 };
 
 /** Source-text font sizes for Tauri @media print pre-measurement and the
@@ -43,7 +54,12 @@ const SCREEN_SIZE_VARS: Record<ExportSize, React.CSSProperties> = {
 const PRINT_SOURCE_SIZE: Record<ExportSize, string> = {
   sm: "9pt",
   md: "11pt",
-  lg: "13pt",
+};
+
+/** Base font size for the print-only header (title, author, meta fields). */
+const PRINT_HEADER_SIZE: Record<ExportSize, string> = {
+  sm: "10pt",
+  md: "12pt",
 };
 
 // ── Dark-mode vars ───────────────────────────────────────────────────────────
@@ -73,12 +89,48 @@ export interface ExportCustomField {
   value: string;
 }
 
+function escHtml(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+function buildPrintHeaderHtml(
+  header: ExportPrintHeader | undefined,
+  hidden: Set<string>,
+  fontSize: string,
+  contentWidth: string,
+): string {
+  if (!header) return "";
+  const rows: string[] = [];
+
+  // All child sizes use em so they scale with the container font-size.
+  rows.push(`<h1 style="font-family:Georgia,'Times New Roman',serif;font-size:1.25em;font-weight:bold;color:#1a1a1a">${escHtml(header.title)}</h1>`);
+  rows.push(`<p style="font-size:0.75em;color:#78716c;margin-top:2px">${escHtml(header.subtitle)}</p>`);
+
+  if (header.authorName && !hidden.has("__author__"))
+    rows.push(`<p style="font-size:0.75em;color:#78716c">Author: ${escHtml(header.authorName)}</p>`);
+
+  if (header.mainIdea && !hidden.has("__mainidea__"))
+    rows.push(`<div style="margin-top:0.75em"><p style="font-size:0.67em;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:#9c8b78">Main Idea</p><p style="font-size:1em;color:#3d3530;margin-top:2px">${escHtml(header.mainIdea)}</p></div>`);
+
+  if (header.outlineHtml && !hidden.has("__outline__"))
+    rows.push(`<div style="margin-top:0.75em"><p style="font-size:0.67em;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:#9c8b78">Outline</p><div style="font-size:1em;color:#3d3530;margin-top:2px">${header.outlineHtml}</div></div>`);
+
+  for (const f of header.customFields ?? []) {
+    if (f.value && !hidden.has(f.id))
+      rows.push(`<div style="margin-top:0.75em"><p style="font-size:0.67em;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:#9c8b78">${escHtml(f.name)}</p><p style="font-size:1em;color:#3d3530;margin-top:2px;white-space:pre-wrap">${escHtml(f.value)}</p></div>`);
+  }
+
+  // max-width + margin:auto centers the header to match the image below.
+  // break-inside:avoid keeps all items on one page.
+  return `<div style="font-size:${fontSize};max-width:${contentWidth};margin-left:auto;margin-right:auto;padding-bottom:0.5rem;margin-bottom:0.5rem;border-bottom:1px solid #ddd8ce;break-inside:avoid;page-break-inside:avoid">${rows.join("")}</div>`;
+}
+
 export interface ExportPrintHeader {
   title: string;
   subtitle: string;
   authorName?: string;
   mainIdea?: string;
-  outlineText?: string;
+  outlineHtml?: string;
   customFields?: ExportCustomField[];
 }
 
@@ -115,6 +167,8 @@ export default function ExportLayout({ children, revealHref, filename, backHref,
   const [exportSize, setExportSize] = useState<ExportSize>("md");
   /** Background fill: transparent (default), white, or black. */
   const [exportBg, setExportBg] = useState<ExportBg>("transparent");
+  /** Paper size for PDF export. */
+  const [paperSize, setPaperSize] = useState<PaperSize>("letter");
 
   // ── Print-header visibility checkboxes ──────────────────────────────────────
   // Empty set = all fields shown; add an id to hide that field.
@@ -144,7 +198,7 @@ export default function ExportLayout({ children, revealHref, filename, backHref,
     ? [
         ...(printHeader.authorName  ? [{ id: "__author__",   label: "Author name" }] : []),
         ...(printHeader.mainIdea    ? [{ id: "__mainidea__", label: "Main idea"   }] : []),
-        ...(printHeader.outlineText ? [{ id: "__outline__",  label: "Outline"     }] : []),
+        ...(printHeader.outlineHtml ? [{ id: "__outline__",  label: "Outline"     }] : []),
         ...(printHeader.customFields ?? [])
           .filter(f => !!f.value)
           .map(f => ({ id: f.id, label: f.name })),
@@ -224,21 +278,21 @@ export default function ExportLayout({ children, revealHref, filename, backHref,
         // ~702px for US Letter) in print context.  A rem value is the same
         // in both contexts, so the pre-measurement here exactly matches what
         // WKWebView renders — keeping RST arrows correctly anchored.
-        // 42rem ≈ 672px fits within both A4 (680px) and Letter (702px)
-        // printable widths, so no WKWebView content-scaling occurs.
+        // Content width varies by paper size: 42rem for Letter, 40rem for A4.
+        const contentW = PRINT_CONTENT_WIDTH[paperSize];
         const printSim = document.createElement("style");
         printSim.textContent = [
           `[lang='he'], .text-hebrew { font-size: ${PRINT_SOURCE_SIZE[exportSize]} !important; }`,
           `[lang='grc'], .text-greek { font-size: ${PRINT_SOURCE_SIZE[exportSize]} !important; }`,
-          "[data-png-crop-to] { max-width: 42rem !important; }",
+          `[data-png-crop-to] { max-width: ${contentW} !important; }`,
           // WordArrowOverlay measures coordinates relative to [data-png-target]
           // (= outerRef, the full-width wrapper div).  Without this rule,
           // outerRef stays at full viewport width during printSim while WKWebView
-          // renders it at ≈42rem — creating a horizontal offset equal to
-          // (viewport − 42rem) / 2 for every free-form arrow path.
-          // Constraining outerRef to the same 42rem here makes the printSim
+          // renders it at the content width — creating a horizontal offset equal to
+          // (viewport − contentW) / 2 for every free-form arrow path.
+          // Constraining outerRef to the same contentW here makes the printSim
           // coordinate origin match the WKWebView print coordinate origin exactly.
-          "[data-png-target] { max-width: 42rem !important; margin-left: auto !important; margin-right: auto !important; }",
+          `[data-png-target] { max-width: ${contentW} !important; margin-left: auto !important; margin-right: auto !important; }`,
         ].join("\n");
         document.head.appendChild(printSim);
 
@@ -297,6 +351,9 @@ export default function ExportLayout({ children, revealHref, filename, backHref,
           }
         }
 
+        // Build the optional print header HTML block.
+        const headerHtml = buildPrintHeaderHtml(printHeader, hiddenFields, PRINT_HEADER_SIZE[exportSize], PRINT_CONTENT_WIDTH[paperSize]);
+
         const iframe = document.createElement("iframe");
         iframe.style.cssText =
           "position:fixed;width:0;height:0;border:none;left:-9999px;top:-9999px;";
@@ -304,23 +361,32 @@ export default function ExportLayout({ children, revealHref, filename, backHref,
         try {
           const iDoc = iframe.contentDocument!;
           iDoc.open();
+          const pageSize = paperSize === "a4" ? "A4" : "letter";
+          const imgMaxW  = PRINT_CONTENT_WIDTH[paperSize];
           iDoc.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><style>
-            @page { margin: 1.5cm; }
+            @page { size: ${pageSize}; margin: 1.5cm; }
             * { margin: 0; padding: 0; box-sizing: border-box; }
-            body { background: white; }
+            body { background: white; font-family: Georgia, 'Times New Roman', serif; }
             img {
               display: block;
-              max-width: 100%;
+              max-width: ${imgMaxW};
+              width: 100%;
               height: auto;
+              margin-left: auto;
+              margin-right: auto;
               -webkit-print-color-adjust: exact;
               print-color-adjust: exact;
             }
-          </style></head><body><img src="${dataUrl}"></body></html>`);
+            .img-wrap {
+              break-before: avoid;
+              page-break-before: avoid;
+            }
+          </style></head><body>${headerHtml}<div class="img-wrap"><img src="${dataUrl}"></div></body></html>`);
           iDoc.close();
 
           // Wait for the image to finish loading inside the iframe.
           await new Promise<void>((resolve) => {
-            const img = iDoc.querySelector("img") as HTMLImageElement;
+            const img = iDoc.querySelector(".img-wrap img") as HTMLImageElement;
             if (img.complete) { resolve(); return; }
             img.onload = () => resolve();
           });
@@ -380,6 +446,13 @@ export default function ExportLayout({ children, revealHref, filename, backHref,
     const elRect   = cropTo ? el.getBoundingClientRect() : null;
     const cropRect = cropTo ? cropTo.getBoundingClientRect() : null;
 
+    // Capture expected canvas size before render so we can detect scaling.
+    // html-to-image caps canvas dimensions at 16384 px (checkCanvasDimensions)
+    // and scales content proportionally when exceeded.  If that happens, our
+    // crop coordinates (at the original pixelRatio) point to the wrong pixels.
+    const expectedW = el.clientWidth  * pixelRatio;
+    const expectedH = el.clientHeight * pixelRatio;
+
     let canvas: HTMLCanvasElement;
     try {
       canvas = await render({});
@@ -388,10 +461,14 @@ export default function ExportLayout({ children, revealHref, filename, backHref,
     }
 
     if (cropTo && elRect && cropRect) {
-      const sx = Math.round((cropRect.left - elRect.left) * pixelRatio);
-      const sy = Math.round((cropRect.top  - elRect.top)  * pixelRatio);
-      const sw = Math.round(cropRect.width  * pixelRatio);
-      const sh = Math.round(cropRect.height * pixelRatio);
+      // Compute scale factors in case html-to-image capped the canvas dimensions.
+      const scaleX = canvas.width  / expectedW;
+      const scaleY = canvas.height / expectedH;
+
+      const sx = Math.round((cropRect.left - elRect.left) * pixelRatio * scaleX);
+      const sy = Math.round((cropRect.top  - elRect.top)  * pixelRatio * scaleY);
+      const sw = Math.round(cropRect.width  * pixelRatio * scaleX);
+      const sh = Math.round(cropRect.height * pixelRatio * scaleY);
       const cropped = document.createElement("canvas");
       cropped.width  = sw;
       cropped.height = sh;
@@ -577,8 +654,13 @@ export default function ExportLayout({ children, revealHref, filename, backHref,
     if (!textRef.current || imgStatus === "loading") return;
     setImgStatus("loading");
 
-    // Allow any pending overlay re-measurements to settle before capture.
-    await new Promise<void>(r => requestAnimationFrame(() => requestAnimationFrame(() => r())));
+    // Trigger a full overlay remeasure and wait for it to settle.
+    // structura:screen-remeasure is dispatched by the exportSize useEffect after
+    // RAF+160 ms; the overlay then runs a double-RAF before updating React state.
+    // Dispatching it here and waiting 250 ms guarantees the SVG is fully repainted
+    // at the current font size before the viewport screenshot is taken.
+    window.dispatchEvent(new CustomEvent("structura:screen-remeasure"));
+    await new Promise<void>(r => setTimeout(r, 250));
 
     try {
       // [data-png-target]: outerRef — full-width so nothing is clipped.
@@ -704,14 +786,15 @@ export default function ExportLayout({ children, revealHref, filename, backHref,
       <style>{`
         @media print {
           .export-toolbar { display: none !important; }
-          @page { margin: 1.5cm; }
+          @page { size: ${paperSize === "a4" ? "A4" : "letter"}; margin: 1.5cm; }
           .export-print-header {
-            max-width: 42rem !important;
+            max-width: ${PRINT_CONTENT_WIDTH[paperSize]} !important;
             margin-left: auto !important;
             margin-right: auto !important;
             padding: 1.5rem 1.5rem 0.75rem !important;
             border-bottom: 1px solid #ddd8ce;
             margin-bottom: 0.5rem;
+            font-size: ${PRINT_HEADER_SIZE[exportSize]} !important;
           }
           * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
 
@@ -721,24 +804,22 @@ export default function ExportLayout({ children, revealHref, filename, backHref,
              keeping SVG coordinates consistent with the printed layout. */
           [data-png-target] [class~="w-48"] { width: 8rem !important; }
 
-          /* Content container: use a fixed rem width (42rem = 672px) rather than
-             100%.  "100%" would resolve to paper-printable-area width in print
-             context but viewport width on screen, so the pre-print JS measurement
+          /* Content container: use a fixed rem width rather than 100%.
+             "100%" would resolve to the printable-area width in print context
+             but to the viewport width on screen, so the pre-print JS measurement
              and the actual WKWebView render would use different widths — shifting
-             RST arrows off their anchor points.  42rem is an absolute value that
-             resolves identically in both contexts and fits within both A4 (680px)
-             and US Letter (702px) printable areas without WKWebView scaling. */
-          [data-png-crop-to] { max-width: 42rem !important; }
+             RST arrows off their anchor points.  A rem value is the same in both
+             contexts.  Width is 42rem for Letter, 40rem for A4. */
+          [data-png-crop-to] { max-width: ${PRINT_CONTENT_WIDTH[paperSize]} !important; }
 
           /* Constrain the outer wrapper (WordArrowOverlay's coordinate origin) to
-             the same 42rem so free-form arrow paths computed during the
+             the same width so free-form arrow paths computed during the
              structura:print-prepare pre-measurement land at identical pixel
              positions in the WKWebView render.  Without this, outerRef is full
-             viewport width on screen but only ≈42rem in the print context,
-             shifting every free-form arrow by (viewport − 42rem) / 2.
-             margin: auto centers the 42rem block within the printable area so
-             the printed output isn't left-aligned on the page. */
-          [data-png-target] { max-width: 42rem !important; margin-left: auto !important; margin-right: auto !important; }
+             viewport width on screen but only ≈content-width in the print context,
+             shifting every free-form arrow by (viewport − contentW) / 2.
+             margin: auto centers the block within the printable area. */
+          [data-png-target] { max-width: ${PRINT_CONTENT_WIDTH[paperSize]} !important; margin-left: auto !important; margin-right: auto !important; break-before: avoid; page-break-before: avoid; }
 
           /* Default: force light-mode CSS variables so print is black-on-white.
              The dark-export override block below supersedes this when active. */
@@ -825,11 +906,11 @@ export default function ExportLayout({ children, revealHref, filename, backHref,
             style={{ borderColor: "var(--border)" }}
             title="Font size"
           >
-            {(["sm", "md", "lg"] as ExportSize[]).map((sz, i) => (
+            {(["sm", "md"] as ExportSize[]).map((sz, i) => (
               <button
                 key={sz}
                 onClick={() => setExportSize(sz)}
-                title={sz === "sm" ? "Small font" : sz === "md" ? "Medium font" : "Large font"}
+                title={sz === "sm" ? "Small font (9 pt)" : "Medium font (11 pt)"}
                 className={[
                   "px-2 py-1 text-xs font-medium transition-colors leading-none",
                   i > 0 ? "border-l" : "",
@@ -839,7 +920,7 @@ export default function ExportLayout({ children, revealHref, filename, backHref,
                 ].join(" ")}
                 style={i > 0 ? { borderColor: "var(--border)" } : undefined}
               >
-                {sz === "sm" ? "S" : sz === "md" ? "M" : "L"}
+                {sz === "sm" ? "S" : "M"}
               </button>
             ))}
           </div>
@@ -869,6 +950,31 @@ export default function ExportLayout({ children, revealHref, filename, backHref,
                 ) : (
                   <span style={{ display: "inline-block", width: "0.7rem", height: "0.7rem", background: bg, border: bg === "white" ? "1px solid #aaa" : "1px solid #444", borderRadius: "2px" }} />
                 )}
+              </button>
+            ))}
+          </div>
+
+          {/* Paper size: Letter / A4 */}
+          <div
+            className="flex rounded overflow-hidden border"
+            style={{ borderColor: "var(--border)" }}
+            title="Paper size"
+          >
+            {(["letter", "a4"] as PaperSize[]).map((ps, i) => (
+              <button
+                key={ps}
+                onClick={() => setPaperSize(ps)}
+                title={ps === "letter" ? "US Letter (8.5×11 in)" : "A4 (210×297 mm)"}
+                className={[
+                  "px-2 py-1 text-xs font-medium transition-colors leading-none",
+                  i > 0 ? "border-l" : "",
+                  paperSize === ps
+                    ? "bg-stone-600 text-white dark:bg-stone-500"
+                    : "bg-stone-100 text-stone-600 hover:bg-stone-200 dark:bg-stone-800 dark:text-stone-300 dark:hover:bg-stone-700",
+                ].join(" ")}
+                style={i > 0 ? { borderColor: "var(--border)" } : undefined}
+              >
+                {ps === "letter" ? "Ltr" : "A4"}
               </button>
             ))}
           </div>
@@ -969,32 +1075,33 @@ export default function ExportLayout({ children, revealHref, filename, backHref,
         className={exportDark ? "dark" : ""}
         style={{ ...(exportDark ? DARK_EXPORT_STYLE : {}), ...BG_EXPORT_STYLES[exportBg] }}
       >
-        {/* Print-only header — hidden on screen, rendered by WKWebView at print time */}
+        {/* Print-only header — hidden on screen, rendered by WKWebView at print time.
+            Font size is set by .export-print-header in @media print; all child sizes use em. */}
         {printHeader && (
           <div className="hidden print:block export-print-header">
-            <h1 style={{ fontFamily: "Georgia, 'Times New Roman', serif", fontSize: "1.25rem", fontWeight: "bold" }}>
+            <h1 style={{ fontFamily: "Georgia, 'Times New Roman', serif", fontSize: "1.25em", fontWeight: "bold" }}>
               {printHeader.title}
             </h1>
-            <p style={{ fontSize: "0.75rem", color: "#78716c", marginTop: "0.125rem" }}>{printHeader.subtitle}</p>
+            <p style={{ fontSize: "0.75em", color: "#78716c", marginTop: "0.125em" }}>{printHeader.subtitle}</p>
             {printHeader.authorName && !hiddenFields.has("__author__") && (
-              <p style={{ fontSize: "0.75rem", color: "#78716c" }}>Author: {printHeader.authorName}</p>
+              <p style={{ fontSize: "0.75em", color: "#78716c" }}>Author: {printHeader.authorName}</p>
             )}
             {printHeader.mainIdea && !hiddenFields.has("__mainidea__") && (
-              <div style={{ marginTop: "0.75rem" }}>
-                <p style={{ fontSize: "0.65rem", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", color: "#9c8b78" }}>Main Idea</p>
-                <p style={{ fontSize: "0.8rem", color: "#3d3530", marginTop: "0.125rem" }}>{printHeader.mainIdea}</p>
+              <div style={{ marginTop: "0.75em" }}>
+                <p style={{ fontSize: "0.67em", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", color: "#9c8b78" }}>Main Idea</p>
+                <p style={{ fontSize: "1em", color: "#3d3530", marginTop: "0.125em" }}>{printHeader.mainIdea}</p>
               </div>
             )}
-            {printHeader.outlineText && !hiddenFields.has("__outline__") && (
-              <div style={{ marginTop: "0.75rem" }}>
-                <p style={{ fontSize: "0.65rem", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", color: "#9c8b78" }}>Outline</p>
-                <p style={{ fontSize: "0.8rem", color: "#3d3530", marginTop: "0.125rem", whiteSpace: "pre-wrap" }}>{printHeader.outlineText}</p>
+            {printHeader.outlineHtml && !hiddenFields.has("__outline__") && (
+              <div style={{ marginTop: "0.75em" }}>
+                <p style={{ fontSize: "0.67em", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", color: "#9c8b78" }}>Outline</p>
+                <div style={{ fontSize: "1em", color: "#3d3530", marginTop: "0.125em" }} dangerouslySetInnerHTML={{ __html: printHeader.outlineHtml }} />
               </div>
             )}
             {(printHeader.customFields ?? []).filter(f => f.value && !hiddenFields.has(f.id)).map(f => (
-              <div key={f.id} style={{ marginTop: "0.75rem" }}>
-                <p style={{ fontSize: "0.65rem", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", color: "#9c8b78" }}>{f.name}</p>
-                <p style={{ fontSize: "0.8rem", color: "#3d3530", marginTop: "0.125rem", whiteSpace: "pre-wrap" }}>{f.value}</p>
+              <div key={f.id} style={{ marginTop: "0.75em" }}>
+                <p style={{ fontSize: "0.67em", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", color: "#9c8b78" }}>{f.name}</p>
+                <p style={{ fontSize: "1em", color: "#3d3530", marginTop: "0.125em", whiteSpace: "pre-wrap" }}>{f.value}</p>
               </div>
             ))}
           </div>
