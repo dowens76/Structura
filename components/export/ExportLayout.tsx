@@ -67,6 +67,21 @@ const DARK_EXPORT_STYLE: React.CSSProperties = {
   background:           "#111a24",
 } as React.CSSProperties;
 
+export interface ExportCustomField {
+  id: string;
+  name: string;
+  value: string;
+}
+
+export interface ExportPrintHeader {
+  title: string;
+  subtitle: string;
+  authorName?: string;
+  mainIdea?: string;
+  outlineText?: string;
+  customFields?: ExportCustomField[];
+}
+
 interface Props {
   children: ReactNode;
   /** URL to the Reveal.js API route for this chapter/passage */
@@ -84,9 +99,11 @@ interface Props {
     /** Key for the meta blob (main idea + custom fields) — rendered as structured sections */
     metaKey?: string;
   };
+  /** When provided, renders a print-only header with optional fields controlled by checkboxes. */
+  printHeader?: ExportPrintHeader;
 }
 
-export default function ExportLayout({ children, revealHref, filename, backHref, noteContext }: Props) {
+export default function ExportLayout({ children, revealHref, filename, backHref, noteContext, printHeader }: Props) {
   const textRef = useRef<HTMLDivElement>(null);
   const [pdfStatus, setPdfStatus] = useState<"idle" | "loading" | "done" | "error">("idle");
   const [imgStatus, setImgStatus] = useState<"idle" | "loading" | "done" | "error">("idle");
@@ -98,6 +115,43 @@ export default function ExportLayout({ children, revealHref, filename, backHref,
   const [exportSize, setExportSize] = useState<ExportSize>("md");
   /** Background fill: transparent (default), white, or black. */
   const [exportBg, setExportBg] = useState<ExportBg>("transparent");
+
+  // ── Print-header visibility checkboxes ──────────────────────────────────────
+  // Empty set = all fields shown; add an id to hide that field.
+  const [hiddenFields, setHiddenFields] = useState<Set<string>>(new Set());
+  const [contentOpen,  setContentOpen]  = useState(false);
+  const contentMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function onDown(e: MouseEvent) {
+      if (contentMenuRef.current && !contentMenuRef.current.contains(e.target as Node))
+        setContentOpen(false);
+    }
+    if (contentOpen) document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [contentOpen]);
+
+  function toggleField(id: string) {
+    setHiddenFields(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  // Fields that actually have content — only these appear as checkboxes.
+  const headerFields: Array<{ id: string; label: string }> = printHeader
+    ? [
+        ...(printHeader.authorName  ? [{ id: "__author__",   label: "Author name" }] : []),
+        ...(printHeader.mainIdea    ? [{ id: "__mainidea__", label: "Main idea"   }] : []),
+        ...(printHeader.outlineText ? [{ id: "__outline__",  label: "Outline"     }] : []),
+        ...(printHeader.customFields ?? [])
+          .filter(f => !!f.value)
+          .map(f => ({ id: f.id, label: f.name })),
+      ]
+    : [];
+
+  const hasContentMenu = headerFields.length > 0;
 
   // Mirror the current app theme on first render so the toggle starts in a
   // sensible state (dark app → dark export default; light app → light export).
@@ -184,7 +238,7 @@ export default function ExportLayout({ children, revealHref, filename, backHref,
           // (viewport − 42rem) / 2 for every free-form arrow path.
           // Constraining outerRef to the same 42rem here makes the printSim
           // coordinate origin match the WKWebView print coordinate origin exactly.
-          "[data-png-target] { max-width: 42rem !important; }",
+          "[data-png-target] { max-width: 42rem !important; margin-left: auto !important; margin-right: auto !important; }",
         ].join("\n");
         document.head.appendChild(printSim);
 
@@ -651,6 +705,14 @@ export default function ExportLayout({ children, revealHref, filename, backHref,
         @media print {
           .export-toolbar { display: none !important; }
           @page { margin: 1.5cm; }
+          .export-print-header {
+            max-width: 42rem !important;
+            margin-left: auto !important;
+            margin-right: auto !important;
+            padding: 1.5rem 1.5rem 0.75rem !important;
+            border-bottom: 1px solid #ddd8ce;
+            margin-bottom: 0.5rem;
+          }
           * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
 
           /* Annotation column: shrink from w-48 (12 rem) to 8 rem in portrait
@@ -673,8 +735,10 @@ export default function ExportLayout({ children, revealHref, filename, backHref,
              structura:print-prepare pre-measurement land at identical pixel
              positions in the WKWebView render.  Without this, outerRef is full
              viewport width on screen but only ≈42rem in the print context,
-             shifting every free-form arrow by (viewport − 42rem) / 2. */
-          [data-png-target] { max-width: 42rem !important; }
+             shifting every free-form arrow by (viewport − 42rem) / 2.
+             margin: auto centers the 42rem block within the printable area so
+             the printed output isn't left-aligned on the page. */
+          [data-png-target] { max-width: 42rem !important; margin-left: auto !important; margin-right: auto !important; }
 
           /* Default: force light-mode CSS variables so print is black-on-white.
              The dark-export override block below supersedes this when active. */
@@ -852,6 +916,42 @@ export default function ExportLayout({ children, revealHref, filename, backHref,
               />
             </>
           )}
+
+          {hasContentMenu && (
+            <>
+              <span className="w-px h-4 rounded" style={{ backgroundColor: "var(--border)" }} aria-hidden="true" />
+              <div ref={contentMenuRef} className="relative">
+                <button
+                  className={btnSecondary}
+                  onClick={() => setContentOpen(o => !o)}
+                  title="Choose which header fields appear in the PDF"
+                >
+                  Content {contentOpen ? "▴" : "▾"}
+                </button>
+                {contentOpen && (
+                  <div
+                    className="absolute right-0 top-full mt-1 w-52 rounded-lg shadow-lg border z-50 py-2 px-3 space-y-1.5"
+                    style={{ backgroundColor: "var(--surface)", borderColor: "var(--border)" }}
+                  >
+                    <p className="text-[10px] font-semibold uppercase tracking-wide mb-2" style={{ color: "var(--text-muted)" }}>
+                      Include in PDF header
+                    </p>
+                    {headerFields.map(field => (
+                      <label key={field.id} className="flex items-center gap-2 cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={!hiddenFields.has(field.id)}
+                          onChange={() => toggleField(field.id)}
+                          className="accent-amber-600"
+                        />
+                        <span className="text-xs" style={{ color: "var(--foreground)" }}>{field.label}</span>
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </>
+          )}
         </div>
       </div>
 
@@ -869,6 +969,36 @@ export default function ExportLayout({ children, revealHref, filename, backHref,
         className={exportDark ? "dark" : ""}
         style={{ ...(exportDark ? DARK_EXPORT_STYLE : {}), ...BG_EXPORT_STYLES[exportBg] }}
       >
+        {/* Print-only header — hidden on screen, rendered by WKWebView at print time */}
+        {printHeader && (
+          <div className="hidden print:block export-print-header">
+            <h1 style={{ fontFamily: "Georgia, 'Times New Roman', serif", fontSize: "1.25rem", fontWeight: "bold" }}>
+              {printHeader.title}
+            </h1>
+            <p style={{ fontSize: "0.75rem", color: "#78716c", marginTop: "0.125rem" }}>{printHeader.subtitle}</p>
+            {printHeader.authorName && !hiddenFields.has("__author__") && (
+              <p style={{ fontSize: "0.75rem", color: "#78716c" }}>Author: {printHeader.authorName}</p>
+            )}
+            {printHeader.mainIdea && !hiddenFields.has("__mainidea__") && (
+              <div style={{ marginTop: "0.75rem" }}>
+                <p style={{ fontSize: "0.65rem", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", color: "#9c8b78" }}>Main Idea</p>
+                <p style={{ fontSize: "0.8rem", color: "#3d3530", marginTop: "0.125rem" }}>{printHeader.mainIdea}</p>
+              </div>
+            )}
+            {printHeader.outlineText && !hiddenFields.has("__outline__") && (
+              <div style={{ marginTop: "0.75rem" }}>
+                <p style={{ fontSize: "0.65rem", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", color: "#9c8b78" }}>Outline</p>
+                <p style={{ fontSize: "0.8rem", color: "#3d3530", marginTop: "0.125rem", whiteSpace: "pre-wrap" }}>{printHeader.outlineText}</p>
+              </div>
+            )}
+            {(printHeader.customFields ?? []).filter(f => f.value && !hiddenFields.has(f.id)).map(f => (
+              <div key={f.id} style={{ marginTop: "0.75rem" }}>
+                <p style={{ fontSize: "0.65rem", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", color: "#9c8b78" }}>{f.name}</p>
+                <p style={{ fontSize: "0.8rem", color: "#3d3530", marginTop: "0.125rem", whiteSpace: "pre-wrap" }}>{f.value}</p>
+              </div>
+            ))}
+          </div>
+        )}
         {children}
       </div>
     </>

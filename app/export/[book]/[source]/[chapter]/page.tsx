@@ -24,13 +24,15 @@ import {
   getUltVerses,
   getVcbTranslation,
   getVcbVerses,
+  getNoteContents,
 } from "@/lib/db/queries";
 import type { TranslationVerse, TranslationFootnote } from "@/lib/db/schema";
 import type { TextSource } from "@/lib/morphology/types";
 import { OSIS_REF_BOOK_NAMES } from "@/lib/utils/osis";
-import ExportLayout from "@/components/export/ExportLayout";
+import ExportLayout, { type ExportPrintHeader } from "@/components/export/ExportLayout";
 import ExportTextView from "@/components/export/ExportTextView";
 import { getActiveWorkspaceId } from "@/lib/workspace";
+import { extractTextFromTipTap } from "@/lib/utils/tiptap-text";
 
 interface PageProps {
   params: Promise<{ book: string; source: string; chapter: string }>;
@@ -170,30 +172,37 @@ export default async function ExportChapterPage({ params, searchParams }: PagePr
 
   // Build note keys for every verse in this chapter plus the chapter-level note.
   const verseNums = [...new Set(words.map((w) => w.verse))].sort((a, b) => a - b);
+  const metaKey   = `meta:chapter:${osisBook}.${chapter}`;
+  const sermonKey = `sermon:chapter:${osisBook}.${chapter}`;
   const noteContext = {
     title: `${bookName} ${chapter}`,
     keys: [
-      `sermon:chapter:${osisBook}.${chapter}`,
+      sermonKey,
       `chapter:${osisBook}.${chapter}`,
       ...verseNums.map((v) => `verse:${osisBook}.${chapter}.${v}`),
     ],
-    metaKey: `meta:chapter:${osisBook}.${chapter}`,
+    metaKey,
+  };
+
+  // Fetch meta + sermon notes for the print header
+  const noteContents = await getNoteContents([metaKey, sermonKey], workspaceId);
+  const rawMeta = noteContents[metaKey] ?? "{}";
+  let parsedMeta: { mainIdea?: string; customFields?: Array<{ id: string; name: string; value: string }> } = {};
+  try { parsedMeta = JSON.parse(rawMeta); } catch { /* ignore */ }
+  const outlineText = extractTextFromTipTap(noteContents[sermonKey] ?? "{}");
+
+  const printHeader: ExportPrintHeader = {
+    title: `${bookName} ${chapter}`,
+    subtitle: `Structura · ${[textSource, ...activeTranslationAbbrevs].join(" – ")}`,
+    authorName: authorName || undefined,
+    mainIdea: parsedMeta.mainIdea || undefined,
+    outlineText: outlineText || undefined,
+    customFields: parsedMeta.customFields ?? [],
   };
 
   return (
     <div data-export-page style={{ backgroundColor: "var(--background)", minHeight: "100vh" }}>
-      {/* Print header — visible only in print */}
-      <div className="hidden print:block px-8 pt-6 pb-2">
-        <h1 style={{ fontFamily: "Georgia, 'Times New Roman', serif", fontSize: "1.25rem", fontWeight: "bold" }}>
-          {bookName} {chapter}
-        </h1>
-        <p style={{ fontSize: "0.75rem", color: "#78716c" }}>Structura · {[textSource, ...activeTranslationAbbrevs].join(" – ")}</p>
-        {authorName && (
-          <p style={{ fontSize: "0.75rem", color: "#78716c" }}>Author: {authorName}</p>
-        )}
-      </div>
-
-      <ExportLayout revealHref={revealHref} filename={filename} backHref={`/${encodeURIComponent(osisBook)}/${textSource}/${chapter}`} noteContext={noteContext}>
+      <ExportLayout revealHref={revealHref} filename={filename} backHref={`/${encodeURIComponent(osisBook)}/${textSource}/${chapter}`} noteContext={noteContext} printHeader={printHeader}>
         <div className="px-6 pt-4 pb-2 print:hidden" style={{ borderBottom: "1px solid var(--border)" }}>
           <h1
             style={{

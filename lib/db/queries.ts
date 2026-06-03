@@ -4,7 +4,7 @@ import { getMtToKjvInstructions } from "@/lib/versification/mt-kjv-mapping";
 import type { LookupMaps } from "./index";
 import { books, words } from "./source-schema";
 import type { Word, WordRow } from "./source-schema";
-import { translations, translationVerses, paragraphBreaks, paragraphHeadings, characters, characterRefs, speechSections, wordTags, wordTagRefs, lineIndents, sceneBreaks, passages, rstRelations, wordArrows, wordFormatting, lineAnnotations, bookGroupings, appSettings, translationFootnotes, translationVersions, workspaces, users, textCriticalMarks } from "./user-schema";
+import { translations, translationVerses, paragraphBreaks, paragraphHeadings, characters, characterRefs, speechSections, wordTags, wordTagRefs, lineIndents, sceneBreaks, passages, rstRelations, wordArrows, wordFormatting, lineAnnotations, bookGroupings, appSettings, translationFootnotes, translationVersions, workspaces, users, textCriticalMarks, notes } from "./user-schema";
 import type { Book, Translation, TranslationVerse, Character, CharacterRef, SpeechSection, WordTag, WordTagRef, Passage, RstRelation, WordArrow, LineAnnotation, BookGrouping, TranslationFootnote, TranslationVersion } from "./schema";
 import type { TextSource, Testament } from "@/lib/morphology/types";
 
@@ -2157,4 +2157,20 @@ export async function deleteTextCriticalMark(
   await userDb
     .delete(textCriticalMarks)
     .where(and(eq(textCriticalMarks.workspaceId, workspaceId), eq(textCriticalMarks.wordId, wordId)));
+}
+
+// ─── Notes (server-side fetch) ───────────────────────────────────────────────
+
+export async function getNoteContents(
+  keys: string[],
+  workspaceId: number,
+): Promise<Record<string, string>> {
+  if (keys.length === 0) return {};
+  const rows = await userDb
+    .select({ key: notes.key, content: notes.content })
+    .from(notes)
+    .where(and(eq(notes.workspaceId, workspaceId), inArray(notes.key, keys)));
+  const result: Record<string, string> = {};
+  for (const row of rows) result[row.key] = row.content;
+  return result;
 }

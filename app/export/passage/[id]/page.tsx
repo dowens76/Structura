@@ -26,13 +26,15 @@ import {
   getVcbTranslation,
   getVcbVerses,
   getChapterMaxVerse,
+  getNoteContents,
 } from "@/lib/db/queries";
 import type { TranslationVerse, TranslationFootnote } from "@/lib/db/schema";
 import type { TextSource } from "@/lib/morphology/types";
 import { OSIS_REF_BOOK_NAMES } from "@/lib/utils/osis";
-import ExportLayout from "@/components/export/ExportLayout";
+import ExportLayout, { type ExportPrintHeader } from "@/components/export/ExportLayout";
 import ExportTextView from "@/components/export/ExportTextView";
 import { getActiveWorkspaceId } from "@/lib/workspace";
+import { extractTextFromTipTap } from "@/lib/utils/tiptap-text";
 
 interface PageProps {
   params: Promise<{ id: string }>;
@@ -222,6 +224,22 @@ export default async function ExportPassagePage({ params, searchParams }: PagePr
     ? `sermon:chapter:${osisBook}.${passage.startChapter}`
     : `sermon:passage:${id}`;
 
+  // Fetch meta + sermon notes for the print header
+  const noteContents = await getNoteContents([overviewMetaKey, overviewSermonKey], workspaceId);
+  const rawMeta = noteContents[overviewMetaKey] ?? "{}";
+  let parsedMeta: { mainIdea?: string; customFields?: Array<{ id: string; name: string; value: string }> } = {};
+  try { parsedMeta = JSON.parse(rawMeta); } catch { /* ignore */ }
+  const outlineText = extractTextFromTipTap(noteContents[overviewSermonKey] ?? "{}");
+
+  const printHeader: ExportPrintHeader = {
+    title: passageLabel,
+    subtitle: `Structura · ${[textSource, ...activeTranslationAbbrevs].join(" – ")}`,
+    authorName: authorName || undefined,
+    mainIdea: parsedMeta.mainIdea || undefined,
+    outlineText: outlineText || undefined,
+    customFields: parsedMeta.customFields ?? [],
+  };
+
   const noteContext = {
     title: passageLabel,
     keys: [
@@ -235,18 +253,7 @@ export default async function ExportPassagePage({ params, searchParams }: PagePr
 
   return (
     <div data-export-page style={{ backgroundColor: "var(--background)", minHeight: "100vh" }}>
-      {/* Print header — visible only in print */}
-      <div className="hidden print:block px-8 pt-6 pb-2">
-        <h1 style={{ fontFamily: "Georgia, 'Times New Roman', serif", fontSize: "1.25rem", fontWeight: "bold" }}>
-          {passageLabel}
-        </h1>
-        <p style={{ fontSize: "0.75rem", color: "#78716c" }}>Structura · {[textSource, ...activeTranslationAbbrevs].join(" – ")}</p>
-        {authorName && (
-          <p style={{ fontSize: "0.75rem", color: "#78716c" }}>Author: {authorName}</p>
-        )}
-      </div>
-
-      <ExportLayout revealHref={revealHref} filename={filename} backHref={`/${encodeURIComponent(osisBook)}/${textSource}/passage/${id}`} noteContext={noteContext}>
+      <ExportLayout revealHref={revealHref} filename={filename} backHref={`/${encodeURIComponent(osisBook)}/${textSource}/passage/${id}`} noteContext={noteContext} printHeader={printHeader}>
         <div className="px-6 pt-4 pb-2 print:hidden" style={{ borderBottom: "1px solid var(--border)" }}>
           <h1
             style={{
