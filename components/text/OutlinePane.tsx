@@ -195,6 +195,7 @@ export default function OutlinePane({
 
   // Compute display items (prefix counters, ranges, heading overrides applied)
   const items = useMemo(() => {
+    const isPaired = outlinePredecessorShown || outlineExtended;
     const counters = [0, 0, 0, 0, 0, 0, 0];
     return sortedBreaks.map((br) => {
       if (!br.thematic) {
@@ -211,14 +212,16 @@ export default function OutlinePane({
         : null;
       const isCrossBookRange = crossBookRangeKeys.has(key);
       const letter = breakLetterMap.get(br.wordId) ?? "";
+      const itemBook = br.bookCode ?? book;
+      const bookPrefix = isPaired ? `${itemBook} ` : "";
       let rangeStr: string;
       if (range) {
         const baseRange = formatRange(br.chapter, br.verse, letter, range.endChapter, range.endVerse);
-        rangeStr = isCrossBookRange && continuationBookName
-          ? `${br.chapter}:${br.verse}${letter} – ${continuationBookName} ${range.endChapter}:${range.endVerse}`
-          : baseRange;
+        rangeStr = isCrossBookRange && continuationBook
+          ? `${bookPrefix}${br.chapter}:${br.verse}${letter} – ${continuationBook} ${range.endChapter}:${range.endVerse}`
+          : `${bookPrefix}${baseRange}`;
       } else {
-        rangeStr = `${br.chapter}:${br.verse}${letter}`;
+        rangeStr = `${bookPrefix}${br.chapter}:${br.verse}${letter}`;
       }
       return {
         ...br,
@@ -230,7 +233,7 @@ export default function OutlinePane({
         thematicIndent,
       };
     });
-  }, [sortedBreaks, sectionRanges, headingOverrides, chapter, crossBookRangeKeys, continuationBookName, breakLetterMap, passageChapters]);
+  }, [sortedBreaks, sectionRanges, headingOverrides, chapter, crossBookRangeKeys, continuationBook, breakLetterMap, passageChapters, book, outlinePredecessorShown, outlineExtended]);
 
   async function handleDelete(item: (typeof items)[number]) {
     if (item.isCurrent) {
