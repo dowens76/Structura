@@ -951,6 +951,11 @@ export default function ChapterDisplay({
     // In translation-only mode, default to hiding source text (use stored pref if set).
     setHideSourceText(readLocal<boolean>("structura:hideSourceText", translationOnly));
     setToolbarVis({ ...DEFAULT_TOOLBAR_VIS, ...readLocal<Partial<ToolbarVisibility>>("structura:toolbarVisibility", {}) });
+    setNotesOpen(readLocal<boolean>("structura:notesOpen", false));
+    setSearchOpen(readLocal<boolean>("structura:searchOpen", false));
+    setOutlineOpen(readLocal<boolean>("structura:outlineOpen", false));
+    setOutlineExtended(readLocal<boolean>("structura:outlineExtended", false));
+    setOutlinePredecessorShown(readLocal<boolean>("structura:outlineIncludePaired", false));
   }, []); // empty deps → runs once after first render (client only)
 
   // Snapshot translation data when editing mode is entered so Cancel can revert to it
@@ -968,6 +973,11 @@ export default function ChapterDisplay({
   useEffect(() => { writeLocal("structura:hideSourceText", hideSourceText); }, [hideSourceText]);
   // structura:rstLinked is now persisted inside useRstRelations hook.
   useEffect(() => { writeLocal("structura:toolbarVisibility", toolbarVis); }, [toolbarVis]);
+  useEffect(() => { writeLocal("structura:notesOpen", notesOpen); }, [notesOpen]);
+  useEffect(() => { writeLocal("structura:searchOpen", searchOpen); }, [searchOpen]);
+  useEffect(() => { writeLocal("structura:outlineOpen", outlineOpen); }, [outlineOpen]);
+  useEffect(() => { writeLocal("structura:outlineExtended", outlineExtended); }, [outlineExtended]);
+  useEffect(() => { writeLocal("structura:outlineIncludePaired", outlinePredecessorShown); }, [outlinePredecessorShown]);
 
   // ── Load datasets list on mount ───────────────────────────────────────────
   useEffect(() => {

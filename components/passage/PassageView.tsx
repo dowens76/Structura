@@ -210,6 +210,7 @@ export default function PassageView({
   const notesSyncedRef   = useRef(notesSynced);
   const syncTimerRef     = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [outlineOpen, setOutlineOpen] = useState(false);
   const [bibleOpen, setBibleOpen] = useState(false);
   const [searchHits, setSearchHits] = useState<Set<string>>(new Set());
   const [searchRequest, setSearchRequest] = useState<{ query: string; source: string; nonce: number } | null>(null);
@@ -277,6 +278,9 @@ export default function PassageView({
   useEffect(() => { writeLocal("structura:useLinguisticTerms", useLinguisticTerms); }, [useLinguisticTerms]);
   useEffect(() => { writeLocal("structura:hideSourceText", hideSourceText); }, [hideSourceText]);
   useEffect(() => { writeLocal("structura:toolbarVisibility", toolbarVis); }, [toolbarVis]);
+  useEffect(() => { writeLocal("structura:notesOpen", notesOpen); }, [notesOpen]);
+  useEffect(() => { writeLocal("structura:searchOpen", searchOpen); }, [searchOpen]);
+  useEffect(() => { writeLocal("structura:outlineOpen", outlineOpen); }, [outlineOpen]);
 
   useEffect(() => {
     fetch("/api/book-groupings")
@@ -335,10 +339,13 @@ export default function PassageView({
     setLineHeightMultiplier(readLocal<number>("structura:lineHeightMultiplier", 1.0));
     setHideSourceText(readLocal<boolean>("structura:hideSourceText", translationOnly));
     setToolbarVis({ ...DEFAULT_TOOLBAR_VIS, ...readLocal<Partial<ToolbarVisibility>>("structura:toolbarVisibility", {}) });
+    setNotesOpen(readLocal<boolean>("structura:notesOpen", false));
+    setOutlineOpen(readLocal<boolean>("structura:outlineOpen", false));
     // Auto-reopen search pane if a previous search was persisted
     try {
       if (sessionStorage.getItem("structura.search")) setSearchOpen(true);
-    } catch { /* ignore */ }
+      else setSearchOpen(readLocal<boolean>("structura:searchOpen", false));
+    } catch { setSearchOpen(readLocal<boolean>("structura:searchOpen", false)); }
   }, []);
 
   // ── Editing mode toggles ──────────────────────────────────────────────────
@@ -2689,7 +2696,6 @@ export default function PassageView({
   };
 
   // ── Outline pane ──────────────────────────────────────────────────────────
-  const [outlineOpen, setOutlineOpen] = useState(false);
 
   const outlineBreaksForPane = useMemo(() => {
     const result: { wordId: string; heading: string | null; level: number; chapter: number; verse: number; positionInVerse: number; thematic: boolean; thematicLetter: string | null }[] = [];
