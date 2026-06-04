@@ -1710,7 +1710,7 @@ export default function ChapterDisplay({
     }
   }
 
-  async function handleUpdateSceneHeading(wordId: string, level: number, heading: string) {
+  function applySceneHeadingLocally(wordId: string, level: number, heading: string) {
     const trimmed = heading.trim() || null;
     setSceneBreakMap((prev) => {
       const next = new Map(prev);
@@ -1720,11 +1720,15 @@ export default function ChapterDisplay({
       next.set(wordId, arr);
       return next;
     });
+  }
+
+  async function handleUpdateSceneHeading(wordId: string, level: number, heading: string) {
+    applySceneHeadingLocally(wordId, level, heading);
     try {
       await fetch("/api/scene-breaks", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ wordId, level, heading: trimmed }),
+        body: JSON.stringify({ wordId, level, heading: heading.trim() || null }),
       });
     } catch {
       // Non-critical; leave optimistic state
@@ -1805,8 +1809,8 @@ export default function ChapterDisplay({
   }
 
   function handleExitSceneEditing() {
-    // Read DOM input values while inputs are still mounted, then remove any breaks
-    // whose heading the user left blank.
+    // Read DOM input values while inputs are still mounted: flush any pending
+    // heading text that was typed but not yet blurred, and remove breaks left blank.
     const emptyBreaks: { wordId: string; level: number; verse: number }[] = [];
     for (const [wordId, breaks] of sceneBreakMap) {
       for (const br of breaks) {
@@ -1814,6 +1818,8 @@ export default function ChapterDisplay({
         const currentValue = inputEl ? inputEl.value.trim() : (br.heading?.trim() ?? "");
         if (!currentValue) {
           emptyBreaks.push({ wordId, level: br.level, verse: br.verse });
+        } else if (inputEl && currentValue !== (br.heading?.trim() ?? "")) {
+          handleUpdateSceneHeading(wordId, br.level, currentValue);
         }
       }
     }
@@ -4522,6 +4528,7 @@ export default function ChapterDisplay({
                 sceneBreakMap={sceneBreakMap}
                 editingScenes={editingScenes}
                 onToggleSceneBreak={handleToggleSceneBreak}
+                onChangeSceneHeading={applySceneHeadingLocally}
                 onUpdateSceneHeading={handleUpdateSceneHeading}
                 onUpdateSceneOutOfSequence={handleUpdateSceneOutOfSequence}
                 onUpdateSceneExtendedThrough={handleUpdateSceneExtendedThrough}

@@ -151,6 +151,7 @@ interface VerseDisplayProps {
   sceneBreakMap?: Map<string, Array<{ heading: string | null; level: number; verse: number; outOfSequence: boolean; extendedThrough: number | null; thematic: boolean; thematicLetter: string | null }>>;
   editingScenes?: boolean;
   onToggleSceneBreak?: (wordId: string, level: number, verse: number) => void;
+  onChangeSceneHeading?: (wordId: string, level: number, heading: string) => void;
   onUpdateSceneHeading?: (wordId: string, level: number, heading: string) => void;
   onUpdateSceneOutOfSequence?: (wordId: string, level: number, outOfSequence: boolean) => void;
   onUpdateSceneExtendedThrough?: (wordId: string, level: number, extendedThrough: number | null) => void;
@@ -900,6 +901,7 @@ export default function VerseDisplay({
   sceneBreakMap = new Map() as Map<string, Array<{ heading: string | null; level: number; verse: number; outOfSequence: boolean; extendedThrough: number | null; thematic: boolean; thematicLetter: string | null }>>,
   editingScenes = false,
   onToggleSceneBreak,
+  onChangeSceneHeading,
   onUpdateSceneHeading,
   onUpdateSceneOutOfSequence,
   onUpdateSceneExtendedThrough,
@@ -1311,6 +1313,7 @@ export default function VerseDisplay({
                     className="flex-1 min-w-0 text-xs font-semibold tracking-widest text-stone-500 dark:text-stone-400 bg-transparent border-none outline-none focus:ring-0 px-0 placeholder:text-stone-300 dark:placeholder:text-stone-600"
                     defaultValue={br.heading ?? ""}
                     placeholder="Section label"
+                    onChange={(e) => onChangeSceneHeading?.(wordId, br.level, e.target.value)}
                     onBlur={(e) => onUpdateSceneHeading?.(wordId, br.level, e.target.value)}
                     onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); e.stopPropagation(); }}
                   />
