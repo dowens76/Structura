@@ -62,6 +62,8 @@ export interface SectionBreakForOutline {
   verse: number;
   thematic?: boolean;
   thematicLetter?: string | null;
+  /** OSIS book code; when multiple distinct values exist, references are prefixed with the book. */
+  bookCode?: string;
 }
 
 export interface SectionRangeForOutline {
@@ -81,8 +83,11 @@ export function generateOutline(
   ranges: Map<string, SectionRangeForOutline>
 ): string {
   const lines: string[] = [];
-  // counters[1..6] — reset lower-priority counters when a higher-priority heading is seen
   const counters = [0, 0, 0, 0, 0, 0, 0]; // index 1–6 used
+
+  // Detect whether multiple books are present so we can prefix references.
+  const bookCodes = new Set(breaks.map((b) => b.bookCode ?? ""));
+  const isPaired = bookCodes.size > 1;
 
   for (const sb of breaks) {
     const { level } = sb;
@@ -110,9 +115,10 @@ export function generateOutline(
 
     const rangeKey = `${sb.wordId}:${level}`;
     const range = ranges.get(rangeKey);
+    const bookPrefix = isPaired && sb.bookCode ? `${sb.bookCode} ` : "";
     const rangeStr = range
-      ? " " + formatOutlineRange(sb.chapter, sb.verse, range.endChapter, range.endVerse)
-      : ` (${sb.chapter}:${sb.verse})`;
+      ? " (" + bookPrefix + formatOutlineRange(sb.chapter, sb.verse, range.endChapter, range.endVerse).slice(1, -1) + ")"
+      : ` (${bookPrefix}${sb.chapter}:${sb.verse})`;
 
     lines.push(`${indent}${prefix}${heading}${rangeStr}`);
   }

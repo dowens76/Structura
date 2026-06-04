@@ -288,6 +288,7 @@ export default function OutlinePane({
       wordId: it.wordId, heading: it.heading, level: it.level,
       chapter: it.chapter, verse: it.verse,
       thematic: it.thematic, thematicLetter: it.thematicLetter,
+      bookCode: it.bookCode ?? book,
     }));
     const text = generateOutline(breaksForCopy, sectionRanges);
     await navigator.clipboard.writeText(text);
