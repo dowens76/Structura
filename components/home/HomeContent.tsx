@@ -15,6 +15,10 @@ import { MORPHGNT_BOOK_MAP, OSIS_BOOK_ORDER } from "@/lib/utils/osis";
 // NT OSIS codes — used to pick the correct word-DB source for chapter links
 const NT_OSIS_CODES = new Set(Object.values(MORPHGNT_BOOK_MAP));
 
+function bookAbbr(osisCode: string): string {
+  return osisCode.replace(/^(\d+)([A-Za-z])/, "$1 $2");
+}
+
 // Grid for ULT/VCB — books are OSIS code strings, not Book objects.
 // Links always use the underlying word-DB source (SBLGNT for NT, OSHB for OT)
 // so the chapter page can load properly; ChapterDisplay handles hiding the
@@ -46,7 +50,7 @@ function TranslationBookGrid({
               style={{ backgroundColor: "var(--surface)", borderColor: "var(--border)", color: "var(--foreground)" }}
               title={displayName}
             >
-              <div className="font-medium truncate text-xs">{osisCode}</div>
+              <div className="font-medium truncate text-xs">{bookAbbr(osisCode)}</div>
               <div className="text-[11px] truncate" style={{ color: "var(--text-muted)" }}>{displayName}</div>
             </Link>
           );
@@ -85,7 +89,7 @@ function BookGrid({
               style={{ backgroundColor: "var(--surface)", borderColor: "var(--border)", color: "var(--foreground)" }}
               title={displayName}
             >
-              <div className="font-medium truncate text-xs">{book.osisCode}</div>
+              <div className="font-medium truncate text-xs">{bookAbbr(book.osisCode)}</div>
               <div className="text-[11px] truncate" style={{ color: "var(--text-muted)" }}>{displayName}</div>
             </Link>
           );

@@ -88,6 +88,7 @@ export function generateOutline(
   // Detect whether multiple books are present so we can prefix references.
   const bookCodes = new Set(breaks.map((b) => b.bookCode ?? ""));
   const isPaired = bookCodes.size > 1;
+  const bookAbbr = (code: string) => code.replace(/^(\d+)([A-Za-z])/, "$1 $2");
 
   for (const sb of breaks) {
     const { level } = sb;
@@ -115,7 +116,7 @@ export function generateOutline(
 
     const rangeKey = `${sb.wordId}:${level}`;
     const range = ranges.get(rangeKey);
-    const bookPrefix = isPaired && sb.bookCode ? `${sb.bookCode} ` : "";
+    const bookPrefix = isPaired && sb.bookCode ? `${bookAbbr(sb.bookCode)} ` : "";
     const rangeStr = range
       ? " (" + bookPrefix + formatOutlineRange(sb.chapter, sb.verse, range.endChapter, range.endVerse).slice(1, -1) + ")"
       : ` (${bookPrefix}${sb.chapter}:${sb.verse})`;

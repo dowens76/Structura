@@ -6,6 +6,11 @@ import type { SectionRangeForOutline } from "@/lib/utils/outlineExport";
 import { generateOutline } from "@/lib/utils/outlineExport";
 import { OSIS_REF_BOOK_NAMES } from "@/lib/utils/osis";
 
+// ── Book abbreviation display helper ─────────────────────────────────────────
+function bookAbbr(osisCode: string): string {
+  return osisCode.replace(/^(\d+)([A-Za-z])/, "$1 $2");
+}
+
 // ── Prefix helpers (mirrors outlineExport.ts) ─────────────────────────────────
 const LOWER = "abcdefghijklmnopqrstuvwxyz";
 const UPPER = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
@@ -213,12 +218,12 @@ export default function OutlinePane({
       const isCrossBookRange = crossBookRangeKeys.has(key);
       const letter = breakLetterMap.get(br.wordId) ?? "";
       const itemBook = br.bookCode ?? book;
-      const bookPrefix = isPaired ? `${itemBook} ` : "";
+      const bookPrefix = isPaired ? `${bookAbbr(itemBook)} ` : "";
       let rangeStr: string;
       if (range) {
         const baseRange = formatRange(br.chapter, br.verse, letter, range.endChapter, range.endVerse);
         rangeStr = isCrossBookRange && continuationBook
-          ? `${bookPrefix}${br.chapter}:${br.verse}${letter} – ${continuationBook} ${range.endChapter}:${range.endVerse}`
+          ? `${bookPrefix}${br.chapter}:${br.verse}${letter} – ${bookAbbr(continuationBook)} ${range.endChapter}:${range.endVerse}`
           : `${bookPrefix}${baseRange}`;
       } else {
         rangeStr = `${bookPrefix}${br.chapter}:${br.verse}${letter}`;
