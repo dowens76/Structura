@@ -956,6 +956,7 @@ export default function ChapterDisplay({
     setOutlineOpen(readLocal<boolean>("structura:outlineOpen", false));
     setOutlineExtended(readLocal<boolean>("structura:outlineExtended", false));
     setOutlinePredecessorShown(readLocal<boolean>("structura:outlineIncludePaired", false));
+    setEditingScenes(readLocal<boolean>("structura:editingScenes", false));
   }, []); // empty deps → runs once after first render (client only)
 
   // Snapshot translation data when editing mode is entered so Cancel can revert to it
@@ -978,6 +979,7 @@ export default function ChapterDisplay({
   useEffect(() => { writeLocal("structura:outlineOpen", outlineOpen); }, [outlineOpen]);
   useEffect(() => { writeLocal("structura:outlineExtended", outlineExtended); }, [outlineExtended]);
   useEffect(() => { writeLocal("structura:outlineIncludePaired", outlinePredecessorShown); }, [outlinePredecessorShown]);
+  useEffect(() => { writeLocal("structura:editingScenes", editingScenes); }, [editingScenes]);
 
   // ── Load datasets list on mount ───────────────────────────────────────────
   useEffect(() => {

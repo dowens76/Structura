@@ -281,6 +281,7 @@ export default function PassageView({
   useEffect(() => { writeLocal("structura:notesOpen", notesOpen); }, [notesOpen]);
   useEffect(() => { writeLocal("structura:searchOpen", searchOpen); }, [searchOpen]);
   useEffect(() => { writeLocal("structura:outlineOpen", outlineOpen); }, [outlineOpen]);
+  useEffect(() => { writeLocal("structura:editingScenes", editingScenes); }, [editingScenes]);
 
   useEffect(() => {
     fetch("/api/book-groupings")
@@ -341,6 +342,7 @@ export default function PassageView({
     setToolbarVis({ ...DEFAULT_TOOLBAR_VIS, ...readLocal<Partial<ToolbarVisibility>>("structura:toolbarVisibility", {}) });
     setNotesOpen(readLocal<boolean>("structura:notesOpen", false));
     setOutlineOpen(readLocal<boolean>("structura:outlineOpen", false));
+    setEditingScenes(readLocal<boolean>("structura:editingScenes", false));
     // Auto-reopen search pane if a previous search was persisted
     try {
       if (sessionStorage.getItem("structura.search")) setSearchOpen(true);
