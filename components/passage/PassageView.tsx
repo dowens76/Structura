@@ -281,7 +281,6 @@ export default function PassageView({
   useEffect(() => { writeLocal("structura:notesOpen", notesOpen); }, [notesOpen]);
   useEffect(() => { writeLocal("structura:searchOpen", searchOpen); }, [searchOpen]);
   useEffect(() => { writeLocal("structura:outlineOpen", outlineOpen); }, [outlineOpen]);
-  useEffect(() => { writeLocal("structura:editingScenes", editingScenes); }, [editingScenes]);
 
   useEffect(() => {
     fetch("/api/book-groupings")
@@ -482,6 +481,7 @@ export default function PassageView({
     }
   );
   const [editingScenes, setEditingScenes] = useState(false);
+  useEffect(() => { writeLocal("structura:editingScenes", editingScenes); }, [editingScenes]);
   // newPassage prompt state
   const searchParams = useSearchParams();
   const [showNewPassagePrompt, setShowNewPassagePrompt] = useState(() => searchParams.get("newPassage") === "true");
