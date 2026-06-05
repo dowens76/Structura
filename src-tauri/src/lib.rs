@@ -332,8 +332,14 @@ fn spawn_server(app: &AppHandle, port: u16) -> Result<(), String> {
         .env("NODE_ENV", "production")
         .env("STRUCTURA_RESOURCES_DIR", databases_dir.to_string_lossy().to_string())
         .env("STRUCTURA_USER_DATA_DIR", app_data_dir.to_string_lossy().to_string())
-        // Next.js standalone needs to know where to find .next/static
-        .env("NEXT_SHARP_PATH", "")
+        // Disable Next.js telemetry — prevents writes to ~/.next/telemetry on startup.
+        .env("NEXT_TELEMETRY_DISABLED", "1")
+        // On Linux the AppImage runtime sets LD_LIBRARY_PATH to its bundled GTK/WebKit
+        // libraries.  The Node.js sidecar inherits this and may pick up wrong/old
+        // shared-library versions, causing it to crash before printing "Ready".
+        // Clearing LD_LIBRARY_PATH forces the dynamic linker to use system libraries,
+        // which is correct for a self-contained Node.js 24 binary.
+        .env("LD_LIBRARY_PATH", "")
         ;
 
     let (mut rx, _child) = sidecar.spawn().map_err(|e| format!("Failed to spawn node sidecar: {e}"))?;
@@ -342,48 +348,133 @@ fn spawn_server(app: &AppHandle, port: u16) -> Result<(), String> {
     let ready_url = format!("http://127.0.0.1:{port}");
     let navigated = Arc::new(Mutex::new(false));
 
-    tauri::async_runtime::spawn(async move {
-        while let Some(event) = rx.recv().await {
-            match event {
-                tauri_plugin_shell::process::CommandEvent::Stdout(line) => {
-                    let text = String::from_utf8_lossy(&line);
-                    log::info!("[node] {}", text.trim());
-                    // Navigate WebView once server is ready.
-                    // Next.js standalone prints "✓ Ready in Nms" to stdout.
-                    let mut nav = navigated.lock().unwrap();
-                    if !*nav && (text.contains("Ready") || text.contains("Listening on") || text.contains("started server")) {
+    // ── TCP port-polling fallback ─────────────────────────────────────────────
+    // On Linux the "Ready" message in stdout may never arrive if the server
+    // crashes before printing it.  As a belt-and-suspenders check we also poll
+    // the TCP port directly: once the port accepts a connection the server is
+    // ready to serve requests regardless of what it printed.
+    {
+        let app_handle2  = app.clone();
+        let ready_url2   = ready_url.clone();
+        let navigated2   = navigated.clone();
+        tauri::async_runtime::spawn(async move {
+            use tokio::net::TcpStream;
+            use tokio::time::{sleep, Duration};
+            let addr = format!("127.0.0.1:{port}");
+            // Poll every 500 ms for up to 60 seconds (120 attempts).
+            for _ in 0u32..120 {
+                sleep(Duration::from_millis(500)).await;
+                if TcpStream::connect(&addr).await.is_ok() {
+                    let mut nav = navigated2.lock().unwrap();
+                    if !*nav {
                         *nav = true;
                         drop(nav);
-                        log::info!("Server ready — navigating to {ready_url}");
-                        if let Some(window) = app_handle.get_webview_window("main") {
-                            let _ = window.navigate(ready_url.parse().unwrap());
+                        log::info!("Server TCP-ready — navigating to {ready_url2}");
+                        if let Some(window) = app_handle2.get_webview_window("main") {
+                            let _ = window.navigate(ready_url2.parse().unwrap());
                         }
                     }
+                    return;
                 }
-                tauri_plugin_shell::process::CommandEvent::Stderr(line) => {
-                    let text = String::from_utf8_lossy(&line);
-                    log::warn!("[node stderr] {}", text.trim());
-                    // Next.js 16 prints "▲ Next.js ... Ready" to stderr
-                    let mut nav = navigated.lock().unwrap();
-                    if !*nav && (text.contains("Ready") || text.contains("started server")) {
-                        *nav = true;
-                        drop(nav);
-                        log::info!("Server ready (stderr) — navigating to {ready_url}");
-                        if let Some(window) = app_handle.get_webview_window("main") {
-                            let _ = window.navigate(ready_url.parse().unwrap());
-                        }
-                    }
-                }
-                tauri_plugin_shell::process::CommandEvent::Error(err) => {
-                    log::error!("[node error] {err}");
-                }
-                tauri_plugin_shell::process::CommandEvent::Terminated(status) => {
-                    log::error!("[node] Process terminated: {:?}", status);
-                }
-                _ => {}
             }
-        }
-    });
+            // 60 seconds elapsed and the port never opened.
+            let nav = navigated2.lock().unwrap();
+            if !*nav {
+                drop(nav);
+                log::error!("Server did not become ready within 60 s");
+                use tauri_plugin_dialog::DialogExt;
+                app_handle2
+                    .dialog()
+                    .message("Structura's server did not start within 60 seconds.\n\nPlease try relaunching the app. If the problem persists, check the application logs for details.")
+                    .title("Structura — Startup Timeout")
+                    .show(|_| {});
+            }
+        });
+    }
+
+    // ── stdout / stderr watcher ───────────────────────────────────────────────
+    // Collect recent stderr lines so we can include them in error messages.
+    let stderr_buf: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+
+    {
+        let app_handle   = app_handle.clone();
+        let ready_url    = ready_url.clone();
+        let navigated    = navigated.clone();
+        let stderr_buf   = stderr_buf.clone();
+
+        tauri::async_runtime::spawn(async move {
+            while let Some(event) = rx.recv().await {
+                match event {
+                    tauri_plugin_shell::process::CommandEvent::Stdout(line) => {
+                        let text = String::from_utf8_lossy(&line);
+                        log::info!("[node] {}", text.trim());
+                        // Navigate WebView once server is ready.
+                        // Next.js standalone prints "✓ Ready in Nms" to stdout.
+                        let mut nav = navigated.lock().unwrap();
+                        if !*nav && (text.contains("Ready") || text.contains("Listening on") || text.contains("started server")) {
+                            *nav = true;
+                            drop(nav);
+                            log::info!("Server ready — navigating to {ready_url}");
+                            if let Some(window) = app_handle.get_webview_window("main") {
+                                let _ = window.navigate(ready_url.parse().unwrap());
+                            }
+                        }
+                    }
+                    tauri_plugin_shell::process::CommandEvent::Stderr(line) => {
+                        let text = String::from_utf8_lossy(&line);
+                        log::warn!("[node stderr] {}", text.trim());
+                        // Keep a rolling buffer of recent stderr for error dialogs.
+                        {
+                            let mut buf = stderr_buf.lock().unwrap();
+                            buf.push(text.trim().to_string());
+                            if buf.len() > 20 { buf.remove(0); }
+                        }
+                        // Next.js 16 may print "▲ Next.js ... Ready" to stderr.
+                        let mut nav = navigated.lock().unwrap();
+                        if !*nav && (text.contains("Ready") || text.contains("started server")) {
+                            *nav = true;
+                            drop(nav);
+                            log::info!("Server ready (stderr) — navigating to {ready_url}");
+                            if let Some(window) = app_handle.get_webview_window("main") {
+                                let _ = window.navigate(ready_url.parse().unwrap());
+                            }
+                        }
+                    }
+                    tauri_plugin_shell::process::CommandEvent::Error(err) => {
+                        log::error!("[node error] {err}");
+                    }
+                    tauri_plugin_shell::process::CommandEvent::Terminated(status) => {
+                        log::error!("[node] Process terminated: {:?}", status);
+                        // If the process died before we ever navigated, show an error
+                        // dialog so the user isn't left staring at the loading screen.
+                        let nav = navigated.lock().unwrap();
+                        if !*nav {
+                            drop(nav);
+                            let recent_stderr = {
+                                let buf = stderr_buf.lock().unwrap();
+                                if buf.is_empty() {
+                                    "(no output captured)".to_string()
+                                } else {
+                                    buf.join("\n")
+                                }
+                            };
+                            let msg = format!(
+                                "The Structura server process exited unexpectedly (status: {:?}).\n\nRecent output:\n{}\n\nPlease try relaunching the app.",
+                                status, recent_stderr
+                            );
+                            use tauri_plugin_dialog::DialogExt;
+                            app_handle
+                                .dialog()
+                                .message(msg)
+                                .title("Structura — Server Crashed")
+                                .show(|_| {});
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        });
+    }
 
     Ok(())
 }

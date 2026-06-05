@@ -26,6 +26,7 @@ tauri-plugin-dialog = "2"
 tauri-plugin-fs = "2"
 base64 = "0.22"
 png    = "0.17"
+tokio  = { version = "1", features = ["net", "time"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2             = "0.6.4"
