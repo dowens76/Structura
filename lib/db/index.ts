@@ -423,6 +423,22 @@ function _migrateUserDbInner(sqlite: Database.Database): void {
       ).run();
     }
   }
+
+  // Seed ULT translation record if ult.db is present but the translations row is missing
+  if (fs.existsSync(ULT_DB_PATH)) {
+    const existing = sqlite.prepare("SELECT id FROM translations WHERE abbreviation = 'ULT' LIMIT 1").get();
+    if (!existing) {
+      sqlite.prepare(
+        "INSERT OR IGNORE INTO users (id, name, email) VALUES (1, 'User', 'user@structura.app')"
+      ).run();
+      sqlite.prepare(
+        "INSERT OR IGNORE INTO workspaces (id, user_id, name) VALUES (1, 1, 'Default')"
+      ).run();
+      sqlite.prepare(
+        "INSERT OR IGNORE INTO translations (workspace_id, name, abbreviation, language) VALUES (1, 'UnfoldingWord Literal Text', 'ULT', 'English')"
+      ).run();
+    }
+  }
 }
 
 export function getUserDb() {
