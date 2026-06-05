@@ -396,6 +396,64 @@
       .cta-buttons .btn { width: 100%; max-width: 300px; justify-content: center; }
     }
 
+    /* ── About ────────────────────────────────────────────────────── */
+    .about-section {
+      padding: 6rem 2.5rem;
+      background: var(--bg);
+      border-top: 1px solid var(--border);
+    }
+
+    .about-inner {
+      max-width: 720px;
+      margin: 0 auto;
+    }
+
+    .about-label {
+      display: inline-block;
+      font-size: .7rem;
+      font-weight: 700;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      color: var(--gold-dark);
+      margin-bottom: .8rem;
+    }
+
+    .about-section-title {
+      font-family: var(--serif);
+      font-size: clamp(1.8rem, 2.8vw, 2.5rem);
+      font-weight: normal;
+      color: var(--navy);
+      margin-bottom: 3rem;
+      letter-spacing: -.2px;
+    }
+
+    .about-subsection {
+      margin-bottom: 3rem;
+    }
+
+    .about-subsection:last-child {
+      margin-bottom: 0;
+    }
+
+    .about-subsection h3 {
+      font-family: var(--serif);
+      font-size: clamp(1.2rem, 1.8vw, 1.55rem);
+      font-weight: normal;
+      color: var(--navy);
+      margin-bottom: .9rem;
+      letter-spacing: -.1px;
+    }
+
+    .about-subsection p {
+      font-size: .975rem;
+      color: var(--muted);
+      line-height: 1.78;
+    }
+
+    @media (max-width: 640px) {
+      .about-section { padding: 4rem 1.5rem; }
+    }
+
     /* ── Downloads ────────────────────────────────────────────────── */
     .downloads-panel {
       margin: 4rem 0;
@@ -772,6 +830,24 @@
       <li>Export notes to MS Word, LibreOffice, or the clipboard</li>
       <li>And more!</li>
     </ul>
+  </div>
+</section>
+
+<!-- ── About ─────────────────────────────────────────────────────────── -->
+<section id="about" class="about-section">
+  <div class="about-inner reveal">
+    <span class="about-label">About</span>
+    <h2 class="about-section-title">About Structura</h2>
+
+    <div class="about-subsection">
+      <h3>Who am I?</h3>
+      <p></p>
+    </div>
+
+    <div class="about-subsection">
+      <h3>What is my vision for Structura?</h3>
+      <p></p>
+    </div>
   </div>
 </section>
 
