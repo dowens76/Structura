@@ -42,6 +42,8 @@ interface WordTokenProps {
   onSaveConstituentLabel?: (wordId: string, label: string | null) => void;
   onSaveDatasetEntry?: (wordId: string, value: string | null) => void;
   onLemmaClick?: (word: Word) => void;
+  showVowels?: boolean;
+  showCantillation?: boolean;
 }
 
 /** Split surface text into leading punctuation, core word, and trailing punctuation.
@@ -302,6 +304,8 @@ export default function WordToken({
   onSaveConstituentLabel,
   onSaveDatasetEntry,
   onLemmaClick,
+  showVowels = true,
+  showCantillation = true,
 }: WordTokenProps) {
   const [hovering, setHovering] = useState(false);
   const [tooltipBelow, setTooltipBelow] = useState(false);
@@ -404,7 +408,11 @@ export default function WordToken({
           : "cursor-pointer hover:bg-stone-100 dark:hover:bg-stone-800",
   ].join(" ");
 
-  const displayText = (word.surfaceText ?? "").replace(/\//g, "");
+  let displayText = (word.surfaceText ?? "").replace(/\//g, "");
+  if (isHebrew) {
+    if (!showCantillation) displayText = displayText.replace(/[֑-֯]/g, "");
+    if (!showVowels)       displayText = displayText.replace(/[ְ-ׇֽֿׁׂׅׄ]/g, "");
+  }
   const { leading, core, trailing } = splitPunctuation(displayText);
   const coreContent = word.largeLetters
     ? renderWithLargeLetters(core, word.largeLetters)

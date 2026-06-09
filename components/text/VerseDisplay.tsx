@@ -173,6 +173,8 @@ interface VerseDisplayProps {
   onExpandAnnotationRange?: (id: number, direction: "expand-start" | "shrink-start" | "expand-end" | "shrink-end") => void;
   showAnnotationCol?: boolean;
   showAtnachBreaks?: boolean;
+  showVowels?: boolean;
+  showCantillation?: boolean;
   /** Called when the user clicks a verse-number label; used to scroll the notes pane */
   onVerseClick?: (verseNum: number) => void;
   /** Extra gap (px) inserted between the verse-label column and the source-text column
@@ -924,6 +926,8 @@ export default function VerseDisplay({
   rstSourcePad = 0,
   presentationMode = false,
   showAtnachBreaks = false,
+  showVowels = true,
+  showCantillation = true,
   translationFootnotes = [] as TranslationFootnote[],
   onDeleteFootnote,
   onEditFootnote,
@@ -1690,6 +1694,8 @@ export default function VerseDisplay({
               onSaveConstituentLabel={onSaveConstituentLabel}
               onSaveDatasetEntry={onSaveDatasetEntry}
               onLemmaClick={onLemmaClick}
+              showVowels={showVowels}
+              showCantillation={showCantillation}
             />
             {wordHasAtnach && (
               <span

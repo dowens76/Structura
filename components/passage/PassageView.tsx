@@ -218,6 +218,8 @@ export default function PassageView({
   const [notesScrollVerse, setNotesScrollVerse] = useState<{ ch: number; v: number } | null>(null);
   const [showTooltips, setShowTooltips] = useState(false);
   const [showAtnachBreaks, setShowAtnachBreaks] = useState(false);
+  const [showVowels, setShowVowels] = useState(true);
+  const [showCantillation, setShowCantillation] = useState(true);
   const [activeTranslationAbbrs, setActiveTranslationAbbrs] = useState<Set<string>>(new Set());
   const [colorRules, setColorRules] = useState<ColorRule[]>([]);
   const [useLinguisticTerms, setUseLinguisticTerms] = useState(false);
@@ -3016,6 +3018,29 @@ export default function PassageView({
             >Qatal</button>
           )}
 
+          {isHebrew && (
+            <button
+              onClick={() => setShowVowels((v) => !v)}
+              data-tip={showVowels ? "Hide Hebrew vowel points" : "Show Hebrew vowel points"}
+              className={["px-2.5 py-1 rounded text-xs font-medium transition-colors",
+                showVowels
+                  ? "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700"
+                  : "bg-amber-500 text-white",
+              ].join(" ")}
+            >Vowels</button>
+          )}
+          {isHebrew && (
+            <button
+              onClick={() => setShowCantillation((v) => !v)}
+              data-tip={showCantillation ? "Hide Hebrew cantillation marks" : "Show Hebrew cantillation marks"}
+              className={["px-2.5 py-1 rounded text-xs font-medium transition-colors",
+                showCantillation
+                  ? "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700"
+                  : "bg-amber-500 text-white",
+              ].join(" ")}
+            >Cantillation</button>
+          )}
+
           <div className="h-5 border-l border-[var(--border)]" />
 
           {/* Atnach marker — Hebrew only */}
@@ -3931,6 +3956,8 @@ export default function PassageView({
                     rstSourcePad={rstSourcePad}
                     hasActiveTranslations={hasActiveTranslations}
                     showAtnachBreaks={showAtnachBreaks}
+                    showVowels={showVowels}
+                    showCantillation={showCantillation}
                     tagRangeStartWordId={refRangeStart ?? wordTagRangeStart}
                     findHits={findHitSetFull}
                     findFocusId={findFocusId}

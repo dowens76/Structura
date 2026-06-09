@@ -249,6 +249,8 @@ export default function ChapterDisplay({
   }, []);
   const [showTooltips, setShowTooltips] = useState(false);
   const [showAtnachBreaks, setShowAtnachBreaks] = useState(false);
+  const [showVowels, setShowVowels] = useState(true);
+  const [showCantillation, setShowCantillation] = useState(true);
   // Store active translations by abbreviation so they survive cross-book navigation
   const [activeTranslationAbbrs, setActiveTranslationAbbrs] = useState<Set<string>>(new Set());
   const [colorRules, setColorRules] = useState<ColorRule[]>([]);
@@ -943,6 +945,8 @@ export default function ChapterDisplay({
         : null;
       if (autoAbbr) setActiveTranslationAbbrs(new Set([autoAbbr]));
     }
+    setShowVowels(readLocal<boolean>("structura:showVowels", true));
+    setShowCantillation(readLocal<boolean>("structura:showCantillation", true));
     setUseLinguisticTerms(readLocal<boolean>("structura:useLinguisticTerms", false));
     setHebrewFontSize(readLocal<number>("structura:hebrewFontSize", 1.375));
     setGreekFontSize(readLocal<number>("structura:greekFontSize", 1.25));
@@ -970,6 +974,8 @@ export default function ChapterDisplay({
   // Persist sticky settings whenever they change
   useEffect(() => { writeLocal("structura:displayMode", displayMode); }, [displayMode]);
   useEffect(() => { writeLocal("structura:interlinearSubMode", interlinearSubMode); }, [interlinearSubMode]);
+  useEffect(() => { writeLocal("structura:showVowels", showVowels); }, [showVowels]);
+  useEffect(() => { writeLocal("structura:showCantillation", showCantillation); }, [showCantillation]);
   useEffect(() => { writeLocal("structura:useLinguisticTerms", useLinguisticTerms); }, [useLinguisticTerms]);
   useEffect(() => { writeLocal("structura:hideSourceText", hideSourceText); }, [hideSourceText]);
   // structura:rstLinked is now persisted inside useRstRelations hook.
@@ -3498,6 +3504,36 @@ export default function ChapterDisplay({
                 </button>
               )}
 
+              {/* Vowel / cantillation toggles — Hebrew only */}
+              {isHebrew && (
+                <button
+                  onClick={() => setShowVowels((v) => !v)}
+                  data-tip={showVowels ? "Hide Hebrew vowel points" : "Show Hebrew vowel points"}
+                  className={[
+                    "px-3 py-1.5 rounded text-[13px] font-medium transition-colors",
+                    showVowels
+                      ? "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700"
+                      : "bg-amber-500 text-white",
+                  ].join(" ")}
+                >
+                  Vowels
+                </button>
+              )}
+              {isHebrew && (
+                <button
+                  onClick={() => setShowCantillation((v) => !v)}
+                  data-tip={showCantillation ? "Hide Hebrew cantillation marks" : "Show Hebrew cantillation marks"}
+                  className={[
+                    "px-3 py-1.5 rounded text-[13px] font-medium transition-colors",
+                    showCantillation
+                      ? "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700"
+                      : "bg-amber-500 text-white",
+                  ].join(" ")}
+                >
+                  Cantillation
+                </button>
+              )}
+
               <div className="h-5 border-l border-[var(--border)]" />
 
               {/* Atnach marker — Hebrew only */}
@@ -4481,6 +4517,8 @@ export default function ChapterDisplay({
                 paragraphBreakIds={paragraphBreakIds}
                 editingParagraphs={editingParagraphs}
                 showAtnachBreaks={showAtnachBreaks}
+                showVowels={showVowels}
+                showCantillation={showCantillation}
                 characterRefMap={characterRefMap}
                 characterMap={characterMap}
                 wordSpeechMap={wordSpeechMap}
