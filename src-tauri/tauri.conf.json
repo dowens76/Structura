@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Structura",
-  "version": "0.8.1",
+  "version": "0.8.2",
   "identifier": "com.structura.app",
   "build": {
     "frontendDist": "frontend",
@@ -56,9 +56,18 @@
       "minimumSystemVersion": "10.15",
       "dmg": {
         "background": "icons/dmg-background.png",
-        "windowSize": { "width": 660, "height": 480 },
-        "appPosition": { "x": 165, "y": 400 },
-        "applicationFolderPosition": { "x": 495, "y": 400 }
+        "windowSize": {
+          "width": 660,
+          "height": 480
+        },
+        "appPosition": {
+          "x": 165,
+          "y": 400
+        },
+        "applicationFolderPosition": {
+          "x": 495,
+          "y": 400
+        }
       }
     }
   }

@@ -1,6 +1,6 @@
 {
   "name": "structura",
-  "version": "0.8.1",
+  "version": "0.8.2",
   "private": true,
   "scripts": {
     "version:bump": "node scripts/bump-version.mjs",
