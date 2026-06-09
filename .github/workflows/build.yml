@@ -199,6 +199,35 @@ jobs:
         env:
           TAURI_BUILD_TARGET: ${{ matrix.target }}
 
+      # ── Linux: GPG sign artifacts ─────────────────────────────────────────────
+      - name: Import GPG key (Linux)
+        if: runner.os == 'Linux' && env.GPG_PRIVATE_KEY != ''
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+        run: |
+          echo "$GPG_PRIVATE_KEY" | base64 --decode | gpg --batch --import
+          GPG_KEY_ID=$(gpg --list-secret-keys --with-colons | awk -F: '/^fpr/{print $10; exit}')
+          echo "GPG_KEY_ID=$GPG_KEY_ID" >> "$GITHUB_ENV"
+
+      - name: Sign Linux AppImage
+        if: runner.os == 'Linux' && matrix.target == 'x86_64-unknown-linux-gnu' && env.GPG_PRIVATE_KEY != ''
+        env:
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+        run: |
+          FILE=$(ls src-tauri/target/${{ matrix.target }}/release/bundle/appimage/*.AppImage | head -1)
+          echo "$GPG_PASSPHRASE" | gpg --batch --pinentry-mode loopback \
+            --passphrase-fd 0 --detach-sign --armor "$FILE"
+
+      - name: Sign Linux deb
+        if: runner.os == 'Linux' && env.GPG_PRIVATE_KEY != ''
+        env:
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+        run: |
+          FILE=$(ls src-tauri/target/${{ matrix.target }}/release/bundle/deb/*.deb | head -1)
+          echo "$GPG_PASSPHRASE" | gpg --batch --pinentry-mode loopback \
+            --passphrase-fd 0 --detach-sign --armor "$FILE"
+
       # ── Rename bundles to user-friendly filenames ────────────────────────────
       - name: Rename macOS DMG
         if: runner.os == 'macOS'
@@ -219,14 +248,18 @@ jobs:
         shell: bash
         run: |
           src=$(ls src-tauri/target/${{ matrix.target }}/release/bundle/appimage/*.AppImage | head -1)
-          mv "$src" "src-tauri/target/${{ matrix.target }}/release/bundle/appimage/Structura_${{ matrix.friendly }}_${{ github.ref_name }}.AppImage"
+          dst="src-tauri/target/${{ matrix.target }}/release/bundle/appimage/Structura_${{ matrix.friendly }}_${{ github.ref_name }}.AppImage"
+          mv "$src" "$dst"
+          [ -f "${src}.asc" ] && mv "${src}.asc" "${dst}.asc" || true
 
       - name: Rename Linux deb
         if: runner.os == 'Linux'
         shell: bash
         run: |
           src=$(ls src-tauri/target/${{ matrix.target }}/release/bundle/deb/*.deb | head -1)
-          mv "$src" "src-tauri/target/${{ matrix.target }}/release/bundle/deb/Structura_${{ matrix.friendly }}_${{ github.ref_name }}.deb"
+          dst="src-tauri/target/${{ matrix.target }}/release/bundle/deb/Structura_${{ matrix.friendly }}_${{ github.ref_name }}.deb"
+          mv "$src" "$dst"
+          [ -f "${src}.asc" ] && mv "${src}.asc" "${dst}.asc" || true
 
       # ── Attach to GitHub Release (tag builds only) ───────────────────────────
       # Each platform job uploads its own artifacts directly to the release
@@ -257,8 +290,10 @@ jobs:
         with:
           tag_name: ${{ github.ref_name }}
           generate_release_notes: true
-          files: src-tauri/target/${{ matrix.target }}/release/bundle/appimage/Structura_${{ matrix.friendly }}_${{ github.ref_name }}.AppImage
-          fail_on_unmatched_files: true
+          files: |
+            src-tauri/target/${{ matrix.target }}/release/bundle/appimage/Structura_${{ matrix.friendly }}_${{ github.ref_name }}.AppImage
+            src-tauri/target/${{ matrix.target }}/release/bundle/appimage/Structura_${{ matrix.friendly }}_${{ github.ref_name }}.AppImage.asc
+          fail_on_unmatched_files: false
 
       - name: Release Linux deb
         if: runner.os == 'Linux' && startsWith(github.ref, 'refs/tags/v')
@@ -266,8 +301,10 @@ jobs:
         with:
           tag_name: ${{ github.ref_name }}
           generate_release_notes: true
-          files: src-tauri/target/${{ matrix.target }}/release/bundle/deb/Structura_${{ matrix.friendly }}_${{ github.ref_name }}.deb
-          fail_on_unmatched_files: true
+          files: |
+            src-tauri/target/${{ matrix.target }}/release/bundle/deb/Structura_${{ matrix.friendly }}_${{ github.ref_name }}.deb
+            src-tauri/target/${{ matrix.target }}/release/bundle/deb/Structura_${{ matrix.friendly }}_${{ github.ref_name }}.deb.asc
+          fail_on_unmatched_files: false
 
       # ── Keep build artifacts for workflow_dispatch runs ───────────────────────
       # When triggered manually (no tag), upload as job artifacts so the binaries
@@ -294,7 +331,9 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: Structura_${{ matrix.friendly }}_${{ github.ref_name }}_AppImage
-          path: src-tauri/target/${{ matrix.target }}/release/bundle/appimage/Structura_${{ matrix.friendly }}_${{ github.ref_name }}.AppImage
+          path: |
+            src-tauri/target/${{ matrix.target }}/release/bundle/appimage/Structura_${{ matrix.friendly }}_${{ github.ref_name }}.AppImage
+            src-tauri/target/${{ matrix.target }}/release/bundle/appimage/Structura_${{ matrix.friendly }}_${{ github.ref_name }}.AppImage.asc
           if-no-files-found: error
 
       - name: Archive Linux deb (manual run)
@@ -302,5 +341,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: Structura_${{ matrix.friendly }}_${{ github.ref_name }}_deb
-          path: src-tauri/target/${{ matrix.target }}/release/bundle/deb/Structura_${{ matrix.friendly }}_${{ github.ref_name }}.deb
+          path: |
+            src-tauri/target/${{ matrix.target }}/release/bundle/deb/Structura_${{ matrix.friendly }}_${{ github.ref_name }}.deb
+            src-tauri/target/${{ matrix.target }}/release/bundle/deb/Structura_${{ matrix.friendly }}_${{ github.ref_name }}.deb.asc
           if-no-files-found: error
