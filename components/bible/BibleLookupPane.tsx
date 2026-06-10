@@ -4,8 +4,24 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { parseScriptureRefs } from "@/lib/scripture/reference-parser";
 import type { FetchBibleTranslation } from "@/app/api/fetchbible/route";
 
-const STORAGE_KEY      = "structura:bibleLookup:translation";
-const LANG_STORAGE_KEY = "structura:bibleLookup:lang";
+const STORAGE_KEY        = "structura:bibleLookup:translation";
+const LANG_STORAGE_KEY   = "structura:bibleLookup:langs";
+
+// Hebrew Unicode: base consonants א-ת
+const HEBREW_RE      = /[א-ת]/;
+// Greek Unicode: basic + extended Greek
+const GREEK_RE       = /[Ͱ-Ͽἀ-῿]/;
+
+// Strip vowel points: ְ-ֽ ֿ ׁ ׂ ׄ ׅ ׇ װ
+const VOWEL_RE       = /[ְ-ׇֽֿׁׂׅׄ]/g;
+// Strip cantillation: ֑-֯
+const CANTILLATION_RE = /[֑-֯]/g;
+
+function detectScript(text: string): "hebrew" | "greek" | "other" {
+  if (HEBREW_RE.test(text)) return "hebrew";
+  if (GREEK_RE.test(text)) return "greek";
+  return "other";
+}
 
 // Common ISO 639-3 → display name mapping (falls back to the code itself)
 const LANG_NAMES: Record<string, string> = {
@@ -41,6 +57,7 @@ interface LocalTranslation {
   id: number;
   name: string;
   abbreviation: string;
+  language: string | null;
 }
 
 type Status = "idle" | "loading" | "not_found" | "no_translation" | "error";
@@ -79,12 +96,20 @@ export default function BibleLookupPane({ onClose }: Props) {
   const [localTransls, setLocalTransls]     = useState<LocalTranslation[]>([]);
   const [fetchBibleTransls, setFetchBibleTransls] = useState<FetchBibleTranslation[]>([]);
   const [hasApiKey, setHasApiKey]           = useState(false);
-  const [langFilter, setLangFilter]         = useState("eng");
+  // null = "all languages" (no filter); Set = explicit selection (may be empty = none)
+  const [selectedLangs, setSelectedLangs]   = useState<Set<string> | null>(new Set(["eng"]));
+  const [showLangMenu, setShowLangMenu]     = useState(false);
+  const langMenuRef                         = useRef<HTMLDivElement>(null);
   const [selected, setSelected]             = useState("");
   const [status, setStatus]                 = useState<Status>("idle");
   const [result, setResult]                 = useState<Result | null>(null);
   const [copied, setCopied]                 = useState(false);
   const [parseError, setParseError]         = useState(false);
+  const [langSearch, setLangSearch]         = useState("");
+  const [showVowels, setShowVowels]         = useState(true);
+  const [showCantillation, setShowCantillation] = useState(true);
+  const [hebrewFontSize, setHebrewFontSize] = useState(1.375);
+  const [greekFontSize, setGreekFontSize]   = useState(1.25);
   const fetchCountRef                       = useRef(0);
   const inputRef                            = useRef<HTMLInputElement>(null);
 
@@ -105,8 +130,17 @@ export default function BibleLookupPane({ onClose }: Props) {
     try {
       const stored = localStorage.getItem(STORAGE_KEY);
       if (stored) setSelected(stored);
-      const storedLang = localStorage.getItem(LANG_STORAGE_KEY);
-      if (storedLang) setLangFilter(storedLang);
+      const storedLangs = localStorage.getItem(LANG_STORAGE_KEY);
+      if (storedLangs) {
+        try {
+          const parsed = JSON.parse(storedLangs);
+          setSelectedLangs(parsed === null ? null : new Set(parsed));
+        } catch { /* ignore */ }
+      }
+      const hSize = localStorage.getItem("structura:hebrewFontSize");
+      if (hSize) setHebrewFontSize(parseFloat(hSize));
+      const gSize = localStorage.getItem("structura:greekFontSize");
+      if (gSize) setGreekFontSize(parseFloat(gSize));
     } catch { /* ignore */ }
     inputRef.current?.focus();
   }, []);
@@ -116,10 +150,31 @@ export default function BibleLookupPane({ onClose }: Props) {
     try { localStorage.setItem(STORAGE_KEY, value); } catch { /* ignore */ }
   }
 
-  function changeLang(value: string) {
-    setLangFilter(value);
-    try { localStorage.setItem(LANG_STORAGE_KEY, value); } catch { /* ignore */ }
+  function changeLangs(next: Set<string> | null) {
+    setSelectedLangs(next);
+    try { localStorage.setItem(LANG_STORAGE_KEY, JSON.stringify(next === null ? null : [...next])); } catch { /* ignore */ }
   }
+
+  function toggleLang(code: string, allLangs: string[]) {
+    // If currently "all", start from a full set then remove the toggled one
+    const current = selectedLangs ?? new Set(allLangs);
+    const next = new Set(current);
+    if (next.has(code)) next.delete(code); else next.add(code);
+    // If all are now selected, normalise back to null (= "all")
+    changeLangs(next.size === allLangs.length ? null : next);
+  }
+
+  // Close lang menu on outside click
+  useEffect(() => {
+    if (!showLangMenu) return;
+    function handler(e: MouseEvent) {
+      if (langMenuRef.current && !langMenuRef.current.contains(e.target as Node)) {
+        setShowLangMenu(false);
+      }
+    }
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [showLangMenu]);
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -241,21 +296,113 @@ export default function BibleLookupPane({ onClose }: Props) {
           </p>
         )}
 
-        {/* Language filter */}
+        {/* Language filter — settings button + popover */}
         {fetchBibleTransls.length > 0 && (() => {
-          const langs = [...new Set(fetchBibleTransls.map((t) => t.lang))].sort();
+          // Only use fetch.bible lang codes (consistent ISO 639-3 codes)
+          const allLangs = [...new Set(fetchBibleTransls.map((t) => t.lang))].sort();
+          const effectiveSize = selectedLangs === null ? allLangs.length : selectedLangs.size;
+          const isFiltered = selectedLangs !== null && selectedLangs.size < allLangs.length;
+          const label = selectedLangs === null || selectedLangs.size >= allLangs.length
+            ? "All languages"
+            : selectedLangs.size === 0
+              ? "No languages"
+              : selectedLangs.size === 1
+                ? langLabel([...selectedLangs][0])
+                : `${selectedLangs.size} languages`;
+          void effectiveSize; // suppress unused warning
+          const searchLower = langSearch.toLowerCase();
+          const visibleLangs = searchLower
+            ? allLangs.filter((l) => langLabel(l).toLowerCase().includes(searchLower) || l.toLowerCase().includes(searchLower))
+            : allLangs;
           return (
-            <select
-              value={langFilter}
-              onChange={(e) => changeLang(e.target.value)}
-              className="w-full text-xs px-2 py-1 rounded border outline-none mb-1.5"
-              style={{ borderColor: "var(--border)", background: "var(--surface)", color: "var(--foreground)" }}
-            >
-              <option value="">— all languages —</option>
-              {langs.map((lang) => (
-                <option key={lang} value={lang}>{langLabel(lang)}</option>
-              ))}
-            </select>
+            <div ref={langMenuRef} className="relative mb-1.5">
+              <button
+                type="button"
+                onClick={() => { setShowLangMenu((v) => !v); setLangSearch(""); }}
+                className="w-full flex items-center justify-between text-xs px-2 py-1 rounded border outline-none"
+                style={{
+                  borderColor: isFiltered ? "var(--accent)" : "var(--border)",
+                  background: "var(--surface)",
+                  color: isFiltered ? "var(--accent)" : "var(--foreground)",
+                }}
+              >
+                <span>{label}</span>
+                <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.5, flexShrink: 0 }}>
+                  <polyline points="2,3 5,7 8,3"/>
+                </svg>
+              </button>
+
+              {showLangMenu && (
+                <div
+                  className="absolute left-0 right-0 top-full mt-1 z-50 rounded-lg border shadow-lg flex flex-col"
+                  style={{ borderColor: "var(--border)", background: "var(--surface)", maxHeight: "260px" }}
+                >
+                  {/* Search + All / None */}
+                  <div className="flex-shrink-0 p-2 flex flex-col gap-1.5" style={{ borderBottom: "1px solid var(--border)" }}>
+                    <input
+                      type="text"
+                      value={langSearch}
+                      onChange={(e) => setLangSearch(e.target.value)}
+                      placeholder="Search languages…"
+                      autoFocus
+                      className="w-full text-xs px-2 py-1 rounded border outline-none"
+                      style={{ borderColor: "var(--border)", background: "var(--surface)", color: "var(--foreground)" }}
+                    />
+                    <div className="flex gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => changeLangs(null)}
+                        className="flex-1 text-[11px] px-2 py-0.5 rounded border transition-colors hover:bg-stone-100 dark:hover:bg-stone-700"
+                        style={{ borderColor: "var(--border)", color: "var(--foreground)" }}
+                      >
+                        All
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => changeLangs(new Set())}
+                        className="flex-1 text-[11px] px-2 py-0.5 rounded border transition-colors hover:bg-stone-100 dark:hover:bg-stone-700"
+                        style={{ borderColor: "var(--border)", color: "var(--foreground)" }}
+                      >
+                        None
+                      </button>
+                    </div>
+                  </div>
+                  {/* Scrollable language list */}
+                  <div className="overflow-y-auto flex-1 py-1">
+                    {visibleLangs.length === 0 && (
+                      <p className="text-xs px-3 py-1" style={{ color: "var(--text-muted)" }}>No matches</p>
+                    )}
+                    {visibleLangs.map((lang) => {
+                      const on = selectedLangs === null || selectedLangs.has(lang);
+                      return (
+                        <button
+                          key={lang}
+                          type="button"
+                          onClick={() => toggleLang(lang, allLangs)}
+                          className="w-full flex items-center gap-2 px-3 py-0.5 text-xs text-left transition-colors hover:bg-stone-100 dark:hover:bg-stone-700"
+                          style={{ color: "var(--foreground)" }}
+                        >
+                          <span
+                            className="flex-shrink-0 w-3.5 h-3.5 rounded border flex items-center justify-center"
+                            style={{
+                              borderColor: on ? "var(--accent)" : "var(--border)",
+                              background: on ? "var(--accent)" : "transparent",
+                            }}
+                          >
+                            {on && (
+                              <svg width="8" height="8" viewBox="0 0 8 8" fill="none" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                                <polyline points="1.5,4 3,5.5 6.5,2"/>
+                              </svg>
+                            )}
+                          </span>
+                          <span className="truncate">{langLabel(lang)}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
           );
         })()}
 
@@ -267,19 +414,24 @@ export default function BibleLookupPane({ onClose }: Props) {
           style={{ borderColor: "var(--border)", background: "var(--surface)", color: "var(--foreground)" }}
         >
           <option value="">— choose translation —</option>
-          {localTransls.length > 0 && (
-            <optgroup label="Imported translations">
-              {localTransls.map((tr) => (
-                <option key={tr.id} value={`local:${tr.id}`}>
-                  {tr.abbreviation}{tr.name !== tr.abbreviation ? ` — ${tr.name}` : ""}
-                </option>
-              ))}
-            </optgroup>
-          )}
+          {(() => {
+            // Local translations use user-defined language strings, not ISO codes.
+            // Show them only when no fetch.bible lang filter is active.
+            const filteredLocal = selectedLangs === null ? localTransls : [];
+            return filteredLocal.length > 0 ? (
+              <optgroup label="Imported translations">
+                {filteredLocal.map((tr) => (
+                  <option key={tr.id} value={`local:${tr.id}`}>
+                    {tr.abbreviation}{tr.name !== tr.abbreviation ? ` — ${tr.name}` : ""}
+                  </option>
+                ))}
+              </optgroup>
+            ) : null;
+          })()}
           {fetchBibleTransls.length > 0 && (() => {
-            const filtered = langFilter
-              ? fetchBibleTransls.filter((t) => t.lang === langFilter)
-              : fetchBibleTransls;
+            const filtered = selectedLangs === null
+              ? fetchBibleTransls
+              : fetchBibleTransls.filter((t) => selectedLangs.has(t.lang));
             if (filtered.length === 0) return null;
             return (
               <optgroup label="fetch.bible">
@@ -291,7 +443,7 @@ export default function BibleLookupPane({ onClose }: Props) {
               </optgroup>
             );
           })()}
-          {hasApiKey && (
+          {hasApiKey && (selectedLangs === null || selectedLangs.has("eng")) && (
             <optgroup label="api.bible">
               {API_BIBLES.map((b) => (
                 <option key={b.id} value={`api:${b.id}`}>{b.name}</option>
@@ -318,7 +470,22 @@ export default function BibleLookupPane({ onClose }: Props) {
           <p className="text-sm" style={{ color: "var(--text-muted)" }}>Could not load passage.</p>
         )}
 
-        {result && (
+        {result && (() => {
+          const script = detectScript(result.text);
+          const isHebrew = script === "hebrew";
+          const isGreek  = script === "greek";
+          let displayText = result.text;
+          if (isHebrew) {
+            if (!showCantillation) displayText = displayText.replace(CANTILLATION_RE, "");
+            if (!showVowels)       displayText = displayText.replace(VOWEL_RE, "");
+          }
+          const textStyle: React.CSSProperties = isHebrew
+            ? { fontFamily: "var(--hebrew-font-family)", fontSize: `${hebrewFontSize}rem`, direction: "rtl", lineHeight: 2 }
+            : isGreek
+              ? { fontFamily: "var(--greek-font-family)", fontSize: `${greekFontSize}rem`, lineHeight: 1.9 }
+              : { lineHeight: 1.7 };
+
+          return (
           <>
             {/* Result header: ref + translation + copy button */}
             <div className="flex items-center justify-between mb-2 flex-shrink-0">
@@ -349,9 +516,39 @@ export default function BibleLookupPane({ onClose }: Props) {
               </div>
             </div>
 
+            {/* Hebrew vowel / cantillation toggles */}
+            {isHebrew && (
+              <div className="flex gap-1.5 mb-2">
+                <button
+                  onClick={() => setShowVowels((v) => !v)}
+                  title={showVowels ? "Hide vowel points" : "Show vowel points"}
+                  className={[
+                    "px-2 py-0.5 rounded text-[11px] font-medium transition-colors border",
+                    showVowels
+                      ? "border-stone-200 dark:border-stone-700 bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700"
+                      : "border-amber-400 bg-amber-500 text-white",
+                  ].join(" ")}
+                >
+                  Vowels
+                </button>
+                <button
+                  onClick={() => setShowCantillation((v) => !v)}
+                  title={showCantillation ? "Hide cantillation marks" : "Show cantillation marks"}
+                  className={[
+                    "px-2 py-0.5 rounded text-[11px] font-medium transition-colors border",
+                    showCantillation
+                      ? "border-stone-200 dark:border-stone-700 bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700"
+                      : "border-amber-400 bg-amber-500 text-white",
+                  ].join(" ")}
+                >
+                  Cantillation
+                </button>
+              </div>
+            )}
+
             {/* Verse text */}
-            <p className="text-sm leading-relaxed" style={{ color: "var(--foreground)" }}>
-              {result.text}
+            <p className="leading-relaxed" style={{ color: "var(--foreground)", fontSize: "0.875rem", ...textStyle }}>
+              {displayText}
             </p>
 
             {/* CC BY-SA attribution for VCB */}
@@ -370,7 +567,8 @@ export default function BibleLookupPane({ onClose }: Props) {
               </p>
             )}
           </>
-        )}
+          );
+        })()}
 
         {status === "idle" && !result && (
           <p className="text-sm" style={{ color: "var(--text-muted)" }}>
