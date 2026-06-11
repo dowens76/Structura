@@ -228,61 +228,53 @@ run(
 );
 
 // ── Self-sign with a generated certificate ────────────────────────────────────
-// A certificate whose Subject matches the Publisher CN is generated on the fly,
-// then used to sign the MSIX. The public .cer is exported alongside the .msix
-// so end users can install it into Trusted Root and sideload the package.
-// The Store ignores this signature and re-signs with Microsoft's certificate.
+// A certificate whose Subject matches the Publisher CN is generated on the fly
+// in the current user's certificate store, then used to sign the MSIX directly
+// via its thumbprint (no PFX export needed). The public .cer is exported
+// alongside the .msix so end users can install it into Trusted Root and
+// sideload the package. The Store ignores this signature and re-signs.
 const cerPath = path.join(msixOut, `Structura_${appVersion}_${arch}.cer`);
-const pfxPath = path.join(ROOT, "src-tauri", "target", "msix-selfsigned.pfx");
 
-// Extract just the CN value for the certificate subject (PowerShell expects
-// the raw subject string, not the "CN=" prefix, when using -Subject).
-// e.g. "CN=DanielC.Owens.Structura" → subject is the full string as-is.
-const certSubject = publisher; // New-SelfSignedCertificate accepts full DN
+// PowerShell paths — forward slashes work fine in PS cmdlet parameters.
+const cerPathPs = cerPath.replace(/\\/g, "/");
+const msixPathPs = msixPath.replace(/\\/g, "/");
 
-console.log(`\n▶ Generating self-signed certificate (Subject: ${certSubject})`);
-
-// Generate the cert, export PFX (no password for CI simplicity) and CER.
-// The cert is created in the current user's personal store, then removed.
 const psScript = `
+$ErrorActionPreference = "Stop"
+
 $cert = New-SelfSignedCertificate \`
   -Type Custom \`
-  -Subject "${certSubject}" \`
+  -Subject "${publisher}" \`
   -KeyUsage DigitalSignature \`
   -FriendlyName "Structura MSIX Self-Sign" \`
   -CertStoreLocation "Cert:\\CurrentUser\\My" \`
   -TextExtension @("2.5.29.37={text}1.3.6.1.5.5.7.3.3", "2.5.29.19={text}")
 
-# Export PFX (no password)
-Export-PfxCertificate -Cert $cert -FilePath "${pfxPath.replace(/\\/g, "\\\\")}" -Password (New-Object System.Security.SecureString) | Out-Null
+Write-Host "Generated cert thumbprint: $($cert.Thumbprint)"
 
 # Export public CER for end-user trust installation
-Export-Certificate -Cert $cert -FilePath "${cerPath.replace(/\\/g, "\\\\")}" | Out-Null
+Export-Certificate -Cert $cert -FilePath "${cerPathPs}" -Type CERT | Out-Null
+Write-Host "Exported CER: ${cerPathPs}"
 
-# Remove from personal store — we only needed it for export
+# Sign the MSIX directly from the store using the thumbprint
+& "${signtool.replace(/\\/g, "/")}" sign /fd SHA256 /sha1 $cert.Thumbprint /s My "${msixPathPs}"
+if ($LASTEXITCODE -ne 0) { throw "signtool exited with code $LASTEXITCODE" }
+Write-Host "Signed MSIX"
+
+# Clean up — remove the cert from the personal store
 Remove-Item -Path $cert.PSPath | Out-Null
-
-Write-Host "Certificate thumbprint: $($cert.Thumbprint)"
+Write-Host "Removed cert from store"
 `;
 
-const psScriptPath = path.join(ROOT, "src-tauri", "target", "gen-cert.ps1");
+const psScriptPath = path.join(ROOT, "src-tauri", "target", "sign-msix.ps1");
 writeFileSync(psScriptPath, psScript, "utf8");
 try {
   run(
     `powershell -ExecutionPolicy Bypass -NonInteractive -File "${psScriptPath}"`,
-    "New-SelfSignedCertificate"
+    "Self-sign MSIX"
   );
 } finally {
-  unlinkSync(psScriptPath);
-}
-
-try {
-  run(
-    `"${signtool}" sign /fd SHA256 /f "${pfxPath}" /p "" "${msixPath}"`,
-    "signtool sign (self-signed)"
-  );
-} finally {
-  if (existsSync(pfxPath)) unlinkSync(pfxPath);
+  if (existsSync(psScriptPath)) unlinkSync(psScriptPath);
 }
 
 console.log(`\n✓ MSIX created and signed: ${msixPath}`);
