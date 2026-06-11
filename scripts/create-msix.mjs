@@ -159,9 +159,8 @@ const manifest = `<?xml version="1.0" encoding="utf-8"?>
 <Package
   xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
   xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
-  xmlns:uap3="http://schemas.microsoft.com/appx/manifest/uap/windows10/3"
   xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
-  IgnorableNamespaces="uap uap3 rescap">
+  IgnorableNamespaces="uap rescap">
 
   <Identity
     Name="${identityName}"
@@ -204,14 +203,6 @@ const manifest = `<?xml version="1.0" encoding="utf-8"?>
           ShortName="Structura" />
         <uap:SplashScreen Image="Assets\\Square150x150Logo.png" />
       </uap:VisualElements>
-      <Extensions>
-        <!-- Allow the app to launch in the background (required for sidecar Node server) -->
-        <uap3:Extension Category="windows.appExecutionAlias">
-          <uap3:AppExecutionAlias>
-            <uap3:ExecutionAlias Alias="Structura.exe" />
-          </uap3:AppExecutionAlias>
-        </uap3:Extension>
-      </Extensions>
     </Application>
   </Applications>
 
