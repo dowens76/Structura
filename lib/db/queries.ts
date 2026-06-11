@@ -4,8 +4,8 @@ import { getMtToKjvInstructions } from "@/lib/versification/mt-kjv-mapping";
 import type { LookupMaps } from "./index";
 import { books, words } from "./source-schema";
 import type { Word, WordRow } from "./source-schema";
-import { translations, translationVerses, paragraphBreaks, paragraphHeadings, characters, characterRefs, speechSections, wordTags, wordTagRefs, lineIndents, sceneBreaks, passages, rstRelations, wordArrows, wordFormatting, lineAnnotations, bookGroupings, appSettings, translationFootnotes, translationVersions, workspaces, users, textCriticalMarks, notes } from "./user-schema";
-import type { Book, Translation, TranslationVerse, Character, CharacterRef, SpeechSection, WordTag, WordTagRef, Passage, RstRelation, WordArrow, LineAnnotation, BookGrouping, TranslationFootnote, TranslationVersion } from "./schema";
+import { translations, translationVerses, paragraphBreaks, paragraphHeadings, characters, characterRefs, speechSections, wordTags, wordTagRefs, lineIndents, sceneBreaks, passages, rstRelations, wordArrows, wordFormatting, lineAnnotations, bookGroupings, appSettings, translationFootnotes, translationVersions, workspaces, users, textCriticalMarks, notes, intertextualLinks } from "./user-schema";
+import type { Book, Translation, TranslationVerse, Character, CharacterRef, SpeechSection, WordTag, WordTagRef, Passage, RstRelation, WordArrow, LineAnnotation, BookGrouping, TranslationFootnote, TranslationVersion, IntertextualLink } from "./schema";
 import type { TextSource, Testament } from "@/lib/morphology/types";
 
 // ── Decode helpers ────────────────────────────────────────────────────────────
@@ -2174,3 +2174,119 @@ export async function getNoteContents(
   for (const row of rows) result[row.key] = row.content;
   return result;
 }
+
+// ── Intertextual Links ────────────────────────────────────────────────────────
+
+/** Returns all links where source OR target is in the given chapter. */
+export async function getIntertextualLinksForChapter(
+  book: string,
+  chapter: number,
+  workspaceId: number
+): Promise<IntertextualLink[]> {
+  return userDb
+    .select()
+    .from(intertextualLinks)
+    .where(
+      and(
+        eq(intertextualLinks.workspaceId, workspaceId),
+        or(
+          and(eq(intertextualLinks.sourceBook, book), eq(intertextualLinks.sourceChapter, chapter)),
+          and(eq(intertextualLinks.targetBook, book), eq(intertextualLinks.targetChapter, chapter))
+        )
+      )
+    )
+    .orderBy(asc(intertextualLinks.sourceChapter), asc(intertextualLinks.sourceVerse));
+}
+
+/** Returns all links where source OR target is in the given book. */
+export async function getIntertextualLinksForBook(
+  book: string,
+  workspaceId: number
+): Promise<IntertextualLink[]> {
+  return userDb
+    .select()
+    .from(intertextualLinks)
+    .where(
+      and(
+        eq(intertextualLinks.workspaceId, workspaceId),
+        or(
+          eq(intertextualLinks.sourceBook, book),
+          eq(intertextualLinks.targetBook, book)
+        )
+      )
+    );
+}
+
+/** Returns all links in the workspace (for graph view). */
+export async function getAllIntertextualLinks(
+  workspaceId: number
+): Promise<IntertextualLink[]> {
+  return userDb
+    .select()
+    .from(intertextualLinks)
+    .where(eq(intertextualLinks.workspaceId, workspaceId));
+}
+
+export async function createIntertextualLink(
+  payload: {
+    sourceBook: string;
+    sourceChapter: number;
+    sourceVerse: number;
+    sourceEndVerse?: number | null;
+    sourceTextSource: string;
+    sourceStartWordId?: string | null;
+    sourceEndWordId?: string | null;
+    targetBook: string;
+    targetChapter: number;
+    targetVerse: number;
+    targetEndVerse?: number | null;
+    targetTextSource: string;
+    targetStartWordId?: string | null;
+    targetEndWordId?: string | null;
+    linkType: string;
+    strength?: number;
+    notes?: string | null;
+    direction?: string;
+  },
+  workspaceId: number
+): Promise<IntertextualLink> {
+  const [row] = await userDb
+    .insert(intertextualLinks)
+    .values({ ...payload, workspaceId })
+    .returning();
+  return row;
+}
+
+export async function updateIntertextualLink(
+  id: number,
+  patch: Partial<{
+    linkType: string;
+    strength: number;
+    notes: string | null;
+    direction: string;
+    sourceBook: string;
+    sourceChapter: number;
+    sourceVerse: number;
+    sourceEndVerse: number | null;
+    sourceStartWordId: string | null;
+    sourceEndWordId: string | null;
+    targetBook: string;
+    targetChapter: number;
+    targetVerse: number;
+    targetEndVerse: number | null;
+    targetStartWordId: string | null;
+    targetEndWordId: string | null;
+  }>
+): Promise<IntertextualLink> {
+  const [row] = await userDb
+    .update(intertextualLinks)
+    .set(patch)
+    .where(eq(intertextualLinks.id, id))
+    .returning();
+  return row;
+}
+
+export async function deleteIntertextualLink(id: number): Promise<void> {
+  await userDb.delete(intertextualLinks).where(eq(intertextualLinks.id, id));
+}
+

@@ -28,6 +28,20 @@ export function getPlotElement(label: string) {
   return PLOT_ELEMENTS.find((p) => p.label === label);
 }
 
+export const LINK_TYPES = [
+  { value: "quotation", label: "Quotation", color: "#d97706" },   // amber
+  { value: "allusion",  label: "Allusion",  color: "#3b82f6" },   // blue
+  { value: "echo",      label: "Echo",      color: "#6b7280" },   // gray
+  { value: "typology",  label: "Typology",  color: "#8b5cf6" },   // violet
+  { value: "parallel",  label: "Parallel",  color: "#0d9488" },   // teal
+] as const;
+
+export type LinkTypeValue = (typeof LINK_TYPES)[number]["value"];
+
+export function getLinkTypeColor(linkType: string): string {
+  return LINK_TYPES.find((t) => t.value === linkType)?.color ?? "#6b7280";
+}
+
 /**
  * Resolve the display color for an annotation.
  * Plot annotations use the predefined color for their label.
