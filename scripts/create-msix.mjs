@@ -116,13 +116,21 @@ if (existsSync(nodeSidecarSrc)) {
 }
 
 // ── Copy bundled resources ────────────────────────────────────────────────────
-const resourcesSrc = path.join(ROOT, "src-tauri", "resources");
-const resourcesDst = path.join(stagingDir, "resources");
-if (existsSync(resourcesSrc)) {
-  cpSync(resourcesSrc, resourcesDst, { recursive: true });
-  console.log("Copied resources/");
-} else {
-  console.warn(`Warning: src-tauri/resources not found at ${resourcesSrc}`);
+// Tauri's bundle.resources maps source paths (relative to src-tauri/) to
+// destination paths (relative to resource_dir, which on Windows is the exe dir).
+// We must replicate that mapping exactly so the app finds files at the same
+// paths it expects at runtime (e.g. resource_dir/"server", resource_dir/"databases").
+const bundleResources = tauriConf.bundle?.resources ?? {};
+for (const [src, dst] of Object.entries(bundleResources)) {
+  const srcAbs = path.join(ROOT, "src-tauri", src);
+  const dstAbs = path.join(stagingDir, dst);
+  if (!existsSync(srcAbs)) {
+    console.warn(`Warning: resource source not found, skipping: ${src}`);
+    continue;
+  }
+  mkdirSync(path.dirname(dstAbs), { recursive: true });
+  cpSync(srcAbs, dstAbs, { recursive: true });
+  console.log(`Copied resource: ${src} → ${dst}`);
 }
 
 // ── Copy icon assets ──────────────────────────────────────────────────────────
