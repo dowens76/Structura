@@ -253,7 +253,9 @@ $cert = New-SelfSignedCertificate \`
 
 Write-Host "Generated cert thumbprint: $($cert.Thumbprint)"
 
-# Export public CER for end-user trust installation
+# Export public CER for end-user trust installation.
+# End users must import this into Local Machine > Trusted People (not Current User,
+# not Trusted Root) — App Installer only checks Local Machine stores.
 Export-Certificate -Cert $cert -FilePath "${cerPathPs}" -Type CERT | Out-Null
 Write-Host "Exported CER: ${cerPathPs}"
 
@@ -282,6 +284,8 @@ console.log(`\n✓ MSIX created and signed: ${msixPath}`);
 console.log(`  Version:   ${msixVersion}`);
 console.log(`  Identity:  ${identityName}`);
 console.log(`  Publisher: ${publisher}`);
-console.log(`\n  To sideload on another machine:`);
-console.log(`    1. Install ${path.basename(cerPath)} into "Trusted Root Certification Authorities"`);
-console.log(`    2. Double-click the .msix to install`);
+console.log(`\n  To sideload on another machine (run PowerShell as Administrator):`);
+console.log(`    Import-Certificate -FilePath "${path.basename(cerPath)}" -CertStoreLocation Cert:\\LocalMachine\\TrustedPeople`);
+console.log(`    Then double-click the .msix to install.`);
+console.log(`\n  NOTE: must be Local Machine > Trusted People — Current User stores`);
+console.log(`  and Trusted Root will NOT work with App Installer.`);
