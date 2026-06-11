@@ -105,11 +105,12 @@ copyFileSync(exeSrc, path.join(stagingDir, "Structura.exe"));
 console.log("Copied Structura.exe");
 
 // ── Copy sidecar Node binary ──────────────────────────────────────────────────
+// Tauri resolves sidecars relative to the exe directory (not a binaries/
+// subdirectory), so the binary must sit next to Structura.exe in the package.
 const nodeSidecarName = `node-${target}.exe`;
 const nodeSidecarSrc = path.join(ROOT, "src-tauri", "binaries", nodeSidecarName);
 if (existsSync(nodeSidecarSrc)) {
-  mkdirSync(path.join(stagingDir, "binaries"), { recursive: true });
-  copyFileSync(nodeSidecarSrc, path.join(stagingDir, "binaries", nodeSidecarName));
+  copyFileSync(nodeSidecarSrc, path.join(stagingDir, nodeSidecarName));
   console.log(`Copied sidecar: ${nodeSidecarName}`);
 } else {
   console.warn(`Warning: sidecar not found at ${nodeSidecarSrc}`);
