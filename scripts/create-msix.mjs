@@ -241,6 +241,7 @@ const msixPathPs = msixPath.replace(/\\/g, "/");
 
 const psScript = `
 $ErrorActionPreference = "Stop"
+Import-Module PKI
 
 $cert = New-SelfSignedCertificate \`
   -Type Custom \`
@@ -270,7 +271,7 @@ const psScriptPath = path.join(ROOT, "src-tauri", "target", "sign-msix.ps1");
 writeFileSync(psScriptPath, psScript, "utf8");
 try {
   run(
-    `powershell -ExecutionPolicy Bypass -NonInteractive -File "${psScriptPath}"`,
+    `pwsh -ExecutionPolicy Bypass -NonInteractive -File "${psScriptPath}"`,
     "Self-sign MSIX"
   );
 } finally {
