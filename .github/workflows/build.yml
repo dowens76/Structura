@@ -252,12 +252,14 @@ jobs:
           $src = Get-ChildItem "src-tauri/target/${{ matrix.target }}/release/bundle/nsis/*.exe" | Select-Object -First 1
           Rename-Item $src.FullName "Structura_${{ matrix.friendly }}_${{ github.ref_name }}.exe"
 
-      - name: Rename Windows MSIX
+      - name: Rename Windows MSIX and CER
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          $src = Get-ChildItem "src-tauri/target/${{ matrix.target }}/release/bundle/msix/*.msix" | Select-Object -First 1
-          Rename-Item $src.FullName "Structura_${{ matrix.friendly }}_${{ github.ref_name }}.msix"
+          $msix = Get-ChildItem "src-tauri/target/${{ matrix.target }}/release/bundle/msix/*.msix" | Select-Object -First 1
+          Rename-Item $msix.FullName "Structura_${{ matrix.friendly }}_${{ github.ref_name }}.msix"
+          $cer = Get-ChildItem "src-tauri/target/${{ matrix.target }}/release/bundle/msix/*.cer" | Select-Object -First 1
+          if ($cer) { Rename-Item $cer.FullName "Structura_${{ matrix.friendly }}_${{ github.ref_name }}.cer" }
 
       - name: Rename Linux AppImage
         if: runner.os == 'Linux' && matrix.target == 'x86_64-unknown-linux-gnu'
@@ -300,6 +302,7 @@ jobs:
           files: |
             src-tauri/target/${{ matrix.target }}/release/bundle/nsis/Structura_${{ matrix.friendly }}_${{ github.ref_name }}.exe
             src-tauri/target/${{ matrix.target }}/release/bundle/msix/Structura_${{ matrix.friendly }}_${{ github.ref_name }}.msix
+            src-tauri/target/${{ matrix.target }}/release/bundle/msix/Structura_${{ matrix.friendly }}_${{ github.ref_name }}.cer
           fail_on_unmatched_files: true
 
       - name: Release Linux AppImage
@@ -344,6 +347,7 @@ jobs:
           path: |
             src-tauri/target/${{ matrix.target }}/release/bundle/nsis/Structura_${{ matrix.friendly }}_${{ github.ref_name }}.exe
             src-tauri/target/${{ matrix.target }}/release/bundle/msix/Structura_${{ matrix.friendly }}_${{ github.ref_name }}.msix
+            src-tauri/target/${{ matrix.target }}/release/bundle/msix/Structura_${{ matrix.friendly }}_${{ github.ref_name }}.cer
           if-no-files-found: error
 
       - name: Archive Linux AppImage (manual run)

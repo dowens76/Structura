@@ -1,22 +1,24 @@
 /**
  * create-msix.mjs
  *
- * Creates an MSIX package from the Tauri Windows build output for
- * submission to the Microsoft Store.
+ * Creates a self-signed MSIX package from the Tauri Windows build output.
+ * The MSIX is signed with a freshly-generated self-signed certificate whose
+ * Subject matches the Publisher CN, so Windows will install it once the
+ * accompanying .cer file is trusted on the target machine.
  *
- * Requires Windows SDK tools (makeappx.exe) which are present on
- * GitHub Actions windows-latest runners.
+ * For Microsoft Store submission the Store re-signs the package, so the
+ * self-signed certificate is ignored on that path.
+ *
+ * Requires Windows SDK tools (makeappx.exe, signtool.exe) which are present
+ * on GitHub Actions windows-latest runners.
  *
  * Environment variables:
- *   TAURI_BUILD_TARGET     - Rust target triple (default: x86_64-pc-windows-msvc)
- *   MSIX_PUBLISHER         - Publisher CN for AppxManifest, e.g.:
- *                            "CN=XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX"
- *                            Obtain from Partner Center → App identity.
- *                            Defaults to a placeholder; set before Store submission.
- *   MSIX_IDENTITY_NAME     - Package identity name (default: DanielOwens.Structura)
- *   WINDOWS_CODESIGN_P12   - Base64-encoded PFX certificate for local signing (optional).
- *                            Required for local sideloading; not needed for Store upload.
- *   WINDOWS_CODESIGN_PASSWORD - Password for the PFX certificate (optional).
+ *   TAURI_BUILD_TARGET  - Rust target triple (default: x86_64-pc-windows-msvc)
+ *   MSIX_PUBLISHER      - Publisher CN for AppxManifest, e.g.:
+ *                         "CN=XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX"
+ *                         Obtain from Partner Center → App identity.
+ *                         Defaults to a placeholder; must be set for Store submission.
+ *   MSIX_IDENTITY_NAME  - Package identity name (default: DanielOwens.Structura)
  */
 
 import {
@@ -41,6 +43,10 @@ function run(cmd, label, opts = {}) {
   execSync(cmd, { stdio: "inherit", cwd: ROOT, ...opts });
 }
 
+function runCapture(cmd) {
+  return execSync(cmd, { encoding: "utf8", cwd: ROOT }).trim();
+}
+
 // ── Resolve build target ──────────────────────────────────────────────────────
 const target = process.env.TAURI_BUILD_TARGET || "x86_64-pc-windows-msvc";
 const isArm64 = target.startsWith("aarch64");
@@ -55,13 +61,8 @@ const appVersion = tauriConf.version; // e.g. "0.8.2"
 const msixVersion = appVersion + ".0"; // Store requires 4-part version
 
 // ── Package identity ──────────────────────────────────────────────────────────
-// Partner Center → Your app → App identity → "Package/Identity/Name" and
-// "Package/Identity/Publisher". Set these as GitHub secrets before submitting.
-const identityName =
-  process.env.MSIX_IDENTITY_NAME || "DanielOwens.Structura";
-const publisher =
-  process.env.MSIX_PUBLISHER ||
-  "CN=Structura-Dev"; // placeholder — replace with Partner Center value
+const identityName = process.env.MSIX_IDENTITY_NAME || "DanielOwens.Structura";
+const publisher = process.env.MSIX_PUBLISHER || "CN=Structura-Dev";
 
 // ── Locate Windows SDK tools ──────────────────────────────────────────────────
 function findWindowsSdkTool(toolName) {
@@ -69,7 +70,6 @@ function findWindowsSdkTool(toolName) {
   if (!existsSync(sdkRoot)) {
     throw new Error(`Windows SDK not found at ${sdkRoot}`);
   }
-  // Enumerate SDK versions (e.g. 10.0.22621.0) newest-first
   const versions = readdirSync(sdkRoot)
     .filter((d) => /^\d+\.\d+\.\d+\.\d+$/.test(d))
     .sort((a, b) => {
@@ -116,8 +116,6 @@ if (existsSync(nodeSidecarSrc)) {
 }
 
 // ── Copy bundled resources ────────────────────────────────────────────────────
-// Tauri places resources in <releaseDir>/resources/ at runtime.
-// The staging dir under src-tauri/resources is what was prepared by tauri-build.mjs.
 const resourcesSrc = path.join(ROOT, "src-tauri", "resources");
 const resourcesDst = path.join(stagingDir, "resources");
 if (existsSync(resourcesSrc)) {
@@ -128,8 +126,6 @@ if (existsSync(resourcesSrc)) {
 }
 
 // ── Copy icon assets ──────────────────────────────────────────────────────────
-// Tauri generates these Square*Logo.png files in src-tauri/icons/ via
-// `tauri icon`. Copy all of them into Assets/.
 const iconsDir = path.join(ROOT, "src-tauri", "icons");
 const assetNames = [
   "Square30x30Logo.png",
@@ -153,8 +149,12 @@ for (const asset of assetNames) {
 }
 
 // ── Write AppxManifest.xml ────────────────────────────────────────────────────
-// runFullTrust capability is required for Win32/desktop apps (Tauri apps
-// are full-trust because they are not sandboxed UWP apps).
+// runFullTrust is the only capability declared. It is mandatory for any
+// Win32/desktop-bridge app (Tauri, Electron, etc.) — without it the OS will
+// not launch the process. No additional capabilities are declared because
+// Structura does not access the network, camera, microphone, location, or
+// any other sensitive resource at the OS API level; all file I/O goes through
+// the Tauri-managed app data directory.
 const manifest = `<?xml version="1.0" encoding="utf-8"?>
 <Package
   xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
@@ -175,7 +175,6 @@ const manifest = `<?xml version="1.0" encoding="utf-8"?>
   </Properties>
 
   <Dependencies>
-    <!-- Windows 10 version 1809 (build 17763) is the minimum for MSIX desktop apps -->
     <TargetDeviceFamily
       Name="Windows.Desktop"
       MinVersion="10.0.17763.0"
@@ -207,7 +206,6 @@ const manifest = `<?xml version="1.0" encoding="utf-8"?>
   </Applications>
 
   <Capabilities>
-    <!-- runFullTrust is required for all non-UWP/desktop bridge apps -->
     <rescap:Capability Name="runFullTrust" />
   </Capabilities>
 
@@ -229,29 +227,68 @@ run(
   `makeappx pack → ${msixName}`
 );
 
-// ── Optional: sign with a local certificate ───────────────────────────────────
-// This is only needed for local sideloading/testing, NOT for Store submission.
-// The Store re-signs the package with Microsoft's certificate upon ingestion.
-const p12B64 = process.env.WINDOWS_CODESIGN_P12;
-if (p12B64) {
-  const pfxPath = path.join(ROOT, "src-tauri", "target", "codesign.pfx");
-  writeFileSync(pfxPath, Buffer.from(p12B64, "base64"));
-  const password = process.env.WINDOWS_CODESIGN_PASSWORD || "";
-  try {
-    run(
-      `"${signtool}" sign /fd SHA256 /p "${password}" /f "${pfxPath}" "${msixPath}"`,
-      "signtool sign (local cert)"
-    );
-  } finally {
-    unlinkSync(pfxPath);
-  }
-} else {
-  console.log("\n⚠  WINDOWS_CODESIGN_P12 not set — MSIX will not be signed.");
-  console.log("   This is fine for Microsoft Store submission; the Store signs it.");
-  console.log("   Set WINDOWS_CODESIGN_P12 + WINDOWS_CODESIGN_PASSWORD to sign locally.");
+// ── Self-sign with a generated certificate ────────────────────────────────────
+// A certificate whose Subject matches the Publisher CN is generated on the fly,
+// then used to sign the MSIX. The public .cer is exported alongside the .msix
+// so end users can install it into Trusted Root and sideload the package.
+// The Store ignores this signature and re-signs with Microsoft's certificate.
+const cerPath = path.join(msixOut, `Structura_${appVersion}_${arch}.cer`);
+const pfxPath = path.join(ROOT, "src-tauri", "target", "msix-selfsigned.pfx");
+
+// Extract just the CN value for the certificate subject (PowerShell expects
+// the raw subject string, not the "CN=" prefix, when using -Subject).
+// e.g. "CN=DanielC.Owens.Structura" → subject is the full string as-is.
+const certSubject = publisher; // New-SelfSignedCertificate accepts full DN
+
+console.log(`\n▶ Generating self-signed certificate (Subject: ${certSubject})`);
+
+// Generate the cert, export PFX (no password for CI simplicity) and CER.
+// The cert is created in the current user's personal store, then removed.
+const psScript = `
+$cert = New-SelfSignedCertificate \`
+  -Type Custom \`
+  -Subject "${certSubject}" \`
+  -KeyUsage DigitalSignature \`
+  -FriendlyName "Structura MSIX Self-Sign" \`
+  -CertStoreLocation "Cert:\\CurrentUser\\My" \`
+  -TextExtension @("2.5.29.37={text}1.3.6.1.5.5.7.3.3", "2.5.29.19={text}")
+
+# Export PFX (no password)
+Export-PfxCertificate -Cert $cert -FilePath "${pfxPath.replace(/\\/g, "\\\\")}" -Password (New-Object System.Security.SecureString) | Out-Null
+
+# Export public CER for end-user trust installation
+Export-Certificate -Cert $cert -FilePath "${cerPath.replace(/\\/g, "\\\\")}" | Out-Null
+
+# Remove from personal store — we only needed it for export
+Remove-Item -Path $cert.PSPath | Out-Null
+
+Write-Host "Certificate thumbprint: $($cert.Thumbprint)"
+`;
+
+const psScriptPath = path.join(ROOT, "src-tauri", "target", "gen-cert.ps1");
+writeFileSync(psScriptPath, psScript, "utf8");
+try {
+  run(
+    `powershell -ExecutionPolicy Bypass -NonInteractive -File "${psScriptPath}"`,
+    "New-SelfSignedCertificate"
+  );
+} finally {
+  unlinkSync(psScriptPath);
 }
 
-console.log(`\n✓ MSIX created: ${msixPath}`);
+try {
+  run(
+    `"${signtool}" sign /fd SHA256 /f "${pfxPath}" /p "" "${msixPath}"`,
+    "signtool sign (self-signed)"
+  );
+} finally {
+  if (existsSync(pfxPath)) unlinkSync(pfxPath);
+}
+
+console.log(`\n✓ MSIX created and signed: ${msixPath}`);
 console.log(`  Version:   ${msixVersion}`);
 console.log(`  Identity:  ${identityName}`);
 console.log(`  Publisher: ${publisher}`);
+console.log(`\n  To sideload on another machine:`);
+console.log(`    1. Install ${path.basename(cerPath)} into "Trusted Root Certification Authorities"`);
+console.log(`    2. Double-click the .msix to install`);
