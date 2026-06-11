@@ -184,4 +184,9 @@ if (process.platform === "darwin") {
   run("npm run tauri:dmg", "Creating DMG installer");
 }
 
+// 14. Windows: create MSIX package for Microsoft Store submission
+if (process.platform === "win32") {
+  run("node scripts/create-msix.mjs", "Creating MSIX package for Microsoft Store");
+}
+
 console.log("\n✓ tauri:build complete.");
