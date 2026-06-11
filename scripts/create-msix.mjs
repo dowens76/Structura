@@ -179,8 +179,7 @@ const manifest = `<?xml version="1.0" encoding="utf-8"?>
     <!-- Windows 10 version 1809 (build 17763) is the minimum for MSIX desktop apps -->
     <TargetDeviceFamily
       Name="Windows.Desktop"
-      MinVersion="10.0.17763.0"
-      MaxVersion="10.0.99999.0" />
+      MinVersion="10.0.17763.0" />
   </Dependencies>
 
   <Resources>
