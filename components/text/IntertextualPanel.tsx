@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { LINK_TYPES, getLinkTypeColor } from "@/lib/utils/annotations";
+import { LINK_TYPES } from "@/lib/utils/annotations";
 import { OSIS_REF_BOOK_NAMES } from "@/lib/utils/osis";
 import type { IntertextualLink } from "@/lib/db/schema";
 
@@ -10,6 +10,58 @@ interface Props {
   chapter: number;
   textSource: string;
   onClose: () => void;
+}
+
+// ── Custom link types (localStorage) ──────────────────────────────────────
+
+const STORAGE_KEY = "structura:custom-link-types";
+
+interface CustomLinkType {
+  value: string;
+  label: string;
+  color: string;
+}
+
+const CUSTOM_TYPE_COLORS = [
+  "#e11d48", "#f97316", "#eab308", "#22c55e", "#14b8a6",
+  "#0ea5e9", "#6366f1", "#a855f7", "#ec4899", "#78716c",
+];
+
+function loadCustomTypes(): CustomLinkType[] {
+  if (typeof window === "undefined") return [];
+  try {
+    return JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "[]");
+  } catch {
+    return [];
+  }
+}
+
+function saveCustomTypes(types: CustomLinkType[]) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(types));
+}
+
+function useCustomLinkTypes() {
+  const [custom, setCustom] = useState<CustomLinkType[]>([]);
+
+  useEffect(() => { setCustom(loadCustomTypes()); }, []);
+
+  const add = useCallback((type: CustomLinkType) => {
+    setCustom((prev) => {
+      const next = [...prev, type];
+      saveCustomTypes(next);
+      return next;
+    });
+  }, []);
+
+  const remove = useCallback((value: string) => {
+    setCustom((prev) => {
+      const next = prev.filter((t) => t.value !== value);
+      saveCustomTypes(next);
+      return next;
+    });
+  }, []);
+
+  return { custom, add, remove };
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -30,6 +82,22 @@ function linkLabel(link: IntertextualLink, currentBook: string, currentChapter: 
   return `← ${bookLabel(link.sourceBook)} ${verseRange(link.sourceChapter, link.sourceVerse, link.sourceEndVerse)}`;
 }
 
+function resolveLinkType(value: string, custom: CustomLinkType[]): { label: string; color: string } {
+  const builtin = LINK_TYPES.find((t) => t.value === value);
+  if (builtin) return builtin;
+  const c = custom.find((t) => t.value === value);
+  if (c) return c;
+  return { label: value, color: "#6b7280" };
+}
+
+const STRENGTH_LABELS: Record<number, string> = {
+  1: "Unlikely",
+  2: "Speculative",
+  3: "Possible",
+  4: "Probable",
+  5: "Wide consensus",
+};
+
 function StrengthStars({ value, onChange }: { value: number; onChange?: (v: number) => void }) {
   return (
     <span className="flex gap-0.5">
@@ -38,9 +106,10 @@ function StrengthStars({ value, onChange }: { value: number; onChange?: (v: numb
           key={n}
           type="button"
           onClick={() => onChange?.(n)}
+          title={STRENGTH_LABELS[n]}
           className={onChange ? "cursor-pointer" : "cursor-default"}
           style={{ color: n <= value ? "#f59e0b" : "var(--text-muted)", fontSize: 13, lineHeight: 1 }}
-          aria-label={`Strength ${n}`}
+          aria-label={STRENGTH_LABELS[n]}
         >
           ★
         </button>
@@ -50,10 +119,9 @@ function StrengthStars({ value, onChange }: { value: number; onChange?: (v: numb
 }
 
 // ── Ref parser ─────────────────────────────────────────────────────────────
-// Simple parser: "Book Chapter:Verse[-EndVerse]" or "Book Chapter:Verse-Chapter:EndVerse"
+
 function parseRef(raw: string): { book: string; chapter: number; verse: number; endVerse?: number } | null {
   const trimmed = raw.trim();
-  // Try to match known book names
   const books = Object.entries(OSIS_REF_BOOK_NAMES);
   for (const [osis, name] of books) {
     if (!trimmed.toLowerCase().startsWith(name.toLowerCase())) continue;
@@ -70,6 +138,77 @@ function parseRef(raw: string): { book: string; chapter: number; verse: number; 
   return null;
 }
 
+// ── Custom type creator (inline in form) ───────────────────────────────────
+
+function CustomTypeCreator({
+  custom,
+  onAdd,
+  onCancel,
+}: {
+  custom: CustomLinkType[];
+  onAdd: (type: CustomLinkType) => void;
+  onCancel: () => void;
+}) {
+  const [label, setLabel] = useState("");
+  const [color, setColor] = useState(CUSTOM_TYPE_COLORS[0]);
+  const [err, setErr] = useState("");
+
+  function slugify(s: string) {
+    return s.toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, "");
+  }
+
+  function handleAdd() {
+    const trimmed = label.trim();
+    if (!trimmed) { setErr("Enter a name."); return; }
+    const value = slugify(trimmed);
+    if (!value) { setErr("Name must contain letters or numbers."); return; }
+    const taken = [...LINK_TYPES, ...custom].some((t) => t.value === value);
+    if (taken) { setErr("A type with that name already exists."); return; }
+    onAdd({ value, label: trimmed, color });
+  }
+
+  return (
+    <div className="mt-1 rounded border border-[var(--border)] p-2 flex flex-col gap-2 bg-[var(--input-bg,white)] dark:bg-stone-800">
+      <input
+        autoFocus
+        placeholder="Type name (e.g. Verbal echo)"
+        value={label}
+        onChange={(e) => { setLabel(e.target.value); setErr(""); }}
+        onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleAdd(); } if (e.key === "Escape") onCancel(); }}
+        className="w-full rounded border px-2 py-1 text-xs bg-[var(--input-bg,white)] dark:bg-stone-800 border-[var(--border)] text-[var(--foreground)]"
+      />
+      <div className="flex flex-wrap gap-1">
+        {CUSTOM_TYPE_COLORS.map((c) => (
+          <button
+            key={c}
+            type="button"
+            onClick={() => setColor(c)}
+            title={c}
+            style={{ backgroundColor: c, width: 18, height: 18, borderRadius: 3, outline: color === c ? `2px solid ${c}` : "none", outlineOffset: 2 }}
+          />
+        ))}
+      </div>
+      {err && <p className="text-red-500 text-xs">{err}</p>}
+      <div className="flex gap-1">
+        <button
+          type="button"
+          onClick={handleAdd}
+          className="flex-1 py-1 rounded text-xs font-medium bg-amber-500 hover:bg-amber-600 text-white"
+        >
+          Add type
+        </button>
+        <button
+          type="button"
+          onClick={onCancel}
+          className="px-2 py-1 rounded text-xs border border-[var(--border)] text-[var(--foreground)]"
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ── Add/Edit Form ──────────────────────────────────────────────────────────
 
 interface FormState {
@@ -84,10 +223,14 @@ interface FormState {
 function LinkForm({
   book, chapter, textSource,
   editLink,
+  custom, onAddCustom, onRemoveCustom,
   onSave, onCancel,
 }: {
   book: string; chapter: number; textSource: string;
   editLink?: IntertextualLink;
+  custom: CustomLinkType[];
+  onAddCustom: (type: CustomLinkType) => void;
+  onRemoveCustom: (value: string) => void;
   onSave: () => void; onCancel: () => void;
 }) {
   const [form, setForm] = useState<FormState>(() => {
@@ -114,6 +257,8 @@ function LinkForm({
   });
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [showCustomCreator, setShowCustomCreator] = useState(false);
+  const [showManage, setShowManage] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -173,6 +318,8 @@ function LinkForm({
   }
 
   const fieldClass = "w-full rounded border px-2 py-1 text-sm bg-[var(--input-bg,white)] dark:bg-stone-800 border-[var(--border)] text-[var(--foreground)]";
+  const allTypes = [...LINK_TYPES, ...custom];
+  const currentTypeKnown = allTypes.some((t) => t.value === form.linkType);
 
   return (
     <form onSubmit={handleSubmit} className="p-3 border-b border-[var(--border)] flex flex-col gap-2 text-sm">
@@ -200,15 +347,78 @@ function LinkForm({
         <select
           className={fieldClass}
           value={form.linkType}
-          onChange={(e) => setForm((f) => ({ ...f, linkType: e.target.value }))}
+          onChange={(e) => {
+            if (e.target.value === "__new__") {
+              setShowCustomCreator(true);
+            } else {
+              setForm((f) => ({ ...f, linkType: e.target.value }));
+              setShowCustomCreator(false);
+            }
+          }}
         >
-          {LINK_TYPES.map((t) => (
-            <option key={t.value} value={t.value}>{t.label}</option>
-          ))}
-          {!LINK_TYPES.find((t) => t.value === form.linkType) && (
+          <optgroup label="Built-in">
+            {LINK_TYPES.map((t) => (
+              <option key={t.value} value={t.value}>{t.label}</option>
+            ))}
+          </optgroup>
+          {custom.length > 0 && (
+            <optgroup label="Custom">
+              {custom.map((t) => (
+                <option key={t.value} value={t.value}>{t.label}</option>
+              ))}
+            </optgroup>
+          )}
+          {!currentTypeKnown && (
             <option value={form.linkType}>{form.linkType}</option>
           )}
+          <option value="__new__">＋ Create new type…</option>
         </select>
+        {showCustomCreator && (
+          <CustomTypeCreator
+            custom={custom}
+            onAdd={(type) => {
+              onAddCustom(type);
+              setForm((f) => ({ ...f, linkType: type.value }));
+              setShowCustomCreator(false);
+            }}
+            onCancel={() => setShowCustomCreator(false)}
+          />
+        )}
+        {!showCustomCreator && custom.length > 0 && (
+          <div className="mt-1">
+            <button
+              type="button"
+              onClick={() => setShowManage((v) => !v)}
+              className="text-xs text-[var(--text-muted)] hover:underline"
+            >
+              {showManage ? "Hide custom types" : "Manage custom types…"}
+            </button>
+            {showManage && (
+              <div className="mt-1 rounded border border-[var(--border)] divide-y divide-[var(--border)] bg-[var(--input-bg,white)] dark:bg-stone-800">
+                {custom.map((t) => (
+                  <div key={t.value} className="flex items-center gap-2 px-2 py-1">
+                    <span
+                      className="w-3 h-3 rounded-sm shrink-0"
+                      style={{ backgroundColor: t.color }}
+                    />
+                    <span className="flex-1 text-xs text-[var(--foreground)]">{t.label}</span>
+                    <button
+                      type="button"
+                      title="Delete custom type"
+                      onClick={() => {
+                        onRemoveCustom(t.value);
+                        if (form.linkType === t.value) setForm((f) => ({ ...f, linkType: "allusion" }));
+                      }}
+                      className="text-xs text-[var(--text-muted)] hover:text-red-500"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
       <div>
         <label className="block text-xs text-[var(--text-muted)] mb-0.5">Confidence</label>
@@ -256,14 +466,15 @@ function LinkForm({
 
 function LinkRow({
   link, book, chapter,
+  custom,
   onEdit, onDelete,
 }: {
   link: IntertextualLink; book: string; chapter: number;
+  custom: CustomLinkType[];
   onEdit: (link: IntertextualLink) => void;
   onDelete: (id: number) => void;
 }) {
-  const color = getLinkTypeColor(link.linkType);
-  const typeLabel = LINK_TYPES.find((t) => t.value === link.linkType)?.label ?? link.linkType;
+  const { label: typeLabel, color } = resolveLinkType(link.linkType, custom);
   const [confirming, setConfirming] = useState(false);
 
   return (
@@ -326,6 +537,7 @@ export default function IntertextualPanel({ book, chapter, textSource, onClose }
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editLink, setEditLink] = useState<IntertextualLink | null>(null);
+  const { custom, add: addCustom, remove: removeCustom } = useCustomLinkTypes();
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -392,6 +604,9 @@ export default function IntertextualPanel({ book, chapter, textSource, onClose }
           chapter={chapter}
           textSource={textSource}
           editLink={editLink ?? undefined}
+          custom={custom}
+          onAddCustom={addCustom}
+          onRemoveCustom={removeCustom}
           onSave={() => { setShowForm(false); setEditLink(null); load(); }}
           onCancel={() => { setShowForm(false); setEditLink(null); }}
         />
@@ -419,6 +634,7 @@ export default function IntertextualPanel({ book, chapter, textSource, onClose }
               link={link}
               book={book}
               chapter={chapter}
+              custom={custom}
               onEdit={(l) => { setEditLink(l); setShowForm(false); }}
               onDelete={handleDelete}
             />
