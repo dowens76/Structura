@@ -64,6 +64,17 @@ const msixVersion = appVersion + ".0"; // Store requires 4-part version
 const identityName = process.env.MSIX_IDENTITY_NAME || "DanielOwens.Structura";
 const publisher = process.env.MSIX_PUBLISHER || "CN=Structura-Dev";
 
+// AppxManifest requires a valid X.509 Distinguished Name for Publisher.
+// A bare "CN=value" is the minimum. Fail fast with a clear message rather than
+// letting makeappx emit a cryptic schema error.
+if (!/^(CN|L|O|OU|E|C|S|STREET|T|G|I|SN|DC|SERIALNUMBER|Description|PostalCode|POBox|Phone|X21Address|dnQualifier|OID\.\d[\d.]*)\s*=/.test(publisher)) {
+  throw new Error(
+    `MSIX_PUBLISHER value "${publisher}" is not a valid X.509 Distinguished Name.\n` +
+    `Expected format: CN=XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX\n` +
+    `Check that the GitHub secret does not have surrounding quotes.`
+  );
+}
+
 // ── Locate Windows SDK tools ──────────────────────────────────────────────────
 function findWindowsSdkTool(toolName) {
   const sdkRoot = "C:\\Program Files (x86)\\Windows Kits\\10\\bin";
