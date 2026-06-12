@@ -544,6 +544,49 @@ export const textCriticalMarks = sqliteTable(
   ]
 );
 
+// ─── Intertextual Links ────────────────────────────────────────────────────
+
+/** Cross-passage intertextual connections (quotations, allusions, echoes, typology, parallels). */
+export const intertextualLinks = sqliteTable(
+  "intertextual_links",
+  {
+    id:          integer("id").primaryKey({ autoIncrement: true }),
+    workspaceId: integer("workspace_id").notNull().default(1)
+                   .references(() => workspaces.id, { onDelete: "cascade" }),
+
+    // Source side (earlier / cited text)
+    sourceBook:        text("source_book").notNull(),
+    sourceChapter:     integer("source_chapter").notNull(),
+    sourceVerse:       integer("source_verse").notNull(),
+    sourceEndVerse:    integer("source_end_verse"),
+    sourceTextSource:  text("source_text_source").notNull(),
+    sourceStartWordId: text("source_start_word_id"),
+    sourceEndWordId:   text("source_end_word_id"),
+
+    // Target side (later / citing text, or parallel)
+    targetBook:        text("target_book").notNull(),
+    targetChapter:     integer("target_chapter").notNull(),
+    targetVerse:       integer("target_verse").notNull(),
+    targetEndVerse:    integer("target_end_verse"),
+    targetTextSource:  text("target_text_source").notNull(),
+    targetStartWordId: text("target_start_word_id"),
+    targetEndWordId:   text("target_end_word_id"),
+
+    // Link metadata
+    linkType:  text("link_type").notNull(),   // "quotation" | "allusion" | "echo" | "typology" | "parallel" | custom
+    strength:  integer("strength").notNull().default(3),  // 1–5 confidence
+    notes:     text("notes"),
+    direction: text("direction").notNull().default("source_to_target"),  // "source_to_target" | "bidirectional"
+
+    createdAt: text("created_at").$defaultFn(() => new Date().toISOString()),
+  },
+  (t) => [
+    index("il_workspace_idx").on(t.workspaceId),
+    index("il_source_idx").on(t.sourceBook, t.sourceChapter),
+    index("il_target_idx").on(t.targetBook, t.targetChapter),
+  ]
+);
+
 // ─── Types ─────────────────────────────────────────────────────────────────
 
 export type User = typeof users.$inferSelect;
@@ -576,3 +619,5 @@ export type BookGrouping = typeof bookGroupings.$inferSelect;
 export type TranslationFootnote = typeof translationFootnotes.$inferSelect;
 export type TranslationVersion = typeof translationVersions.$inferSelect;
 export type TextCriticalMark = typeof textCriticalMarks.$inferSelect;
+export type IntertextualLink = typeof intertextualLinks.$inferSelect;
+export type NewIntertextualLink = typeof intertextualLinks.$inferInsert;

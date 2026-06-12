@@ -23,6 +23,7 @@ export interface ToolbarVisibility {
   notes: boolean;
   search: boolean;
   bible: boolean;
+  intertextual: boolean;
   translations: boolean;
 }
 
@@ -31,7 +32,7 @@ export const DEFAULT_TOOLBAR_VIS: ToolbarVisibility = {
   annotations: true, atnachInsert: true, paragraphs: true, indents: true,
   rst: true, arrows: true, bold: true, italic: true,
   refs: true, speech: true, wordTags: true, clear: true,
-  notes: true, search: true, bible: true, translations: true,
+  notes: true, search: true, bible: true, intertextual: true, translations: true,
 };
 
 interface Props {
@@ -84,7 +85,8 @@ const SECTIONS: { label: string; items: { key: keyof ToolbarVisibility; label: s
       { key: "clear",  label: "🗑 Clear" },
       { key: "notes",  label: "📝 Notes" },
       { key: "search", label: "🔍 Search" },
-      { key: "bible",  label: "📖 Bible Lookup" },
+      { key: "bible",         label: "📖 Bible Lookup" },
+      { key: "intertextual",  label: "⬡ Intertextual Links" },
     ],
   },
   {

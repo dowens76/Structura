@@ -22,6 +22,7 @@ import NotesPane from "@/components/notes/NotesPane";
 import SearchPane from "@/components/search/SearchPane";
 import OutlinePane from "@/components/text/OutlinePane";
 import BibleLookupPane from "@/components/bible/BibleLookupPane";
+import IntertextualPanel from "@/components/text/IntertextualPanel";
 import ResizablePane from "@/components/ResizablePane";
 import RstTypeManager from "@/components/controls/RstTypeManager";
 import ToolbarCustomizer, { DEFAULT_TOOLBAR_VIS, type ToolbarVisibility } from "@/components/controls/ToolbarCustomizer";
@@ -220,6 +221,7 @@ export default function ChapterDisplay({
   const syncTimerRef     = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [bibleOpen, setBibleOpen] = useState(false);
+  const [intertextualOpen, setIntertextualOpen] = useState(false);
   const [searchHits, setSearchHits] = useState<Set<string>>(new Set());
   const [searchRequest, setSearchRequest] = useState<{ query: string; source: string; nonce: number } | null>(null);
   const [notesScrollVerse, setNotesScrollVerse] = useState<number | null>(null);
@@ -958,6 +960,7 @@ export default function ChapterDisplay({
     setNotesOpen(readLocal<boolean>("structura:notesOpen", false));
     setSearchOpen(readLocal<boolean>("structura:searchOpen", false));
     setOutlineOpen(readLocal<boolean>("structura:outlineOpen", false));
+    setIntertextualOpen(readLocal<boolean>("structura:intertextualOpen", false));
     setOutlineExtended(readLocal<boolean>("structura:outlineExtended", false));
     setOutlinePredecessorShown(readLocal<boolean>("structura:outlineIncludePaired", false));
     setEditingScenes(readLocal<boolean>("structura:editingScenes", false));
@@ -983,6 +986,7 @@ export default function ChapterDisplay({
   useEffect(() => { writeLocal("structura:notesOpen", notesOpen); }, [notesOpen]);
   useEffect(() => { writeLocal("structura:searchOpen", searchOpen); }, [searchOpen]);
   useEffect(() => { writeLocal("structura:outlineOpen", outlineOpen); }, [outlineOpen]);
+  useEffect(() => { writeLocal("structura:intertextualOpen", intertextualOpen); }, [intertextualOpen]);
   useEffect(() => { writeLocal("structura:outlineExtended", outlineExtended); }, [outlineExtended]);
   useEffect(() => { writeLocal("structura:outlineIncludePaired", outlinePredecessorShown); }, [outlinePredecessorShown]);
   useEffect(() => { writeLocal("structura:editingScenes", editingScenes); }, [editingScenes]);
@@ -4026,6 +4030,30 @@ export default function ChapterDisplay({
                 📖
               </button>}
 
+              {/* Intertextual links panel toggle */}
+              {toolbarVis.intertextual && <button
+                onClick={() => setIntertextualOpen((v) => !v)}
+                data-tip={intertextualOpen ? "Close Intertextual Links" : "Intertextual Links"}
+                className={[
+                  "px-[14px] py-[7px] rounded font-medium transition-colors",
+                  intertextualOpen
+                    ? "bg-amber-500 text-white"
+                    : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
+                ].join(" ")}
+              >
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                  <line x1="8" y1="8" x2="8" y2="1" stroke="currentColor" strokeWidth="0.8"/>
+                  <line x1="8" y1="8" x2="14.1" y2="4.5" stroke="currentColor" strokeWidth="0.8"/>
+                  <line x1="8" y1="8" x2="14.1" y2="11.5" stroke="currentColor" strokeWidth="0.8"/>
+                  <line x1="8" y1="8" x2="8" y2="15" stroke="currentColor" strokeWidth="0.8"/>
+                  <line x1="8" y1="8" x2="1.9" y2="11.5" stroke="currentColor" strokeWidth="0.8"/>
+                  <line x1="8" y1="8" x2="1.9" y2="4.5" stroke="currentColor" strokeWidth="0.8"/>
+                  <path d="M8 5.7 L9.99 6.85 L9.99 9.15 L8 10.3 L6.01 9.15 L6.01 6.85 Z" stroke="currentColor" strokeWidth="0.75" fill="none"/>
+                  <path d="M8 3.4 L11.98 5.7 L11.98 10.3 L8 12.6 L4.02 10.3 L4.02 5.7 Z" stroke="currentColor" strokeWidth="0.75" fill="none"/>
+                  <path d="M8 1 L14.06 4.5 L14.06 11.5 L8 15 L1.94 11.5 L1.94 4.5 Z" stroke="currentColor" strokeWidth="0.75" fill="none"/>
+                </svg>
+              </button>}
+
               <div className="h-5 border-l border-[var(--border)]" />
 
               {/* Translation picker + source visibility toggle + translation edit */}
@@ -4811,6 +4839,18 @@ export default function ChapterDisplay({
       {bibleOpen && (
         <ResizablePane storageKey="pane-bible-width" defaultWidth={320} minWidth={240} maxWidth={600}>
           <BibleLookupPane onClose={() => setBibleOpen(false)} />
+        </ResizablePane>
+      )}
+
+      {/* Intertextual links pane */}
+      {intertextualOpen && (
+        <ResizablePane storageKey="pane-intertextual-width" defaultWidth={340} minWidth={260} maxWidth={700}>
+          <IntertextualPanel
+            book={book}
+            chapter={chapter}
+            textSource={textSource}
+            onClose={() => setIntertextualOpen(false)}
+          />
         </ResizablePane>
       )}
 
