@@ -190,7 +190,7 @@ const manifest = `<?xml version="1.0" encoding="utf-8"?>
     ProcessorArchitecture="${arch}" />
 
   <Properties>
-    <DisplayName>Structura</DisplayName>
+    <DisplayName>Structura Bible Workbench</DisplayName>
     <PublisherDisplayName>Daniel Owens</PublisherDisplayName>
     <Logo>Assets\\StoreLogo.png</Logo>
   </Properties>
