@@ -248,7 +248,28 @@ export default function HomeContent({ otBooks, ntBooks, lxxBooks, translationOnl
           </div>
         )}
 
-        <footer className="mt-8 pt-6 border-t text-xs space-y-1" style={{ borderColor: "var(--border)", color: "var(--text-muted)" }}>
+        <div className="mt-8 pt-6 border-t flex gap-4 text-xs" style={{ borderColor: "var(--border)" }}>
+          <a
+            href="https://dowens76.github.io/Structura"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ color: "var(--accent)" }}
+            className="hover:underline"
+          >
+            {t("home.website")}
+          </a>
+          <a
+            href="https://dowens76.github.io/Structura/privacy-policy.html"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ color: "var(--accent)" }}
+            className="hover:underline"
+          >
+            {t("home.privacyPolicy")}
+          </a>
+        </div>
+
+        <footer className="mt-4 text-xs space-y-1" style={{ color: "var(--text-muted)" }}>
           <p className="font-semibold">{t("home.footerLicenses")}</p>
           <p className="mt-2 font-medium">{t("home.footerBiblesHeading")}</p>
           <p>{t("home.footerHebrew")}</p>
