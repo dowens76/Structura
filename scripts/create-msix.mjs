@@ -105,13 +105,14 @@ copyFileSync(exeSrc, path.join(stagingDir, "Structura.exe"));
 console.log("Copied Structura.exe");
 
 // ── Copy sidecar Node binary ──────────────────────────────────────────────────
-// Tauri resolves sidecars relative to the exe directory (not a binaries/
-// subdirectory), so the binary must sit next to Structura.exe in the package.
-const nodeSidecarName = `node-${target}.exe`;
-const nodeSidecarSrc = path.join(ROOT, "src-tauri", "binaries", nodeSidecarName);
+// Tauri's bundler strips the directory prefix and target triple from externalBin
+// entries: "binaries/node-x86_64-pc-windows-msvc.exe" → "node.exe" next to the
+// exe. The runtime call .sidecar("node") resolves to <exe_dir>/node.exe, so the
+// MSIX staging must match that exact name and location.
+const nodeSidecarSrc = path.join(ROOT, "src-tauri", "binaries", `node-${target}.exe`);
 if (existsSync(nodeSidecarSrc)) {
-  copyFileSync(nodeSidecarSrc, path.join(stagingDir, nodeSidecarName));
-  console.log(`Copied sidecar: ${nodeSidecarName}`);
+  copyFileSync(nodeSidecarSrc, path.join(stagingDir, "node.exe"));
+  console.log(`Copied sidecar: node-${target}.exe → node.exe`);
 } else {
   console.warn(`Warning: sidecar not found at ${nodeSidecarSrc}`);
 }
