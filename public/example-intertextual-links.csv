@@ -1,0 +1,2 @@
+id,sourceBook,sourceChapter,sourceVerse,sourceEndVerse,sourceTextSource,sourceStartWordId,sourceEndWordId,targetBook,targetChapter,targetVerse,targetEndVerse,targetTextSource,targetStartWordId,targetEndWordId,linkType,strength,notes,direction,createdAt
+,Gen,1,1,,OSHB,,,John,1,1,,SBLGNT,,,allusion,5,"John 1:1 echoes Gen 1:1 with the identical opening ἐν ἀρχῇ / בְּרֵאשִׁית, presenting the Logos as the agent of a new creation.",source_to_target,

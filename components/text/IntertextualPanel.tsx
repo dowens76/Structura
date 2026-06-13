@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { LINK_TYPES } from "@/lib/utils/annotations";
 import { OSIS_REF_BOOK_NAMES } from "@/lib/utils/osis";
 import type { IntertextualLink } from "@/lib/db/schema";
@@ -530,6 +530,148 @@ function LinkRow({
   );
 }
 
+// ── Import / Export menu ───────────────────────────────────────────────────
+
+interface ImportResult { imported: number; skipped: number; errors: string[] }
+
+function ImportExportMenu({
+  book, chapter, onImportDone,
+}: {
+  book: string; chapter: number; onImportDone: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [importStatus, setImportStatus] = useState<ImportResult | null>(null);
+  const [importing, setImporting] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  // close on outside click
+  useEffect(() => {
+    if (!open) return;
+    function handler(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  function exportUrl(scope: "passage" | "book" | "corpus") {
+    const params = new URLSearchParams({ scope });
+    if (scope !== "corpus") params.set("book", book);
+    if (scope === "passage") params.set("chapter", String(chapter));
+    return `/api/intertextual-links/export?${params}`;
+  }
+
+  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImporting(true);
+    setImportStatus(null);
+    setOpen(false);
+    try {
+      const text = await file.text();
+      const res = await fetch("/api/intertextual-links/import", {
+        method: "POST",
+        headers: { "Content-Type": "text/csv" },
+        body: text,
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setImportStatus({ imported: 0, skipped: 0, errors: [data.error ?? "Import failed"] });
+      } else {
+        setImportStatus(data);
+        onImportDone();
+      }
+    } catch {
+      setImportStatus({ imported: 0, skipped: 0, errors: ["Network error"] });
+    } finally {
+      setImporting(false);
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  }
+
+  return (
+    <div className="relative" ref={menuRef}>
+      <button
+        onClick={() => setOpen((v) => !v)}
+        disabled={importing}
+        title="Import / Export CSV"
+        className="px-2 py-1 rounded text-xs text-[var(--text-muted)] hover:bg-stone-100 dark:hover:bg-stone-800 disabled:opacity-50"
+      >
+        {importing ? "Importing…" : "⇅ CSV"}
+      </button>
+
+      {open && (
+        <div className="absolute right-0 top-full mt-1 z-50 rounded border border-[var(--border)] shadow-md bg-[var(--background)] min-w-[170px] py-1 text-sm">
+          <div className="px-3 py-1 text-xs text-[var(--text-muted)] font-semibold uppercase tracking-wide">Export</div>
+          {(["passage", "book", "corpus"] as const).map((scope) => (
+            <a
+              key={scope}
+              href={exportUrl(scope)}
+              download
+              onClick={() => setOpen(false)}
+              className="block px-3 py-1.5 hover:bg-stone-100 dark:hover:bg-stone-700 text-[var(--foreground)] cursor-pointer"
+            >
+              {scope === "passage" && `This chapter (ch. ${chapter})`}
+              {scope === "book"    && "This book"}
+              {scope === "corpus"  && "Whole corpus"}
+            </a>
+          ))}
+          <div className="border-t border-[var(--border)] mt-1 pt-1">
+            <div className="px-3 py-1 text-xs text-[var(--text-muted)] font-semibold uppercase tracking-wide">Import</div>
+            <button
+              onClick={() => { fileRef.current?.click(); setOpen(false); }}
+              className="w-full text-left px-3 py-1.5 hover:bg-stone-100 dark:hover:bg-stone-700 text-[var(--foreground)]"
+            >
+              Import CSV file…
+            </button>
+            <a
+              href="/example-intertextual-links.csv"
+              download
+              onClick={() => setOpen(false)}
+              className="block px-3 py-1.5 hover:bg-stone-100 dark:hover:bg-stone-700 text-[var(--foreground)] cursor-pointer"
+            >
+              Example import file
+            </a>
+          </div>
+        </div>
+      )}
+
+      <input
+        ref={fileRef}
+        type="file"
+        accept=".csv,text/csv"
+        className="hidden"
+        onChange={handleFileChange}
+      />
+
+      {importStatus && (
+        <div
+          className="absolute right-0 top-full mt-1 z-50 rounded border border-[var(--border)] shadow-md bg-[var(--background)] p-3 text-xs min-w-[220px]"
+          style={{ color: "var(--foreground)" }}
+        >
+          <div className="flex items-start justify-between gap-2">
+            <div>
+              <p className="font-semibold mb-1">Import complete</p>
+              <p>✓ {importStatus.imported} imported</p>
+              {importStatus.skipped > 0 && <p>✗ {importStatus.skipped} skipped</p>}
+              {importStatus.errors.length > 0 && (
+                <ul className="mt-1 space-y-0.5 text-red-500">
+                  {importStatus.errors.map((e, i) => <li key={i}>{e}</li>)}
+                </ul>
+              )}
+            </div>
+            <button
+              onClick={() => setImportStatus(null)}
+              className="text-[var(--text-muted)] hover:text-[var(--foreground)] shrink-0"
+            >✕</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Main panel ─────────────────────────────────────────────────────────────
 
 export default function IntertextualPanel({ book, chapter, textSource, onClose }: Props) {
@@ -581,6 +723,7 @@ export default function IntertextualPanel({ book, chapter, textSource, onClose }
           >
             ⬡ Graph
           </a>
+          <ImportExportMenu book={book} chapter={chapter} onImportDone={load} />
           <button
             onClick={() => { setShowForm(true); setEditLink(null); }}
             className="px-2 py-1 rounded text-xs bg-amber-500 hover:bg-amber-600 text-white"
