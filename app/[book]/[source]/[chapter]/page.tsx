@@ -81,10 +81,14 @@ export default async function ChapterPage({ params, searchParams }: PageProps) {
     ? (getParallelGroup(osisBook, chapter) ?? { mtChapters: [chapter], lxxChapters: [chapter] })
     : null;
 
-  // For the book dropdown: LXX standalone needs all books that have LXX words.
+  // For the book dropdown: always show OT + NT books so the user can navigate across testaments.
+  // LXX uses getBooksWithWords to get the correct LXX book list; others use OSHB.
+  const TESTAMENT_ORDER: Record<string, number> = { OT: 0, LXX: 1, NT: 2 };
   const sourceBooksPromise = isLXX
-    ? getBooksWithWords(LXX_SOURCE)
-    : getBooksBySource(source);
+    ? Promise.all([getBooksWithWords(LXX_SOURCE), getBooksBySource("SBLGNT")]).then(([lxx, nt]) =>
+        [...lxx, ...nt].sort((a, b) => (TESTAMENT_ORDER[a.testament] ?? 1) - (TESTAMENT_ORDER[b.testament] ?? 1) || a.bookNumber - b.bookNumber)
+      )
+    : Promise.all([getBooksBySource("OSHB"), getBooksBySource("SBLGNT")]).then(([ot, nt]) => [...ot, ...nt]);
 
   type WordsArr = Awaited<ReturnType<typeof getChapterWords>>;
   type BookRec = Awaited<ReturnType<typeof getBook>>;

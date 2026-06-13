@@ -6,6 +6,7 @@ import {
   getPassageWords,
   getBook,
   getBooksBySource,
+  getBooksWithWords,
   getChapterMaxVerse,
   getCharacters,
   getWordTags,
@@ -68,10 +69,16 @@ export default async function PassagePage({ params, searchParams }: PageProps) {
   const workspace = await getWorkspaceById(workspaceId).catch(() => null);
   const translationOnly = workspace?.translationOnly ?? false;
 
+  const isLXXPassage = textSource === "STEPBIBLE_LXX";
+  const TESTAMENT_ORDER: Record<string, number> = { OT: 0, LXX: 1, NT: 2 };
   const [passage, bookRecord, sourceBooks] = await Promise.all([
     getPassage(id),
     getBook(osisBook),
-    getBooksBySource(source),
+    isLXXPassage
+      ? Promise.all([getBooksWithWords("STEPBIBLE_LXX"), getBooksBySource("SBLGNT")]).then(([lxx, nt]) =>
+          [...lxx, ...nt].sort((a, b) => (TESTAMENT_ORDER[a.testament] ?? 1) - (TESTAMENT_ORDER[b.testament] ?? 1) || a.bookNumber - b.bookNumber)
+        )
+      : Promise.all([getBooksBySource("OSHB"), getBooksBySource("SBLGNT")]).then(([ot, nt]) => [...ot, ...nt]),
   ]);
 
   if (!passage || !bookRecord) notFound();
