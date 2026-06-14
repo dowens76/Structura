@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import { OSIS_BOOK_ORDER } from "@/lib/utils/osis";
 
 export interface BookmarkEntry {
   id: string;
@@ -11,8 +12,23 @@ export interface BookmarkEntry {
   createdAt: number;
 }
 
+type SortOrder = "time" | "canonical";
+
 const STORAGE_KEY = "structura:bookmarks";
 const TRANSLATIONS_KEY = "structura:activeTranslations";
+const SORT_KEY = "structura:bookmarkSort";
+
+function parseCanonicalKey(href: string): number {
+  // href: "/{book}/{source}/{chapter}" or "/{book}/{source}/passage/{id}"
+  const parts = href.split("/").filter(Boolean);
+  const book = decodeURIComponent(parts[0] ?? "");
+  const chapterOrPassage = parts[2] ?? "";
+  const bookOrder = OSIS_BOOK_ORDER[book] ?? 999;
+  // For passages, sort after chapters of same book
+  const isPassage = chapterOrPassage === "passage";
+  const chapter = isPassage ? 9999 : parseInt(parts[2] ?? "0", 10) || 0;
+  return bookOrder * 100000 + chapter;
+}
 
 function loadBookmarks(): BookmarkEntry[] {
   try {
@@ -47,10 +63,11 @@ export default function BookmarkButton({ href, label }: BookmarkButtonProps) {
   const [open, setOpen] = useState(false);
   const [bookmarks, setBookmarks] = useState<BookmarkEntry[]>([]);
   const [isBookmarked, setIsBookmarked] = useState(false);
+  const [sortOrder, setSortOrder] = useState<SortOrder>("time");
   const dropdownRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
 
-  // Load bookmarks from localStorage on mount and when dropdown opens
+  // Load bookmarks and sort preference from localStorage on mount
   const refreshBookmarks = useCallback(() => {
     const bm = loadBookmarks();
     setBookmarks(bm);
@@ -59,7 +76,24 @@ export default function BookmarkButton({ href, label }: BookmarkButtonProps) {
 
   useEffect(() => {
     refreshBookmarks();
+    try {
+      const saved = localStorage.getItem(SORT_KEY);
+      if (saved === "canonical" || saved === "time") setSortOrder(saved);
+    } catch {}
   }, [refreshBookmarks]);
+
+  function toggleSortOrder() {
+    const next: SortOrder = sortOrder === "time" ? "canonical" : "time";
+    setSortOrder(next);
+    try { localStorage.setItem(SORT_KEY, next); } catch {}
+  }
+
+  const sortedBookmarks = [...bookmarks].sort((a, b) => {
+    if (sortOrder === "canonical") {
+      return parseCanonicalKey(a.href) - parseCanonicalKey(b.href);
+    }
+    return b.createdAt - a.createdAt; // newest first
+  });
 
   // Close on outside click
   useEffect(() => {
@@ -166,14 +200,44 @@ export default function BookmarkButton({ href, label }: BookmarkButtonProps) {
             )}
           </div>
 
-          {/* Bookmark list */}
+          {/* Sort toggle + bookmark list */}
           {bookmarks.length === 0 ? (
             <p className="px-3 py-3 text-xs" style={{ color: "var(--text-muted)" }}>
               No bookmarks yet.
             </p>
           ) : (
+            <>
+              <div
+                className="flex items-center justify-end gap-1 px-3 py-1.5 border-b"
+                style={{ borderColor: "var(--nav-border)" }}
+              >
+                <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>Sort:</span>
+                <button
+                  onClick={toggleSortOrder}
+                  className="text-[10px] px-1.5 py-0.5 rounded transition-colors"
+                  style={{
+                    color: sortOrder === "time" ? "var(--accent)" : "var(--text-muted)",
+                    fontWeight: sortOrder === "time" ? 600 : 400,
+                  }}
+                  title="Sort by time added (newest first)"
+                >
+                  Recent
+                </button>
+                <span style={{ color: "var(--nav-border)" }}>·</span>
+                <button
+                  onClick={toggleSortOrder}
+                  className="text-[10px] px-1.5 py-0.5 rounded transition-colors"
+                  style={{
+                    color: sortOrder === "canonical" ? "var(--accent)" : "var(--text-muted)",
+                    fontWeight: sortOrder === "canonical" ? 600 : 400,
+                  }}
+                  title="Sort by canonical book order"
+                >
+                  Canonical
+                </button>
+              </div>
             <ul className="max-h-72 overflow-y-auto">
-              {bookmarks.map((bm) => (
+              {sortedBookmarks.map((bm) => (
                 <li
                   key={bm.id}
                   className="flex items-center gap-1 px-2 py-1 group"
@@ -208,6 +272,7 @@ export default function BookmarkButton({ href, label }: BookmarkButtonProps) {
                 </li>
               ))}
             </ul>
+            </>
           )}
         </div>
       )}
