@@ -142,6 +142,7 @@ export default function DefinePassageDialog({
         body: JSON.stringify({
           book,
           textSource,
+          label:      preview,
           startChapter,
           startVerse,
           endBook:    crossBook ? continuationBook : null,
