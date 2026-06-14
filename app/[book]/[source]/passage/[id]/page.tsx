@@ -48,6 +48,7 @@ import BookDropdown from "@/components/navigation/BookDropdown";
 import ChapterDropdown from "@/components/navigation/ChapterDropdown";
 import WorkspaceSwitcher from "@/components/WorkspaceSwitcher";
 import LanguagePicker from "@/components/ui/LanguagePicker";
+import ImportButton from "@/components/navigation/ImportButton";
 
 interface PageProps {
   params: Promise<{ book: string; source: string; id: string }>;
@@ -356,14 +357,8 @@ export default async function PassagePage({ params, searchParams }: PageProps) {
           {crossBookRef ?? bookName}
         </span>
 
-        {/* Import link */}
-        <Link
-          href="/import"
-          className="text-xs px-2 py-1 rounded transition-colors"
-          style={{ color: "var(--nav-fg)" }}
-        >
-          + Import
-        </Link>
+        {/* Import button */}
+        <ImportButton osisBook={osisBook} chapter={passage.startChapter} />
 
         {/* Export link */}
         <PassageExportLink passageId={id} />

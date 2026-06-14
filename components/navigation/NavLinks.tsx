@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState, useEffect } from "react";
 import LanguagePicker from "@/components/ui/LanguagePicker";
 import { useTranslation } from "@/lib/i18n/LocaleContext";
+import ImportTranslationDialog from "@/components/navigation/ImportTranslationDialog";
 
 interface NavLinksProps {
   osisBook: string;
@@ -114,13 +115,7 @@ export default function NavLinks({
       )}
 
       {/* Utility links */}
-      <Link
-        href="/import"
-        className="text-xs px-2 py-1 rounded transition-colors"
-        style={{ color: "var(--nav-fg)" }}
-      >
-        {t("nav.import")}
-      </Link>
+      <ImportTranslationDialog osisBook={osisBook} chapter={chapter} />
 {!parallelMode && (
         <Link
           href={exportHrefWithTranslations}
