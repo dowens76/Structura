@@ -49,6 +49,8 @@ import ChapterDropdown from "@/components/navigation/ChapterDropdown";
 import WorkspaceSwitcher from "@/components/WorkspaceSwitcher";
 import LanguagePicker from "@/components/ui/LanguagePicker";
 import ImportButton from "@/components/navigation/ImportButton";
+import HistoryNav from "@/components/navigation/HistoryNav";
+import BookmarkButton from "@/components/navigation/BookmarkButton";
 
 interface PageProps {
   params: Promise<{ book: string; source: string; id: string }>;
@@ -399,7 +401,7 @@ export default async function PassagePage({ params, searchParams }: PageProps) {
           currentPassageId={id}
         />
 
-        {/* Right side: exit passage, workspace, settings, theme */}
+        {/* Right side: exit passage, history nav, bookmark, workspace, settings, theme */}
         <div className="ml-auto flex items-center gap-1">
           <Link
             href={`/${encodeURIComponent(osisBook)}/${textSource}/${passage.startChapter}`}
@@ -408,6 +410,11 @@ export default async function PassagePage({ params, searchParams }: PageProps) {
           >
             ✕ Exit Passage
           </Link>
+          <HistoryNav />
+          <BookmarkButton
+            href={`/${encodeURIComponent(osisBook)}/${textSource}/passage/${id}`}
+            label={`${crossBookRef ?? (passage.startChapter === passage.endChapter ? `${bookName} ${passage.startChapter}:${passage.startVerse}–${passage.endVerse}` : `${bookName} ${passage.startChapter}–${passage.endChapter}`)} · ${textSource}`}
+          />
           <WorkspaceSwitcher activeWorkspaceId={workspaceId} />
           <SettingsButton />
           <ThemeToggle />

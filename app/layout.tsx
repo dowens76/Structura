@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import "./globals.css";
 import FirstRunGuard from "@/components/FirstRunGuard";
 import FontSettingsApplier from "@/components/FontSettingsApplier";
 import { LocaleProvider } from "@/lib/i18n/LocaleContext";
+import { SessionHistoryProvider } from "@/components/navigation/SessionHistoryContext";
 import "@fontsource/gentium-plus/greek-400.css";
 import "@fontsource/gentium-plus/greek-ext-400.css";
 import "@fontsource/gentium-plus/latin-400.css";
@@ -42,8 +44,12 @@ export default function RootLayout({
       </head>
       <body className="antialiased">
         <LocaleProvider>
-          <FontSettingsApplier />
-          <FirstRunGuard>{children}</FirstRunGuard>
+          <Suspense>
+            <SessionHistoryProvider>
+              <FontSettingsApplier />
+              <FirstRunGuard>{children}</FirstRunGuard>
+            </SessionHistoryProvider>
+          </Suspense>
         </LocaleProvider>
       </body>
     </html>

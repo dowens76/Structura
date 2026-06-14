@@ -23,6 +23,8 @@ import PassageNavButtons from "@/components/passage/PassageNavButtons";
 import ChapterDropdown from "@/components/navigation/ChapterDropdown";
 import BookDropdown from "@/components/navigation/BookDropdown";
 import NavLinks from "@/components/navigation/NavLinks";
+import HistoryNav from "@/components/navigation/HistoryNav";
+import BookmarkButton from "@/components/navigation/BookmarkButton";
 import ThemeToggle from "@/components/ThemeToggle";
 import SettingsButton from "@/components/SettingsButton";
 import WorkspaceSwitcher from "@/components/WorkspaceSwitcher";
@@ -346,8 +348,13 @@ export default async function ChapterPage({ params, searchParams }: PageProps) {
           />
         )}
 
-        {/* Right side: workspace, settings, theme */}
+        {/* Right side: history nav, bookmark, workspace, settings, theme */}
         <div className="ml-auto flex items-center gap-1">
+          <HistoryNav />
+          <BookmarkButton
+            href={`/${encodeURIComponent(osisBook)}/${textSource}/${chapter}${parallelMode ? "?par=1" : ""}`}
+            label={`${bookName} ${chapter} · ${parallelMode ? "OSHB ‖ LXX" : textSource}`}
+          />
           <WorkspaceSwitcher activeWorkspaceId={workspaceId} />
           <SettingsButton />
           <ThemeToggle />
