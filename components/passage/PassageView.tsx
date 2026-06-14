@@ -2833,7 +2833,7 @@ export default function PassageView({
               <button type="button" onClick={() => setShowDeleteConfirm(true)}
                 className="shrink-0 text-xs px-2 py-0.5 rounded hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
                 style={{ color: "var(--text-muted)" }} title="Delete this passage">
-                🗑 Delete
+                🗑 Delete passage
               </button>
             )}
           </div>
