@@ -90,6 +90,8 @@ export async function POST(request: NextRequest) {
         if (multiChapter && !isNaN(ch)) return `Chapter ${ch} · Verse ${v}`;
         return isNaN(v) ? "Verse" : `Verse ${v}`;
       }
+      case "book":
+        return "Book Notes";
       default:
         return key;
     }

@@ -37,11 +37,12 @@ export interface UseAnnotationRangeReturn {
     color: string;
     description: string | null;
     outOfSequence: boolean;
+    transitional: boolean;
   }) => Promise<void>;
   handleDeleteAnnotation: (id: number) => Promise<void>;
   handleUpdateAnnotation: (
     id: number,
-    updates: { label?: string; color?: string; description?: string | null; outOfSequence?: boolean }
+    updates: { label?: string; color?: string; description?: string | null; outOfSequence?: boolean; transitional?: boolean }
   ) => Promise<void>;
   handleExpandAnnotationRange: (
     id: number,
@@ -89,6 +90,7 @@ export function useAnnotationRange({
     color: string;
     description: string | null;
     outOfSequence: boolean;
+    transitional: boolean;
   }) {
     if (!annotRangeStart) return;
     const endWordId = annotRangeEnd ?? annotRangeStart;
@@ -138,7 +140,7 @@ export function useAnnotationRange({
 
   async function handleUpdateAnnotation(
     id: number,
-    updates: { label?: string; color?: string; description?: string | null; outOfSequence?: boolean }
+    updates: { label?: string; color?: string; description?: string | null; outOfSequence?: boolean; transitional?: boolean }
   ) {
     setLineAnnotations((prev) => prev.map((a) => (a.id === id ? { ...a, ...updates } : a)));
     try {

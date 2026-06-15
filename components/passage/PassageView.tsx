@@ -471,12 +471,12 @@ export default function PassageView({
   // ── Line annotation hook is called below, after paragraphFirstWordIds ─────
 
   // ── Section break state ──────────────────────────────────────────────────────
-  const [sceneBreakMap, setSceneBreakMap] = useState<Map<string, Array<{ heading: string | null; level: number; verse: number; outOfSequence: boolean; extendedThrough: number | null; thematic: boolean; thematicLetter: string | null }>>>(
+  const [sceneBreakMap, setSceneBreakMap] = useState<Map<string, Array<{ heading: string | null; level: number; verse: number; outOfSequence: boolean; extendedThrough: number | null; thematic: boolean; thematicLetter: string | null; transitional: boolean }>>>(
     () => {
-      const m = new Map<string, Array<{ heading: string | null; level: number; verse: number; outOfSequence: boolean; extendedThrough: number | null; thematic: boolean; thematicLetter: string | null }>>();
+      const m = new Map<string, Array<{ heading: string | null; level: number; verse: number; outOfSequence: boolean; extendedThrough: number | null; thematic: boolean; thematicLetter: string | null; transitional: boolean }>>();
       for (const sb of initialSceneBreaks) {
         const arr = m.get(sb.wordId) ?? [];
-        arr.push({ heading: sb.heading, level: sb.level, verse: sb.verse, outOfSequence: sb.outOfSequence, extendedThrough: sb.extendedThrough, thematic: false, thematicLetter: null });
+        arr.push({ heading: sb.heading, level: sb.level, verse: sb.verse, outOfSequence: sb.outOfSequence, extendedThrough: sb.extendedThrough, thematic: (sb as { thematic?: boolean }).thematic ?? false, thematicLetter: (sb as { thematicLetter?: string | null }).thematicLetter ?? null, transitional: (sb as { transitional?: boolean }).transitional ?? false });
         m.set(sb.wordId, arr);
       }
       return m;
@@ -2030,7 +2030,7 @@ export default function PassageView({
         if (filtered.length === 0) next.delete(wordId);
         else next.set(wordId, filtered);
       } else {
-        arr.push({ heading: null, level, verse, outOfSequence: false, extendedThrough: null, thematic: false, thematicLetter: null });
+        arr.push({ heading: null, level, verse, outOfSequence: false, extendedThrough: null, thematic: false, thematicLetter: null, transitional: false });
         arr.sort((a, b) => a.level - b.level);
         next.set(wordId, arr);
       }
@@ -2052,7 +2052,7 @@ export default function PassageView({
         const next = new Map(prev);
         if (wasSet) {
           const arr = [...(prev.get(wordId) ?? [])];
-          arr.push({ heading: null, level, verse, outOfSequence: false, extendedThrough: null, thematic: false, thematicLetter: null });
+          arr.push({ heading: null, level, verse, outOfSequence: false, extendedThrough: null, thematic: false, thematicLetter: null, transitional: false });
           arr.sort((a, b) => a.level - b.level);
           next.set(wordId, arr);
         } else {
@@ -2189,6 +2189,24 @@ export default function PassageView({
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ wordId, level, thematic, thematicLetter }),
+      });
+    } catch { /* non-critical */ }
+  }
+
+  async function handleUpdateSceneTransitional(wordId: string, level: number, transitional: boolean) {
+    setSceneBreakMap((prev) => {
+      const next = new Map(prev);
+      const arr = (prev.get(wordId) ?? []).map((b) =>
+        b.level === level ? { ...b, transitional } : b
+      );
+      next.set(wordId, arr);
+      return next;
+    });
+    try {
+      await fetch("/api/scene-breaks", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ wordId, level, transitional }),
       });
     } catch { /* non-critical */ }
   }
@@ -2702,11 +2720,11 @@ export default function PassageView({
   // ── Outline pane ──────────────────────────────────────────────────────────
 
   const outlineBreaksForPane = useMemo(() => {
-    const result: { wordId: string; heading: string | null; level: number; chapter: number; verse: number; positionInVerse: number; thematic: boolean; thematicLetter: string | null }[] = [];
+    const result: { wordId: string; heading: string | null; level: number; chapter: number; verse: number; positionInVerse: number; thematic: boolean; thematicLetter: string | null; transitional: boolean }[] = [];
     for (const [wordId, arr] of sceneBreakMap) {
       const ch = wordToChapter.get(wordId) ?? passage.startChapter;
       for (const br of arr) {
-        result.push({ wordId, heading: br.heading, level: br.level, chapter: ch, verse: br.verse, positionInVerse: 1, thematic: br.thematic, thematicLetter: br.thematicLetter });
+        result.push({ wordId, heading: br.heading, level: br.level, chapter: ch, verse: br.verse, positionInVerse: 1, thematic: br.thematic, thematicLetter: br.thematicLetter, transitional: br.transitional });
       }
     }
     result.sort((a, b) =>
@@ -3936,6 +3954,7 @@ export default function PassageView({
                     onUpdateSceneOutOfSequence={handleUpdateSceneOutOfSequence}
                     onUpdateSceneExtendedThrough={handleUpdateSceneExtendedThrough}
                     onUpdateSceneThematic={handleUpdateSceneThematic}
+                    onUpdateSceneTransitional={handleUpdateSceneTransitional}
                     onChangeSceneBreakLevel={handleChangeSceneBreakLevel}
                     sectionRanges={sectionRanges}
                     annotationsBySegment={annotationsBySegment}

@@ -1,10 +1,11 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import Link from "next/link";
 import type { SectionRangeForOutline } from "@/lib/utils/outlineExport";
 import { generateOutline } from "@/lib/utils/outlineExport";
 import { OSIS_REF_BOOK_NAMES } from "@/lib/utils/osis";
+import NoteEditor from "@/components/notes/NoteEditor";
 
 // ── Book abbreviation display helper ─────────────────────────────────────────
 function bookAbbr(osisCode: string): string {
@@ -65,6 +66,7 @@ interface RawBreak {
   heading: string | null;
   thematic: boolean;
   thematicLetter: string | null;
+  transitional?: boolean;
   /** Set to the continuation book's OSIS code for cross-book outline items. */
   bookCode?: string;
 }
@@ -73,8 +75,8 @@ interface OutlinePaneProps {
   book: string;
   chapter: number;
   textSource: string;
-  sceneBreakMap: Map<string, Array<{ heading: string | null; level: number; verse: number; thematic: boolean; thematicLetter: string | null }>>;
-  bookSceneBreaks: { wordId: string; heading: string | null; level: number; chapter: number; verse: number; positionInVerse: number; thematic: boolean; thematicLetter: string | null }[];
+  sceneBreakMap: Map<string, Array<{ heading: string | null; level: number; verse: number; thematic: boolean; thematicLetter: string | null; transitional: boolean }>>;
+  bookSceneBreaks: { wordId: string; heading: string | null; level: number; chapter: number; verse: number; positionInVerse: number; thematic: boolean; thematicLetter: string | null; transitional?: boolean }[];
   /** wordId → positionInVerse for current-chapter words (covers live sceneBreakMap entries). */
   wordPositionMap: Map<string, number>;
   sectionRanges: Map<string, SectionRangeForOutline>;
@@ -87,7 +89,7 @@ interface OutlinePaneProps {
   continuationBook: string | null;
   continuationBookName: string | null;
   /** Breaks fetched from the continuation book (already tagged with bookCode). */
-  continuationBreaks: { wordId: string; heading: string | null; level: number; chapter: number; verse: number; positionInVerse: number; thematic: boolean; thematicLetter: string | null }[];
+  continuationBreaks: { wordId: string; heading: string | null; level: number; chapter: number; verse: number; positionInVerse: number; thematic: boolean; thematicLetter: string | null; transitional?: boolean }[];
   /** Keys whose sectionRanges end has been extended into the continuation book. */
   crossBookRangeKeys: Set<string>;
   loadingContinuation?: boolean;
@@ -97,7 +99,7 @@ interface OutlinePaneProps {
   // ── Predecessor book (e.g. 1 Sam when viewing 2 Sam) ─────────────────────
   predecessorBook?: string | null;
   predecessorBookName?: string | null;
-  predecessorBreaks?: { wordId: string; heading: string | null; level: number; chapter: number; verse: number; positionInVerse: number; thematic: boolean; thematicLetter: string | null }[];
+  predecessorBreaks?: { wordId: string; heading: string | null; level: number; chapter: number; verse: number; positionInVerse: number; thematic: boolean; thematicLetter: string | null; transitional?: boolean }[];
   outlinePredecessorShown?: boolean;
   onTogglePredecessorShown?: (v: boolean) => void;
   loadingPredecessor?: boolean;
@@ -139,6 +141,36 @@ export default function OutlinePane({
   const [deletedKeys, setDeletedKeys] = useState<Set<string>>(new Set());
   const [copied, setCopied]         = useState(false);
 
+  // Book-level notes
+  const [bookNotesOpen, setBookNotesOpen] = useState(() => {
+    try { return localStorage.getItem("structura:outlineBookNotes") !== "false"; } catch { return true; }
+  });
+  const [includeBookNotesInCopy, setIncludeBookNotesInCopy] = useState(() => {
+    try { return localStorage.getItem("structura:outlineCopyBookNotes") === "true"; } catch { return false; }
+  });
+  const [bookNoteContent, setBookNoteContent] = useState("{}");
+  const [bookNoteLoaded, setBookNoteLoaded] = useState(false);
+
+  useEffect(() => {
+    setBookNoteLoaded(false);
+    const key = `book:${book}`;
+    fetch(`/api/notes?keys=${encodeURIComponent(key)}`)
+      .then((r) => r.json())
+      .then((data: Record<string, { content: string }>) => {
+        setBookNoteContent(data[key]?.content ?? "{}");
+        setBookNoteLoaded(true);
+      })
+      .catch(() => { setBookNoteContent("{}"); setBookNoteLoaded(true); });
+  }, [book]);
+
+  function toggleBookNotes() {
+    setBookNotesOpen((v) => {
+      const next = !v;
+      try { localStorage.setItem("structura:outlineBookNotes", String(next)); } catch {}
+      return next;
+    });
+  }
+
   const INDENT_PX = 18;
 
   // Merge current-chapter live state with book-wide static data
@@ -154,7 +186,7 @@ export default function OutlinePane({
     }
     for (const [wordId, arr] of sceneBreakMap) {
       for (const br of arr) {
-        list.push({ wordId, chapter, verse: br.verse, positionInVerse: wordPositionMap.get(wordId) ?? 1, level: br.level, heading: br.heading, thematic: br.thematic, thematicLetter: br.thematicLetter });
+        list.push({ wordId, chapter, verse: br.verse, positionInVerse: wordPositionMap.get(wordId) ?? 1, level: br.level, heading: br.heading, thematic: br.thematic, thematicLetter: br.thematicLetter, transitional: br.transitional });
       }
     }
     if (outlineExtended) {
@@ -323,14 +355,18 @@ export default function OutlinePane({
   }
 
   async function copyOutline() {
-    // Rebuild sortedBreaks with local overrides applied for copy
     const breaksForCopy = items.map((it) => ({
       wordId: it.wordId, heading: it.heading, level: it.level,
       chapter: it.chapter, verse: it.verse,
       thematic: it.thematic, thematicLetter: it.thematicLetter,
       bookCode: it.bookCode ?? book,
     }));
-    const text = generateOutline(breaksForCopy, sectionRanges);
+    let text = generateOutline(breaksForCopy, sectionRanges);
+    if (includeBookNotesInCopy && bookNoteContent && bookNoteContent !== "{}") {
+      const { extractTextFromTipTap } = await import("@/lib/utils/tiptap-text");
+      const noteText = extractTextFromTipTap(bookNoteContent).trim();
+      if (noteText) text = noteText + "\n\n" + text;
+    }
     await navigator.clipboard.writeText(text);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -407,6 +443,26 @@ export default function OutlinePane({
         </div>
       )}
 
+      {/* Include book notes in copy toggle */}
+      <div
+        className="shrink-0 px-4 py-2 border-b flex items-center gap-2"
+        style={{ borderColor: "var(--border)" }}
+      >
+        <label className="flex items-center gap-2 cursor-pointer select-none text-xs" style={{ color: "var(--text-muted)" }}>
+          <input
+            type="checkbox"
+            checked={includeBookNotesInCopy}
+            onChange={(e) => {
+              const next = e.target.checked;
+              setIncludeBookNotesInCopy(next);
+              try { localStorage.setItem("structura:outlineCopyBookNotes", String(next)); } catch {}
+            }}
+            className="rounded"
+          />
+          Include book notes in copy
+        </label>
+      </div>
+
       {/* Body */}
       <div className="flex-1 overflow-y-auto py-3 px-2">
         {items.length === 0 ? (
@@ -416,6 +472,7 @@ export default function OutlinePane({
         ) : (
           <ul className="space-y-0.5">
             {items.filter(item => !deletedKeys.has(item.key)).map((item) => {
+
               const isEditing = editKey === item.key;
               const indentPx  = item.thematicIndent !== null ? item.thematicIndent : (item.level - 1) * INDENT_PX;
               const textSize  = item.level === 1 ? "text-sm font-semibold"
@@ -452,6 +509,9 @@ export default function OutlinePane({
                       <span className="shrink-0 text-xs font-mono" style={{ color: "var(--text-muted)", minWidth: "1.5rem" }}>
                         {item.prefix}
                       </span>
+                      {item.transitional && (
+                        <span className="shrink-0 text-[10px] text-sky-500 dark:text-sky-400" title="Transitional (janus)">⇔</span>
+                      )}
                       {/* Heading text — click to edit */}
                       <span
                         className={`flex-1 min-w-0 truncate cursor-pointer ${textSize}`}
@@ -499,6 +559,34 @@ export default function OutlinePane({
             })}
           </ul>
         )}
+
+        {/* Book Notes */}
+        <div className="mt-4 border-t" style={{ borderColor: "var(--border)" }}>
+          <button
+            className="w-full flex items-center justify-between px-2 py-2 text-xs font-semibold transition-opacity hover:opacity-70 select-none"
+            style={{ color: "var(--text-muted)" }}
+            onClick={toggleBookNotes}
+            title={bookNotesOpen ? "Collapse book notes" : "Expand book notes"}
+          >
+            <span>Book Notes</span>
+            <span className="text-[10px]">{bookNotesOpen ? "▲" : "▼"}</span>
+          </button>
+          {bookNotesOpen && (
+            <div className="px-1 pb-3">
+              {bookNoteLoaded ? (
+                <NoteEditor
+                  key={`book:${book}`}
+                  noteKey={`book:${book}`}
+                  noteType="book"
+                  initialContent={bookNoteContent}
+                  book={book}
+                />
+              ) : (
+                <div className="text-xs px-2 py-2" style={{ color: "var(--text-muted)" }}>Loading…</div>
+              )}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

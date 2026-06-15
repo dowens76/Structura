@@ -25,13 +25,14 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const workspaceId = await getActiveWorkspaceId();
   const body = await req.json();
-  const { annotType, label, color, description, outOfSequence, startWordId, endWordId, book, chapter, source } = body;
+  const { annotType, label, color, description, outOfSequence, transitional, startWordId, endWordId, book, chapter, source } = body;
   const annotation = await createLineAnnotation(
     annotType,
     label,
     color,
     description ?? null,
     outOfSequence ?? false,
+    transitional ?? false,
     startWordId,
     endWordId,
     source,
@@ -51,6 +52,7 @@ export async function PATCH(req: NextRequest) {
     color?: string;
     description?: string | null;
     outOfSequence?: boolean;
+    transitional?: boolean;
     startWordId?: string;
     endWordId?: string;
   };

@@ -148,7 +148,7 @@ interface VerseDisplayProps {
   editingArrows?: boolean;
   onSelectArrowWordById?: (wordId: string) => void;
   // Section breaks — multiple breaks per wordId (one per level), stacked in display
-  sceneBreakMap?: Map<string, Array<{ heading: string | null; level: number; verse: number; outOfSequence: boolean; extendedThrough: number | null; thematic: boolean; thematicLetter: string | null }>>;
+  sceneBreakMap?: Map<string, Array<{ heading: string | null; level: number; verse: number; outOfSequence: boolean; extendedThrough: number | null; thematic: boolean; thematicLetter: string | null; transitional: boolean }>>;
   editingScenes?: boolean;
   onToggleSceneBreak?: (wordId: string, level: number, verse: number) => void;
   onChangeSceneHeading?: (wordId: string, level: number, heading: string) => void;
@@ -156,6 +156,7 @@ interface VerseDisplayProps {
   onUpdateSceneOutOfSequence?: (wordId: string, level: number, outOfSequence: boolean) => void;
   onUpdateSceneExtendedThrough?: (wordId: string, level: number, extendedThrough: number | null) => void;
   onUpdateSceneThematic?: (wordId: string, level: number, thematic: boolean, thematicLetter: string | null) => void;
+  onUpdateSceneTransitional?: (wordId: string, level: number, transitional: boolean) => void;
   onChangeSceneBreakLevel?: (wordId: string, fromLevel: number, toLevel: number, verse: number) => void;
   // Precomputed verse ranges: key = `${wordId}:${level}` → { endChapter, endVerse }
   sectionRanges?: Map<string, { endChapter: number; endVerse: number }>;
@@ -166,10 +167,10 @@ interface VerseDisplayProps {
   annotRangeStartWordId?: string | null;
   annotRangeEndWordId?: string | null;
   onSelectAnnotationSegment?: (wordId: string, shiftHeld?: boolean) => void;
-  onSaveAnnotation?: (data: { annotType: string; label: string; color: string; description: string | null; outOfSequence: boolean }) => void;
+  onSaveAnnotation?: (data: { annotType: string; label: string; color: string; description: string | null; outOfSequence: boolean; transitional: boolean }) => void;
   onCancelAnnotation?: () => void;
   onDeleteAnnotation?: (id: number) => void;
-  onUpdateAnnotation?: (id: number, updates: { label?: string; color?: string; description?: string | null; outOfSequence?: boolean }) => void;
+  onUpdateAnnotation?: (id: number, updates: { label?: string; color?: string; description?: string | null; outOfSequence?: boolean; transitional?: boolean }) => void;
   onExpandAnnotationRange?: (id: number, direction: "expand-start" | "shrink-start" | "expand-end" | "shrink-end") => void;
   showAnnotationCol?: boolean;
   showAtnachBreaks?: boolean;
@@ -295,13 +296,14 @@ function AnnotBadge({
   presentationMode?: boolean;
   thematicSubscript?: number;
   onDelete?: (id: number) => void;
-  onUpdate?: (id: number, updates: { label?: string; description?: string | null; color?: string; outOfSequence?: boolean }) => void;
+  onUpdate?: (id: number, updates: { label?: string; description?: string | null; color?: string; outOfSequence?: boolean; transitional?: boolean }) => void;
   onAdjustRange?: (id: number, direction: "expand-start" | "shrink-start" | "expand-end" | "shrink-end") => void;
 }) {
   const [isEditing, setIsEditing] = useState(false);
   const [draftDesc, setDraftDesc] = useState(annotation.description ?? "");
   const [draftColor, setDraftColor] = useState(annotation.color);
   const [draftOos, setDraftOos] = useState(annotation.outOfSequence ?? false);
+  const [draftTransitional, setDraftTransitional] = useState(annotation.transitional ?? false);
   // Speech act label (desc annotations only)
   const [draftSpeechAct, setDraftSpeechAct] = useState(
     annotation.annotType === "desc" ? (annotation.label ?? "") : ""
@@ -311,6 +313,7 @@ function AnnotBadge({
   useEffect(() => { setDraftDesc(annotation.description ?? ""); }, [annotation.description]);
   useEffect(() => { setDraftColor(annotation.color); }, [annotation.color]);
   useEffect(() => { setDraftOos(annotation.outOfSequence ?? false); }, [annotation.outOfSequence]);
+  useEffect(() => { setDraftTransitional(annotation.transitional ?? false); }, [annotation.transitional]);
   useEffect(() => {
     if (annotation.annotType === "desc") setDraftSpeechAct(annotation.label ?? "");
   }, [annotation.label, annotation.annotType]);
@@ -350,10 +353,11 @@ function AnnotBadge({
 
   function commitEdit() {
     const newDesc = draftDesc.trim() || null;
-    const updates: { label?: string; description?: string | null; color?: string; outOfSequence?: boolean } = {};
+    const updates: { label?: string; description?: string | null; color?: string; outOfSequence?: boolean; transitional?: boolean } = {};
     if (newDesc !== annotation.description) updates.description = newDesc;
     if (draftColor !== annotation.color) updates.color = draftColor;
     if (draftOos !== (annotation.outOfSequence ?? false)) updates.outOfSequence = draftOos;
+    if (draftTransitional !== (annotation.transitional ?? false)) updates.transitional = draftTransitional;
     if (annotation.annotType === "desc" && draftSpeechAct !== (annotation.label ?? "")) updates.label = draftSpeechAct;
     if (Object.keys(updates).length > 0) onUpdate?.(annotation.id, updates);
     setIsEditing(false);
@@ -381,7 +385,7 @@ function AnnotBadge({
           )}
           <button
             type="button"
-            onClick={() => { setDraftDesc(annotation.description ?? ""); setDraftOos(annotation.outOfSequence ?? false); setIsEditing(false); }}
+            onClick={() => { setDraftDesc(annotation.description ?? ""); setDraftOos(annotation.outOfSequence ?? false); setDraftTransitional(annotation.transitional ?? false); setIsEditing(false); }}
             className="shrink-0 ml-auto text-stone-400 hover:text-stone-600 text-xs leading-none"
             title="Close"
           >
@@ -433,6 +437,20 @@ function AnnotBadge({
             className="w-3 h-3 accent-amber-500 cursor-pointer shrink-0"
           />
           <span className="text-[9px] text-stone-400 dark:text-stone-500">↩ Out of chronological sequence</span>
+        </label>
+
+        {/* Transitional (janus) toggle */}
+        <label
+          className="flex items-center gap-1.5 px-1.5 pb-1 cursor-pointer select-none"
+          onMouseDown={(e) => e.preventDefault()}
+        >
+          <input
+            type="checkbox"
+            checked={draftTransitional}
+            onChange={(e) => setDraftTransitional(e.target.checked)}
+            className="w-3 h-3 accent-sky-500 cursor-pointer shrink-0"
+          />
+          <span className="text-[9px] text-stone-400 dark:text-stone-500">⇔ Transitional (janus)</span>
         </label>
 
         {/* Range controls */}
@@ -487,10 +505,13 @@ function AnnotBadge({
           is relative to just this label-row area, not the full flex-1 badge height. */}
       <div className="flex flex-col px-1.5 py-1 gap-0.5" style={{ position: "relative" }}>
         {/* Label row: oos icon + label badge + delete button */}
-        {(annotation.outOfSequence || hasLabel || (editingAnnotations && !!onDelete)) && (
+        {(annotation.outOfSequence || annotation.transitional || hasLabel || (editingAnnotations && !!onDelete)) && (
           <div className="flex items-center gap-1">
             {annotation.outOfSequence && (
               <span className={`shrink-0 ${badgeTextCls} font-bold text-amber-500 dark:text-amber-400 leading-none`} title="Out of chronological sequence">↩</span>
+            )}
+            {annotation.transitional && (
+              <span className={`shrink-0 ${badgeTextCls} font-bold text-sky-500 dark:text-sky-400 leading-none`} title="Transitional (janus)">⇔</span>
             )}
             {hasLabel && (
               <span
@@ -574,7 +595,7 @@ function AnnotCreationForm({
   onCancel,
 }: {
   themeColorsByLabel?: Map<string, string>;
-  onSave: (data: { annotType: string; label: string; color: string; description: string | null; outOfSequence: boolean }) => void;
+  onSave: (data: { annotType: string; label: string; color: string; description: string | null; outOfSequence: boolean; transitional: boolean }) => void;
   onCancel: () => void;
 }) {
   const [annotType, setAnnotType] = useState<"plot" | "theme" | "desc">("plot");
@@ -583,6 +604,7 @@ function AnnotCreationForm({
   const [color, setColor] = useState<string>(PLOT_ELEMENTS[0].color);
   const [description, setDescription] = useState("");
   const [outOfSequence, setOutOfSequence] = useState(false);
+  const [transitional, setTransitional] = useState(false);
   const [speechAct, setSpeechAct] = useState("");
 
   // Keep color in sync when type or plot-label changes
@@ -610,7 +632,7 @@ function AnnotCreationForm({
       label = speechAct;   // Speech act (may be empty if none selected)
       finalColor = color;
     }
-    onSave({ annotType, label, color: finalColor, description: description.trim() || null, outOfSequence });
+    onSave({ annotType, label, color: finalColor, description: description.trim() || null, outOfSequence, transitional });
   }
 
   const tabs: { key: "plot" | "theme" | "desc"; display: string }[] = [
@@ -702,7 +724,7 @@ function AnnotCreationForm({
       />
 
       {/* Out-of-sequence checkbox */}
-      <label className="flex items-center gap-1.5 mb-2 cursor-pointer select-none">
+      <label className="flex items-center gap-1.5 mb-1.5 cursor-pointer select-none">
         <input
           type="checkbox"
           checked={outOfSequence}
@@ -710,6 +732,17 @@ function AnnotCreationForm({
           className="w-3 h-3 rounded accent-amber-500 cursor-pointer"
         />
         <span className="text-[10px] text-stone-500 dark:text-stone-400">↩ Out of chronological sequence</span>
+      </label>
+
+      {/* Transitional (janus) checkbox */}
+      <label className="flex items-center gap-1.5 mb-2 cursor-pointer select-none">
+        <input
+          type="checkbox"
+          checked={transitional}
+          onChange={(e) => setTransitional(e.target.checked)}
+          className="w-3 h-3 rounded accent-sky-500 cursor-pointer"
+        />
+        <span className="text-[10px] text-stone-500 dark:text-stone-400">⇔ Transitional (janus)</span>
       </label>
 
       {/* Buttons */}
@@ -906,7 +939,7 @@ export default function VerseDisplay({
   onCancelTranslationVerse,
   editingArrows = false,
   onSelectArrowWordById,
-  sceneBreakMap = new Map() as Map<string, Array<{ heading: string | null; level: number; verse: number; outOfSequence: boolean; extendedThrough: number | null; thematic: boolean; thematicLetter: string | null }>>,
+  sceneBreakMap = new Map() as Map<string, Array<{ heading: string | null; level: number; verse: number; outOfSequence: boolean; extendedThrough: number | null; thematic: boolean; thematicLetter: string | null; transitional: boolean }>>,
   editingScenes = false,
   onToggleSceneBreak,
   onChangeSceneHeading,
@@ -914,6 +947,7 @@ export default function VerseDisplay({
   onUpdateSceneOutOfSequence,
   onUpdateSceneExtendedThrough,
   onUpdateSceneThematic,
+  onUpdateSceneTransitional,
   onChangeSceneBreakLevel,
   sectionRanges,
   annotationsBySegment,
@@ -1396,6 +1430,15 @@ export default function VerseDisplay({
                     </select>
                   )}
                 </div>
+                <label className="flex items-center gap-1.5 cursor-pointer select-none ml-10">
+                  <input
+                    type="checkbox"
+                    checked={br.transitional}
+                    onChange={(e) => onUpdateSceneTransitional?.(wordId, br.level, e.target.checked)}
+                    className="w-3 h-3 rounded accent-sky-500 cursor-pointer"
+                  />
+                  <span className="text-[10px] text-stone-400 dark:text-stone-500">Transitional (janus)</span>
+                </label>
                 {book === "Ps" && (
                   <div className="flex items-center gap-1.5 ml-10">
                     <span className="text-[10px] text-stone-400 dark:text-stone-500 shrink-0">Group through Ps:</span>
@@ -1434,10 +1477,13 @@ export default function VerseDisplay({
                   </div>
                 )}
               </div>
-            ) : (br.heading || br.outOfSequence) ? (
+            ) : (br.heading || br.outOfSequence || br.transitional) ? (
               <div className="flex items-center gap-1.5 pb-0.5 select-none">
                 {br.outOfSequence && (
                   <span className="text-[10px] font-bold text-amber-500 dark:text-amber-400 shrink-0" title="Out of chronological sequence">↩</span>
+                )}
+                {br.transitional && (
+                  <span className="text-[10px] font-bold text-sky-500 dark:text-sky-400 shrink-0" title="Transitional (janus)">⇔</span>
                 )}
                 {br.heading && (
                   <span className={headingClass(br.level)}>{br.heading}</span>

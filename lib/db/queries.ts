@@ -461,7 +461,7 @@ export async function getChapterSceneBreaks(
   book: string,
   chapter: number,
   workspaceId: number
-): Promise<{ wordId: string; heading: string | null; level: number; verse: number; outOfSequence: boolean; extendedThrough: number | null; thematic: boolean; thematicLetter: string | null }[]> {
+): Promise<{ wordId: string; heading: string | null; level: number; verse: number; outOfSequence: boolean; extendedThrough: number | null; thematic: boolean; thematicLetter: string | null; transitional: boolean }[]> {
   const rows = await userDb
     .select({
       wordId:          sceneBreaks.wordId,
@@ -472,6 +472,7 @@ export async function getChapterSceneBreaks(
       extendedThrough: sceneBreaks.extendedThrough,
       thematic:        sceneBreaks.thematic,
       thematicLetter:  sceneBreaks.thematicLetter,
+      transitional:    sceneBreaks.transitional,
     })
     .from(sceneBreaks)
     .where(and(eq(sceneBreaks.workspaceId, workspaceId), eq(sceneBreaks.book, book), eq(sceneBreaks.chapter, chapter)))
@@ -487,7 +488,7 @@ export async function getBookSceneBreaks(
   book: string,
   textSource: string,
   workspaceId: number
-): Promise<{ wordId: string; heading: string | null; level: number; chapter: number; verse: number; positionInVerse: number; outOfSequence: boolean; extendedThrough: number | null; thematic: boolean; thematicLetter: string | null }[]> {
+): Promise<{ wordId: string; heading: string | null; level: number; chapter: number; verse: number; positionInVerse: number; outOfSequence: boolean; extendedThrough: number | null; thematic: boolean; thematicLetter: string | null; transitional: boolean }[]> {
   const rows = await userDb
     .select({
       wordId:          sceneBreaks.wordId,
@@ -499,6 +500,7 @@ export async function getBookSceneBreaks(
       extendedThrough: sceneBreaks.extendedThrough,
       thematic:        sceneBreaks.thematic,
       thematicLetter:  sceneBreaks.thematicLetter,
+      transitional:    sceneBreaks.transitional,
     })
     .from(sceneBreaks)
     .where(and(eq(sceneBreaks.workspaceId, workspaceId), eq(sceneBreaks.book, book), eq(sceneBreaks.textSource, textSource)))
@@ -652,6 +654,19 @@ export async function updateSceneBreakExtendedThrough(
   await userDb
     .update(sceneBreaks)
     .set({ extendedThrough })
+    .where(and(eq(sceneBreaks.workspaceId, workspaceId), eq(sceneBreaks.wordId, wordId), eq(sceneBreaks.level, level)));
+}
+
+/** Sets or clears the transitional (janus) flag for a specific (wordId, level) section break. */
+export async function updateSceneBreakTransitional(
+  wordId: string,
+  level: number,
+  transitional: boolean,
+  workspaceId: number
+): Promise<void> {
+  await userDb
+    .update(sceneBreaks)
+    .set({ transitional })
     .where(and(eq(sceneBreaks.workspaceId, workspaceId), eq(sceneBreaks.wordId, wordId), eq(sceneBreaks.level, level)));
 }
 
@@ -1608,6 +1623,7 @@ export async function createLineAnnotation(
   color: string,
   description: string | null,
   outOfSequence: boolean,
+  transitional: boolean,
   startWordId: string,
   endWordId: string,
   textSource: string,
@@ -1617,15 +1633,15 @@ export async function createLineAnnotation(
 ): Promise<LineAnnotation> {
   const [row] = await userDb
     .insert(lineAnnotations)
-    .values({ annotType, label, color, description, outOfSequence, startWordId, endWordId, textSource, book, chapter, workspaceId })
+    .values({ annotType, label, color, description, outOfSequence, transitional, startWordId, endWordId, textSource, book, chapter, workspaceId })
     .returning();
   return row;
 }
 
-/** Update fields of an existing annotation (label, color, description, outOfSequence, start/end word IDs). */
+/** Update fields of an existing annotation (label, color, description, outOfSequence, transitional, start/end word IDs). */
 export async function updateLineAnnotation(
   id: number,
-  updates: Partial<Pick<LineAnnotation, "label" | "color" | "description" | "outOfSequence" | "startWordId" | "endWordId">>
+  updates: Partial<Pick<LineAnnotation, "label" | "color" | "description" | "outOfSequence" | "transitional" | "startWordId" | "endWordId">>
 ): Promise<LineAnnotation> {
   const [row] = await userDb
     .update(lineAnnotations)
