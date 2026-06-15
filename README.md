@@ -12,11 +12,7 @@ Download the latest release at https://github.com/dowens76/structura/releases/la
 
 Windows users can install using [the Microsoft store](https://apps.microsoft.com/detail/9n788wrpzmft?hl=en-US&gl=US). If you prefer to install the direct download link from Github and want to avoid the security warnings, you can download the *.cer file (my self-signed certificate) in addition to the *.exe or *.msix file and install the certificate, for example (for version 0.8.3): 
 
- ```
-    {
-     Import-Certificate -FilePath "Structura_Windows_0.8.3.cer" -CertStoreLocation Cert:\LocalMachine\TrustedPeople
-    }
-    ```
+`Import-Certificate -FilePath "Structura_Windows_0.8.3.cer" -CertStoreLocation Cert:\LocalMachine\TrustedPeople`
 
 Adjust the version number to the version you are installing. Note that the app submitted to Microsoft is the same app as the direct download, but in submitting the app to the store Microsoft does its own signing, which gives you the added assurance of their security review. 
 
