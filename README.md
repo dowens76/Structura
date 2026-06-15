@@ -6,9 +6,15 @@ A biblical text analysis workbench for studying the Hebrew Old Testament, Septua
 
 ## How to Obtain the Desktop App
 
-Structura ships as a Linux, Mac, and Windows app. As of version 0.6.0, Chromebook users with Linux enabled may use the ARM64 deb file. The app has not yet been tested on a Chromebook, so if you use it, share your experiences through the feedback system explained in the next section.
+Structura ships as a Linux, Mac, and Windows app. Chromebook users with Linux enabled may use the ARM64 deb file. The app has not yet been tested on a Chromebook, so if you use it, share your experiences through the feedback system explained in the next section.
 
 Download the latest release at https://github.com/dowens76/structura/releases/latest.
+
+Windows users can install using [the Microsoft store](https://apps.microsoft.com/detail/9n788wrpzmft?hl=en-US&gl=US). If you prefer to install the direct download link from Github and want to avoid the security warnings, you can download the *.cer file (my self-signed certificate) in addition to the *.exe or *.msix file and install the certificate, for example (for version 0.8.3): 
+
+`Import-Certificate -FilePath "Structura_Windows_0.8.3.cer" -CertStoreLocation Cert:\LocalMachine\TrustedPeople`
+
+Adjust the version number to the version you are installing. Note that the app submitted to Microsoft is the same app as the direct download, but in submitting the app to the store Microsoft does its own signing, which gives you the added assurance of their security review. 
 
 ### How to Give Feedback
 
