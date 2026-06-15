@@ -121,8 +121,8 @@ export default function BookmarkButton({ href, label, buttonLabel }: BookmarkBut
     const filtered = existing.filter((b) => b.href !== href);
     const entry: BookmarkEntry = {
       id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
-      label,
-      href,
+      label: label ?? "",
+      href: href ?? "",
       translations,
       createdAt: Date.now(),
     };
