@@ -38,7 +38,7 @@ export default function NotesPane({
   synced,
   onSyncToggle,
 }: NotesPaneProps) {
-  const { refBookName: getRefBookName } = useTranslation();
+  const { refBookName: getRefBookName, t } = useTranslation();
   const bookName = getRefBookName(book);
   const paneRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
@@ -79,7 +79,7 @@ export default function NotesPane({
     {
       key: `chapter:${book}.${chapter}`,
       noteType: "chapter",
-      label: `Chapter notes: ${bookName} ${chapter}`,
+      label: t("notes.chapterNoteLabel", { bookName, chapter: String(chapter) }),
       book,
       chapter,
     },
@@ -196,7 +196,7 @@ export default function NotesPane({
       <div className="flex items-center gap-2 px-4 py-3 border-b border-[var(--border)] shrink-0">
         {!searchOpen && (
           <h2 className="text-sm font-semibold flex-1" style={{ color: "var(--foreground)" }}>
-            Notes
+            {t("notes.panelTitle")}
           </h2>
         )}
         {searchOpen && (
@@ -285,7 +285,7 @@ export default function NotesPane({
             onChange={toggleShowBookNotes}
             className="rounded"
           />
-          Show {bookName} book notes
+          {t("notes.showBookNotes", { bookName })}
         </label>
       </div>
 
@@ -301,7 +301,7 @@ export default function NotesPane({
               className="px-4 pt-3 pb-1 text-xs font-semibold select-none"
               style={{ color: "var(--accent)" }}
             >
-              {bookName} — Book Notes
+              {t("notes.bookNotesHeader", { bookName })}
             </div>
             <div className="px-2 pb-3">
               {bookNoteLoaded ? (
@@ -314,7 +314,7 @@ export default function NotesPane({
                   searchQuery={q || undefined}
                 />
               ) : (
-                <div className="px-2 py-2 text-xs" style={{ color: "var(--text-muted)" }}>Loading…</div>
+                <div className="px-2 py-2 text-xs" style={{ color: "var(--text-muted)" }}>{t("notes.loading")}</div>
               )}
             </div>
           </div>

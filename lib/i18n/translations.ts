@@ -523,6 +523,26 @@ const en = {
     importChapter: "Import Chapter",
     importedVerses: "Successfully imported {count} verse{plural}.",
   },
+  // ── Notes pane ───────────────────────────────────────────────────────────────
+  notes: {
+    panelTitle: "Notes",
+    showBookNotes: "Show {bookName} book notes",
+    bookNotesHeader: "{bookName} — Book Notes",
+    loading: "Loading…",
+    chapterNoteLabel: "Chapter notes: {bookName} {chapter}",
+  },
+  // ── Outline pane ─────────────────────────────────────────────────────────────
+  outlinePane: {
+    title: "Outline",
+    copy: "Copy",
+    copied: "Copied!",
+    includeBookNotesInCopy: "Include book notes in copy",
+    collapseBookNotes: "Collapse book notes",
+    expandBookNotes: "Expand book notes",
+    bookNotes: "Book Notes",
+    noSectionBreaks: "No section breaks yet. Use § in the toolbar to add section headings.",
+    transitionalJanus: "Transitional (janus)",
+  },
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1018,6 +1038,26 @@ const vi: Translations = {
     checking: "Đang kiểm tra…",
     importChapter: "Nhập chương",
     importedVerses: "Đã nhập thành công {count} câu{plural}.",
+  },
+  // ── Notes pane ───────────────────────────────────────────────────────────────
+  notes: {
+    panelTitle: "Ghi chú",
+    showBookNotes: "Hiển thị ghi chú sách {bookName}",
+    bookNotesHeader: "{bookName} — Ghi chú sách",
+    loading: "Đang tải…",
+    chapterNoteLabel: "Ghi chú chương: {bookName} {chapter}",
+  },
+  // ── Outline pane ─────────────────────────────────────────────────────────────
+  outlinePane: {
+    title: "Dàn ý",
+    copy: "Sao chép",
+    copied: "Đã sao chép!",
+    includeBookNotesInCopy: "Bao gồm ghi chú sách khi sao chép",
+    collapseBookNotes: "Thu gọn ghi chú sách",
+    expandBookNotes: "Mở rộng ghi chú sách",
+    bookNotes: "Ghi chú sách",
+    noSectionBreaks: "Chưa có ngắt phần nào. Dùng § trong thanh công cụ để thêm tiêu đề phần.",
+    transitionalJanus: "Chuyển tiếp (janus)",
   },
 };
 

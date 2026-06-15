@@ -68,6 +68,7 @@ function splitTokenPunctuation(token: string): { leading: string; core: string; 
 
 import { SpeechActPicker, getSpeechActLeafLabel } from "./SpeechActPicker";
 import WordToken from "./WordToken";
+import { useTranslation } from "@/lib/i18n/LocaleContext";
 
 interface VerseDisplayProps {
   verseNum: number;
@@ -299,6 +300,7 @@ function AnnotBadge({
   onUpdate?: (id: number, updates: { label?: string; description?: string | null; color?: string; outOfSequence?: boolean; transitional?: boolean }) => void;
   onAdjustRange?: (id: number, direction: "expand-start" | "shrink-start" | "expand-end" | "shrink-end") => void;
 }) {
+  const { t } = useTranslation();
   const [isEditing, setIsEditing] = useState(false);
   const [draftDesc, setDraftDesc] = useState(annotation.description ?? "");
   const [draftColor, setDraftColor] = useState(annotation.color);
@@ -450,7 +452,7 @@ function AnnotBadge({
             onChange={(e) => setDraftTransitional(e.target.checked)}
             className="w-3 h-3 accent-sky-500 cursor-pointer shrink-0"
           />
-          <span className="text-[9px] text-stone-400 dark:text-stone-500">⇔ Transitional (janus)</span>
+          <span className="text-[9px] text-stone-400 dark:text-stone-500">⇔ {t("outlinePane.transitionalJanus")}</span>
         </label>
 
         {/* Range controls */}
@@ -511,7 +513,7 @@ function AnnotBadge({
               <span className={`shrink-0 ${badgeTextCls} font-bold text-amber-500 dark:text-amber-400 leading-none`} title="Out of chronological sequence">↩</span>
             )}
             {annotation.transitional && (
-              <span className={`shrink-0 ${badgeTextCls} font-bold text-sky-500 dark:text-sky-400 leading-none`} title="Transitional (janus)">⇔</span>
+              <span className={`shrink-0 ${badgeTextCls} font-bold text-sky-500 dark:text-sky-400 leading-none`} title={t("outlinePane.transitionalJanus")}>⇔</span>
             )}
             {hasLabel && (
               <span
@@ -598,6 +600,7 @@ function AnnotCreationForm({
   onSave: (data: { annotType: string; label: string; color: string; description: string | null; outOfSequence: boolean; transitional: boolean }) => void;
   onCancel: () => void;
 }) {
+  const { t } = useTranslation();
   const [annotType, setAnnotType] = useState<"plot" | "theme" | "desc">("plot");
   const [plotLabel, setPlotLabel] = useState<string>(PLOT_ELEMENTS[0].label);
   const [themeLabel, setThemeLabel] = useState("A");
@@ -742,7 +745,7 @@ function AnnotCreationForm({
           onChange={(e) => setTransitional(e.target.checked)}
           className="w-3 h-3 rounded accent-sky-500 cursor-pointer"
         />
-        <span className="text-[10px] text-stone-500 dark:text-stone-400">⇔ Transitional (janus)</span>
+        <span className="text-[10px] text-stone-500 dark:text-stone-400">⇔ {t("outlinePane.transitionalJanus")}</span>
       </label>
 
       {/* Buttons */}
@@ -978,6 +981,7 @@ export default function VerseDisplay({
   translationVerseOffset = 0,
   translationVerseLabelFn,
 }: VerseDisplayProps) {
+  const { t } = useTranslation();
   const firstWordId = words[0]?.wordId;
   const verseStartsNewParagraph = firstWordId ? paragraphBreakIds.has(firstWordId) : false;
 
@@ -1437,7 +1441,7 @@ export default function VerseDisplay({
                     onChange={(e) => onUpdateSceneTransitional?.(wordId, br.level, e.target.checked)}
                     className="w-3 h-3 rounded accent-sky-500 cursor-pointer"
                   />
-                  <span className="text-[10px] text-stone-400 dark:text-stone-500">Transitional (janus)</span>
+                  <span className="text-[10px] text-stone-400 dark:text-stone-500">{t("outlinePane.transitionalJanus")}</span>
                 </label>
                 {book === "Ps" && (
                   <div className="flex items-center gap-1.5 ml-10">
@@ -1483,7 +1487,7 @@ export default function VerseDisplay({
                   <span className="text-[10px] font-bold text-amber-500 dark:text-amber-400 shrink-0" title="Out of chronological sequence">↩</span>
                 )}
                 {br.transitional && (
-                  <span className="text-[10px] font-bold text-sky-500 dark:text-sky-400 shrink-0" title="Transitional (janus)">⇔</span>
+                  <span className="text-[10px] font-bold text-sky-500 dark:text-sky-400 shrink-0" title={t("outlinePane.transitionalJanus")}>⇔</span>
                 )}
                 {br.heading && (
                   <span className={headingClass(br.level)}>{br.heading}</span>

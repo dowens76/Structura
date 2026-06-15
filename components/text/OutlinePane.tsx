@@ -6,6 +6,7 @@ import type { SectionRangeForOutline } from "@/lib/utils/outlineExport";
 import { generateOutline } from "@/lib/utils/outlineExport";
 import { OSIS_REF_BOOK_NAMES } from "@/lib/utils/osis";
 import NoteEditor from "@/components/notes/NoteEditor";
+import { useTranslation } from "@/lib/i18n/LocaleContext";
 
 // ── Book abbreviation display helper ─────────────────────────────────────────
 function bookAbbr(osisCode: string): string {
@@ -133,6 +134,7 @@ export default function OutlinePane({
   onTogglePredecessorShown,
   loadingPredecessor = false,
 }: OutlinePaneProps) {
+  const { t } = useTranslation();
   const [editKey, setEditKey]       = useState<string | null>(null); // `${wordId}:${level}`
   const [editDraft, setEditDraft]   = useState("");
   // Local overrides for headings edited in other chapters (persisted via API)
@@ -380,7 +382,7 @@ export default function OutlinePane({
         style={{ borderColor: "var(--border)" }}
       >
         <h2 className="text-sm font-semibold" style={{ color: "var(--foreground)" }}>
-          Outline
+          {t("outlinePane.title")}
         </h2>
         <div className="flex items-center gap-2">
           <button
@@ -390,7 +392,7 @@ export default function OutlinePane({
             style={{ color: "var(--text-muted)", backgroundColor: "var(--nav-bg)" }}
             title="Copy outline as plain text"
           >
-            {copied ? "Copied!" : "Copy"}
+            {copied ? t("outlinePane.copied") : t("outlinePane.copy")}
           </button>
           <button
             onClick={onClose}
@@ -459,7 +461,7 @@ export default function OutlinePane({
             }}
             className="rounded"
           />
-          Include book notes in copy
+          {t("outlinePane.includeBookNotesInCopy")}
         </label>
       </div>
 
@@ -467,7 +469,7 @@ export default function OutlinePane({
       <div className="flex-1 overflow-y-auto py-3 px-2">
         {items.length === 0 ? (
           <p className="text-sm px-2" style={{ color: "var(--text-muted)" }}>
-            No section breaks yet. Use <strong>§</strong> in the toolbar to add section headings.
+            {t("outlinePane.noSectionBreaks")}
           </p>
         ) : (
           <ul className="space-y-0.5">
@@ -566,9 +568,9 @@ export default function OutlinePane({
             className="w-full flex items-center justify-between px-2 py-2 text-xs font-semibold transition-opacity hover:opacity-70 select-none"
             style={{ color: "var(--text-muted)" }}
             onClick={toggleBookNotes}
-            title={bookNotesOpen ? "Collapse book notes" : "Expand book notes"}
+            title={bookNotesOpen ? t("outlinePane.collapseBookNotes") : t("outlinePane.expandBookNotes")}
           >
-            <span>Book Notes</span>
+            <span>{t("outlinePane.bookNotes")}</span>
             <span className="text-[10px]">{bookNotesOpen ? "▲" : "▼"}</span>
           </button>
           {bookNotesOpen && (
@@ -582,7 +584,7 @@ export default function OutlinePane({
                   book={book}
                 />
               ) : (
-                <div className="text-xs px-2 py-2" style={{ color: "var(--text-muted)" }}>Loading…</div>
+                <div className="text-xs px-2 py-2" style={{ color: "var(--text-muted)" }}>{t("notes.loading")}</div>
               )}
             </div>
           )}
