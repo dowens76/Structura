@@ -112,11 +112,17 @@ When display mode is set to Interlinear, a toolbar picker selects what appears b
 - **Constituent** — User-assigned grammatical constituent label (Subject, Predicate, Object, Indirect Object, Verb Complement, Adjunct, Vocative, Appositive, Noun Phrase, Verb Phrase, Prepositional Phrase, Clause, Relative Clause)
 - **Datasets** — User-created datasets assigning a custom text value to individual words; datasets can be entered word-by-word or uploaded as a tab-separated file (`wordId TAB value`, one entry per line)
 
+### Navigation
+
+- **Back / Forward buttons** — The nav bar includes ‹ and › buttons that navigate back and forward through your session history (chapter and passage views), working like browser history for the current session
+- **Bookmarks** — Star (☆) any chapter or passage view to save it as a bookmark; bookmarks store the active translation(s) alongside the location, so navigating to a bookmark also restores the translation selection; the bookmark list can be sorted by time added (newest first) or by canonical book order; a Bookmarks button on the home screen provides quick access to all bookmarks
+
 ### Passage Management
 
 - **Define passages** — Create named passages with a start and end verse (spanning chapters if needed)
 - **Passage view** — A dedicated view for a defined passage with all annotation tools available
 - **Navigate passages** — Switch between passages from the nav bar dropdown
+- **Delete passage** — A "Delete passage" button in the passage toolbar removes the current passage after confirmation
 
 ### Character & Speech Annotation
 
@@ -136,8 +142,9 @@ When display mode is set to Interlinear, a toolbar picker selects what appears b
 - **Line indentation** — Indent paragraph segments up to five levels; source and translation indentation can be linked or controlled independently
 - **Bold / italic** — Apply bold or italic formatting to individual words
 - **Scene / episode breaks** — A six-level hierarchical break system with headings, out-of-sequence flags, and cross-chapter range tracking; each break can optionally be marked as a **thematic heading** with a chosen letter (A–Z), which replaces the standard outline prefix and indents the entry by letter depth in the outline
-- **Outline sidebar** — View all section breaks for a book in a collapsible pane; thematic headings display with their letter and letter-depth indentation instead of the classical I./A./1. numbering
+- **Outline sidebar** — View all section breaks for a book in a collapsible pane; thematic headings display with their letter and letter-depth indentation instead of the classical I./A./1. numbering; when the same letter recurs, each occurrence is automatically numbered with a subscript (A₁, A₂, B₁, B₂, …)
 - **Outline export** — Copy or download the outline as plain text; thematic headings are rendered with letter prefixes and matching indentation to match the sidebar display
+- **Thematic subscripts** — In both the outline pane and the right-column annotation badges, recurring theme letters are disambiguated with subscript numbers (A₁, A₂, B₁, B₂, …) so repeated themes are visually distinct
 
 ### Discourse & Rhetorical Analysis
 
