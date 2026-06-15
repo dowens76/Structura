@@ -273,12 +273,17 @@ function ColorPalette({
 }
 
 /** Displays one annotation at a segment — full badge at start, continuation bar at middle/end. */
+function toSubscript(n: number): string {
+  return String(n).split("").map((c) => "₀₁₂₃₄₅₆₇₈₉"[parseInt(c)]).join("");
+}
+
 function AnnotBadge({
   annotation,
   isStart,
   isEnd,
   editingAnnotations,
   presentationMode,
+  thematicSubscript,
   onDelete,
   onUpdate,
   onAdjustRange,
@@ -288,6 +293,7 @@ function AnnotBadge({
   isEnd: boolean;
   editingAnnotations: boolean;
   presentationMode?: boolean;
+  thematicSubscript?: number;
   onDelete?: (id: number) => void;
   onUpdate?: (id: number, updates: { label?: string; description?: string | null; color?: string; outOfSequence?: boolean }) => void;
   onAdjustRange?: (id: number, direction: "expand-start" | "shrink-start" | "expand-end" | "shrink-end") => void;
@@ -370,7 +376,7 @@ function AnnotBadge({
               className="shrink-0 text-[10px] font-bold px-1 py-0.5 rounded text-white leading-none"
               style={{ backgroundColor: color }}
             >
-              {getSpeechActLeafLabel(annotation.label)}
+              {getSpeechActLeafLabel(annotation.label)}{thematicSubscript != null ? toSubscript(thematicSubscript) : ""}
             </span>
           )}
           <button
@@ -491,7 +497,7 @@ function AnnotBadge({
                 className={`shrink-0 ${badgeTextCls} font-bold px-1 py-0.5 rounded text-white leading-none`}
                 style={{ backgroundColor: color }}
               >
-                {getSpeechActLeafLabel(annotation.label)}
+                {getSpeechActLeafLabel(annotation.label)}{thematicSubscript != null ? toSubscript(thematicSubscript) : ""}
               </span>
             )}
             {editingAnnotations && onDelete && (
@@ -965,6 +971,37 @@ export default function VerseDisplay({
     }
     return map;
   }, [sceneBreakMap, words]);
+
+  // ── Thematic annotation subscripts ──────────────────────────────────────
+  // For "theme" annotations: when the same label letter appears more than once
+  // in the chapter, each occurrence gets a subscript number (A₁, A₂, …).
+  // Computed from annotationsBySegment in segment order (= document order).
+  const thematicSubscripts = useMemo(() => {
+    if (!annotationsBySegment) return new Map<number, number>();
+    // Collect all theme annotation starts in segment order
+    const starts: { id: number; label: string }[] = [];
+    for (const entries of annotationsBySegment.values()) {
+      for (const { annotation, isStart } of entries) {
+        if (isStart && annotation.annotType === "theme") {
+          starts.push({ id: annotation.id, label: annotation.label ?? "" });
+        }
+      }
+    }
+    // Pass 1: totals per label
+    const totals = new Map<string, number>();
+    for (const { label } of starts) totals.set(label, (totals.get(label) ?? 0) + 1);
+    // Pass 2: assign subscripts where total > 1
+    const running = new Map<string, number>();
+    const result = new Map<number, number>();
+    for (const { id, label } of starts) {
+      if ((totals.get(label) ?? 0) > 1) {
+        const n = (running.get(label) ?? 0) + 1;
+        running.set(label, n);
+        result.set(id, n);
+      }
+    }
+    return result;
+  }, [annotationsBySegment]);
 
   // ── Paragraph segments ──────────────────────────────────────────────────
   const sourceSegments = computeSegments(words, paragraphBreakIds);
@@ -1479,6 +1516,7 @@ export default function VerseDisplay({
             isEnd={isEnd}
             editingAnnotations={editingAnnotations}
             presentationMode={presentationMode}
+            thematicSubscript={isStart ? thematicSubscripts.get(annotation.id) : undefined}
             onDelete={onDeleteAnnotation}
             onUpdate={onUpdateAnnotation}
             onAdjustRange={onExpandAnnotationRange}

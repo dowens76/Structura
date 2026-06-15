@@ -25,6 +25,10 @@ function toRoman(n: number): string {
   return result;
 }
 
+function toSubscript(n: number): string {
+  return String(n).split("").map((c) => "₀₁₂₃₄₅₆₇₈₉"[parseInt(c)]).join("");
+}
+
 function formatPrefix(level: number, counter: number): string {
   switch (level) {
     case 1: return toRoman(counter) + ".";
@@ -202,6 +206,30 @@ export default function OutlinePane({
   const items = useMemo(() => {
     const isPaired = outlinePredecessorShown || outlineExtended;
     const counters = [0, 0, 0, 0, 0, 0, 0];
+
+    // Two-pass thematic subscript computation.
+    // Pass 1: count how many times each thematic letter appears.
+    const thematicTotals = new Map<string, number>();
+    for (const br of sortedBreaks) {
+      if (br.thematic && br.thematicLetter) {
+        const l = br.thematicLetter.toUpperCase();
+        thematicTotals.set(l, (thematicTotals.get(l) ?? 0) + 1);
+      }
+    }
+    // Pass 2: assign per-break subscript index (only when total > 1).
+    const thematicRunning = new Map<string, number>();
+    const thematicSubscripts = new Map<string, number>(); // wordId:level → subscript
+    for (const br of sortedBreaks) {
+      if (br.thematic && br.thematicLetter) {
+        const l = br.thematicLetter.toUpperCase();
+        if ((thematicTotals.get(l) ?? 0) > 1) {
+          const n = (thematicRunning.get(l) ?? 0) + 1;
+          thematicRunning.set(l, n);
+          thematicSubscripts.set(`${br.wordId}:${br.level}`, n);
+        }
+      }
+    }
+
     return sortedBreaks.map((br) => {
       if (!br.thematic) {
         counters[br.level]++;
@@ -228,11 +256,18 @@ export default function OutlinePane({
       } else {
         rangeStr = `${bookPrefix}${br.chapter}:${br.verse}${letter}`;
       }
+      let prefix: string;
+      if (br.thematic && br.thematicLetter) {
+        const sub = thematicSubscripts.get(key);
+        prefix = br.thematicLetter + (sub != null ? toSubscript(sub) : "");
+      } else {
+        prefix = formatPrefix(br.level, counters[br.level]);
+      }
       return {
         ...br,
         heading,
         key,
-        prefix: br.thematic && br.thematicLetter ? br.thematicLetter : formatPrefix(br.level, counters[br.level]),
+        prefix,
         rangeStr,
         isCurrent: !br.bookCode && (passageChapters ? passageChapters.has(br.chapter) : br.chapter === chapter),
         thematicIndent,
