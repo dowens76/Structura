@@ -53,13 +53,15 @@ function readActiveTranslations(): string[] {
 }
 
 interface BookmarkButtonProps {
-  /** The URL path for this view (e.g. "/Gen/OSHB/1") */
-  href: string;
-  /** Human-readable label for the bookmark (e.g. "Genesis 1 · OSHB") */
-  label: string;
+  /** The URL path for this view (e.g. "/Gen/OSHB/1"). Omit on pages that aren't bookmarkable (e.g. home). */
+  href?: string;
+  /** Human-readable label for the bookmark (e.g. "Genesis 1 · OSHB"). Omit on non-bookmarkable pages. */
+  label?: string;
+  /** Override button label text */
+  buttonLabel?: string;
 }
 
-export default function BookmarkButton({ href, label }: BookmarkButtonProps) {
+export default function BookmarkButton({ href, label, buttonLabel }: BookmarkButtonProps) {
   const [open, setOpen] = useState(false);
   const [bookmarks, setBookmarks] = useState<BookmarkEntry[]>([]);
   const [isBookmarked, setIsBookmarked] = useState(false);
@@ -71,7 +73,7 @@ export default function BookmarkButton({ href, label }: BookmarkButtonProps) {
   const refreshBookmarks = useCallback(() => {
     const bm = loadBookmarks();
     setBookmarks(bm);
-    setIsBookmarked(bm.some((b) => b.href === href));
+    setIsBookmarked(href ? bm.some((b) => b.href === href) : false);
   }, [href]);
 
   useEffect(() => {
@@ -166,7 +168,7 @@ export default function BookmarkButton({ href, label }: BookmarkButtonProps) {
         style={{ color: isBookmarked ? "var(--accent)" : "var(--nav-fg)" }}
         aria-label="Bookmarks"
       >
-        {isBookmarked ? "★" : "☆"}
+        {buttonLabel ?? (isBookmarked ? "★" : "☆")}
       </button>
 
       {open && (
@@ -177,28 +179,30 @@ export default function BookmarkButton({ href, label }: BookmarkButtonProps) {
             borderColor: "var(--nav-border)",
           }}
         >
-          {/* Add / remove current page */}
-          <div className="px-3 py-2 border-b" style={{ borderColor: "var(--nav-border)" }}>
-            {isBookmarked ? (
-              <button
-                onClick={removeBookmark}
-                className="w-full text-left text-xs flex items-center gap-2 transition-colors"
-                style={{ color: "var(--nav-fg)" }}
-              >
-                <span style={{ color: "var(--accent)" }}>★</span>
-                <span>Remove bookmark for this page</span>
-              </button>
-            ) : (
-              <button
-                onClick={addBookmark}
-                className="w-full text-left text-xs flex items-center gap-2 transition-colors"
-                style={{ color: "var(--nav-fg)" }}
-              >
-                <span>☆</span>
-                <span>Bookmark this page</span>
-              </button>
-            )}
-          </div>
+          {/* Add / remove current page — only shown when on a bookmarkable page */}
+          {href && (
+            <div className="px-3 py-2 border-b" style={{ borderColor: "var(--nav-border)" }}>
+              {isBookmarked ? (
+                <button
+                  onClick={removeBookmark}
+                  className="w-full text-left text-xs flex items-center gap-2 transition-colors"
+                  style={{ color: "var(--nav-fg)" }}
+                >
+                  <span style={{ color: "var(--accent)" }}>★</span>
+                  <span>Remove bookmark for this page</span>
+                </button>
+              ) : (
+                <button
+                  onClick={addBookmark}
+                  className="w-full text-left text-xs flex items-center gap-2 transition-colors"
+                  style={{ color: "var(--nav-fg)" }}
+                >
+                  <span>☆</span>
+                  <span>Bookmark this page</span>
+                </button>
+              )}
+            </div>
+          )}
 
           {/* Sort toggle + bookmark list */}
           {bookmarks.length === 0 ? (

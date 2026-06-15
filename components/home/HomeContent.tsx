@@ -10,6 +10,7 @@ import LanguagePicker from "@/components/ui/LanguagePicker";
 import { useTranslation } from "@/lib/i18n/LocaleContext";
 import BookGroupingsDialog from "@/components/home/BookGroupingsDialog";
 import ManageTranslationsDialog from "@/components/home/ManageTranslationsDialog";
+import BookmarkButton from "@/components/navigation/BookmarkButton";
 import { MORPHGNT_BOOK_MAP, OSIS_BOOK_ORDER } from "@/lib/utils/osis";
 
 // NT OSIS codes — used to pick the correct word-DB source for chapter links
@@ -175,6 +176,9 @@ export default function HomeContent({ otBooks, ntBooks, lxxBooks, translationOnl
             </div>
           </div>
           <div className="flex flex-wrap gap-2">
+            <div style={{ "--nav-fg": "var(--foreground)", "--nav-bg": "var(--surface)", "--nav-border": "var(--border)" } as React.CSSProperties}>
+              <BookmarkButton buttonLabel="☆ Bookmarks" />
+            </div>
             <button
               type="button"
               onClick={() => setGroupingsOpen(true)}
