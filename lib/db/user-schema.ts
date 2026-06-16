@@ -546,6 +546,22 @@ export const textCriticalMarks = sqliteTable(
   ]
 );
 
+// ─── Bookmarks ────────────────────────────────────────────────────────────────
+
+export const bookmarks = sqliteTable(
+  "bookmarks",
+  {
+    id:           text("id").primaryKey(),           // client-generated uid
+    workspaceId:  integer("workspace_id").notNull().default(1)
+                    .references(() => workspaces.id, { onDelete: "cascade" }),
+    label:        text("label").notNull().default(""),
+    href:         text("href").notNull(),
+    translations: text("translations").notNull().default("[]"), // JSON array of abbr strings
+    createdAt:    integer("created_at").notNull(),   // Unix ms timestamp
+  },
+  (t) => [index("bookmarks_workspace_idx").on(t.workspaceId)]
+);
+
 // ─── Intertextual Links ────────────────────────────────────────────────────
 
 /** Cross-passage intertextual connections (quotations, allusions, echoes, typology, parallels). */
@@ -623,3 +639,4 @@ export type TranslationVersion = typeof translationVersions.$inferSelect;
 export type TextCriticalMark = typeof textCriticalMarks.$inferSelect;
 export type IntertextualLink = typeof intertextualLinks.$inferSelect;
 export type NewIntertextualLink = typeof intertextualLinks.$inferInsert;
+export type Bookmark = typeof bookmarks.$inferSelect;
