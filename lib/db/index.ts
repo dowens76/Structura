@@ -245,6 +245,12 @@ function _migrateUserDbInner(sqlite: Database.Database): void {
     try { sqlite.exec("ALTER TABLE scene_breaks ADD COLUMN thematic INTEGER NOT NULL DEFAULT 0"); } catch { /* already exists */ }
   if (!sceneBreakCols.includes("thematic_letter"))
     try { sqlite.exec("ALTER TABLE scene_breaks ADD COLUMN thematic_letter TEXT"); } catch { /* already exists */ }
+  if (!sceneBreakCols.includes("transitional"))
+    try { sqlite.exec("ALTER TABLE scene_breaks ADD COLUMN transitional INTEGER NOT NULL DEFAULT 0"); } catch { /* already exists */ }
+
+  const lineAnnotCols = (sqlite.prepare("PRAGMA table_info(line_annotations)").all() as { name: string }[]).map(r => r.name);
+  if (!lineAnnotCols.includes("transitional"))
+    try { sqlite.exec("ALTER TABLE line_annotations ADD COLUMN transitional INTEGER NOT NULL DEFAULT 0"); } catch { /* already exists */ }
 
   const charCols = (sqlite.prepare("PRAGMA table_info(characters)").all() as { name: string }[]).map(r => r.name);
   if (!charCols.includes("sort_order"))
