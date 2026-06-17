@@ -179,13 +179,21 @@ export async function executeBackup(
     return { ok: false, error: "No backup folder configured." };
   }
 
-  // Validate folder
+  // Create folder if it doesn't exist yet (e.g. first backup to a new subfolder)
+  try {
+    fs.mkdirSync(folderPath, { recursive: true });
+  } catch (e) {
+    const msg = `Could not create backup folder: ${e instanceof Error ? e.message : String(e)}`;
+    saveSettingsUpdate({ lastError: msg });
+    return { ok: false, error: msg };
+  }
+
+  // Validate folder is writable
   try {
     const stat = fs.statSync(folderPath);
     if (!stat.isDirectory()) {
       return { ok: false, error: `${folderPath} is not a directory.` };
     }
-    // Probe write permission
     const probe = path.join(folderPath, `.structura-probe-${Date.now()}`);
     fs.writeFileSync(probe, "");
     fs.unlinkSync(probe);

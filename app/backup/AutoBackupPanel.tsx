@@ -69,6 +69,7 @@ export default function AutoBackupPanel() {
   const [pathStatus,    setPathStatus]    = useState<PathStatus>("idle");
   const [pathError,     setPathError]     = useState("");
   const [browseStatus,  setBrowseStatus]  = useState<BrowseStatus>("idle");
+  const [syncFolders,   setSyncFolders]   = useState<{ name: string; path: string }[] | null>(null);
 
   const pollRef            = useRef<ReturnType<typeof setInterval> | null>(null);
   const formInitializedRef = useRef(false);
@@ -98,6 +99,10 @@ export default function AutoBackupPanel() {
   useEffect(() => {
     fetchStatus();
     pollRef.current = setInterval(fetchStatus, 30_000);
+    fetch("/api/auto-backup/detect-sync-folders")
+      .then((r) => r.json())
+      .then((d: { folders?: { name: string; path: string }[] }) => setSyncFolders(d.folders ?? []))
+      .catch(() => setSyncFolders([]));
     return () => {
       if (pollRef.current) clearInterval(pollRef.current);
     };
@@ -331,6 +336,39 @@ export default function AutoBackupPanel() {
             <p className="mt-1 text-xs" style={mutedStyle}>
               {t("backup.folderHelp")}
             </p>
+
+            {/* Cloud sync quick-picks */}
+            <div className="mt-3">
+              <p className="text-xs font-medium mb-1.5" style={mutedStyle}>
+                ☁ {t("backup.cloudSyncTitle")}
+              </p>
+              {syncFolders && syncFolders.length > 0 ? (
+                <div className="flex flex-wrap gap-2">
+                  {syncFolders.map((sf) => (
+                    <button
+                      key={sf.path}
+                      type="button"
+                      onClick={() => { setFolderPath(sf.path); setPathStatus("idle"); }}
+                      className="px-3 py-1 rounded-md border text-xs font-medium transition-colors"
+                      style={{
+                        borderColor: folderPath === sf.path ? "var(--accent)" : "var(--border)",
+                        color: folderPath === sf.path ? "var(--accent)" : "var(--foreground)",
+                        backgroundColor: "var(--surface)",
+                      }}
+                    >
+                      {sf.name}
+                    </button>
+                  ))}
+                  <p className="w-full mt-1 text-xs" style={mutedStyle}>
+                    {t("backup.cloudSyncWillCreate")}
+                  </p>
+                </div>
+              ) : (
+                <p className="text-xs" style={mutedStyle}>
+                  {t("backup.cloudSyncTip")}
+                </p>
+              )}
+            </div>
           </div>
 
           {/* Interval */}

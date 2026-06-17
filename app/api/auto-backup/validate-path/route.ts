@@ -30,10 +30,20 @@ export async function POST(request: NextRequest) {
   }
 
   if (!fs.existsSync(folderPath)) {
-    return NextResponse.json({
-      ok: false,
-      error: "Folder does not exist. Create it first, then try again.",
-    });
+    // Folder doesn't exist yet — check that the parent is writable.
+    // executor.ts will create the folder on first backup via mkdirSync({ recursive: true }).
+    const parent = path.dirname(folderPath);
+    if (!fs.existsSync(parent)) {
+      return NextResponse.json({ ok: false, error: "Parent folder does not exist." });
+    }
+    const probe = path.join(parent, `.structura-probe-${Date.now()}`);
+    try {
+      fs.writeFileSync(probe, "");
+      fs.unlinkSync(probe);
+    } catch {
+      return NextResponse.json({ ok: false, error: "Parent folder is not writable." });
+    }
+    return NextResponse.json({ ok: true, willBeCreated: true });
   }
 
   let stat: fs.Stats;
