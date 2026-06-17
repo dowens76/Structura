@@ -211,6 +211,10 @@ function CustomTypeCreator({
 
 // ── Add/Edit Form ──────────────────────────────────────────────────────────
 
+function parseTags(raw: string | null | undefined): string[] {
+  try { return JSON.parse(raw ?? "[]") ?? []; } catch { return []; }
+}
+
 interface FormState {
   sourceRef: string;
   targetRef: string;
@@ -218,6 +222,7 @@ interface FormState {
   strength: number;
   notes: string;
   direction: string;
+  tags: string;
 }
 
 function LinkForm({
@@ -242,6 +247,7 @@ function LinkForm({
         strength: 3,
         notes: "",
         direction: "source_to_target",
+        tags: "",
       };
     }
     const srcStr = `${bookLabel(editLink.sourceBook)} ${editLink.sourceChapter}:${editLink.sourceVerse}${editLink.sourceEndVerse ? `-${editLink.sourceEndVerse}` : ""}`;
@@ -253,6 +259,7 @@ function LinkForm({
       strength: editLink.strength,
       notes: editLink.notes ?? "",
       direction: editLink.direction,
+      tags: parseTags(editLink.tags).join(", "),
     };
   });
   const [error, setError] = useState<string | null>(null);
@@ -267,6 +274,7 @@ function LinkForm({
     if (!parsedTarget) { setError('Unrecognised target reference. Try e.g. "John 3:16" or "Gen 1:1-3".'); return; }
     const parsedSource = parseRef(form.sourceRef);
     if (!parsedSource) { setError('Unrecognised source reference. Try e.g. "Gen 1:1" or "Isa 7:14-16".'); return; }
+    const tagsArr = form.tags.split(",").map((t) => t.trim()).filter(Boolean);
     setSaving(true);
     try {
       if (editLink) {
@@ -287,6 +295,7 @@ function LinkForm({
             strength: form.strength,
             notes: form.notes || null,
             direction: form.direction,
+            tags: tagsArr,
           }),
         });
       } else {
@@ -306,6 +315,7 @@ function LinkForm({
             targetTextSource: textSource,
             linkType: form.linkType, strength: form.strength,
             notes: form.notes || null, direction: form.direction,
+            tags: tagsArr,
           }),
         });
       }
@@ -432,7 +442,7 @@ function LinkForm({
           onChange={(e) => setForm((f) => ({ ...f, direction: e.target.value }))}
         >
           <option value="source_to_target">Source → Target</option>
-          <option value="bidirectional">Bidirectional</option>
+          <option value="bidirectional">Parallel texts (direction undetermined)</option>
         </select>
       </div>
       <div>
@@ -443,6 +453,15 @@ function LinkForm({
           value={form.notes}
           onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
           placeholder="Scholarly argumentation, key shared terms…"
+        />
+      </div>
+      <div>
+        <label className="block text-xs text-[var(--text-muted)] mb-0.5">Tags <span className="font-normal">(comma-separated)</span></label>
+        <input
+          className={fieldClass}
+          placeholder="e.g. creation, covenant, exodus"
+          value={form.tags}
+          onChange={(e) => setForm((f) => ({ ...f, tags: e.target.value }))}
         />
       </div>
       {error && <p className="text-red-500 text-xs">{error}</p>}
@@ -499,6 +518,21 @@ function LinkRow({
           {link.notes && (
             <p className="text-xs text-[var(--text-muted)] mt-1 line-clamp-2">{link.notes}</p>
           )}
+          {(() => {
+            const tags = parseTags(link.tags);
+            return tags.length > 0 ? (
+              <div className="flex flex-wrap gap-1 mt-1">
+                {tags.map((tag) => (
+                  <span
+                    key={tag}
+                    className="text-[10px] px-1.5 py-0.5 rounded-full border border-[var(--border)] text-[var(--text-muted)]"
+                  >
+                    {tag}
+                  </span>
+                ))}
+              </div>
+            ) : null;
+          })()}
         </div>
         <div className="flex gap-1 shrink-0">
           <button
@@ -679,6 +713,7 @@ export default function IntertextualPanel({ book, chapter, textSource, onClose }
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editLink, setEditLink] = useState<IntertextualLink | null>(null);
+  const [tagFilter, setTagFilter] = useState<string>("");
   const { custom, add: addCustom, remove: removeCustom } = useCustomLinkTypes();
 
   const load = useCallback(async () => {
@@ -702,6 +737,9 @@ export default function IntertextualPanel({ book, chapter, textSource, onClose }
     });
     load();
   }
+
+  const allTags = Array.from(new Set(links.flatMap((l) => parseTags(l.tags)))).sort();
+  const filteredLinks = tagFilter ? links.filter((l) => parseTags(l.tags).includes(tagFilter)) : links;
 
   const graphHref = `/${encodeURIComponent(book)}/${textSource}/intertextual-graph`;
 
@@ -740,6 +778,27 @@ export default function IntertextualPanel({ book, chapter, textSource, onClose }
         </div>
       </div>
 
+      {/* Tag filter bar */}
+      {allTags.length > 0 && (
+        <div className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 border-b border-[var(--border)] overflow-x-auto">
+          <button
+            onClick={() => setTagFilter("")}
+            className={`shrink-0 text-[10px] px-2 py-0.5 rounded-full border transition-colors ${!tagFilter ? "border-amber-500 text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20" : "border-[var(--border)] text-[var(--text-muted)]"}`}
+          >
+            All
+          </button>
+          {allTags.map((tag) => (
+            <button
+              key={tag}
+              onClick={() => setTagFilter(tag === tagFilter ? "" : tag)}
+              className={`shrink-0 text-[10px] px-2 py-0.5 rounded-full border transition-colors ${tag === tagFilter ? "border-amber-500 text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20" : "border-[var(--border)] text-[var(--text-muted)]"}`}
+            >
+              {tag}
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* Add / Edit form */}
       {(showForm || editLink) && (
         <LinkForm
@@ -759,19 +818,25 @@ export default function IntertextualPanel({ book, chapter, textSource, onClose }
       <div className="flex-1 overflow-y-auto min-h-0">
         {loading ? (
           <div className="p-4 text-sm text-[var(--text-muted)]">Loading…</div>
-        ) : links.length === 0 ? (
+        ) : filteredLinks.length === 0 ? (
           <div className="p-4 text-sm text-[var(--text-muted)]">
-            No intertextual links for {bookLabel(book)} {chapter}.
-            <br />
-            <button
-              onClick={() => setShowForm(true)}
-              className="mt-2 text-amber-500 hover:underline"
-            >
-              + Add the first link
-            </button>
+            {links.length === 0 ? (
+              <>
+                No intertextual links for {bookLabel(book)} {chapter}.
+                <br />
+                <button
+                  onClick={() => setShowForm(true)}
+                  className="mt-2 text-amber-500 hover:underline"
+                >
+                  + Add the first link
+                </button>
+              </>
+            ) : (
+              <>No links match the tag &ldquo;{tagFilter}&rdquo;.</>
+            )}
           </div>
         ) : (
-          links.map((link) => (
+          filteredLinks.map((link) => (
             <LinkRow
               key={link.id}
               link={link}

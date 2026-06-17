@@ -44,7 +44,7 @@ export async function POST(req: NextRequest) {
     sourceTextSource, sourceStartWordId, sourceEndWordId,
     targetBook, targetChapter, targetVerse, targetEndVerse,
     targetTextSource, targetStartWordId, targetEndWordId,
-    linkType, strength, notes, direction,
+    linkType, strength, notes, direction, tags,
   } = body;
 
   if (
@@ -67,6 +67,7 @@ export async function POST(req: NextRequest) {
       targetEndWordId: targetEndWordId ?? null,
       linkType, strength: strength ?? 3, notes: notes ?? null,
       direction: direction ?? "source_to_target",
+      tags: Array.isArray(tags) ? JSON.stringify(tags) : "[]",
     },
     workspaceId
   );
@@ -78,12 +79,15 @@ export async function PATCH(req: NextRequest) {
   const { id, ...patch } = body;
   if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 });
 
-  const allowed = ["linkType","strength","notes","direction",
+  const allowed = ["linkType","strength","notes","direction","tags",
     "sourceBook","sourceChapter","sourceVerse","sourceEndVerse","sourceStartWordId","sourceEndWordId",
     "targetBook","targetChapter","targetVerse","targetEndVerse","targetStartWordId","targetEndWordId"];
   const filteredPatch: Record<string, unknown> = {};
   for (const key of allowed) {
     if (key in patch) filteredPatch[key] = patch[key];
+  }
+  if ("tags" in filteredPatch && Array.isArray(filteredPatch.tags)) {
+    filteredPatch.tags = JSON.stringify(filteredPatch.tags);
   }
 
   const link = await updateIntertextualLink(Number(id), filteredPatch);

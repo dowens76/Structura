@@ -595,6 +595,7 @@ export const intertextualLinks = sqliteTable(
     strength:  integer("strength").notNull().default(3),  // 1–5 confidence
     notes:     text("notes"),
     direction: text("direction").notNull().default("source_to_target"),  // "source_to_target" | "bidirectional"
+    tags:      text("tags").notNull().default("[]"),  // JSON string[]
 
     createdAt: text("created_at").$defaultFn(() => new Date().toISOString()),
   },

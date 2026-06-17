@@ -2263,6 +2263,7 @@ export async function createIntertextualLink(
     strength?: number;
     notes?: string | null;
     direction?: string;
+    tags?: string;
   },
   workspaceId: number
 ): Promise<IntertextualLink> {
@@ -2292,6 +2293,7 @@ export async function updateIntertextualLink(
     targetEndVerse: number | null;
     targetStartWordId: string | null;
     targetEndWordId: string | null;
+    tags: string;
   }>
 ): Promise<IntertextualLink> {
   const [row] = await userDb

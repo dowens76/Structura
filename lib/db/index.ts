@@ -252,6 +252,10 @@ function _migrateUserDbInner(sqlite: Database.Database): void {
   if (!lineAnnotCols.includes("transitional"))
     try { sqlite.exec("ALTER TABLE line_annotations ADD COLUMN transitional INTEGER NOT NULL DEFAULT 0"); } catch { /* already exists */ }
 
+  const ilCols = (sqlite.prepare("PRAGMA table_info(intertextual_links)").all() as { name: string }[]).map(r => r.name);
+  if (!ilCols.includes("tags"))
+    try { sqlite.exec("ALTER TABLE intertextual_links ADD COLUMN tags TEXT NOT NULL DEFAULT '[]'"); } catch { /* already exists */ }
+
   const charCols = (sqlite.prepare("PRAGMA table_info(characters)").all() as { name: string }[]).map(r => r.name);
   if (!charCols.includes("sort_order"))
     try { sqlite.exec("ALTER TABLE characters ADD COLUMN sort_order INTEGER DEFAULT 0"); } catch { /* already exists */ }
