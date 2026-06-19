@@ -51,8 +51,8 @@ function TranslationBookGrid({
               style={{ backgroundColor: "var(--surface)", borderColor: "var(--border)", color: "var(--foreground)" }}
               title={displayName}
             >
-              <div className="font-medium truncate text-xs">{bookAbbr(osisCode)}</div>
-              <div className="text-[11px] truncate" style={{ color: "var(--text-muted)" }}>{displayName}</div>
+              <div className="font-medium truncate text-xs">{displayName}</div>
+              <div className="text-[10px] truncate" style={{ color: "var(--text-muted)" }}>{bookAbbr(osisCode)}</div>
             </Link>
           );
         })}
@@ -90,8 +90,8 @@ function BookGrid({
               style={{ backgroundColor: "var(--surface)", borderColor: "var(--border)", color: "var(--foreground)" }}
               title={displayName}
             >
-              <div className="font-medium truncate text-xs">{bookAbbr(book.osisCode)}</div>
-              <div className="text-[11px] truncate" style={{ color: "var(--text-muted)" }}>{displayName}</div>
+              <div className="font-medium truncate text-xs">{displayName}</div>
+              <div className="text-[10px] truncate" style={{ color: "var(--text-muted)" }}>{bookAbbr(book.osisCode)}</div>
             </Link>
           );
         })}
