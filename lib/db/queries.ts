@@ -1242,6 +1242,14 @@ export async function getPassagesForBook(
     .orderBy(asc(passages.startChapter), asc(passages.startVerse));
 }
 
+export async function getLabeledPassages(workspaceId: number): Promise<Passage[]> {
+  return userDb
+    .select()
+    .from(passages)
+    .where(and(eq(passages.workspaceId, workspaceId), sql`trim(${passages.label}) != ''`))
+    .orderBy(asc(passages.book), asc(passages.startChapter), asc(passages.startVerse));
+}
+
 export async function getPassage(id: number): Promise<Passage | undefined> {
   const results = await userDb
     .select()

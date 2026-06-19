@@ -37,6 +37,7 @@ import { useRstRelations } from "@/lib/hooks/useRstRelations";
 import hebrewLemmas from "@/lib/data/hebrew-lemmas.json";
 import { computeSectionRanges } from "@/lib/utils/sectionRanges";
 import { OSIS_BOOK_NAMES, OSIS_REF_BOOK_NAMES } from "@/lib/utils/osis";
+import AddressBar from "@/components/ui/AddressBar";
 import { useTranslation } from "@/lib/i18n/LocaleContext";
 import { getMtToKjvInstructions, getKjvVerseLabel } from "@/lib/versification/mt-kjv-mapping";
 
@@ -217,6 +218,7 @@ export default function PassageView({
   const [searchHits, setSearchHits] = useState<Set<string>>(new Set());
   const [searchRequest, setSearchRequest] = useState<{ query: string; source: string; nonce: number } | null>(null);
   const [presentationMode, setPresentationMode] = useState(initialPresentationMode);
+  const [addressBarOpen, setAddressBarOpen] = useState(false);
   const [notesScrollVerse, setNotesScrollVerse] = useState<{ ch: number; v: number } | null>(null);
   const [showTooltips, setShowTooltips] = useState(false);
   const [showAtnachBreaks, setShowAtnachBreaks] = useState(false);
@@ -665,6 +667,12 @@ export default function PassageView({
         e.preventDefault();
         setFindOpen(true);
         setTimeout(() => findInputRef.current?.select(), 0);
+        return;
+      }
+      // Ctrl/Cmd+L — open address bar
+      if ((e.metaKey || e.ctrlKey) && e.key === "l" && !e.shiftKey) {
+        e.preventDefault();
+        setAddressBarOpen(true);
         return;
       }
       // Ctrl/Cmd+G — next hit; Ctrl/Cmd+Shift+G — previous hit
@@ -2782,6 +2790,7 @@ export default function PassageView({
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div className="relative h-full min-h-0 flex flex-row">
+      <AddressBar open={addressBarOpen} onClose={() => setAddressBarOpen(false)} textSource={textSource} />
       {/* Main content + toolbar — takes remaining width; notes pane sits to the right */}
       <div
         className="flex-1 overflow-y-auto flex flex-col min-h-0"

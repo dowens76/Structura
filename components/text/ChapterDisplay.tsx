@@ -38,6 +38,7 @@ import { computeSectionRanges } from "@/lib/utils/sectionRanges";
 import { generateOutline } from "@/lib/utils/outlineExport";
 import { useTranslation } from "@/lib/i18n/LocaleContext";
 import { CONTIGUOUS_BOOK_PAIRS, CONTIGUOUS_BOOK_PREV, OSIS_BOOK_NAMES, OSIS_REF_BOOK_NAMES } from "@/lib/utils/osis";
+import AddressBar from "@/components/ui/AddressBar";
 
 /** Normalize text for diacritic-insensitive find-in-page matching.
  *  Strips Hebrew cantillation/vowel marks and Greek/Latin combining diacritics
@@ -477,6 +478,7 @@ export default function ChapterDisplay({
 
   // ── Presentation mode ─────────────────────────────────────────────────────
   const [presentationMode, setPresentationMode] = useState(initialPresentationMode);
+  const [addressBarOpen, setAddressBarOpen] = useState(false);
 
   // ── Toolbar visibility (customizer) ───────────────────────────────────────
   const [toolbarVis, setToolbarVis] = useState<ToolbarVisibility>(DEFAULT_TOOLBAR_VIS);
@@ -791,6 +793,12 @@ export default function ChapterDisplay({
         e.preventDefault();
         setFindOpen(true);
         setTimeout(() => findInputRef.current?.select(), 0);
+        return;
+      }
+      // Ctrl/Cmd+L — open address bar
+      if ((e.metaKey || e.ctrlKey) && e.key === "l" && !e.shiftKey) {
+        e.preventDefault();
+        setAddressBarOpen(true);
         return;
       }
       // Ctrl/Cmd+G — next hit
@@ -3375,6 +3383,7 @@ export default function ChapterDisplay({
 
   return (
     <div className="relative h-full min-h-0 flex flex-row">
+      <AddressBar open={addressBarOpen} onClose={() => setAddressBarOpen(false)} textSource={textSource} />
       {/* Main text area — takes remaining width; notes pane sits to the right */}
       <div className="flex-1 min-w-0 relative min-h-0 flex flex-col" ref={outerRef}>
         {/* Scrollable text container — both overlays live INSIDE so they scroll

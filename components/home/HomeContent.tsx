@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import type { Book } from "@/lib/db/schema";
@@ -12,6 +12,7 @@ import BookGroupingsDialog from "@/components/home/BookGroupingsDialog";
 import ManageTranslationsDialog from "@/components/home/ManageTranslationsDialog";
 import BookmarkButton from "@/components/navigation/BookmarkButton";
 import { MORPHGNT_BOOK_MAP, OSIS_BOOK_ORDER } from "@/lib/utils/osis";
+import AddressBar from "@/components/ui/AddressBar";
 
 // NT OSIS codes — used to pick the correct word-DB source for chapter links
 const NT_OSIS_CODES = new Set(Object.values(MORPHGNT_BOOK_MAP));
@@ -115,6 +116,21 @@ export default function HomeContent({ otBooks, ntBooks, lxxBooks, translationOnl
   const [groupingsOpen, setGroupingsOpen] = useState(false);
   const [translationsOpen, setTranslationsOpen] = useState(false);
   const [hiddenSources, setHiddenSources] = useState<string[]>([]);
+  const [addressBarOpen, setAddressBarOpen] = useState(false);
+
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key === "l" && !e.shiftKey) {
+        const inInput = document.activeElement instanceof HTMLInputElement
+          || document.activeElement instanceof HTMLTextAreaElement;
+        if (inInput) return;
+        e.preventDefault();
+        setAddressBarOpen(true);
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
 
   // In translation-only mode, pick ULT (English) or VCB (Vietnamese) based on locale,
   // then sort into canonical Bible order
@@ -150,6 +166,7 @@ export default function HomeContent({ otBooks, ntBooks, lxxBooks, translationOnl
 
   return (
     <main className="min-h-screen" style={{ backgroundColor: "var(--background)" }}>
+      <AddressBar open={addressBarOpen} onClose={() => setAddressBarOpen(false)} textSource="OSHB" />
       <div className="max-w-5xl mx-auto px-6 py-12">
         <header className="mb-12">
           <div className="flex items-start justify-between gap-4 mb-6">

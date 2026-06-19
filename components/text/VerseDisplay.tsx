@@ -1380,8 +1380,8 @@ export default function VerseDisplay({
     return (
       <div className="mt-5 mb-2" onClick={editingScenes ? (e) => e.stopPropagation() : undefined}>
         {/* Render each existing break stacked */}
-        {sorted.map((br) => (
-          <div key={`${wordId}-${br.level}`} className="mb-1">
+        {sorted.map((br, i) => (
+          <div key={`${wordId}-${br.level}-${i}`} className="mb-1">
             {editingScenes ? (
               <div className="flex flex-col gap-1 pb-1">
                 <div className="flex items-center gap-1.5">
