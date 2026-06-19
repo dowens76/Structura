@@ -247,6 +247,13 @@ export default function HomeContent({ otBooks, ntBooks, lxxBooks, translationOnl
             >
               {t("home.account")}
             </Link>
+            <Link
+              href="/shortcuts"
+              className="text-xs px-3 py-1.5 rounded border transition-colors"
+              style={{ borderColor: "var(--border)", backgroundColor: "var(--surface)", color: "var(--foreground)" }}
+            >
+              ⌨ Shortcuts
+            </Link>
           </div>
         </header>
 
