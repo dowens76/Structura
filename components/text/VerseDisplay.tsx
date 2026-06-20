@@ -1984,6 +1984,11 @@ export default function VerseDisplay({
   // e.g. "\\nd the LORD\\nd*" → "ND:the ND:LORD"
   function encodeUsfmTokens(raw: string): string {
     let s = raw;
+    // \bd and \it must be encoded BEFORE block markers (\nd, \add, \wj) so their
+    // spaces are consumed first; otherwise \nd splits content on the space inside \bd.
+    // Close tags first so \\bd\s* won't partially match \\bd*.
+    s = s.replace(/\\bd\*/g,  "").replace(/\\bd\s*/g,  "");
+    s = s.replace(/\\it\*/g,  "").replace(/\\it\s*/g,  "");
     s = s.replace(/\\nd\s+([\s\S]*?)\\nd\*/g, (_: string, content: string) =>
       content.split(/\s+/).filter(Boolean).map((w: string) => `ND:${w}`).join(" ")
     );
@@ -2009,6 +2014,29 @@ export default function VerseDisplay({
     if (token.startsWith("WJ:"))  return { display: token.slice(3),  marker: "wj"  };
     if (token.endsWith("«fn»"))   return { display: token.slice(0, -4), marker: "fn" };
     return { display: token, marker: null };
+  }
+
+  // Render a token string that may contain  (bold-start) /  (bold-end) /
+  //  (italic-start) /  (italic-end) private-use chars into an array of
+  // React nodes with per-segment bold/italic <span>s and plain strings elsewhere.
+  function renderInlineMarked(text: string): React.ReactNode {
+    if (!text.includes("") && !text.includes("")) return text;
+    type Seg = { text: string; bold: boolean; italic: boolean };
+    const segs: Seg[] = [];
+    let cur = "", bold = false, italic = false;
+    for (const ch of text) {
+      if      (ch === "") { if (cur) segs.push({ text: cur, bold, italic }); cur = ""; bold = true; }
+      else if (ch === "") { if (cur) segs.push({ text: cur, bold, italic }); cur = ""; bold = false; }
+      else if (ch === "") { if (cur) segs.push({ text: cur, bold, italic }); cur = ""; italic = true; }
+      else if (ch === "") { if (cur) segs.push({ text: cur, bold, italic }); cur = ""; italic = false; }
+      else cur += ch;
+    }
+    if (cur) segs.push({ text: cur, bold, italic });
+    return segs.map(({ text: t, bold: b, italic: i }, idx) =>
+      b || i
+        ? <span key={idx} style={{ fontWeight: b ? "bold" : undefined, fontStyle: i ? "italic" : undefined }}>{t}</span>
+        : t
+    );
   }
 
   const allTvSegs = translationTexts.map(({ abbr, text, translationId, words: tvWords }) => {
@@ -2564,7 +2592,7 @@ export default function VerseDisplay({
                               : handleClick}
                             title={isAnchorMoveTarget ? "Click to place footnote anchor here" : undefined}
                           >
-                            {tokCore}
+                            {renderInlineMarked(tokCore)}
                           </span>
                           {fnLetter && showFnAnchors && (
                             <sup className="text-[0.65em] font-normal leading-none text-stone-400 dark:text-stone-500 select-none">

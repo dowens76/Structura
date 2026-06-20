@@ -2672,24 +2672,34 @@ export default function PassageView({
     } catch { /* ignore */ }
   }
 
-  // ── Divine-name USFM marker ───────────────────────────────────────────────────
-  function applyNdMarker() {
+  // ── Inline USFM marker insertion ─────────────────────────────────────────────
+  function applyInlineMarker(marker: string) {
     const el = document.activeElement as HTMLTextAreaElement | null;
     if (!el || el.tagName !== "TEXTAREA" || !el.dataset.translationTextarea) return;
     const s = el.selectionStart ?? 0;
     const e = el.selectionEnd ?? 0;
-    if (s === e) return;
     const val = el.value;
-    const selected = val.slice(s, e);
-    const inserted = `\\nd ${selected}\\nd*`;
-    const newVal = val.slice(0, s) + inserted + val.slice(e);
     const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value")?.set;
-    nativeSetter?.call(el, newVal);
-    el.dispatchEvent(new Event("input", { bubbles: true }));
-    el.selectionStart = s;
-    el.selectionEnd = s + inserted.length;
+    if (s === e) {
+      const inserted = `\\${marker} \\${marker}*`;
+      const newVal = val.slice(0, s) + inserted + val.slice(s);
+      nativeSetter?.call(el, newVal);
+      el.dispatchEvent(new Event("input", { bubbles: true }));
+      el.selectionStart = s + marker.length + 2;
+      el.selectionEnd = s + marker.length + 2;
+    } else {
+      const selected = val.slice(s, e);
+      const inserted = `\\${marker} ${selected}\\${marker}*`;
+      const newVal = val.slice(0, s) + inserted + val.slice(e);
+      nativeSetter?.call(el, newVal);
+      el.dispatchEvent(new Event("input", { bubbles: true }));
+      el.selectionStart = s;
+      el.selectionEnd = s + inserted.length;
+    }
     el.focus();
   }
+
+  function applyNdMarker() { applyInlineMarker("nd"); }
 
   // ── Version history ───────────────────────────────────────────────────────
   async function openHistory(abbr: string, verse: number) {
@@ -3523,6 +3533,18 @@ export default function PassageView({
                     className="px-3 py-2 rounded text-[14px] font-bold font-mono tracking-wider transition-colors bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-amber-100 hover:text-amber-700 dark:hover:bg-amber-900 dark:hover:text-amber-300"
                     style={{ fontVariant: "small-caps" }}
                   >nd</button>
+                  {/* Bold: wraps selection in \bd...\bd* */}
+                  <button
+                    onMouseDown={(e) => { e.preventDefault(); applyInlineMarker("bd"); }}
+                    data-tip="Wrap selection as bold text — \bd...\bd*"
+                    className="px-3 py-2 rounded text-[14px] font-bold transition-colors bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700"
+                  >B</button>
+                  {/* Italic: wraps selection in \it...\it* */}
+                  <button
+                    onMouseDown={(e) => { e.preventDefault(); applyInlineMarker("it"); }}
+                    data-tip="Wrap selection as italic text — \it...\it*"
+                    className="px-3 py-2 rounded text-[14px] italic transition-colors bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700"
+                  >I</button>
                   <button
                     onMouseDown={() => {
                       const el = document.activeElement as HTMLTextAreaElement | null;
