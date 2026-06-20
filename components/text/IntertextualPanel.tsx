@@ -277,8 +277,9 @@ function LinkForm({
     const tagsArr = form.tags.split(",").map((t) => t.trim()).filter(Boolean);
     setSaving(true);
     try {
+      let res: Response;
       if (editLink) {
-        await fetch("/api/intertextual-links", {
+        res = await fetch("/api/intertextual-links", {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -299,7 +300,7 @@ function LinkForm({
           }),
         });
       } else {
-        await fetch("/api/intertextual-links", {
+        res = await fetch("/api/intertextual-links", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -318,6 +319,10 @@ function LinkForm({
             tags: tagsArr,
           }),
         });
+      }
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error((data as { error?: string }).error ?? `Server error ${res.status}`);
       }
       onSave();
     } catch {
