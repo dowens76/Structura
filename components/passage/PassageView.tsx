@@ -269,6 +269,7 @@ export default function PassageView({
   const [fnDialogContent, setFnDialogContent] = useState("");
   const [fnEditId, setFnEditId] = useState<number | null>(null);
   const [showFootnotes, setShowFootnotes] = useState(true);
+  const fnAnchorRef = useRef<{ el: HTMLTextAreaElement; pos: number } | null>(null);
   // Version history
   const [historyOpen, setHistoryOpen] = useState(false);
   const [historyAbbr, setHistoryAbbr] = useState("");
@@ -2593,7 +2594,15 @@ export default function PassageView({
           [translation.id]: [...(prev[translation.id] ?? []), created],
         }));
         if (tvRecord) {
-          const newText = tvRecord.text.trimEnd() + " \\fn \\fn*";
+          const anchor = fnAnchorRef.current;
+          let newText: string;
+          if (anchor) {
+            const pos = Math.min(anchor.pos, tvRecord.text.length);
+            newText = tvRecord.text.slice(0, pos) + "\\fn \\fn*" + tvRecord.text.slice(pos);
+            fnAnchorRef.current = null;
+          } else {
+            newText = tvRecord.text.trimEnd() + " \\fn \\fn*";
+          }
           await handleUpdateTranslationVerse(fnDialogAbbr, fnDialogVerse, newText);
         }
         setFnDialogOpen(false);
@@ -3515,13 +3524,21 @@ export default function PassageView({
                     style={{ fontVariant: "small-caps" }}
                   >nd</button>
                   <button
+                    onMouseDown={() => {
+                      const el = document.activeElement as HTMLTextAreaElement | null;
+                      const isTranslationTA = el?.tagName === "TEXTAREA" && el.dataset.translationTextarea === "true";
+                      fnAnchorRef.current = isTranslationTA ? { el: el!, pos: el!.selectionStart ?? el!.value.length } : null;
+                    }}
                     onClick={() => {
-                      const firstAbbr = [...activeTranslationIds]
+                      const anchor = fnAnchorRef.current;
+                      const activeVerse = anchor ? (parseInt(anchor.el.dataset.verse ?? "") || passage.startVerse) : passage.startVerse;
+                      const activeAbbr = anchor ? (anchor.el.dataset.abbr ?? "") : "";
+                      const firstAbbr = activeAbbr || ([...activeTranslationIds]
                         .map((id) => allAvailableTranslations.find((tr) => tr.id === id))
-                        .find((tr) => tr)?.abbreviation ?? "";
+                        .find((tr) => tr)?.abbreviation ?? "");
                       setFnEditId(null);
                       setFnDialogAbbr(firstAbbr);
-                      setFnDialogVerse(passage.startVerse);
+                      setFnDialogVerse(activeVerse);
                       setFnDialogType("f");
                       setFnDialogContent("");
                       setFnDialogOpen(true);

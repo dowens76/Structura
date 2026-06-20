@@ -186,6 +186,7 @@ export default function ChapterDisplay({
   const [fnDialogType, setFnDialogType] = useState<"f" | "x">("f");
   const [fnDialogContent, setFnDialogContent] = useState("");
   const [fnEditId, setFnEditId] = useState<number | null>(null); // null = create, number = edit
+  const fnAnchorRef = useRef<{ el: HTMLTextAreaElement; pos: number } | null>(null);
 
   // Footnote visibility
   const [showFootnotes, setShowFootnotes] = useState(true);
@@ -3115,11 +3116,11 @@ export default function ChapterDisplay({
     const translation = allAvailableTranslations.find((t) => t.abbreviation === fnDialogAbbr);
     if (!translation || !fnDialogContent.trim()) return;
     try {
-      // Compute wordIndex = number of content words in the existing verse text.
-      // The \fn \fn* is appended at the very end, so it sits after all words.
       const tvRecord = localTranslationVerseData[translation.id]?.find((tv) => tv.verse === fnDialogVerse);
       const existingText = tvRecord?.text ?? "";
-      const wordIndex = existingText.trim().split(/\s+/).filter(Boolean).length;
+      const anchor = fnAnchorRef.current;
+      const insertPos = anchor ? Math.min(anchor.pos, existingText.length) : existingText.length;
+      const wordIndex = existingText.slice(0, insertPos).trim().split(/\s+/).filter(Boolean).length;
 
       const res = await fetch("/api/translation-footnotes", {
         method: "POST",
@@ -3141,9 +3142,12 @@ export default function ChapterDisplay({
           ...prev,
           [translation.id]: [...(prev[translation.id] ?? []), created],
         }));
-        // Append \fn \fn* anchor to the verse text so the superscript appears in the translation
+        // Insert \fn \fn* anchor at cursor position (or end if no cursor captured)
         if (tvRecord) {
-          const newText = existingText.trimEnd() + " \\fn \\fn*";
+          const newText = anchor
+            ? existingText.slice(0, insertPos) + "\\fn \\fn*" + existingText.slice(insertPos)
+            : existingText.trimEnd() + " \\fn \\fn*";
+          fnAnchorRef.current = null;
           await handleUpdateTranslationVerse(fnDialogAbbr, fnDialogVerse, newText);
         }
         setFnDialogOpen(false);
@@ -4149,13 +4153,21 @@ export default function ChapterDisplay({
                       </button>
                       {/* Add Footnote button */}
                       <button
+                        onMouseDown={() => {
+                          const el = document.activeElement as HTMLTextAreaElement | null;
+                          const isTA = el?.tagName === "TEXTAREA" && el.dataset.translationTextarea === "true";
+                          fnAnchorRef.current = isTA ? { el, pos: el.selectionStart ?? el.value.length } : null;
+                        }}
                         onClick={() => {
-                          const firstAbbr = [...activeTranslationIds]
+                          const anchor = fnAnchorRef.current;
+                          const activeVerse = anchor ? (parseInt(anchor.el.dataset.verse ?? "") || chapter) : chapter;
+                          const activeAbbr = anchor?.el.dataset.abbr ?? "";
+                          const firstAbbr = activeAbbr || ([...activeTranslationIds]
                             .map((id) => allAvailableTranslations.find((tr) => tr.id === id))
-                            .find((tr) => tr)?.abbreviation ?? "";
+                            .find((tr) => tr)?.abbreviation ?? "");
                           setFnEditId(null);
                           setFnDialogAbbr(firstAbbr);
-                          setFnDialogVerse(1);
+                          setFnDialogVerse(activeVerse);
                           setFnDialogType("f");
                           setFnDialogContent("");
                           setFnDialogOpen(true);

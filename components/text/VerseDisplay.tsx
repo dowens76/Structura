@@ -842,6 +842,8 @@ function TranslationTextarea({ initialText, abbr, verseNum, onSave, onCancel, so
         value={value}
         onChange={handleChange}
         data-translation-textarea="true"
+        data-verse={verseNum}
+        data-abbr={abbr}
         onBlur={() => {
           // User navigated away — cancel debounce and save with trailing spaces trimmed
           if (debounceRef.current) clearTimeout(debounceRef.current);
