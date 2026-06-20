@@ -252,6 +252,36 @@ function _migrateUserDbInner(sqlite: Database.Database): void {
   if (!lineAnnotCols.includes("transitional"))
     try { sqlite.exec("ALTER TABLE line_annotations ADD COLUMN transitional INTEGER NOT NULL DEFAULT 0"); } catch { /* already exists */ }
 
+  sqlite.exec(`
+    CREATE TABLE IF NOT EXISTS intertextual_links (
+      id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+      workspace_id         INTEGER NOT NULL DEFAULT 1 REFERENCES workspaces(id) ON DELETE CASCADE,
+      source_book          TEXT    NOT NULL,
+      source_chapter       INTEGER NOT NULL,
+      source_verse         INTEGER NOT NULL,
+      source_end_verse     INTEGER,
+      source_text_source   TEXT    NOT NULL,
+      source_start_word_id TEXT,
+      source_end_word_id   TEXT,
+      target_book          TEXT    NOT NULL,
+      target_chapter       INTEGER NOT NULL,
+      target_verse         INTEGER NOT NULL,
+      target_end_verse     INTEGER,
+      target_text_source   TEXT    NOT NULL,
+      target_start_word_id TEXT,
+      target_end_word_id   TEXT,
+      link_type            TEXT    NOT NULL,
+      strength             INTEGER NOT NULL DEFAULT 3,
+      notes                TEXT,
+      direction            TEXT    NOT NULL DEFAULT 'source_to_target',
+      tags                 TEXT    NOT NULL DEFAULT '[]',
+      created_at           TEXT
+    );
+    CREATE INDEX IF NOT EXISTS il_workspace_idx ON intertextual_links(workspace_id);
+    CREATE INDEX IF NOT EXISTS il_source_idx    ON intertextual_links(source_book, source_chapter);
+    CREATE INDEX IF NOT EXISTS il_target_idx    ON intertextual_links(target_book, target_chapter);
+  `);
+
   const ilCols = (sqlite.prepare("PRAGMA table_info(intertextual_links)").all() as { name: string }[]).map(r => r.name);
   if (!ilCols.includes("tags"))
     try { sqlite.exec("ALTER TABLE intertextual_links ADD COLUMN tags TEXT NOT NULL DEFAULT '[]'"); } catch { /* already exists */ }
