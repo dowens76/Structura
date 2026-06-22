@@ -3,8 +3,8 @@
   "configurations": [
     {
       "name": "structura-dev",
-      "runtimeExecutable": "/bin/bash",
-      "runtimeArgs": ["/Users/daniel/Documents/GitHub/Structura/scripts/dev-server.sh"],
+      "runtimeExecutable": "/bin/sh",
+      "runtimeArgs": ["-c", "cd /Users/daniel/Documents/GitHub/Structura && BROWSER=none PATH=/usr/local/bin:$PATH npm run dev"],
       "port": 3000,
       "autoPort": true
     },
