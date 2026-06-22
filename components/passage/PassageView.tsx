@@ -138,6 +138,14 @@ interface Props {
   hideToolbar?: boolean;
 }
 
+// OutlinePane receives sceneBreakMap for live in-chapter edits, but in Passage
+// view every break is already included in outlineBreaksForPane (derived from
+// sceneBreakMap with real chapter numbers). Passing the map again would cause
+// every break to appear twice — once from bookSceneBreaks with the correct
+// chapter (isCurrent=true via passageChapters) and once from sceneBreakMap
+// with chapter=-1 (isCurrent=false), making the duplicate undeletable.
+const EMPTY_SCENE_BREAK_MAP: Map<string, never[]> = new Map();
+
 export default function PassageView({
   passage: initialPassage,
   words,
@@ -4153,7 +4161,7 @@ export default function PassageView({
             book={osisBook}
             chapter={-1}
             textSource={textSource}
-            sceneBreakMap={sceneBreakMap}
+            sceneBreakMap={EMPTY_SCENE_BREAK_MAP}
             bookSceneBreaks={outlineBreaksForPane}
             wordPositionMap={wordPositionMap}
             sectionRanges={sectionRanges}
