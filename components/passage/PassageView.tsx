@@ -2143,9 +2143,9 @@ export default function PassageView({
     });
     try {
       await fetch("/api/scene-breaks", { method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ wordId, book: bookName, chapter: wordChapter, verse, source: textSource, level: fromLevel }) });
+        body: JSON.stringify({ wordId, book: osisBook, chapter: wordChapter, verse, source: textSource, level: fromLevel }) });
       await fetch("/api/scene-breaks", { method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ wordId, book: bookName, chapter: wordChapter, verse, source: textSource, level: toLevel }) });
+        body: JSON.stringify({ wordId, book: osisBook, chapter: wordChapter, verse, source: textSource, level: toLevel }) });
       if (existing.heading) {
         await fetch("/api/scene-breaks", { method: "PATCH", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ wordId, level: toLevel, heading: existing.heading }) });
