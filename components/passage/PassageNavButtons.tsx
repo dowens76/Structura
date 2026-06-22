@@ -30,6 +30,7 @@ export default function PassageNavButtons({
   const [dialogOpen,   setDialogOpen]     = useState(false);
   const [passages,     setPassages]       = useState<Passage[]>([]);
   const [loading,      setLoading]        = useState(false);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   // The sibling book in the contiguous pair (whichever direction)
@@ -64,6 +65,12 @@ export default function PassageNavButtons({
     }
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [dropdownOpen, handleClickOutside]);
+
+  async function handleDelete(id: number) {
+    await fetch(`/api/passages/${id}`, { method: "DELETE" });
+    setPassages((prev) => prev.filter((p) => p.id !== id));
+    setConfirmDeleteId(null);
+  }
 
   function formatRef(p: Passage) {
     const startPrefix = p.book !== book ? `${OSIS_REF_BOOK_NAMES[p.book] ?? p.book} ` : "";
@@ -114,24 +121,60 @@ export default function PassageNavButtons({
               ) : (
                 passages.map((p) => {
                   const isActive = p.id === currentPassageId;
+                  const confirmingDelete = confirmDeleteId === p.id;
                   return (
-                    <Link
+                    <div
                       key={p.id}
-                      href={`/${encodeURIComponent(p.book)}/${textSource}/passage/${p.id}`}
-                      onClick={() => setDropdownOpen(false)}
-                      className="flex items-baseline gap-2 px-4 py-2.5 hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors border-b last:border-0"
+                      className="flex items-center border-b last:border-0"
                       style={{
                         borderColor: "var(--border)",
                         backgroundColor: isActive ? "rgba(200,155,60,0.10)" : undefined,
                       }}
                     >
-                      {isActive && (
-                        <span className="text-[9px] shrink-0" style={{ color: "var(--accent)" }}>▶</span>
-                      )}
-                      <span className="flex-1 text-sm font-mono truncate" style={{ color: isActive ? "var(--accent)" : "var(--foreground)" }}>
-                        {formatRef(p)}
-                      </span>
-                    </Link>
+                      <Link
+                        href={`/${encodeURIComponent(p.book)}/${textSource}/passage/${p.id}`}
+                        onClick={() => setDropdownOpen(false)}
+                        className="flex items-baseline gap-2 flex-1 px-4 py-2.5 hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors min-w-0"
+                      >
+                        {isActive && (
+                          <span className="text-[9px] shrink-0" style={{ color: "var(--accent)" }}>▶</span>
+                        )}
+                        <span className="flex-1 text-sm font-mono truncate" style={{ color: isActive ? "var(--accent)" : "var(--foreground)" }}>
+                          {formatRef(p)}
+                        </span>
+                      </Link>
+                      <div className="shrink-0 flex items-center gap-1 pr-2">
+                        {confirmingDelete ? (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => handleDelete(p.id)}
+                              className="text-[11px] px-1.5 py-0.5 rounded bg-red-600 text-white hover:bg-red-700 transition-colors"
+                            >
+                              Yes
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setConfirmDeleteId(null)}
+                              className="text-[11px] px-1.5 py-0.5 rounded hover:bg-stone-200 dark:hover:bg-stone-700 transition-colors"
+                              style={{ color: "var(--text-muted)" }}
+                            >
+                              No
+                            </button>
+                          </>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setConfirmDeleteId(p.id)}
+                            className="text-[13px] opacity-30 hover:opacity-100 px-1 rounded hover:bg-stone-200 dark:hover:bg-stone-700 transition-colors"
+                            style={{ color: "var(--text-muted)" }}
+                            title="Delete passage"
+                          >
+                            ×
+                          </button>
+                        )}
+                      </div>
+                    </div>
                   );
                 })
               )}
