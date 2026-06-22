@@ -36,7 +36,7 @@ import { useAnnotationRange } from "@/lib/hooks/useAnnotationRange";
 import { useRstRelations } from "@/lib/hooks/useRstRelations";
 import hebrewLemmas from "@/lib/data/hebrew-lemmas.json";
 import { computeSectionRanges } from "@/lib/utils/sectionRanges";
-import { OSIS_BOOK_NAMES, OSIS_REF_BOOK_NAMES } from "@/lib/utils/osis";
+import { OSIS_BOOK_NAMES, OSIS_REF_BOOK_NAMES, CONTIGUOUS_BOOK_PAIRS, CONTIGUOUS_BOOK_PREV } from "@/lib/utils/osis";
 import AddressBar from "@/components/ui/AddressBar";
 import { useTranslation } from "@/lib/i18n/LocaleContext";
 import { getMtToKjvInstructions, getKjvVerseLabel } from "@/lib/versification/mt-kjv-mapping";
@@ -126,7 +126,7 @@ interface Props {
   // Text critical marks (MT/LXX comparison)
   initialTextCriticalMarks?: { wordId: string; markType: string; textSource: string }[];
   // Book-wide breaks + max verses for cross-chapter range computation
-  bookSceneBreaks: { wordId: string; level: number; chapter: number; verse: number; extendedThrough: number | null }[];
+  bookSceneBreaks: { wordId: string; heading: string | null; level: number; chapter: number; verse: number; positionInVerse: number; extendedThrough: number | null; thematic: boolean; thematicLetter: string | null; transitional: boolean }[];
   bookMaxVerses: Map<number, number>;
   // Translation footnotes (keyed by translation ID)
   initialTranslationFootnotes?: Record<number, TranslationFootnote[]>;
@@ -499,6 +499,50 @@ export default function PassageView({
   );
   const [editingScenes, setEditingScenes] = useState(false);
   useEffect(() => { writeLocal("structura:editingScenes", editingScenes); }, [editingScenes]);
+
+  // ── Outline continuation / predecessor books ──────────────────────────────
+  const continuationBook     = CONTIGUOUS_BOOK_PAIRS[osisBook] ?? null;
+  const continuationBookName = continuationBook ? (OSIS_REF_BOOK_NAMES[continuationBook] ?? continuationBook) : null;
+  const [outlineExtended,      setOutlineExtended]      = useState(false);
+  const [contBreaks,           setContBreaks]           = useState<{ wordId: string; heading: string | null; level: number; chapter: number; verse: number; positionInVerse: number; thematic: boolean; thematicLetter: string | null }[]>([]);
+  const [contMaxVerses,        setContMaxVerses]        = useState<Map<number, number>>(new Map());
+  const [contDataLoaded,       setContDataLoaded]       = useState(false);
+  const [loadingCont,          setLoadingCont]          = useState(false);
+  useEffect(() => {
+    if (!outlineExtended || !continuationBook || contDataLoaded) return;
+    setLoadingCont(true);
+    Promise.all([
+      fetch(`/api/book-scene-breaks?book=${encodeURIComponent(continuationBook)}&source=${encodeURIComponent(textSource)}`).then((r) => r.json()),
+      fetch(`/api/book-info?book=${encodeURIComponent(continuationBook)}&source=${encodeURIComponent(textSource)}`).then((r) => r.json()),
+    ])
+      .then(([breakData, infoData]) => {
+        setContBreaks(breakData.breaks ?? []);
+        const mv = new Map<number, number>();
+        for (const [ch, v] of Object.entries((infoData.chapterMaxVerses ?? {}) as Record<string, number>)) {
+          mv.set(Number(ch), v);
+        }
+        setContMaxVerses(mv);
+        setContDataLoaded(true);
+      })
+      .catch(() => setContDataLoaded(true))
+      .finally(() => setLoadingCont(false));
+  }, [outlineExtended, continuationBook, contDataLoaded, textSource]);
+
+  const predecessorBook     = CONTIGUOUS_BOOK_PREV[osisBook] ?? null;
+  const predecessorBookName = predecessorBook ? (OSIS_REF_BOOK_NAMES[predecessorBook] ?? predecessorBook) : null;
+  const [outlinePredecessorShown, setOutlinePredecessorShown] = useState(false);
+  const [predBreaks,    setPredBreaks]    = useState<{ wordId: string; heading: string | null; level: number; chapter: number; verse: number; positionInVerse: number; thematic: boolean; thematicLetter: string | null }[]>([]);
+  const [predDataLoaded, setPredDataLoaded] = useState(false);
+  const [loadingPred,    setLoadingPred]    = useState(false);
+  useEffect(() => {
+    if (!outlinePredecessorShown || !predecessorBook || predDataLoaded) return;
+    setLoadingPred(true);
+    fetch(`/api/book-scene-breaks?book=${encodeURIComponent(predecessorBook)}&source=${encodeURIComponent(textSource)}`)
+      .then((r) => r.json())
+      .then((data) => { setPredBreaks(data.breaks ?? []); setPredDataLoaded(true); })
+      .catch(() => setPredDataLoaded(true))
+      .finally(() => setLoadingPred(false));
+  }, [outlinePredecessorShown, predecessorBook, predDataLoaded, textSource]);
   // newPassage prompt state
   const searchParams = useSearchParams();
   const [showNewPassagePrompt, setShowNewPassagePrompt] = useState(() => searchParams.get("newPassage") === "true");
@@ -2759,7 +2803,12 @@ export default function PassageView({
   // ── Outline pane ──────────────────────────────────────────────────────────
 
   const outlineBreaksForPane = useMemo(() => {
-    const result: { wordId: string; heading: string | null; level: number; chapter: number; verse: number; positionInVerse: number; thematic: boolean; thematicLetter: string | null; transitional: boolean }[] = [];
+    // Start with book-wide breaks for chapters outside the passage (live state overrides passage chapters)
+    const result: { wordId: string; heading: string | null; level: number; chapter: number; verse: number; positionInVerse: number; thematic: boolean; thematicLetter: string | null; transitional: boolean }[] =
+      bookSceneBreaks
+        .filter((b) => !passageChapterSet.has(b.chapter))
+        .map((b) => ({ ...b }));
+    // Add live passage breaks from sceneBreakMap
     for (const [wordId, arr] of sceneBreakMap) {
       const ch = wordToChapter.get(wordId) ?? passage.startChapter;
       for (const br of arr) {
@@ -2772,7 +2821,52 @@ export default function PassageView({
       a.level   - b.level
     );
     return result;
-  }, [sceneBreakMap, wordToChapter, passage.startChapter]);
+  }, [bookSceneBreaks, sceneBreakMap, wordToChapter, passage.startChapter, passageChapterSet]);
+
+  const { extendedSectionRanges, crossBookRangeKeys } = useMemo<{
+    extendedSectionRanges: typeof sectionRanges;
+    crossBookRangeKeys: Set<string>;
+  }>(() => {
+    const empty = { extendedSectionRanges: sectionRanges, crossBookRangeKeys: new Set<string>() };
+    if (!outlineExtended || !contDataLoaded) return empty;
+    const lastCh    = bookMaxVerses.size ? Math.max(...bookMaxVerses.keys()) : 0;
+    const lastVerse = bookMaxVerses.get(lastCh) ?? 0;
+    if (!lastCh || !lastVerse) return empty;
+    const contLastCh    = contMaxVerses.size ? Math.max(...contMaxVerses.keys()) : 0;
+    const contLastVerse = contMaxVerses.get(contLastCh) ?? 0;
+    const sortedContBreaks = [...contBreaks].sort((a, b) =>
+      a.chapter !== b.chapter ? a.chapter - b.chapter :
+      a.verse   !== b.verse   ? a.verse   - b.verse   : a.level - b.level
+    );
+    const result    = new Map(sectionRanges);
+    const crossKeys = new Set<string>();
+    for (const [key, range] of sectionRanges) {
+      if (range.endChapter !== lastCh || range.endVerse !== lastVerse) continue;
+      const lastColon = key.lastIndexOf(":");
+      const level     = parseInt(key.slice(lastColon + 1), 10);
+      if (isNaN(level)) continue;
+      const closing = sortedContBreaks.find((b) => b.level <= level);
+      let newEndCh: number;
+      let newEndVerse: number;
+      if (closing) {
+        const prev = closing.verse - 1;
+        if (prev < 1) {
+          const prevCh = closing.chapter - 1;
+          newEndCh    = prevCh >= 1 ? prevCh : closing.chapter;
+          newEndVerse = prevCh >= 1 ? (contMaxVerses.get(prevCh) ?? 0) : closing.verse;
+        } else {
+          newEndCh    = closing.chapter;
+          newEndVerse = prev;
+        }
+      } else {
+        newEndCh    = contLastCh;
+        newEndVerse = contLastVerse;
+      }
+      result.set(key, { endChapter: newEndCh, endVerse: newEndVerse });
+      crossKeys.add(key);
+    }
+    return { extendedSectionRanges: result, crossBookRangeKeys: crossKeys };
+  }, [outlineExtended, contDataLoaded, contBreaks, contMaxVerses, sectionRanges, bookMaxVerses]);
 
   async function handleDeleteSceneBreakForOutline(wordId: string, level: number) {
     setSceneBreakMap((prev) => {
@@ -4164,16 +4258,23 @@ export default function PassageView({
             sceneBreakMap={EMPTY_SCENE_BREAK_MAP}
             bookSceneBreaks={outlineBreaksForPane}
             wordPositionMap={wordPositionMap}
-            sectionRanges={sectionRanges}
+            sectionRanges={outlineExtended ? extendedSectionRanges : sectionRanges}
             onUpdateCurrentHeading={handleUpdateSceneHeading}
             onDeleteCurrentBreak={handleDeleteSceneBreakForOutline}
             onClose={() => setOutlineOpen(false)}
-            outlineExtended={false}
-            onToggleExtended={() => {}}
-            continuationBook={null}
-            continuationBookName={null}
-            continuationBreaks={[]}
-            crossBookRangeKeys={new Set()}
+            outlineExtended={outlineExtended}
+            onToggleExtended={setOutlineExtended}
+            continuationBook={continuationBook}
+            continuationBookName={continuationBookName}
+            continuationBreaks={contBreaks}
+            crossBookRangeKeys={crossBookRangeKeys}
+            loadingContinuation={loadingCont}
+            predecessorBook={predecessorBook}
+            predecessorBookName={predecessorBookName}
+            predecessorBreaks={predBreaks}
+            outlinePredecessorShown={outlinePredecessorShown}
+            onTogglePredecessorShown={setOutlinePredecessorShown}
+            loadingPredecessor={loadingPred}
             passageChapters={passageChapterSet}
           />
         </ResizablePane>
