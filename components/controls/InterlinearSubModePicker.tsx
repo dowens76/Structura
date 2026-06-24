@@ -16,6 +16,10 @@ interface InterlinearSubModePickerProps {
   onDeleteDataset: (id: number) => void;
   onRenameDataset: (id: number, name: string) => void;
   onUploadDataset: (id: number) => void;
+  // Copy transliteration
+  minVerse?: number;
+  maxVerse?: number;
+  onCopyTransliteration?: (opts: { format: "interlinear" | "running"; startVerse: number; endVerse: number }) => Promise<void>;
 }
 
 type SimpleMode = "lemma" | "strongs" | "morph" | "transliteration" | "constituent";
@@ -40,18 +44,29 @@ export default function InterlinearSubModePicker({
   onDeleteDataset,
   onRenameDataset,
   onUploadDataset,
+  minVerse = 1,
+  maxVerse = 1,
+  onCopyTransliteration,
 }: InterlinearSubModePickerProps) {
-  const [dsMenuOpen, setDsMenuOpen]     = useState(false);
-  const [creating,   setCreating]       = useState(false);
-  const [newName,    setNewName]        = useState("");
-  const [renamingId, setRenamingId]     = useState<number | null>(null);
-  const [renameVal,  setRenameVal]      = useState("");
-  const menuRef                          = useRef<HTMLDivElement>(null);
-  const createInputRef                   = useRef<HTMLInputElement>(null);
-  const renameInputRef                   = useRef<HTMLInputElement>(null);
+  const [dsMenuOpen,   setDsMenuOpen]   = useState(false);
+  const [creating,     setCreating]     = useState(false);
+  const [newName,      setNewName]      = useState("");
+  const [renamingId,   setRenamingId]   = useState<number | null>(null);
+  const [renameVal,    setRenameVal]    = useState("");
+  const [copyOpen,     setCopyOpen]     = useState(false);
+  const [copyFormat,   setCopyFormat]   = useState<"running" | "interlinear">("running");
+  const [copyStart,    setCopyStart]    = useState(minVerse);
+  const [copyEnd,      setCopyEnd]      = useState(maxVerse);
+  const [copying,      setCopying]      = useState(false);
+  const [copied,       setCopied]       = useState(false);
+  const menuRef       = useRef<HTMLDivElement>(null);
+  const copyRef       = useRef<HTMLDivElement>(null);
+  const createInputRef = useRef<HTMLInputElement>(null);
+  const renameInputRef = useRef<HTMLInputElement>(null);
 
-  const activeDs = activeDatasetId(subMode);
+  const activeDs      = activeDatasetId(subMode);
   const currentSimple = typeof subMode === "string" ? subMode : null;
+  const isTranslit    = subMode === "transliteration";
 
   const btnBase =
     "px-2.5 py-1 rounded text-xs font-medium transition-colors whitespace-nowrap";
@@ -78,6 +93,32 @@ export default function InterlinearSubModePicker({
     setRenameVal("");
   }
 
+  function openCopy() {
+    setCopyStart(minVerse);
+    setCopyEnd(maxVerse);
+    setCopied(false);
+    setCopyOpen((v) => !v);
+    setDsMenuOpen(false);
+  }
+
+  async function handleCopy() {
+    if (!onCopyTransliteration) return;
+    setCopying(true);
+    await onCopyTransliteration({
+      format: copyFormat,
+      startVerse: copyStart,
+      endVerse: copyEnd,
+    });
+    setCopying(false);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
+
+  const panelStyle = {
+    borderColor: "var(--border)",
+    backgroundColor: "var(--surface)",
+  };
+
   return (
     <div className="flex items-center gap-1 flex-wrap">
       <span className="text-xs text-stone-400 dark:text-stone-500 mr-0.5">Show:</span>
@@ -97,7 +138,7 @@ export default function InterlinearSubModePicker({
       {/* ── Dataset picker ────────────────────────────────────────────────── */}
       <div className="relative" ref={menuRef}>
         <button
-          onClick={() => setDsMenuOpen((v) => !v)}
+          onClick={() => { setDsMenuOpen((v) => !v); setCopyOpen(false); }}
           title="User-created word datasets"
           className={[
             btnBase,
@@ -114,7 +155,7 @@ export default function InterlinearSubModePicker({
         {dsMenuOpen && (
           <div
             className="absolute left-0 top-full mt-1 z-50 rounded-lg border shadow-lg py-1 min-w-[200px]"
-            style={{ borderColor: "var(--border)", backgroundColor: "var(--surface)" }}
+            style={panelStyle}
           >
             {datasets.length === 0 && !creating && (
               <p className="px-3 py-2 text-xs" style={{ color: "var(--text-muted)" }}>
@@ -210,6 +251,100 @@ export default function InterlinearSubModePicker({
           </div>
         )}
       </div>
+
+      {/* ── Copy transliteration (only in Translit. mode) ─────────────────── */}
+      {isTranslit && onCopyTransliteration && (
+        <div className="relative" ref={copyRef}>
+          <button
+            onClick={openCopy}
+            title="Copy transliteration to clipboard"
+            className={[btnBase, "flex items-center gap-1", copyOpen ? btnActive : btnIdle].join(" ")}
+          >
+            Copy <span className="opacity-70">▾</span>
+          </button>
+
+          {copyOpen && (
+            <div
+              className="absolute left-0 top-full mt-1 z-50 rounded-lg border shadow-lg p-3 flex flex-col gap-2.5"
+              style={{ ...panelStyle, minWidth: "220px" }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Format toggle */}
+              <div>
+                <p className="text-[10px] uppercase tracking-wide mb-1" style={{ color: "var(--text-muted)" }}>Format</p>
+                <div className="flex gap-1">
+                  {(["running", "interlinear"] as const).map((f) => (
+                    <button
+                      key={f}
+                      onClick={() => setCopyFormat(f)}
+                      className={[
+                        "flex-1 text-xs px-2 py-1 rounded border transition-colors",
+                        copyFormat === f
+                          ? "bg-blue-600 border-blue-600 text-white"
+                          : "border-stone-200 dark:border-stone-700 hover:bg-stone-100 dark:hover:bg-stone-700",
+                      ].join(" ")}
+                      style={{ color: copyFormat === f ? undefined : "var(--foreground)" }}
+                    >
+                      {f === "running" ? "Running text" : "Interlinear table"}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-[10px] mt-1" style={{ color: "var(--text-muted)" }}>
+                  {copyFormat === "running"
+                    ? "Flowing text per verse — good for inline citations"
+                    : "Source + transliteration rows — good for interlinear display"}
+                </p>
+              </div>
+
+              {/* Verse range */}
+              <div>
+                <p className="text-[10px] uppercase tracking-wide mb-1" style={{ color: "var(--text-muted)" }}>Verses</p>
+                <div className="flex items-center gap-1.5">
+                  <input
+                    type="number"
+                    min={minVerse}
+                    max={maxVerse}
+                    value={copyStart}
+                    onChange={(e) => setCopyStart(Math.max(minVerse, Math.min(maxVerse, parseInt(e.target.value) || minVerse)))}
+                    className="w-14 rounded border px-1.5 py-0.5 text-xs outline-none text-center"
+                    style={{ borderColor: "var(--border)", backgroundColor: "var(--surface)", color: "var(--foreground)" }}
+                  />
+                  <span className="text-xs" style={{ color: "var(--text-muted)" }}>–</span>
+                  <input
+                    type="number"
+                    min={minVerse}
+                    max={maxVerse}
+                    value={copyEnd}
+                    onChange={(e) => setCopyEnd(Math.max(minVerse, Math.min(maxVerse, parseInt(e.target.value) || maxVerse)))}
+                    className="w-14 rounded border px-1.5 py-0.5 text-xs outline-none text-center"
+                    style={{ borderColor: "var(--border)", backgroundColor: "var(--surface)", color: "var(--foreground)" }}
+                  />
+                  <button
+                    onClick={() => { setCopyStart(minVerse); setCopyEnd(maxVerse); }}
+                    className="text-[10px] px-1.5 py-0.5 rounded border border-stone-200 dark:border-stone-700 hover:bg-stone-100 dark:hover:bg-stone-700"
+                    style={{ color: "var(--text-muted)" }}
+                    title="Reset to full chapter"
+                  >All</button>
+                </div>
+              </div>
+
+              {/* Copy button */}
+              <button
+                onClick={handleCopy}
+                disabled={copying}
+                className={[
+                  "w-full text-xs px-3 py-1.5 rounded font-medium transition-colors",
+                  copied
+                    ? "bg-green-600 text-white"
+                    : "bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-60",
+                ].join(" ")}
+              >
+                {copied ? "✓ Copied!" : copying ? "Copying…" : "Copy to clipboard"}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

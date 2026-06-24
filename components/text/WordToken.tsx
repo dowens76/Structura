@@ -46,6 +46,8 @@ interface WordTokenProps {
   onLemmaClick?: (word: Word) => void;
   showVowels?: boolean;
   showCantillation?: boolean;
+  // In interlinear mode, background highlight to apply only to the source-text span
+  wordHighlightBg?: string;
 }
 
 /** Split surface text into leading punctuation, core word, and trailing punctuation.
@@ -131,9 +133,11 @@ function InterlinearLabel({
   const inputRef = useRef<HTMLInputElement>(null);
 
   const labelStyle: React.CSSProperties = {
-    fontFamily: isHebrew
-      ? '"Ezra SIL", "SBL Hebrew", serif'
-      : '"Gentium Plus", "GFS Didot", serif',
+    fontFamily: subMode === "transliteration"
+      ? '"Gentium Book Basic", "Gentium Basic", "Gentium Plus", serif'
+      : isHebrew
+        ? '"Ezra SIL", "SBL Hebrew", serif'
+        : '"Gentium Plus", "GFS Didot", serif',
     fontSize: "0.72em",
     color: "var(--interlinear-color)",
   };
@@ -414,6 +418,7 @@ export default function WordToken({
   onLemmaClick,
   showVowels = true,
   showCantillation = true,
+  wordHighlightBg,
 }: WordTokenProps) {
   const [hovering, setHovering] = useState(false);
   const [tooltipBelow, setTooltipBelow] = useState(false);
@@ -552,7 +557,7 @@ export default function WordToken({
         <span
           ref={wordRef}
           className={baseClasses}
-          style={underlineStyle}
+          style={wordHighlightBg ? { ...underlineStyle, backgroundColor: wordHighlightBg, borderRadius: "3px" } : underlineStyle}
           data-word-id={word.wordId}
           onClick={(e) => onSelect(word, e.shiftKey)}
           onMouseEnter={handleMouseEnter}

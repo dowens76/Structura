@@ -1754,10 +1754,16 @@ export default function VerseDisplay({
               ? "rgba(251, 191, 36, 0.4)"
               : undefined;
         const isLastInGroup = wi === gWords.length - 1;
+        const isInterlinear = displayMode === "interlinear";
+        // In interlinear mode, highlights must be scoped to the source-text span
+        // inside WordToken (not the outer wrapper, which covers both rows).
+        const wordHighlightBg = isInterlinear
+          ? (wrapperBg ?? (hasStyle ? wrapperStyle.backgroundColor as string | undefined : undefined))
+          : wrapperBg;
         return (
           <span
             key={word.wordId}
-            style={wrapperBg ? { backgroundColor: wrapperBg, borderRadius: "2px" } : undefined}
+            style={(!isInterlinear && wrapperBg) ? { backgroundColor: wrapperBg, borderRadius: "2px" } : undefined}
           >
             <WordToken
               word={word}
@@ -1792,6 +1798,7 @@ export default function VerseDisplay({
               onLemmaClick={onLemmaClick}
               showVowels={showVowels}
               showCantillation={showCantillation}
+              wordHighlightBg={wordHighlightBg}
             />
             {wordHasAtnach && (
               <span
@@ -1818,8 +1825,13 @@ export default function VerseDisplay({
 
       // Wrap in a styled span (or plain span when unstyled); space between
       // groups goes OUTSIDE so it isn't coloured by the adjacent group.
+      const groupWrapperStyle = hasStyle
+        ? (displayMode === "interlinear"
+            ? { borderRadius: wrapperStyle.borderRadius }  // keep shape, drop bg (bg goes to text span)
+            : wrapperStyle)
+        : undefined;
       elements.push(
-        <span key={gi} style={hasStyle ? wrapperStyle : undefined}>
+        <span key={gi} style={groupWrapperStyle}>
           {inner}
         </span>
       );

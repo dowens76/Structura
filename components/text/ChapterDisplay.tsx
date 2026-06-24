@@ -2842,6 +2842,27 @@ export default function ChapterDisplay({
     } catch { /* ignore */ }
   }
 
+  async function handleCopyTransliteration(opts: { format: "interlinear" | "running"; startVerse: number; endVerse: number }) {
+    const { buildTransliterationClipboard } = await import("@/lib/utils/transliteration-export");
+    const { html, plain } = buildTransliterationClipboard(words, transliterationFormatMap, {
+      ...opts,
+      book,
+      chapter,
+    });
+    if (!html) return;
+    try {
+      await navigator.clipboard.write([
+        new ClipboardItem({
+          "text/html":  new Blob([html],  { type: "text/html" }),
+          "text/plain": new Blob([plain], { type: "text/plain" }),
+        }),
+      ]);
+    } catch {
+      // Fallback for browsers that don't support ClipboardItem
+      await navigator.clipboard.writeText(plain);
+    }
+  }
+
   async function handleSaveTransliterationFormat(wordId: string, format: string | null) {
     setTransliterationFormatMap((prev) => {
       const next = new Map(prev);
@@ -3558,6 +3579,9 @@ export default function ChapterDisplay({
                     // Trigger hidden file input
                     setTimeout(() => uploadInputRef.current?.click(), 0);
                   }}
+                  minVerse={words.length ? Math.min(...words.map((w) => w.verse)) : 1}
+                  maxVerse={words.length ? Math.max(...words.map((w) => w.verse)) : 1}
+                  onCopyTransliteration={handleCopyTransliteration}
                 />
               )}
               {toolbarVis.tooltips && <button
