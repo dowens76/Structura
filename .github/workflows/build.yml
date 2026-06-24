@@ -164,7 +164,7 @@ jobs:
 
       - name: Generate OSHB + SBLGNT databases
         if: steps.cache-dbs.outputs.cache-hit != 'true'
-        run: npm run import:oshb && npm run import:morphgnt && npm run generate:transliterations && npm run db:split-source
+        run: npm run db:push:source && npm run import:oshb && npm run import:morphgnt && npm run generate:transliterations && npm run db:split-source
 
       - name: Generate LXX database
         if: steps.cache-dbs.outputs.cache-hit != 'true'
