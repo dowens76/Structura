@@ -22,7 +22,8 @@ mkdirSync(DEST_DIR, { recursive: true });
 
 // Required DBs — build fails if any are absent.
 const REQUIRED_DBS = [
-  "source.db",
+  "oshb.db",
+  "sblgnt.db",
   // Per-lexicon DBs — created by running individual import scripts or
   // by splitting the legacy combined DB:  npm run db:split:lexica
   "bdb.db",
@@ -49,7 +50,9 @@ for (const name of DBS) {
     }
     const hint = ["bdb.db","strongs-hebrew.db","dodson.db","abbott-smith.db","lsj.db"].includes(name)
       ? " Run the import scripts (npm run import:lexicon) or split the legacy DB (npm run db:split:lexica)."
-      : " Run the import scripts first.";
+      : ["oshb.db","sblgnt.db"].includes(name)
+        ? " Run: npm run import:oshb && npm run import:morphgnt && npm run generate:transliterations && npm run db:split-source"
+        : " Run the import scripts first.";
     console.error(`ERROR: ${src} not found.${hint}`);
     process.exit(1);
   }

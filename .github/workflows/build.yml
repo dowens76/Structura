@@ -153,12 +153,18 @@ jobs:
         uses: actions/cache@v5
         with:
           path: |
+            data/oshb.db
+            data/sblgnt.db
             data/lxx.db
             data/ult.db
             data/vcb.db
-          key: source-dbs-${{ hashFiles('scripts/import-lxx.ts', 'scripts/add-lxx-punctuation.ts', 'scripts/import-ult.ts', 'scripts/import-vcb.ts') }}
+          key: source-dbs-${{ hashFiles('scripts/import-oshb.ts', 'scripts/import-morphgnt.ts', 'scripts/generate-transliterations.ts', 'scripts/split-source-db.ts', 'scripts/import-lxx.ts', 'scripts/add-lxx-punctuation.ts', 'scripts/import-ult.ts', 'scripts/import-vcb.ts') }}
           # Note: lexicon DBs (bdb.db, lsj.db, etc.) are committed to git / LFS
           # and do not need to be cached or generated in CI.
+
+      - name: Generate OSHB + SBLGNT databases
+        if: steps.cache-dbs.outputs.cache-hit != 'true'
+        run: npm run import:oshb && npm run import:morphgnt && npm run generate:transliterations && npm run db:split-source
 
       - name: Generate LXX database
         if: steps.cache-dbs.outputs.cache-hit != 'true'
