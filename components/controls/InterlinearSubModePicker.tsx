@@ -18,13 +18,14 @@ interface InterlinearSubModePickerProps {
   onUploadDataset: (id: number) => void;
 }
 
-type SimpleMode = "lemma" | "strongs" | "morph" | "constituent";
+type SimpleMode = "lemma" | "strongs" | "morph" | "transliteration" | "constituent";
 
 const SIMPLE_MODES: { value: SimpleMode; label: string; title: string }[] = [
-  { value: "lemma",       label: "Lemma",       title: "Show dictionary form" },
-  { value: "strongs",     label: "Strong's",    title: "Show Strong's numbers" },
-  { value: "morph",       label: "Morph",       title: "Show morphology code" },
-  { value: "constituent", label: "Constituent", title: "Show grammatical constituent labels" },
+  { value: "lemma",           label: "Lemma",       title: "Show dictionary form" },
+  { value: "strongs",         label: "Strong's",    title: "Show Strong's numbers" },
+  { value: "morph",           label: "Morph",       title: "Show morphology code" },
+  { value: "transliteration", label: "Translit.",   title: "Show SBL academic transliteration" },
+  { value: "constituent",     label: "Constituent", title: "Show grammatical constituent labels" },
 ];
 
 function activeDatasetId(mode: InterlinearSubMode): number | null {

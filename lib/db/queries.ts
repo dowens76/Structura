@@ -1,5 +1,5 @@
 import { eq, and, asc, inArray, or, gte, lte, gt, lt, sql, max, like } from "drizzle-orm";
-import { sourceDb, userDb, sourceLookups, lxxLookups, getLxxDb, getLxxSqlite, getUltSqlite, getVcbSqlite, getUserSqlite } from "./index";
+import { sourceDb, userDb, sourceLookups, lxxLookups, getLxxDb, getLxxSqlite, getUltSqlite, getVcbSqlite, getUserSqlite, getOshbDb, getSblgntDb, getDbAndLookups } from "./index";
 import { getMtToKjvInstructions } from "@/lib/versification/mt-kjv-mapping";
 import type { LookupMaps } from "./index";
 import { books, words } from "./source-schema";
@@ -24,6 +24,7 @@ function decodeWord(row: WordRow, maps: LookupMaps): Word {
     lemma:           row.lemma,
     strongNumber:    row.strongNumber,
     morphCode:       row.morphCode,
+    transliteration: row.transliteration ?? null,
     language:        maps.languageById[row.languageId] ?? "",
     textSource:      maps.textSourceById[row.textSourceId] ?? "",
     partOfSpeech:    row.partOfSpeechId != null ? (maps.partOfSpeechById[row.partOfSpeechId] ?? null) : null,
@@ -72,11 +73,12 @@ export async function getBooksWithWords(textSource: string): Promise<Book[]> {
     const bookIdRows = await lxxDb.selectDistinct({ bookId: words.bookId }).from(words);
     const ids = bookIdRows.map((r) => r.bookId);
     if (ids.length === 0) return [];
-    return sourceDb.select().from(books).where(inArray(books.id, ids)).orderBy(asc(books.bookNumber));
+    return getOshbDb().select().from(books).where(inArray(books.id, ids)).orderBy(asc(books.bookNumber));
   }
-  const tsId = sourceLookups.textSourceByValue[textSource];
+  const { db: srcDb, lookups } = getDbAndLookups(textSource);
+  const tsId = lookups.textSourceByValue[textSource];
   if (tsId == null) return [];
-  const rows = await sourceDb
+  const rows = await srcDb
     .selectDistinct({ book: books })
     .from(books)
     .innerJoin(words, eq(words.bookId, books.id))
@@ -103,9 +105,10 @@ export async function getMaxChapterForSource(
     const r = await lxxDb.select({ maxCh: max(words.chapter) }).from(words).where(eq(words.bookId, book.id));
     return r[0]?.maxCh ?? book.chapterCount;
   }
-  const tsId = sourceLookups.textSourceByValue[textSource];
+  const { db: srcDb, lookups } = getDbAndLookups(textSource);
+  const tsId = lookups.textSourceByValue[textSource];
   if (tsId == null) return book.chapterCount;
-  const result = await sourceDb
+  const result = await srcDb
     .select({ maxCh: max(words.chapter) })
     .from(words)
     .where(and(eq(words.bookId, book.id), eq(words.textSourceId, tsId)));
@@ -139,14 +142,15 @@ export async function getChapterWords(
       .orderBy(asc(words.verse), asc(words.positionInVerse));
     return rows.map((r) => decodeWord(r, lxxLookups));
   }
-  const tsId = sourceLookups.textSourceByValue[textSource];
+  const { db: srcDb, lookups } = getDbAndLookups(textSource);
+  const tsId = lookups.textSourceByValue[textSource];
   if (tsId == null) return [];
-  const rows = await sourceDb
+  const rows = await srcDb
     .select()
     .from(words)
     .where(and(eq(words.bookId, book.id), eq(words.chapter, chapter), eq(words.textSourceId, tsId)))
     .orderBy(asc(words.verse), asc(words.positionInVerse));
-  return rows.map((r) => decodeWord(r, sourceLookups));
+  return rows.map((r) => decodeWord(r, lookups));
 }
 
 /**
@@ -183,9 +187,10 @@ export async function getChapterWordsRange(
     return rows.map((r) => decodeWord(r, lxxLookups));
   }
 
-  const tsId = sourceLookups.textSourceByValue[textSource];
+  const { db: srcDb, lookups } = getDbAndLookups(textSource);
+  const tsId = lookups.textSourceByValue[textSource];
   if (tsId == null) return [];
-  const rows = await sourceDb
+  const rows = await srcDb
     .select()
     .from(words)
     .where(and(
@@ -195,7 +200,7 @@ export async function getChapterWordsRange(
       eq(words.textSourceId, tsId),
     ))
     .orderBy(asc(words.chapter), asc(words.verse), asc(words.positionInVerse));
-  return rows.map((r) => decodeWord(r, sourceLookups));
+  return rows.map((r) => decodeWord(r, lookups));
 }
 
 export async function getWordById(wordId: string): Promise<Word | undefined> {
@@ -205,8 +210,10 @@ export async function getWordById(wordId: string): Promise<Word | undefined> {
     const results = await lxxDb.select().from(words).where(eq(words.wordId, wordId)).limit(1);
     return results[0] ? decodeWord(results[0], lxxLookups) : undefined;
   }
-  const results = await sourceDb.select().from(words).where(eq(words.wordId, wordId)).limit(1);
-  return results[0] ? decodeWord(results[0], sourceLookups) : undefined;
+  const db = wordId.startsWith("SBLGNT.") ? getSblgntDb() : getOshbDb();
+  const lookups = wordId.startsWith("SBLGNT.") ? getDbAndLookups("SBLGNT").lookups : getDbAndLookups("OSHB").lookups;
+  const results = await db.select().from(words).where(eq(words.wordId, wordId)).limit(1);
+  return results[0] ? decodeWord(results[0], lookups) : undefined;
 }
 
 export async function getChapterCount(osisBook: string): Promise<number> {
@@ -507,7 +514,7 @@ export async function getBookSceneBreaks(
     .orderBy(asc(sceneBreaks.chapter), asc(sceneBreaks.verse), asc(sceneBreaks.level));
   if (rows.length === 0) return [];
   const wordIds = rows.map((r) => r.wordId);
-  const db = textSource === "STEPBIBLE_LXX" ? (getLxxDb() ?? sourceDb) : sourceDb;
+  const db = textSource === "STEPBIBLE_LXX" ? (getLxxDb() ?? getOshbDb()) : getDbAndLookups(textSource).db;
   const posRows = await db
     .select({ wordId: words.wordId, positionInVerse: words.positionInVerse })
     .from(words)
@@ -526,8 +533,11 @@ export async function getBookChapterMaxVerses(
 ): Promise<Map<number, number>> {
   const bookRow = await getBook(osisBook);
   if (!bookRow) return new Map();
-  const db = textSource === "STEPBIBLE_LXX" ? (getLxxDb() ?? sourceDb) : sourceDb;
-  const tsId = textSource === "STEPBIBLE_LXX" ? null : (sourceLookups.textSourceByValue[textSource] ?? null);
+  const { db: _srcDb, lookups: _srcLookups } = textSource === "STEPBIBLE_LXX"
+    ? { db: getLxxDb() ?? getOshbDb(), lookups: lxxLookups }
+    : getDbAndLookups(textSource);
+  const db = _srcDb;
+  const tsId = textSource === "STEPBIBLE_LXX" ? null : (_srcLookups.textSourceByValue[textSource] ?? null);
   const whereClause = tsId != null
     ? and(eq(words.bookId, bookRow.id), eq(words.textSourceId, tsId))
     : eq(words.bookId, bookRow.id);
@@ -703,8 +713,11 @@ export async function migratePassageLabelsToSectionBreaks(workspaceId: number): 
     if (!bookRow) continue;
 
     const isLxx = passage.textSource === "STEPBIBLE_LXX";
-    const db = isLxx ? (getLxxDb() ?? sourceDb) : sourceDb;
-    const tsId = isLxx ? null : (sourceLookups.textSourceByValue[passage.textSource] ?? null);
+    const { db: _pDb, lookups: _pLookups } = isLxx
+      ? { db: getLxxDb() ?? getOshbDb(), lookups: lxxLookups }
+      : getDbAndLookups(passage.textSource);
+    const db = _pDb;
+    const tsId = isLxx ? null : (_pLookups.textSourceByValue[passage.textSource] ?? null);
     const firstWords = await db
       .select({ wordId: words.wordId, verse: words.verse })
       .from(words)
@@ -1172,13 +1185,14 @@ export async function getWordRefsByLemmas(
       ? eq(books.osisCode, corpusBooks[0])
       : inArray(books.osisCode, corpusBooks);
     const lemmaConds = buildLemmaConditions(lemmas);
-    const rows = await sourceDb
+    const { db: _lemmaDb, lookups: _lemmaLookups } = getDbAndLookups(textSourceName);
+    const rows = await _lemmaDb
       .select({ wordId: words.wordId, osisCode: books.osisCode, chapter: words.chapter, textSourceId: words.textSourceId })
       .from(words)
       .innerJoin(books, eq(words.bookId, books.id))
       .where(and(bookCond, lemmaConds.length === 1 ? lemmaConds[0] : or(...lemmaConds)));
     for (const r of rows) {
-      const ts = sourceLookups.textSourceById[r.textSourceId] ?? textSourceName;
+      const ts = _lemmaLookups.textSourceById[r.textSourceId] ?? textSourceName;
       refs.push({ wordId: r.wordId, book: r.osisCode, chapter: r.chapter, textSource: ts });
     }
   }
@@ -1319,9 +1333,12 @@ export async function getPassageWords(
   const isCrossBook = effectiveEndBook !== osisBook;
 
   const isLxx = textSource === "STEPBIBLE_LXX";
-  const db = isLxx ? (getLxxDb() ?? sourceDb) : sourceDb;
-  const maps = isLxx ? lxxLookups : sourceLookups;
-  const tsId = isLxx ? null : (sourceLookups.textSourceByValue[textSource] ?? null);
+  const { db: _passageDb, lookups: _passageLookups } = isLxx
+    ? { db: getLxxDb() ?? getOshbDb(), lookups: lxxLookups }
+    : getDbAndLookups(textSource);
+  const db = _passageDb;
+  const maps = _passageLookups;
+  const tsId = isLxx ? null : (_passageLookups.textSourceByValue[textSource] ?? null);
 
   /** Build the chapter/verse filter for a single-book segment. */
   function buildRangeFilter(
@@ -1586,8 +1603,11 @@ export async function getChapterMaxVerse(
   if (!book) return 0;
 
   const isLxx = textSource === "STEPBIBLE_LXX";
-  const db = isLxx ? (getLxxDb() ?? sourceDb) : sourceDb;
-  const tsId = isLxx ? null : (sourceLookups.textSourceByValue[textSource] ?? null);
+  const { db: _maxVerseDb, lookups: _maxVerseLookups } = isLxx
+    ? { db: getLxxDb() ?? getOshbDb(), lookups: lxxLookups }
+    : getDbAndLookups(textSource);
+  const db = _maxVerseDb;
+  const tsId = isLxx ? null : (_maxVerseLookups.textSourceByValue[textSource] ?? null);
   const result = await db
     .select({ maxVerse: sql<number>`max(${words.verse})` })
     .from(words)

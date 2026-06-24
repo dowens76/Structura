@@ -39,8 +39,10 @@ interface WordTokenProps {
   interlinearSubMode?: InterlinearSubMode;
   constituentLabel?: string | null;
   datasetValue?: string | null;
+  transliterationFormat?: string | null;
   onSaveConstituentLabel?: (wordId: string, label: string | null) => void;
   onSaveDatasetEntry?: (wordId: string, value: string | null) => void;
+  onSaveTransliterationFormat?: (wordId: string, format: string | null) => void;
   onLemmaClick?: (word: Word) => void;
   showVowels?: boolean;
   showCantillation?: boolean;
@@ -104,8 +106,10 @@ interface InterlinearLabelProps {
   subMode: InterlinearSubMode;
   constituentLabel: string | null;
   datasetValue: string | null;
+  transliterationFormat: string | null;
   onSaveConstituentLabel?: (wordId: string, label: string | null) => void;
   onSaveDatasetEntry?: (wordId: string, value: string | null) => void;
+  onSaveTransliterationFormat?: (wordId: string, format: string | null) => void;
   onLemmaClick?: () => void;
 }
 
@@ -115,12 +119,15 @@ function InterlinearLabel({
   subMode,
   constituentLabel,
   datasetValue,
+  transliterationFormat,
   onSaveConstituentLabel,
   onSaveDatasetEntry,
+  onSaveTransliterationFormat,
   onLemmaClick,
 }: InterlinearLabelProps) {
   const [popoverOpen, setPopoverOpen] = useState(false);
   const [draftValue,  setDraftValue]  = useState("");
+  const editableRef = useRef<HTMLSpanElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const labelStyle: React.CSSProperties = {
@@ -132,16 +139,50 @@ function InterlinearLabel({
   };
 
   function getText(): string {
-    if (subMode === "lemma")       return getInterlinearLabel(word);
-    if (subMode === "strongs")     return word.strongNumber ?? "—";
-    if (subMode === "morph")       return word.morphCode ?? "—";
-    if (subMode === "constituent") return constituentLabel ?? "·";
+    if (subMode === "lemma")           return getInterlinearLabel(word);
+    if (subMode === "strongs")         return word.strongNumber ?? "—";
+    if (subMode === "morph")           return word.morphCode ?? "—";
+    if (subMode === "transliteration") return word.transliteration ?? "—";
+    if (subMode === "constituent")     return constituentLabel ?? "·";
     // dataset
     return datasetValue ?? "·";
   }
 
-  const isEditable = subMode === "constituent" || (typeof subMode === "object" && subMode.type === "dataset");
+  const isTransliteration = subMode === "transliteration";
+  const isEditable = subMode === "constituent" || isTransliteration || (typeof subMode === "object" && subMode.type === "dataset");
   const isLemmaSearchable = subMode === "lemma" && !!onLemmaClick;
+
+  function applyTranslitFormat(command: "bold" | "italic") {
+    const el = editableRef.current;
+    if (!el) return;
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0) return;
+    const range = sel.getRangeAt(0);
+    if (!el.contains(range.commonAncestorContainer)) return;
+
+    if (command === "bold") document.execCommand("bold", false);
+    else document.execCommand("italic", false);
+
+    // Sanitize: keep only <b> and <i> tags
+    const raw = el.innerHTML;
+    const safe = raw.replace(/<(?!\/?[bi]>)[^>]+>/gi, "");
+    el.innerHTML = safe;
+
+    // Restore caret at end
+    const r = document.createRange();
+    r.selectNodeContents(el);
+    r.collapse(false);
+    sel.removeAllRanges();
+    sel.addRange(r);
+  }
+
+  function saveTranslitFormat() {
+    const el = editableRef.current;
+    if (!el) return;
+    const html = el.innerHTML.replace(/<(?!\/?[bi]>)[^>]+>/gi, "").trim();
+    onSaveTransliterationFormat?.(word.wordId, html || null);
+    setPopoverOpen(false);
+  }
 
   function handleLabelClick(e: React.MouseEvent) {
     if (isLemmaSearchable) {
@@ -152,6 +193,8 @@ function InterlinearLabel({
     if (!isEditable) return;
     e.stopPropagation();
     if (subMode === "constituent") {
+      setPopoverOpen((v) => !v);
+    } else if (isTransliteration) {
       setPopoverOpen((v) => !v);
     } else {
       // dataset — open text input popover
@@ -171,6 +214,13 @@ function InterlinearLabel({
     setPopoverOpen(false);
   }
 
+  // For transliteration: render with bold/italic HTML if format exists, else plain text
+  const translitContent = isTransliteration
+    ? (transliterationFormat
+        ? <span dangerouslySetInnerHTML={{ __html: transliterationFormat }} />
+        : getText())
+    : null;
+
   return (
     <span className="relative">
       <span
@@ -183,7 +233,7 @@ function InterlinearLabel({
         onClick={handleLabelClick}
         title={isLemmaSearchable ? "Search this lemma" : isEditable ? "Click to edit" : undefined}
       >
-        {getText()}
+        {isTransliteration ? translitContent : getText()}
       </span>
 
       {/* ── Constituent label picker popover ──────────────────────────────── */}
@@ -222,6 +272,62 @@ function InterlinearLabel({
               Clear
             </button>
           )}
+        </span>
+      )}
+
+      {/* ── Transliteration format editor popover ────────────────────────── */}
+      {popoverOpen && isTransliteration && (
+        <span
+          className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 z-50 rounded-lg border shadow-lg p-2 flex flex-col gap-1.5"
+          style={{
+            borderColor: "var(--border)",
+            backgroundColor: "var(--surface)",
+            minWidth: "180px",
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <span className="text-[9px] font-mono" style={{ color: "var(--text-muted)" }}>Format letters</span>
+          {/* Toolbar */}
+          <span className="flex gap-1">
+            <button
+              onMouseDown={(e) => { e.preventDefault(); applyTranslitFormat("bold"); }}
+              className="font-bold text-xs px-2 py-0.5 rounded border border-stone-200 dark:border-stone-700 hover:bg-stone-100 dark:hover:bg-stone-700"
+              style={{ color: "var(--foreground)" }}
+              title="Bold selected letters"
+            >B</button>
+            <button
+              onMouseDown={(e) => { e.preventDefault(); applyTranslitFormat("italic"); }}
+              className="italic text-xs px-2 py-0.5 rounded border border-stone-200 dark:border-stone-700 hover:bg-stone-100 dark:hover:bg-stone-700"
+              style={{ color: "var(--foreground)" }}
+              title="Italic selected letters"
+            >I</button>
+          </span>
+          {/* Contenteditable field showing transliteration */}
+          <span
+            ref={editableRef}
+            contentEditable
+            suppressContentEditableWarning
+            dangerouslySetInnerHTML={{ __html: transliterationFormat ?? getText() }}
+            onKeyDown={(e) => { if (e.key === "Escape") setPopoverOpen(false); }}
+            className="rounded border px-1.5 py-0.5 text-xs outline-none min-w-[120px] block"
+            style={{
+              borderColor: "var(--border)",
+              backgroundColor: "var(--surface)",
+              color: "var(--foreground)",
+              fontFamily: "monospace",
+            }}
+          />
+          <span className="flex gap-1 justify-end">
+            <button
+              onClick={() => { onSaveTransliterationFormat?.(word.wordId, null); setPopoverOpen(false); }}
+              className="text-[10px] px-1.5 py-0.5 rounded border border-stone-200 dark:border-stone-700 hover:bg-stone-100 dark:hover:bg-stone-700"
+              style={{ color: "var(--text-muted)" }}
+            >Clear</button>
+            <button
+              onClick={saveTranslitFormat}
+              className="text-[10px] px-2 py-0.5 rounded bg-blue-600 text-white"
+            >Save</button>
+          </span>
         </span>
       )}
 
@@ -301,8 +407,10 @@ export default function WordToken({
   interlinearSubMode = "lemma",
   constituentLabel,
   datasetValue,
+  transliterationFormat,
   onSaveConstituentLabel,
   onSaveDatasetEntry,
+  onSaveTransliterationFormat,
   onLemmaClick,
   showVowels = true,
   showCantillation = true,
@@ -459,8 +567,10 @@ export default function WordToken({
           subMode={interlinearSubMode}
           constituentLabel={constituentLabel ?? null}
           datasetValue={datasetValue ?? null}
+          transliterationFormat={transliterationFormat ?? null}
           onSaveConstituentLabel={onSaveConstituentLabel}
           onSaveDatasetEntry={onSaveDatasetEntry}
+          onSaveTransliterationFormat={onSaveTransliterationFormat}
           onLemmaClick={onLemmaClick ? () => onLemmaClick(word) : undefined}
         />
       </span>

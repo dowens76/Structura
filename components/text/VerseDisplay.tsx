@@ -135,8 +135,10 @@ interface VerseDisplayProps {
   interlinearSubMode?: InterlinearSubMode;
   constituentLabelMap?: Map<string, string>;
   datasetEntryMap?: Map<string, string>;
+  transliterationFormatMap?: Map<string, string>;
   onSaveConstituentLabel?: (wordId: string, label: string | null) => void;
   onSaveDatasetEntry?: (wordId: string, value: string | null) => void;
+  onSaveTransliterationFormat?: (wordId: string, format: string | null) => void;
   onLemmaClick?: (word: Word) => void;
   // Source text visibility
   hideSourceText?: boolean;
@@ -934,8 +936,10 @@ export default function VerseDisplay({
   interlinearSubMode = "lemma" as InterlinearSubMode,
   constituentLabelMap = new Map<string, string>(),
   datasetEntryMap = new Map<string, string>(),
+  transliterationFormatMap = new Map<string, string>(),
   onSaveConstituentLabel,
   onSaveDatasetEntry,
+  onSaveTransliterationFormat,
   onLemmaClick,
   hideSourceText = false,
   editingTranslation = false,
@@ -1781,8 +1785,10 @@ export default function VerseDisplay({
               interlinearSubMode={interlinearSubMode}
               constituentLabel={constituentLabelMap.get(word.wordId)}
               datasetValue={datasetEntryMap.get(word.wordId)}
+              transliterationFormat={transliterationFormatMap.get(word.wordId)}
               onSaveConstituentLabel={onSaveConstituentLabel}
               onSaveDatasetEntry={onSaveDatasetEntry}
+              onSaveTransliterationFormat={onSaveTransliterationFormat}
               onLemmaClick={onLemmaClick}
               showVowels={showVowels}
               showCantillation={showCantillation}

@@ -89,9 +89,10 @@ export const words = sqliteTable(
     surfaceNorm:  text("surface_norm"),
     largeLetters: text("large_letters"),
 
-    lemma:        text("lemma"),
-    strongNumber: text("strong_number"),
-    morphCode:    text("morph_code"),
+    lemma:           text("lemma"),
+    strongNumber:    text("strong_number"),
+    morphCode:       text("morph_code"),
+    transliteration: text("transliteration"),
 
     // Normalized integer columns (decoded to strings in the query layer)
     textSourceId:   integer("text_source_id").notNull(),
@@ -153,6 +154,7 @@ export interface Word {
   lemma:           string | null;
   strongNumber:    string | null;
   morphCode:       string | null;
+  transliteration: string | null;
   partOfSpeech:    string | null;
   person:          string | null;
   gender:          string | null;

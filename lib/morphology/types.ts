@@ -57,10 +57,11 @@ export type DisplayMode = "clean" | "color" | "interlinear";
 
 /** What to display in the label row beneath each word in interlinear mode. */
 export type InterlinearSubMode =
-  | "lemma"         // dictionary form (default)
-  | "strongs"       // Strong's number, e.g. H1234 / G1234
-  | "morph"         // raw morphology code, e.g. HVqp3ms
-  | "constituent"   // user-assigned grammatical constituent label
+  | "lemma"            // dictionary form (default)
+  | "strongs"          // Strong's number, e.g. H1234 / G1234
+  | "morph"            // raw morphology code, e.g. HVqp3ms
+  | "transliteration"  // SBL academic transliteration
+  | "constituent"      // user-assigned grammatical constituent label
   | { type: "dataset"; id: number; name: string }; // user-created word dataset
 
 /** Predefined grammatical constituent labels. */

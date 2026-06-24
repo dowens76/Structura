@@ -408,6 +408,26 @@ export const wordDatasetEntries = sqliteTable(
   ]
 );
 
+/** Per-word character-level bold/italic formatting for the transliteration label.
+ *  `format` stores sanitized HTML using only <b> and <i> tags. */
+export const transliterationFormats = sqliteTable(
+  "transliteration_formats",
+  {
+    id:          integer("id").primaryKey({ autoIncrement: true }),
+    workspaceId: integer("workspace_id").notNull().default(1)
+                   .references(() => workspaces.id, { onDelete: "cascade" }),
+    wordId:      text("word_id").notNull(),
+    format:      text("format").notNull(),
+    textSource:  text("text_source").notNull(),
+    book:        text("book").notNull(),
+    chapter:     integer("chapter").notNull(),
+  },
+  (t) => [
+    uniqueIndex("trf_ws_word_idx").on(t.workspaceId, t.wordId),
+    index("trf_book_ch_src_idx").on(t.book, t.chapter, t.textSource),
+  ]
+);
+
 // ─── Translation footnotes & version history ───────────────────────────────
 
 /** Footnotes (\f) and cross-references (\x) extracted from USFM imports. */

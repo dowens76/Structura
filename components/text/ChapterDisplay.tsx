@@ -208,6 +208,7 @@ export default function ChapterDisplay({
   const [constituentLabelMap, setConstituentLabelMap] = useState<Map<string, string>>(new Map());
   const [datasets, setDatasets] = useState<{ id: number; name: string }[]>([]);
   const [datasetEntryMap, setDatasetEntryMap] = useState<Map<string, string>>(new Map());
+  const [transliterationFormatMap, setTransliterationFormatMap] = useState<Map<string, string>>(new Map());
   // Upload dialog state
   const [uploadDatasetId, setUploadDatasetId] = useState<number | null>(null);
   const uploadInputRef = useRef<HTMLInputElement>(null);
@@ -1041,6 +1042,19 @@ export default function ChapterDisplay({
       .then((r) => r.json())
       .then((rows: { wordId: string; value: string }[]) =>
         setDatasetEntryMap(new Map(rows.map((r) => [r.wordId, r.value])))
+      )
+      .catch(() => {});
+  }, [displayMode, interlinearSubMode, book, chapter, textSource]);
+
+  // ── Load transliteration formats for current chapter ─────────────────────
+  useEffect(() => {
+    if (displayMode !== "interlinear" || interlinearSubMode !== "transliteration") return;
+    fetch(
+      `/api/interlinear/transliteration-formats?workspaceId=1&book=${encodeURIComponent(book)}&chapter=${chapter}&textSource=${encodeURIComponent(textSource)}`
+    )
+      .then((r) => r.json())
+      .then((rows: { wordId: string; format: string }[]) =>
+        setTransliterationFormatMap(new Map(rows.map((r) => [r.wordId, r.format])))
       )
       .catch(() => {});
   }, [displayMode, interlinearSubMode, book, chapter, textSource]);
@@ -2823,6 +2837,30 @@ export default function ChapterDisplay({
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ wordId, value, textSource, book, chapter }),
+        });
+      }
+    } catch { /* ignore */ }
+  }
+
+  async function handleSaveTransliterationFormat(wordId: string, format: string | null) {
+    setTransliterationFormatMap((prev) => {
+      const next = new Map(prev);
+      if (format === null) next.delete(wordId);
+      else next.set(wordId, format);
+      return next;
+    });
+    try {
+      if (format === null) {
+        await fetch("/api/interlinear/transliteration-formats", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ workspaceId: 1, wordId }),
+        });
+      } else {
+        await fetch("/api/interlinear/transliteration-formats", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ workspaceId: 1, wordId, format, textSource, book, chapter }),
         });
       }
     } catch { /* ignore */ }
@@ -4652,8 +4690,10 @@ export default function ChapterDisplay({
                 interlinearSubMode={interlinearSubMode}
                 constituentLabelMap={constituentLabelMap}
                 datasetEntryMap={datasetEntryMap}
+                transliterationFormatMap={transliterationFormatMap}
                 onSaveConstituentLabel={handleSaveConstituentLabel}
                 onSaveDatasetEntry={handleSaveDatasetEntry}
+                onSaveTransliterationFormat={handleSaveTransliterationFormat}
                 onLemmaClick={displayMode === "interlinear" && interlinearSubMode === "lemma" ? handleLemmaClick : undefined}
                 hideSourceText={hideSourceText}
                 editingTranslation={editingTranslation}

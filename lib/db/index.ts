@@ -11,7 +11,9 @@ const RESOURCES_DIR = process.env.STRUCTURA_RESOURCES_DIR
 const USER_DATA_DIR = process.env.STRUCTURA_USER_DATA_DIR
   ?? path.join(process.cwd(), "data");
 
-const SOURCE_DB_PATH  = path.join(RESOURCES_DIR, "source.db");
+const SOURCE_DB_PATH  = path.join(RESOURCES_DIR, "source.db");  // legacy — superseded by oshb.db/sblgnt.db
+const OSHB_DB_PATH    = path.join(RESOURCES_DIR, "oshb.db");
+const SBLGNT_DB_PATH  = path.join(RESOURCES_DIR, "sblgnt.db");
 const LEXICA_DB_PATH  = path.join(RESOURCES_DIR, "lexica.db");  // legacy fallback only
 const LXX_DB_PATH     = path.join(RESOURCES_DIR, "lxx.db");
 const ULT_DB_PATH     = path.join(RESOURCES_DIR, "ult.db");
@@ -120,6 +122,8 @@ function loadLookupMaps(dbPath: string): LookupMaps {
 export { USER_DB_PATH };
 
 let _sourceDb:    ReturnType<typeof drizzle<typeof sourceSchema>> | null = null;
+let _oshbDb:      ReturnType<typeof drizzle<typeof sourceSchema>> | null = null;
+let _sblgntDb:    ReturnType<typeof drizzle<typeof sourceSchema>> | null = null;
 let _lexicaDb:    ReturnType<typeof drizzle<typeof lexicaSchema>> | null = null;
 let _lxxDb:       ReturnType<typeof drizzle<typeof sourceSchema>> | null = null;
 let _lxxSqlite:   Database.Database | null = null;
@@ -131,9 +135,40 @@ let _vcbSqlite:   Database.Database | null = null;
 // Per-lexicon DB cache: keyed by source name.
 const _lexiconDbCache = new Map<string, ReturnType<typeof drizzle<typeof lexicaSchema>> | null>();
 
+/** Returns the per-source DB for OSHB (Hebrew OT). Falls back to legacy source.db if oshb.db is absent. */
+export function getOshbDb(): ReturnType<typeof drizzle<typeof sourceSchema>> {
+  if (!_oshbDb) {
+    const dbPath = fs.existsSync(OSHB_DB_PATH) ? OSHB_DB_PATH : SOURCE_DB_PATH;
+    const sqlite = new Database(dbPath, { readonly: true });
+    sqlite.pragma("foreign_keys = ON");
+    _oshbDb = drizzle(sqlite, { schema: sourceSchema });
+  }
+  return _oshbDb;
+}
+
+/** Returns the per-source DB for SBLGNT (Greek NT). Falls back to legacy source.db if sblgnt.db is absent. */
+export function getSblgntDb(): ReturnType<typeof drizzle<typeof sourceSchema>> {
+  if (!_sblgntDb) {
+    const dbPath = fs.existsSync(SBLGNT_DB_PATH) ? SBLGNT_DB_PATH : SOURCE_DB_PATH;
+    const sqlite = new Database(dbPath, { readonly: true });
+    sqlite.pragma("foreign_keys = ON");
+    _sblgntDb = drizzle(sqlite, { schema: sourceSchema });
+  }
+  return _sblgntDb;
+}
+
+/** Route to the correct per-source DB and its lookup maps based on textSource. */
+export function getDbAndLookups(textSource: string): { db: ReturnType<typeof drizzle<typeof sourceSchema>>; lookups: LookupMaps } {
+  if (textSource === "SBLGNT") return { db: getSblgntDb(), lookups: sblgntLookups };
+  return { db: getOshbDb(), lookups: oshbLookups };
+}
+
+/** @deprecated Use getOshbDb() or getDbAndLookups(textSource) instead. */
 export function getSourceDb() {
   if (!_sourceDb) {
-    const sqlite = new Database(SOURCE_DB_PATH, { readonly: true });
+    // Prefer the split oshb.db; fall back to the legacy combined source.db.
+    const dbPath = fs.existsSync(OSHB_DB_PATH) ? OSHB_DB_PATH : SOURCE_DB_PATH;
+    const sqlite = new Database(dbPath, { readonly: true });
     sqlite.pragma("foreign_keys = ON");
     _sourceDb = drizzle(sqlite, { schema: sourceSchema });
   }
@@ -531,5 +566,13 @@ export function getVcbSqlite(): Database.Database | null {
 export const sourceDb     = getSourceDb();
 export const userDb       = getUserDb();
 export const userSqlite   = getUserSqlite();
-export const sourceLookups = loadLookupMaps(SOURCE_DB_PATH); // tense map: X=perfect, Y=pluperfect
+
+// Per-source lookup maps.  oshbLookups also serves as the canonical lookup for
+// source-independent queries (books, languages) since all lookup tables are
+// identical across oshb.db and sblgnt.db.
+const _oshbLookupPath   = fs.existsSync(OSHB_DB_PATH)   ? OSHB_DB_PATH   : SOURCE_DB_PATH;
+const _sblgntLookupPath = fs.existsSync(SBLGNT_DB_PATH) ? SBLGNT_DB_PATH : SOURCE_DB_PATH;
+export const oshbLookups   = loadLookupMaps(_oshbLookupPath);
+export const sblgntLookups = loadLookupMaps(_sblgntLookupPath);
+export const sourceLookups = oshbLookups; // tense map: X=perfect, Y=pluperfect
 export const lxxLookups    = loadLookupMaps(LXX_DB_PATH);
