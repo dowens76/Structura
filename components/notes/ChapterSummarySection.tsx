@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import NoteEditor from "./NoteEditor";
+import { extractTextFromTipTap, tiptapToHtml } from "@/lib/utils/tiptap-text";
 
 interface CustomField {
   id: string;
@@ -56,6 +57,7 @@ export default function ChapterSummarySection({
   const [sermonContent, setSermonContent] = useState<string>("{}");
   const [loaded, setLoaded] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
+  const [copied, setCopied] = useState(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Load both keys on mount / key change
@@ -134,6 +136,57 @@ export default function ChapterSummarySection({
     saveMeta(updated);
   }
 
+  async function copyOverview() {
+    // Re-fetch the sermon content at copy time so we get the latest saved version
+    let latestSermon = sermonContent;
+    try {
+      const res = await fetch(`/api/notes?keys=${encodeURIComponent(sermonKey)}`);
+      const data = await res.json() as Record<string, { content: string }>;
+      latestSermon = data[sermonKey]?.content ?? sermonContent;
+    } catch { /* use cached */ }
+
+    const sections: Array<{ label: string; text: string; html: string }> = [];
+
+    if (meta.mainIdea.trim()) {
+      sections.push({ label: "Main Idea", text: meta.mainIdea.trim(), html: `<p>${meta.mainIdea.trim()}</p>` });
+    }
+
+    const outlineText = extractTextFromTipTap(latestSermon);
+    const outlineHtml = tiptapToHtml(latestSermon);
+    if (outlineText) {
+      sections.push({ label: "Teaching Outline", text: outlineText, html: outlineHtml });
+    }
+
+    for (const field of meta.customFields) {
+      if (field.value.trim()) {
+        sections.push({ label: field.name, text: field.value.trim(), html: `<p>${field.value.trim()}</p>` });
+      }
+    }
+
+    if (sections.length === 0) return;
+
+    const plainText = sections.map((s) => `${s.label}\n${s.text}`).join("\n\n");
+    const html = sections
+      .map((s) => `<h3>${s.label}</h3>${s.html}`)
+      .join("");
+
+    try {
+      await navigator.clipboard.write([
+        new ClipboardItem({
+          "text/plain": new Blob([plainText], { type: "text/plain" }),
+          "text/html":  new Blob([`<div>${html}</div>`], { type: "text/html" }),
+        }),
+      ]);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Fallback to plain text
+      await navigator.clipboard.writeText(plainText).catch(() => {});
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  }
+
   function removeField(id: string) {
     const updated = {
       ...meta,
@@ -149,21 +202,33 @@ export default function ChapterSummarySection({
   return (
     <div className="border-b border-stone-200 dark:border-stone-700">
       {/* Section header */}
-      <button
-        className="w-full flex items-center gap-2 px-4 pt-3 pb-2 text-left select-none"
-        onClick={() => setCollapsed((v) => !v)}
-        aria-expanded={!collapsed}
-      >
-        <span
-          className="text-xs font-bold tracking-wide uppercase"
-          style={{ color: "var(--accent)" }}
+      <div className="flex items-center px-4 pt-3 pb-2">
+        <button
+          className="flex-1 flex items-center gap-2 text-left select-none"
+          onClick={() => setCollapsed((v) => !v)}
+          aria-expanded={!collapsed}
         >
-          Overview
-        </span>
-        <span className="text-stone-400 dark:text-stone-500 text-xs ml-auto">
-          {collapsed ? "▶" : "▼"}
-        </span>
-      </button>
+          <span
+            className="text-xs font-bold tracking-wide uppercase"
+            style={{ color: "var(--accent)" }}
+          >
+            Overview
+          </span>
+          <span className="text-stone-400 dark:text-stone-500 text-xs">
+            {collapsed ? "▶" : "▼"}
+          </span>
+        </button>
+        {loaded && (
+          <button
+            onClick={copyOverview}
+            title="Copy overview to clipboard"
+            className="text-[10px] px-1.5 py-0.5 rounded transition-colors"
+            style={{ color: copied ? "var(--accent)" : "var(--text-muted)" }}
+          >
+            {copied ? "✓ Copied" : "Copy"}
+          </button>
+        )}
+      </div>
 
       {!collapsed && (
         <div className="px-4 pb-4 space-y-4">

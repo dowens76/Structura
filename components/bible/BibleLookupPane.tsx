@@ -4,8 +4,9 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { parseScriptureRefs } from "@/lib/scripture/reference-parser";
 import type { FetchBibleTranslation } from "@/app/api/fetchbible/route";
 
-const STORAGE_KEY        = "structura:bibleLookup:translation";
-const LANG_STORAGE_KEY   = "structura:bibleLookup:langs";
+import { langLabel, readBibleLookupLangs, writeBibleLookupLangs } from "@/lib/utils/bible-lookup-langs";
+
+const STORAGE_KEY = "structura:bibleLookup:translation";
 
 // Hebrew Unicode: base consonants א-ת
 const HEBREW_RE      = /[א-ת]/;
@@ -23,26 +24,6 @@ function detectScript(text: string): "hebrew" | "greek" | "other" {
   return "other";
 }
 
-// Common ISO 639-3 → display name mapping (falls back to the code itself)
-const LANG_NAMES: Record<string, string> = {
-  afr:"Afrikaans", aln:"Albanian (Gheg)", arb:"Arabic", arz:"Arabic (Egyptian)",
-  azt:"Aztec (Orizaba)", bul:"Bulgarian", ceb:"Cebuano", ces:"Czech",
-  cmn:"Chinese (Mandarin)", dan:"Danish", deu:"German", ell:"Greek (Modern)",
-  eng:"English", fin:"Finnish", fra:"French", guj:"Gujarati", hat:"Haitian Creole",
-  hau:"Hausa", hbo:"Hebrew (Ancient)", hin:"Hindi", hrv:"Croatian", hun:"Hungarian",
-  ibo:"Igbo", ind:"Indonesian", ita:"Italian", jpn:"Japanese", kan:"Kannada",
-  kor:"Korean", lat:"Latin", lit:"Lithuanian", lug:"Ganda", mal:"Malayalam",
-  mar:"Marathi", mya:"Burmese", nld:"Dutch", nor:"Norwegian", orm:"Oromo",
-  pan:"Punjabi", pol:"Polish", por:"Portuguese", ron:"Romanian", rus:"Russian",
-  sin:"Sinhala", slk:"Slovak", som:"Somali", spa:"Spanish", swa:"Swahili",
-  swe:"Swedish", tam:"Tamil", tel:"Telugu", tha:"Thai", tir:"Tigrinya",
-  tpi:"Tok Pisin", tur:"Turkish", ukr:"Ukrainian", urd:"Urdu", uzb:"Uzbek",
-  vie:"Vietnamese", yor:"Yoruba", zul:"Zulu",
-};
-
-function langLabel(code: string): string {
-  return LANG_NAMES[code] ? `${LANG_NAMES[code]} (${code})` : code;
-}
 
 // Hardcoded api.bible translations (same set as SettingsButton)
 const API_BIBLES = [
@@ -130,13 +111,7 @@ export default function BibleLookupPane({ onClose }: Props) {
     try {
       const stored = localStorage.getItem(STORAGE_KEY);
       if (stored) setSelected(stored);
-      const storedLangs = localStorage.getItem(LANG_STORAGE_KEY);
-      if (storedLangs) {
-        try {
-          const parsed = JSON.parse(storedLangs);
-          setSelectedLangs(parsed === null ? null : new Set(parsed));
-        } catch { /* ignore */ }
-      }
+      setSelectedLangs(readBibleLookupLangs());
       const hSize = localStorage.getItem("structura:hebrewFontSize");
       if (hSize) setHebrewFontSize(parseFloat(hSize));
       const gSize = localStorage.getItem("structura:greekFontSize");
@@ -152,7 +127,7 @@ export default function BibleLookupPane({ onClose }: Props) {
 
   function changeLangs(next: Set<string> | null) {
     setSelectedLangs(next);
-    try { localStorage.setItem(LANG_STORAGE_KEY, JSON.stringify(next === null ? null : [...next])); } catch { /* ignore */ }
+    writeBibleLookupLangs(next);
   }
 
   function toggleLang(code: string, allLangs: string[]) {

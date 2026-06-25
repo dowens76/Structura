@@ -85,6 +85,8 @@ const CONSONANT_MAP: Record<string, { stop: string; fric?: string }> = {
 // Codepoints that are cantillation or other non-phonemic marks to skip
 const CANTILLATION_RE = /[֑-ֽֿ֯׀׃ׅׄ׆׳״]/g;
 
+const HE_SEGMENTER = new Intl.Segmenter("he", { granularity: "grapheme" });
+
 /**
  * Transliterate a Hebrew word (surface text) to SBL academic romanization.
  * Input may contain morpheme slashes — strip them before calling.
@@ -94,8 +96,7 @@ export function transliterateHebrew(surfaceText: string): string {
   const clean = surfaceText.replace(/\//g, "").replace(CANTILLATION_RE, "");
 
   // Use Intl.Segmenter for grapheme clusters (base + combining diacritics)
-  const segmenter = new Intl.Segmenter("he", { granularity: "grapheme" });
-  const clusters  = [...segmenter.segment(clean)].map((s) => s.segment);
+  const clusters  = [...HE_SEGMENTER.segment(clean)].map((s) => s.segment);
 
   // We need a forward-looking pass because holam on waw merges waw+holam into ō
   let result = "";

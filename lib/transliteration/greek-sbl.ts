@@ -54,13 +54,13 @@ const DIPHTHONG_PREV = new Set(["a", "e", "ē", "o", "ō", "u"]);
 /**
  * Transliterate a polytonic Greek word to SBL academic romanization.
  */
+const EL_SEGMENTER = new Intl.Segmenter("el", { granularity: "grapheme" });
+
 export function transliterateGreek(text: string): string {
   // Lowercase, then NFD-decompose so diacritics become separate combining chars
   const nfd = text.toLowerCase().normalize("NFD");
 
-  // Intl.Segmenter gives grapheme clusters (base + combining diacritics)
-  const segmenter = new Intl.Segmenter("el", { granularity: "grapheme" });
-  const clusters  = [...segmenter.segment(nfd)].map((s) => s.segment);
+  const clusters  = [...EL_SEGMENTER.segment(nfd)].map((s) => s.segment);
 
   let result  = "";
   let prevLat = ""; // last Latin letter(s) emitted, for diphthong detection

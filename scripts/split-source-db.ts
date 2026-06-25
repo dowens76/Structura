@@ -10,7 +10,6 @@
  */
 
 import Database from "better-sqlite3";
-import { execSync } from "child_process";
 import path from "path";
 import fs from "fs";
 
@@ -40,12 +39,12 @@ async function splitOne(srcPath: string, targetValue: string, destFile: string) 
     throw new Error(`text_sources row not found for value="${targetValue}"`);
   }
   const tsId = tsRow.id;
-  src.close();
 
-  // Use sqlite3 CLI .clone to copy table-by-table (avoids WAL/corruption issues
-  // that prevent VACUUM INTO from working on a live WAL-mode database).
+  // Use better-sqlite3's backup() API — pure JS, no sqlite3 CLI needed, works
+  // on all platforms (macOS, Linux, Windows) without shell-quoting concerns.
   console.log(`  Cloning ${path.basename(srcPath)} → ${destFile} ...`);
-  execSync(`sqlite3 "${srcPath}" ".clone '${destPath}'"`, { stdio: "inherit" });
+  await src.backup(destPath);
+  src.close();
 
   console.log(`  Filtering ${destFile} to ${targetValue} only ...`);
   const dest = new Database(destPath);

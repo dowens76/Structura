@@ -11,6 +11,7 @@ import {
   FONT_SETTINGS_LS_KEY,
   type FontSettings,
 } from "@/lib/fonts";
+import { langLabel, readBibleLookupLangs, writeBibleLookupLangs } from "@/lib/utils/bible-lookup-langs";
 import FontPickerDialog, { type FontLanguage } from "@/components/FontPickerDialog";
 
 export type GreekLexicon  = "AbbottSmith" | "Dodson";
@@ -122,6 +123,10 @@ export default function SettingsButton() {
   const [fetchBibleTransls, setFetchBibleTransls]     = useState<FetchBibleTranslation[]>([]);
   const [scripturePrefs,   setScripturePrefs]          = useState<Record<string, string>>({});
 
+  // Bible Lookup language filter
+  const [bibleLangs,      setBibleLangs]      = useState<Set<string> | null>(null);
+  const [bibleLangSearch, setBibleLangSearch] = useState("");
+
   // Zotero credentials
   const [zoteroUserId,    setZoteroUserId]    = useState("");
   const [zoteroApiKey,    setZoteroApiKey]    = useState("");
@@ -148,6 +153,7 @@ export default function SettingsButton() {
         sessionStorage.setItem("structura:hiddenSources", JSON.stringify(hidden));
       })
       .catch(() => {});
+    setBibleLangs(readBibleLookupLangs());
     // Load scripture pref values from localStorage
     const prefs: Record<string, string> = {};
     for (const locale of LOCALES) {
@@ -355,8 +361,9 @@ export default function SettingsButton() {
 
       {open && (
         <div
-          className="absolute right-0 top-full mt-1 w-64 rounded-lg border shadow-lg z-50 py-3 px-4"
+          className="absolute right-0 top-full mt-1 w-64 rounded-lg border shadow-lg z-50 py-3 px-4 overflow-y-auto"
           style={{
+            maxHeight: "calc(100vh - 60px)",
             backgroundColor: "var(--surface)",
             borderColor: "var(--border)",
             color: "var(--foreground)",
@@ -589,6 +596,90 @@ export default function SettingsButton() {
                 </div>
               )}
             </div>
+
+            {/* Bible Lookup — language filter */}
+            {fetchBibleTransls.length > 0 && (() => {
+              const allLangs = [...new Set(fetchBibleTransls.map((t) => t.lang))].sort();
+              const searchLower = bibleLangSearch.toLowerCase();
+              const visible = searchLower
+                ? allLangs.filter((l) => langLabel(l).toLowerCase().includes(searchLower))
+                : allLangs;
+              const activeCount = bibleLangs === null ? allLangs.length : bibleLangs.size;
+              function toggleLang(code: string) {
+                const current = bibleLangs ?? new Set(allLangs);
+                const next = new Set(current);
+                if (next.has(code)) next.delete(code); else next.add(code);
+                const normalized = next.size === allLangs.length ? null : next;
+                setBibleLangs(normalized);
+                writeBibleLookupLangs(normalized);
+              }
+              function setAll() { setBibleLangs(null); writeBibleLookupLangs(null); }
+              function setNone() { setBibleLangs(new Set()); writeBibleLookupLangs(new Set()); }
+              return (
+                <div className="pt-3 border-t mb-3" style={{ borderColor: "var(--border)" }}>
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>
+                      Bible Lookup Languages
+                    </p>
+                    <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>
+                      {activeCount} / {allLangs.length}
+                    </span>
+                  </div>
+                  <input
+                    type="text"
+                    value={bibleLangSearch}
+                    onChange={(e) => setBibleLangSearch(e.target.value)}
+                    placeholder="Filter languages…"
+                    className="w-full text-xs px-2 py-1 rounded border outline-none mb-1.5"
+                    style={{ borderColor: "var(--border)", background: "var(--surface)", color: "var(--foreground)" }}
+                  />
+                  <div className="flex gap-1.5 mb-2">
+                    <button
+                      type="button"
+                      onClick={setAll}
+                      className="flex-1 text-[11px] px-2 py-0.5 rounded border transition-colors hover:bg-stone-100 dark:hover:bg-stone-700"
+                      style={{ borderColor: "var(--border)", color: "var(--foreground)" }}
+                    >
+                      All
+                    </button>
+                    <button
+                      type="button"
+                      onClick={setNone}
+                      className="flex-1 text-[11px] px-2 py-0.5 rounded border transition-colors hover:bg-stone-100 dark:hover:bg-stone-700"
+                      style={{ borderColor: "var(--border)", color: "var(--foreground)" }}
+                    >
+                      None
+                    </button>
+                  </div>
+                  <div className="flex flex-col gap-0.5 max-h-48 overflow-y-auto">
+                    {visible.map((lang) => {
+                      const on = bibleLangs === null || bibleLangs.has(lang);
+                      return (
+                        <label key={lang} className="flex items-center gap-2 cursor-pointer py-0.5">
+                          <span
+                            className="flex-shrink-0 w-3.5 h-3.5 rounded border flex items-center justify-center"
+                            style={{
+                              borderColor: on ? "var(--accent)" : "var(--border)",
+                              background: on ? "var(--accent)" : "transparent",
+                            }}
+                            onClick={() => toggleLang(lang)}
+                          >
+                            {on && (
+                              <svg width="8" height="8" viewBox="0 0 8 8" fill="none" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                                <polyline points="1.5,4 3,5.5 6.5,2"/>
+                              </svg>
+                            )}
+                          </span>
+                          <span className="text-xs truncate" style={{ color: "var(--foreground)" }} onClick={() => toggleLang(lang)}>
+                            {langLabel(lang)}
+                          </span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* Source Text Visibility */}
             <div className="pt-3 border-t mb-3" style={{ borderColor: "var(--border)" }}>

@@ -641,6 +641,7 @@ export default function ChapterDisplay({
   const [localTranslationVerseData, setLocalTranslationVerseData] = useState(initialTranslationVerseData);
   const [editingTranslation, setEditingTranslation] = useState(false);
   const [editingTranslationSource, setEditingTranslationSource] = useState(false);
+  const [copiedTranslation, setCopiedTranslation] = useState(false);
   const [chapterUsfmOpen, setChapterUsfmOpen] = useState(false);
   const [chapterUsfmText, setChapterUsfmText] = useState("");
   const [chapterUsfmLoading, setChapterUsfmLoading] = useState(false);
@@ -3343,6 +3344,29 @@ export default function ChapterDisplay({
     setFnAnchorMoveId(null);
   }
 
+  async function copyTranslationText() {
+    const verseNums = [...activeTranslationVerseMap.keys()].sort((a, b) => a - b);
+    if (verseNums.length === 0) return;
+    // Build plain text: one block per active translation abbreviation
+    const abbrSet = new Set<string>();
+    for (const entries of activeTranslationVerseMap.values()) {
+      for (const e of entries) abbrSet.add(e.abbr);
+    }
+    const abbrs = [...abbrSet];
+    const chunks: string[] = [];
+    for (const abbr of abbrs) {
+      chunks.push(`${t(`books.${book}` as Parameters<typeof t>[0]) || book} ${chapter} (${abbr})`);
+      for (const v of verseNums) {
+        const entry = (activeTranslationVerseMap.get(v) ?? []).find((e) => e.abbr === abbr);
+        if (entry?.text) chunks.push(`${v} ${entry.text}`);
+      }
+    }
+    const plain = chunks.join("\n");
+    await navigator.clipboard.writeText(plain).catch(() => {});
+    setCopiedTranslation(true);
+    setTimeout(() => setCopiedTranslation(false), 2000);
+  }
+
   async function openChapterUsfm() {
     const t = allAvailableTranslations.find((t) => activeTranslationAbbrs.has(t.abbreviation));
     if (!t) return;
@@ -4201,6 +4225,15 @@ export default function ChapterDisplay({
                       ].join(" ")}
                     >
                       {textSource}
+                    </button>
+                  )}
+                  {hasActiveTranslations && (
+                    <button
+                      onClick={copyTranslationText}
+                      data-tip={copiedTranslation ? "Copied!" : "Copy translation text"}
+                      className="px-3 py-2 rounded text-[15px] font-medium transition-colors bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700"
+                    >
+                      {copiedTranslation ? "✓" : "⎘"}
                     </button>
                   )}
                   {hasActiveTranslations && (
