@@ -493,6 +493,65 @@ function _migrateUserDbInner(sqlite: Database.Database): void {
       created_at   INTEGER NOT NULL DEFAULT 0
     );
     CREATE INDEX IF NOT EXISTS bookmarks_ws_idx ON bookmarks(workspace_id);
+
+    CREATE TABLE IF NOT EXISTS notes (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      workspace_id INTEGER NOT NULL DEFAULT 1 REFERENCES workspaces(id) ON DELETE CASCADE,
+      key          TEXT    NOT NULL,
+      note_type    TEXT    NOT NULL,
+      content      TEXT    NOT NULL DEFAULT '{}',
+      book         TEXT,
+      chapter      INTEGER,
+      updated_at   TEXT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS notes_ws_key_idx ON notes(workspace_id, key);
+    CREATE INDEX IF NOT EXISTS notes_book_ch_idx ON notes(book, chapter);
+
+    CREATE TABLE IF NOT EXISTS word_formatting (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      workspace_id INTEGER NOT NULL DEFAULT 1 REFERENCES workspaces(id) ON DELETE CASCADE,
+      word_id      TEXT    NOT NULL,
+      is_bold      INTEGER NOT NULL DEFAULT 0,
+      is_italic    INTEGER NOT NULL DEFAULT 0,
+      is_small_caps INTEGER NOT NULL DEFAULT 0,
+      text_source  TEXT    NOT NULL,
+      book         TEXT    NOT NULL,
+      chapter      INTEGER NOT NULL
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS wfmt_ws_word_idx ON word_formatting(workspace_id, word_id);
+    CREATE INDEX IF NOT EXISTS wfmt_book_ch_idx ON word_formatting(book, chapter);
+
+    CREATE TABLE IF NOT EXISTS word_datasets (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      workspace_id INTEGER NOT NULL DEFAULT 1 REFERENCES workspaces(id) ON DELETE CASCADE,
+      name         TEXT    NOT NULL,
+      created_at   TEXT
+    );
+    CREATE INDEX IF NOT EXISTS wds_ws_idx ON word_datasets(workspace_id);
+
+    CREATE TABLE IF NOT EXISTS word_dataset_entries (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      dataset_id  INTEGER NOT NULL REFERENCES word_datasets(id) ON DELETE CASCADE,
+      word_id     TEXT    NOT NULL,
+      value       TEXT    NOT NULL,
+      text_source TEXT    NOT NULL,
+      book        TEXT    NOT NULL,
+      chapter     INTEGER NOT NULL
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS wde_ds_word_idx ON word_dataset_entries(dataset_id, word_id);
+    CREATE INDEX IF NOT EXISTS wde_ds_book_ch_idx ON word_dataset_entries(dataset_id, book, chapter, text_source);
+
+    CREATE TABLE IF NOT EXISTS transliteration_formats (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      workspace_id INTEGER NOT NULL DEFAULT 1 REFERENCES workspaces(id) ON DELETE CASCADE,
+      word_id      TEXT    NOT NULL,
+      format       TEXT    NOT NULL,
+      text_source  TEXT    NOT NULL,
+      book         TEXT    NOT NULL,
+      chapter      INTEGER NOT NULL
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS trf_ws_word_idx ON transliteration_formats(workspace_id, word_id);
+    CREATE INDEX IF NOT EXISTS trf_book_ch_src_idx ON transliteration_formats(book, chapter, text_source);
   `);
 
   // Seed VCB translation record if vcb.db is present but the translations row is missing

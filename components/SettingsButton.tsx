@@ -122,6 +122,13 @@ export default function SettingsButton() {
   const [fetchBibleTransls, setFetchBibleTransls]     = useState<FetchBibleTranslation[]>([]);
   const [scripturePrefs,   setScripturePrefs]          = useState<Record<string, string>>({});
 
+  // Zotero credentials
+  const [zoteroUserId,    setZoteroUserId]    = useState("");
+  const [zoteroApiKey,    setZoteroApiKey]    = useState("");
+  const [hasZoteroKey,    setHasZoteroKey]    = useState(false);
+  const [savingZotero,    setSavingZotero]    = useState(false);
+  const [zoteroSaved,     setZoteroSaved]     = useState(false);
+
   // Load stored preferences on mount
   useEffect(() => {
     setGreekLex(getGreekLexicon());
@@ -155,12 +162,19 @@ export default function SettingsButton() {
     setScripturePrefs(prefs);
   }, []);
 
-  // Load api.bible key status, local translations, and fetch.bible list when panel opens
+  // Load api.bible key status, Zotero credentials, local translations, and fetch.bible list when panel opens
   useEffect(() => {
     if (!open) return;
     fetch("/api/credentials/apibible")
       .then((r) => r.json())
       .then((d: { hasApiKey?: boolean }) => setHasApiBibleKey(d.hasApiKey ?? false))
+      .catch(() => {});
+    fetch("/api/credentials/zotero")
+      .then((r) => r.json())
+      .then((d: { userId?: string; hasApiKey?: boolean }) => {
+        setZoteroUserId(d.userId ?? "");
+        setHasZoteroKey(d.hasApiKey ?? false);
+      })
       .catch(() => {});
     fetch("/api/translations")
       .then((r) => r.json())
@@ -217,6 +231,36 @@ export default function SettingsButton() {
     await fetch("/api/credentials/apibible", { method: "DELETE" });
     setHasApiBibleKey(false);
     setApiBibleKeyInput("");
+  }
+
+  async function saveZoteroCredentials() {
+    const uid = zoteroUserId.trim();
+    const key = zoteroApiKey.trim();
+    if (!uid) return;
+    setSavingZotero(true);
+    setZoteroSaved(false);
+    try {
+      const res = await fetch("/api/credentials/zotero", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: uid, apiKey: key || undefined }),
+      });
+      if (res.ok) {
+        setHasZoteroKey(true);
+        setZoteroApiKey("");
+        setZoteroSaved(true);
+        setTimeout(() => setZoteroSaved(false), 3000);
+      }
+    } finally {
+      setSavingZotero(false);
+    }
+  }
+
+  async function clearZoteroCredentials() {
+    await fetch("/api/credentials/zotero", { method: "DELETE" });
+    setZoteroUserId("");
+    setZoteroApiKey("");
+    setHasZoteroKey(false);
   }
 
   function changeScripturePref(locale: string, value: string) {
@@ -491,6 +535,56 @@ export default function SettingsButton() {
                     style={{ color: "var(--text-muted)" }}
                   >
                     {t("settings.apiBibleClear")}
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Zotero credentials */}
+            <div className="pt-3 border-t mb-3" style={{ borderColor: "var(--border)" }}>
+              <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: "var(--text-muted)" }}>
+                {t("settings.zoteroSection")}
+              </p>
+              <div className="flex gap-1 mb-1">
+                <input
+                  type="text"
+                  value={zoteroUserId}
+                  onChange={(e) => setZoteroUserId(e.target.value)}
+                  placeholder={t("settings.zoteroUserIdPlaceholder")}
+                  className="flex-1 text-xs px-2 py-1 rounded border outline-none"
+                  style={{ borderColor: "var(--border)", background: "var(--surface)", color: "var(--foreground)" }}
+                />
+              </div>
+              <div className="flex gap-1">
+                <input
+                  type="password"
+                  value={zoteroApiKey}
+                  onChange={(e) => setZoteroApiKey(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") saveZoteroCredentials(); }}
+                  placeholder={hasZoteroKey ? t("settings.zoteroApiKeyUpdate") : t("settings.zoteroApiKeyPlaceholder")}
+                  className="flex-1 text-xs px-2 py-1 rounded border outline-none"
+                  style={{ borderColor: "var(--border)", background: "var(--surface)", color: "var(--foreground)" }}
+                />
+                <button
+                  onClick={saveZoteroCredentials}
+                  disabled={savingZotero || !zoteroUserId.trim()}
+                  className="text-xs px-2 py-1 rounded disabled:opacity-40"
+                  style={{ background: "var(--accent)", color: "white" }}
+                >
+                  {t("settings.save")}
+                </button>
+              </div>
+              {(hasZoteroKey || zoteroSaved) && (
+                <div className="flex items-center justify-between mt-0.5">
+                  <span className="text-xs" style={{ color: "var(--text-muted)" }}>
+                    {t("settings.zoteroSaved")}
+                  </span>
+                  <button
+                    onClick={clearZoteroCredentials}
+                    className="text-xs"
+                    style={{ color: "var(--text-muted)" }}
+                  >
+                    {t("settings.zoteroClear")}
                   </button>
                 </div>
               )}

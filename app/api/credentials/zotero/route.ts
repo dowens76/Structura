@@ -25,8 +25,8 @@ export async function GET() {
 
 /**
  * PUT /api/credentials/zotero
- * Body: { userId: string; apiKey: string }
- * Saves both values. Pass empty strings to clear.
+ * Body: { userId: string; apiKey?: string }
+ * userId is required. apiKey is optional — omit to keep the existing key.
  */
 export async function PUT(request: NextRequest) {
   let body: { userId?: string; apiKey?: string };
@@ -37,19 +37,17 @@ export async function PUT(request: NextRequest) {
   }
 
   const userId = (body.userId ?? "").trim();
-  const apiKey = (body.apiKey ?? "").trim();
+  const apiKey = body.apiKey !== undefined ? body.apiKey.trim() : undefined;
 
-  if (!userId || !apiKey) {
-    return NextResponse.json(
-      { error: "Both userId and apiKey are required" },
-      { status: 400 }
-    );
+  if (!userId) {
+    return NextResponse.json({ error: "userId is required" }, { status: 400 });
   }
 
-  await Promise.all([
-    setAppSetting(KEY_USER_ID, userId),
-    setAppSetting(KEY_API_KEY, apiKey),
-  ]);
+  const ops: Promise<void>[] = [setAppSetting(KEY_USER_ID, userId)];
+  if (apiKey !== undefined && apiKey.length > 0) {
+    ops.push(setAppSetting(KEY_API_KEY, apiKey));
+  }
+  await Promise.all(ops);
 
   return NextResponse.json({ ok: true });
 }
