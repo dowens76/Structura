@@ -165,6 +165,8 @@ jobs:
 
       - name: Generate OSHB + SBLGNT databases
         if: steps.cache-dbs.outputs.cache-hit != 'true'
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
         run: npm run db:push:source && npm run import:oshb && npm run import:morphgnt && npm run generate:transliterations && npm run db:split-source
 
       - name: Generate LXX database
