@@ -59,6 +59,7 @@ jobs:
       # Opt into Node.js 24 for all actions (actions/cache, etc.) ahead of the
       # June 2026 deadline when Node.js 20 support is dropped from runners.
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+      TZ: America/Chicago
 
     steps:
       - name: Checkout
