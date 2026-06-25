@@ -119,6 +119,10 @@ export function parseScriptureRefs(text: string): ScriptureMatch[] {
   while ((match = SCRIPTURE_REGEX.exec(text)) !== null) {
     const [raw, bookAlias, chapterStr, verseStr, endChapterStr, endVerseStr] = match;
 
+    // Require the book alias to start with an uppercase letter so lowercase
+    // words like "is" or "es" mid-sentence don't trigger false matches.
+    if (!/^\p{Lu}/u.test(bookAlias)) continue;
+
     const osis = ALIAS_MAP.get(normalise(bookAlias));
     if (!osis) continue;
 
