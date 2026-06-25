@@ -81,46 +81,69 @@ export default function ZoteroCitePicker({
     }
   }, [showSetup, credsLoaded]);
 
-  // ── Debounced search ─────────────────────────────────────────────────────────
-  const search = useCallback((q: string) => {
+  // ── Fetch from Zotero API ─────────────────────────────────────────────────────
+  const fetchItems = useCallback(async (q: string) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const params = new URLSearchParams();
+      if (q) params.set("q", q);
+      const res  = await fetch(`/api/zotero${params.size ? `?${params}` : ""}`);
+      const json = await res.json();
+      if (res.status === 401) {
+        setShowSetup(true);
+        setResults([]);
+      } else if (!res.ok) {
+        setError(json.error ?? t("zotero.searchFailed"));
+        setResults([]);
+      } else {
+        setResults(json.items ?? []);
+      }
+    } catch {
+      setError(t("zotero.searchNetworkError"));
+      setResults([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [t]);
+
+  const [recents, setRecents] = useState<ZoteroItem[]>([]);
+
+  // Load recents + show them when search view becomes active
+  useEffect(() => {
+    if (!showSetup && credsLoaded) {
+      fetch("/api/zotero/recents")
+        .then((r) => r.json())
+        .then((d: { items?: ZoteroItem[] }) => setRecents(d.items ?? []))
+        .catch(() => {});
+    }
+  }, [showSetup, credsLoaded]);
+
+  // Debounced search as user types
+  useEffect(() => {
+    if (showSetup) return;
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    if (!q.trim()) {
+    if (!query.trim()) {
       setResults([]);
       setError(null);
       return;
     }
-    debounceRef.current = setTimeout(async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const params = new URLSearchParams({ q });
-        const res  = await fetch(`/api/zotero?${params.toString()}`);
-        const json = await res.json();
-        if (res.status === 401) {
-          // Credentials not configured or expired
-          setShowSetup(true);
-          setResults([]);
-        } else if (!res.ok) {
-          setError(json.error ?? t("zotero.searchFailed"));
-          setResults([]);
-        } else {
-          setResults(json.items ?? []);
-        }
-      } catch {
-        setError(t("zotero.searchNetworkError"));
-        setResults([]);
-      } finally {
-        setLoading(false);
-      }
-    }, 300);
-  }, [t]);
-
-  useEffect(() => {
-    if (!showSetup) search(query);
+    debounceRef.current = setTimeout(() => fetchItems(query.trim()), 300);
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
-  }, [query, showSetup, search]);
+  }, [query, showSetup]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  function recordAndInsert(item: ZoteroItem) {
+    // Fire-and-forget — persist to recents list in user.db
+    fetch("/api/zotero/recents", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(item),
+    }).catch(() => {});
+    onInsert(formatCitationHtml(item));
+    onClose();
+  }
 
   // ── Save credentials to server ────────────────────────────────────────────────
   async function saveCredentials() {
@@ -326,7 +349,13 @@ export default function ZoteroCitePicker({
               </div>
             )}
 
-            {!loading && !error && !query.trim() && (
+            {!loading && !error && !query.trim() && recents.length > 0 && (
+              <div className="px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>
+                Recent
+              </div>
+            )}
+
+            {!loading && !error && !query.trim() && recents.length === 0 && (
               <div className="px-3 py-3 text-xs" style={{ color: "var(--text-muted)" }}>
                 {t("zotero.typeToSearch")}
               </div>
@@ -338,14 +367,11 @@ export default function ZoteroCitePicker({
               </div>
             )}
 
-            {results.map((item) => (
+            {(!query.trim() ? recents : results).map((item) => (
               <button
                 key={item.key}
                 type="button"
-                onClick={() => {
-                  onInsert(formatCitationHtml(item));
-                  onClose();
-                }}
+                onClick={() => recordAndInsert(item)}
                 className="w-full text-left px-3 py-2 border-b last:border-b-0 transition-colors hover:bg-stone-100 dark:hover:bg-stone-800"
                 style={{ borderColor: "var(--border)" }}
               >

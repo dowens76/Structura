@@ -23,8 +23,12 @@ export async function GET(request: NextRequest) {
     );
   }
 
+  if (!q) {
+    return NextResponse.json({ items: [] });
+  }
+
   const url = new URL(`https://api.zotero.org/users/${userId}/items`);
-  if (q) url.searchParams.set("q", q);
+  url.searchParams.set("q", q);
   url.searchParams.set("format", "json");
   url.searchParams.set("limit", "20");
 
