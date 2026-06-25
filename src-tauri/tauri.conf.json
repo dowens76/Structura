@@ -36,7 +36,8 @@
     ],
     "resources": {
       "resources/server": "server",
-      "resources/databases/source.db": "databases/source.db",
+      "resources/databases/oshb.db": "databases/oshb.db",
+      "resources/databases/sblgnt.db": "databases/sblgnt.db",
       "resources/databases/bdb.db": "databases/bdb.db",
       "resources/databases/strongs-hebrew.db": "databases/strongs-hebrew.db",
       "resources/databases/dodson.db": "databases/dodson.db",
