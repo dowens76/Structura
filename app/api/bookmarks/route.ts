@@ -17,22 +17,23 @@ export async function GET() {
 }
 
 // POST /api/bookmarks — upsert a bookmark
-// Body: { id: string; label: string; href: string; translations: string[]; createdAt: number }
+// Body: { id: string; label: string; href: string; translations: BookmarkView | string[]; createdAt: number }
 export async function POST(request: NextRequest) {
   const workspaceId = await getActiveWorkspaceId();
-  let body: { id?: string; label?: string; href?: string; translations?: string[]; createdAt?: number };
+  let body: { id?: string; label?: string; href?: string; translations?: unknown; createdAt?: number };
   try { body = await request.json(); } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
   const { id, label = "", href = "", translations = [], createdAt = Date.now() } = body;
   if (!id || !href) return NextResponse.json({ error: "id and href required" }, { status: 400 });
 
+  const translationsJson = JSON.stringify(translations);
   await userDb
     .insert(bookmarks)
-    .values({ id, workspaceId, label, href, translations: JSON.stringify(translations), createdAt })
+    .values({ id, workspaceId, label, href, translations: translationsJson, createdAt })
     .onConflictDoUpdate({
       target: bookmarks.id,
-      set: { label, href, translations: JSON.stringify(translations), createdAt },
+      set: { label, href, translations: translationsJson, createdAt },
     });
   return NextResponse.json({ ok: true });
 }

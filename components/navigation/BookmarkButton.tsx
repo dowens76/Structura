@@ -4,11 +4,18 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { OSIS_BOOK_ORDER } from "@/lib/utils/osis";
 
+export interface BookmarkView {
+  translations: string[];
+  displayMode?: string;
+  interlinearSubMode?: string;
+}
+
 export interface BookmarkEntry {
   id: string;
   label: string;
   href: string;
-  translations: string[];
+  /** Parsed view state stored in the DB's `translations` JSON column. */
+  view: BookmarkView;
   createdAt: number;
 }
 
@@ -16,6 +23,9 @@ type SortOrder = "time" | "canonical";
 
 const TRANSLATIONS_KEY = "structura:activeTranslations";
 const SORT_KEY = "structura:bookmarkSort";
+
+/** Custom event dispatched when a bookmark navigation should apply a saved view. */
+export const APPLY_BOOKMARK_VIEW_EVENT = "structura:applyBookmarkView";
 
 function parseCanonicalKey(href: string): number {
   const parts = href.split("/").filter(Boolean);
@@ -27,6 +37,17 @@ function parseCanonicalKey(href: string): number {
   return bookOrder * 100000 + chapter;
 }
 
+/** Parse the `translations` JSON column — supports legacy string[] and new BookmarkView object. */
+function parseViewColumn(raw: string): BookmarkView {
+  try {
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) return { translations: parsed };
+    return parsed as BookmarkView;
+  } catch {
+    return { translations: [] };
+  }
+}
+
 async function fetchBookmarks(): Promise<BookmarkEntry[]> {
   try {
     const res = await fetch("/api/bookmarks");
@@ -36,7 +57,7 @@ async function fetchBookmarks(): Promise<BookmarkEntry[]> {
       id: r.id,
       label: r.label,
       href: r.href,
-      translations: (() => { try { return JSON.parse(r.translations); } catch { return []; } })(),
+      view: parseViewColumn(r.translations),
       createdAt: r.createdAt,
     }));
   } catch {
@@ -44,12 +65,17 @@ async function fetchBookmarks(): Promise<BookmarkEntry[]> {
   }
 }
 
-function readActiveTranslations(): string[] {
+function readCurrentView(): BookmarkView {
   try {
-    const raw = localStorage.getItem(TRANSLATIONS_KEY);
-    return raw ? JSON.parse(raw) : [];
+    const translations = (() => {
+      const raw = localStorage.getItem(TRANSLATIONS_KEY);
+      return raw ? (JSON.parse(raw) as string[]) : [];
+    })();
+    const displayMode = localStorage.getItem("structura:displayMode")?.replace(/^"|"$/g, "") ?? undefined;
+    const interlinearSubMode = localStorage.getItem("structura:interlinearSubMode")?.replace(/^"|"$/g, "") ?? undefined;
+    return { translations, displayMode, interlinearSubMode };
   } catch {
-    return [];
+    return { translations: [] };
   }
 }
 
@@ -109,18 +135,19 @@ export default function BookmarkButton({ href, label, buttonLabel }: BookmarkBut
   }
 
   async function addBookmark() {
-    const translations = readActiveTranslations();
+    const view = readCurrentView();
     const entry: BookmarkEntry = {
       id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
       label: label ?? "",
       href: href ?? "",
-      translations,
+      view,
       createdAt: Date.now(),
     };
+    // The DB column is still named `translations`; we store the full view object there as JSON
     await fetch("/api/bookmarks", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(entry),
+      body: JSON.stringify({ ...entry, translations: view }),
     });
     setBookmarks((prev) => [entry, ...prev.filter((b) => b.href !== href)]);
     setIsBookmarked(true);
@@ -144,9 +171,18 @@ export default function BookmarkButton({ href, label, buttonLabel }: BookmarkBut
 
   function navigateToBookmark(bm: BookmarkEntry) {
     setOpen(false);
-    if (bm.translations.length > 0) {
-      try { localStorage.setItem(TRANSLATIONS_KEY, JSON.stringify(bm.translations)); } catch {}
-    }
+    const { translations, displayMode, interlinearSubMode } = bm.view;
+    // Write to localStorage so a fresh mount picks up the right state
+    try {
+      if (translations.length > 0)
+        localStorage.setItem(TRANSLATIONS_KEY, JSON.stringify(translations));
+      if (displayMode)
+        localStorage.setItem("structura:displayMode", JSON.stringify(displayMode));
+      if (interlinearSubMode)
+        localStorage.setItem("structura:interlinearSubMode", JSON.stringify(interlinearSubMode));
+    } catch {}
+    // Dispatch event so ChapterDisplay can apply the view immediately (it may not remount)
+    window.dispatchEvent(new CustomEvent(APPLY_BOOKMARK_VIEW_EVENT, { detail: bm.view }));
     router.push(bm.href);
   }
 
@@ -227,12 +263,12 @@ export default function BookmarkButton({ href, label, buttonLabel }: BookmarkBut
                       onClick={() => navigateToBookmark(bm)}
                       className="flex-1 text-left px-1 py-1 rounded text-xs truncate transition-colors"
                       style={{ color: bm.href === href ? "var(--accent)" : "var(--nav-fg)" }}
-                      title={bm.label + (bm.translations.length ? ` · ${bm.translations.join(", ")}` : "")}
+                      title={bm.label + (bm.view.translations.length ? ` · ${bm.view.translations.join(", ")}` : "")}
                     >
                       <span className="font-medium">{bm.label}</span>
-                      {bm.translations.length > 0 && (
+                      {bm.view.translations.length > 0 && (
                         <span className="ml-1.5 text-[10px]" style={{ color: "var(--text-muted)" }}>
-                          {bm.translations.join(", ")}
+                          {bm.view.translations.join(", ")}
                         </span>
                       )}
                     </button>

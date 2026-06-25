@@ -40,6 +40,7 @@ import { OSIS_BOOK_NAMES, OSIS_REF_BOOK_NAMES, CONTIGUOUS_BOOK_PAIRS, CONTIGUOUS
 import AddressBar from "@/components/ui/AddressBar";
 import { useTranslation } from "@/lib/i18n/LocaleContext";
 import { getMtToKjvInstructions, getKjvVerseLabel } from "@/lib/versification/mt-kjv-mapping";
+import { APPLY_BOOKMARK_VIEW_EVENT, type BookmarkView } from "@/components/navigation/BookmarkButton";
 
 /** Normalize text for diacritic-insensitive find-in-page matching. */
 function normalizeForSearch(text: string): string {
@@ -297,6 +298,18 @@ export default function PassageView({
   useEffect(() => { writeLocal("structura:searchOpen", searchOpen); }, [searchOpen]);
   useEffect(() => { writeLocal("structura:outlineOpen", outlineOpen); }, [outlineOpen]);
   useEffect(() => { writeLocal("structura:intertextualOpen", intertextualOpen); }, [intertextualOpen]);
+
+  // Apply view state from bookmark navigation (PassageView may not remount between passages)
+  useEffect(() => {
+    function onApplyBookmarkView(e: Event) {
+      const { translations, displayMode, interlinearSubMode: subMode } = (e as CustomEvent<BookmarkView>).detail;
+      if (translations.length > 0) setActiveTranslationAbbrs(new Set(translations));
+      if (displayMode) setDisplayMode(displayMode as DisplayMode);
+      if (subMode) setInterlinearSubMode(subMode as InterlinearSubMode);
+    }
+    window.addEventListener(APPLY_BOOKMARK_VIEW_EVENT, onApplyBookmarkView);
+    return () => window.removeEventListener(APPLY_BOOKMARK_VIEW_EVENT, onApplyBookmarkView);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     fetch("/api/book-groupings")

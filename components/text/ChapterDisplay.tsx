@@ -39,6 +39,7 @@ import { generateOutline } from "@/lib/utils/outlineExport";
 import { useTranslation } from "@/lib/i18n/LocaleContext";
 import { CONTIGUOUS_BOOK_PAIRS, CONTIGUOUS_BOOK_PREV, OSIS_BOOK_NAMES, OSIS_REF_BOOK_NAMES } from "@/lib/utils/osis";
 import AddressBar from "@/components/ui/AddressBar";
+import { APPLY_BOOKMARK_VIEW_EVENT, type BookmarkView } from "@/components/navigation/BookmarkButton";
 
 /** Normalize text for diacritic-insensitive find-in-page matching.
  *  Strips Hebrew cantillation/vowel marks and Greek/Latin combining diacritics
@@ -1000,6 +1001,18 @@ export default function ChapterDisplay({
   useEffect(() => { writeLocal("structura:outlineExtended", outlineExtended); }, [outlineExtended]);
   useEffect(() => { writeLocal("structura:outlineIncludePaired", outlinePredecessorShown); }, [outlinePredecessorShown]);
   useEffect(() => { writeLocal("structura:editingScenes", editingScenes); }, [editingScenes]);
+
+  // Apply view state from bookmark navigation (ChapterDisplay may not remount between pages)
+  useEffect(() => {
+    function onApplyBookmarkView(e: Event) {
+      const { translations, displayMode, interlinearSubMode: subMode } = (e as CustomEvent<BookmarkView>).detail;
+      if (translations.length > 0) setActiveTranslationAbbrs(new Set(translations));
+      if (displayMode) setDisplayMode(displayMode as DisplayMode);
+      if (subMode) setInterlinearSubMode(subMode as InterlinearSubMode);
+    }
+    window.addEventListener(APPLY_BOOKMARK_VIEW_EVENT, onApplyBookmarkView);
+    return () => window.removeEventListener(APPLY_BOOKMARK_VIEW_EVENT, onApplyBookmarkView);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Load datasets list on mount ───────────────────────────────────────────
   useEffect(() => {
