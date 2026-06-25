@@ -3,6 +3,10 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Manager};
 use tauri_plugin_shell::ShellExt;
+use tauri_plugin_shell::process::CommandChild;
+
+/// Managed state holding the Node.js sidecar handle so we can kill it on exit.
+struct NodeProcess(Mutex<Option<CommandChild>>);
 
 // ── Helper: find a TCP port ───────────────────────────────────────────────────
 
@@ -285,7 +289,7 @@ fn ensure_user_db(app: &AppHandle) -> Result<PathBuf, String> {
 
 // ── Spawn Next.js sidecar ─────────────────────────────────────────────────────
 
-fn spawn_server(app: &AppHandle, port: u16) -> Result<(), String> {
+fn spawn_server(app: &AppHandle, port: u16) -> Result<CommandChild, String> {
     let resource_dir = app
         .path()
         .resource_dir()
@@ -342,7 +346,7 @@ fn spawn_server(app: &AppHandle, port: u16) -> Result<(), String> {
         .env("LD_LIBRARY_PATH", "")
         ;
 
-    let (mut rx, _child) = sidecar.spawn().map_err(|e| format!("Failed to spawn node sidecar: {e}"))?;
+    let (mut rx, child) = sidecar.spawn().map_err(|e| format!("Failed to spawn node sidecar: {e}"))?;
 
     let app_handle = app.clone();
     let ready_url = format!("http://127.0.0.1:{port}");
@@ -476,7 +480,7 @@ fn spawn_server(app: &AppHandle, port: u16) -> Result<(), String> {
         });
     }
 
-    Ok(())
+    Ok(child)
 }
 
 // ── App entry point ───────────────────────────────────────────────────────────
@@ -498,19 +502,35 @@ pub fn run() {
             // Prefer 3737 so the URL is always http://localhost:3737 — predictable
             // for browser access and Reveal.js iframe embedding.
             let port = find_preferred_port(3737);
-            if let Err(e) = spawn_server(app.handle(), port) {
-                log::error!("spawn_server failed: {e}");
-                // Show a native error dialog so the user knows what went wrong
-                use tauri_plugin_dialog::DialogExt;
-                app.dialog()
-                    .message(format!("Failed to start server:\n\n{e}"))
-                    .title("Structura — Startup Error")
-                    .show(|_| {});
+            match spawn_server(app.handle(), port) {
+                Ok(child) => {
+                    app.manage(NodeProcess(Mutex::new(Some(child))));
+                }
+                Err(e) => {
+                    log::error!("spawn_server failed: {e}");
+                    use tauri_plugin_dialog::DialogExt;
+                    app.dialog()
+                        .message(format!("Failed to start server:\n\n{e}"))
+                        .title("Structura — Startup Error")
+                        .show(|_| {});
+                }
             }
 
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![pick_folder, save_file, print_page, capture_viewport_png, list_fonts])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app_handle, event| {
+            if let tauri::RunEvent::Exit = event {
+                if let Some(state) = app_handle.try_state::<NodeProcess>() {
+                    if let Ok(mut guard) = state.0.lock() {
+                        if let Some(child) = guard.take() {
+                            log::info!("Killing Node.js sidecar on exit");
+                            let _ = child.kill();
+                        }
+                    }
+                }
+            }
+        });
 }
