@@ -76,6 +76,7 @@ sqlite.exec(`
     lemma               TEXT,
     strong_number       TEXT,
     morph_code          TEXT,
+    transliteration     TEXT,
     text_source_id      INTEGER NOT NULL,
     language_id         INTEGER NOT NULL,
     part_of_speech_id   INTEGER,
