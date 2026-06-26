@@ -51,6 +51,11 @@
     "externalBin": [
       "binaries/node"
     ],
+    "windows": {
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper"
+      }
+    },
     "macOS": {
       "signingIdentity": "Developer ID Application: DANIEL C OWENS (5QS52T7HF4)",
       "entitlements": "entitlements.plist",
