@@ -20,6 +20,7 @@ import { mkdirSync, existsSync, unlinkSync, writeFileSync, readFileSync } from "
 import path from "path";
 import * as schema from "../lib/db/schema";
 import { OSIS_BOOK_NAMES } from "../lib/utils/osis";
+import { transliterateGreek } from "../lib/transliteration/greek-sbl";
 
 // source.db is the legacy combined DB; after the split we fall back to oshb.db
 // which has the same books/lookup tables.
@@ -399,6 +400,7 @@ async function main() {
       lemma: lemmaMap.get(wordId) ?? null,
       strongNumber: strongsMap.get(wordId) ?? null,
       morphCode: morphCode || null,
+      transliteration: (() => { try { return transliterateGreek(surfaceText); } catch { return null; } })(),
       textSourceId:   reqLookupId("text_sources", "STEPBIBLE_LXX"),
       languageId:     reqLookupId("languages", "greek"),
       partOfSpeechId: getLookupId("parts_of_speech", morph.partOfSpeech),
