@@ -966,8 +966,8 @@ export default function ChapterDisplay({
     setGreekFontSize(readLocal<number>("structura:greekFontSize", 1.25));
     setTranslationFontSize(readLocal<number>("structura:translationFontSize", 0.875));
     setLineHeightMultiplier(readLocal<number>("structura:lineHeightMultiplier", 1.0));
-    // In translation-only mode, default to hiding source text (use stored pref if set).
-    setHideSourceText(readLocal<boolean>("structura:hideSourceText", translationOnly));
+    // In translation-only mode always hide source text; otherwise restore stored pref.
+    setHideSourceText(translationOnly || readLocal<boolean>("structura:hideSourceText", false));
     setToolbarVis({ ...DEFAULT_TOOLBAR_VIS, ...readLocal<Partial<ToolbarVisibility>>("structura:toolbarVisibility", {}) });
     setNotesOpen(readLocal<boolean>("structura:notesOpen", false));
     setSearchOpen(readLocal<boolean>("structura:searchOpen", false));

@@ -366,7 +366,7 @@ export default function PassageView({
     setGreekFontSize(readLocal<number>("structura:greekFontSize", 1.25));
     setTranslationFontSize(readLocal<number>("structura:translationFontSize", 0.875));
     setLineHeightMultiplier(readLocal<number>("structura:lineHeightMultiplier", 1.0));
-    setHideSourceText(readLocal<boolean>("structura:hideSourceText", translationOnly));
+    setHideSourceText(translationOnly || readLocal<boolean>("structura:hideSourceText", false));
     setToolbarVis({ ...DEFAULT_TOOLBAR_VIS, ...readLocal<Partial<ToolbarVisibility>>("structura:toolbarVisibility", {}) });
     setNotesOpen(readLocal<boolean>("structura:notesOpen", false));
     setOutlineOpen(readLocal<boolean>("structura:outlineOpen", false));
