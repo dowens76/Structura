@@ -21,7 +21,12 @@ import path from "path";
 import * as schema from "../lib/db/schema";
 import { OSIS_BOOK_NAMES } from "../lib/utils/osis";
 
-const SOURCE_DB_PATH = path.join(process.cwd(), "data", "source.db");
+// source.db is the legacy combined DB; after the split we fall back to oshb.db
+// which has the same books/lookup tables.
+const OSHB_DB_PATH   = path.join(process.cwd(), "data", "oshb.db");
+const SOURCE_DB_PATH = existsSync(path.join(process.cwd(), "data", "source.db"))
+  ? path.join(process.cwd(), "data", "source.db")
+  : OSHB_DB_PATH;
 const LXX_DB_PATH    = path.join(process.cwd(), "data", "lxx.db");
 const SOURCES_PATH = path.join(process.cwd(), "data", "sources", "lxx");
 const BASE_URL = "https://raw.githubusercontent.com/eliranwong/LXX-Rahlfs-1935/master";

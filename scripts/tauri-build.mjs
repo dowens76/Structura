@@ -57,11 +57,14 @@ run("npx tsx scripts/create-user-db-template.ts", "Building user.db template");
 
 // 4a. Generate any source databases that haven't been imported yet.
 //     On a fresh CI runner these won't exist; locally they're usually cached.
-const sourceDbs = ["vcb.db"];
-for (const db of sourceDbs) {
+//     lxx.db is required by copy-databases.mjs; generate it here if absent.
+const sourceDbs = [
+  { db: "lxx.db",  cmd: "npm run import:lxx && npm run import:lxx:punct" },
+  { db: "vcb.db",  cmd: "npm run import:vcb" },
+];
+for (const { db, cmd } of sourceDbs) {
   if (!existsSync(path.join(ROOT, "data", db))) {
-    const scriptName = db.replace(".db", "");
-    run(`npm run import:${scriptName}`, `Importing ${db} (not found in data/)`);
+    run(cmd, `Importing ${db} (not found in data/)`);
   }
 }
 
