@@ -266,4 +266,4 @@ async function main() {
   console.log("\nDone! Run the dev server to see punctuation in the LXX text.");
 }
 
-main().catch(console.error);
+main().catch((err) => { console.error(err); process.exit(1); });
