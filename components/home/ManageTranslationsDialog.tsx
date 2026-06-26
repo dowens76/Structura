@@ -93,6 +93,8 @@ export default function ManageTranslationsDialog({ onClose }: Props) {
   const [rows, setRows] = useState<TranslationRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<number | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState("");
   const [newAbbr, setNewAbbr] = useState("");
@@ -123,6 +125,14 @@ export default function ManageTranslationsDialog({ onClose }: Props) {
     });
     setRows((prev) => prev.map((r) => r.id === id ? { ...r, ...patch } : r));
     setSaving(null);
+  }
+
+  async function handleDelete(id: number) {
+    setDeleting(true);
+    await fetch(`/api/translations?id=${id}`, { method: "DELETE" });
+    setRows((prev) => prev.filter((r) => r.id !== id));
+    setConfirmDeleteId(null);
+    setDeleting(false);
   }
 
   async function handleCreate() {
@@ -178,6 +188,11 @@ export default function ManageTranslationsDialog({ onClose }: Props) {
               row={row}
               saving={saving === row.id}
               onSave={(patch) => patchField(row.id, patch)}
+              confirmingDelete={confirmDeleteId === row.id}
+              deleting={deleting && confirmDeleteId === row.id}
+              onRequestDelete={() => setConfirmDeleteId(row.id)}
+              onCancelDelete={() => setConfirmDeleteId(null)}
+              onConfirmDelete={() => handleDelete(row.id)}
             />
           ))}
         </div>
@@ -238,10 +253,20 @@ function TranslationEditor({
   row,
   saving,
   onSave,
+  confirmingDelete,
+  deleting,
+  onRequestDelete,
+  onCancelDelete,
+  onConfirmDelete,
 }: {
   row: TranslationRow;
   saving: boolean;
   onSave: (patch: Partial<Pick<TranslationRow, "name" | "abbreviation" | "language">>) => void;
+  confirmingDelete: boolean;
+  deleting: boolean;
+  onRequestDelete: () => void;
+  onCancelDelete: () => void;
+  onConfirmDelete: () => void;
 }) {
   const [name, setName] = useState(row.name);
   const [abbr, setAbbr] = useState(row.abbreviation);
@@ -251,7 +276,7 @@ function TranslationEditor({
   const labelCls = "text-[10px] font-semibold uppercase tracking-wider text-stone-400 dark:text-stone-500 mb-0.5 block";
 
   return (
-    <div className="rounded-lg border p-3 space-y-2" style={{ borderColor: "var(--border)" }}>
+    <div className="rounded-lg border p-3 space-y-2" style={{ borderColor: confirmingDelete ? "var(--color-pos-verb)" : "var(--border)" }}>
       <div className="grid grid-cols-3 gap-3">
         <div>
           <label className={labelCls}>Name</label>
@@ -285,7 +310,39 @@ function TranslationEditor({
           </select>
         </div>
       </div>
-      {saving && <p className="text-[10px] text-stone-400">Saving…</p>}
+
+      <div className="flex items-center justify-between">
+        <div>
+          {saving && <p className="text-[10px] text-stone-400">Saving…</p>}
+        </div>
+        {!confirmingDelete ? (
+          <button
+            onClick={onRequestDelete}
+            className="text-[11px] text-stone-400 hover:text-red-500 dark:hover:text-red-400 transition-colors"
+          >
+            Remove
+          </button>
+        ) : (
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] text-red-500 dark:text-red-400">
+              Delete "{row.name}" and all its verses?
+            </span>
+            <button
+              onClick={onCancelDelete}
+              className="text-[11px] px-2 py-0.5 rounded border border-stone-300 dark:border-stone-600 text-stone-500 hover:text-stone-700 dark:hover:text-stone-300 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={onConfirmDelete}
+              disabled={deleting}
+              className="text-[11px] px-2 py-0.5 rounded bg-red-600 hover:bg-red-700 text-white disabled:opacity-50 transition-colors"
+            >
+              {deleting ? "Deleting…" : "Delete"}
+            </button>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
