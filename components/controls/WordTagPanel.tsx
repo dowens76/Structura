@@ -36,7 +36,7 @@ interface WordTagPanelProps {
   onReorder: (ids: number[]) => void;
   onToggleHighlight: (id: number) => void;
   onCreateGrouping: (name: string, books: string[], features: string[]) => Promise<BookGrouping>;
-  onRequestWordClick: (onPicked: (lemma: string) => void) => void;
+  onRequestWordClick: (onPicked: (lemma: string, displayLabel?: string) => void) => void;
   onCancelWordClick: () => void;
 }
 
@@ -221,15 +221,17 @@ interface LemmaPickerInputProps {
   color: string;
   lemmas: string[];
   pickingActive: boolean;
-  onAdd: (lemma: string) => void;
+  externalDisplayLabels?: Map<string, string>;
+  onAdd: (lemma: string, displayLabel?: string) => void;
   onRemove: (lemma: string) => void;
-  onRequestWordClick: (onPicked: (lemma: string) => void) => void;
+  onRequestWordClick: (onPicked: (lemma: string, displayLabel?: string) => void) => void;
   onCancelWordClick: () => void;
 }
 
-function LemmaPickerInput({ color, lemmas, pickingActive, onAdd, onRemove, onRequestWordClick, onCancelWordClick }: LemmaPickerInputProps) {
+function LemmaPickerInput({ color, lemmas, pickingActive, externalDisplayLabels, onAdd, onRemove, onRequestWordClick, onCancelWordClick }: LemmaPickerInputProps) {
   const [inputVal, setInputVal] = useState("");
   const [suggestions, setSuggestions] = useState<LemmaSuggestion[]>([]);
+  const [displayLabels, setDisplayLabels] = useState<Map<string, string>>(new Map());
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
   const [activeSuggIdx, setActiveSuggIdx] = useState(-1);
@@ -277,7 +279,11 @@ function LemmaPickerInput({ color, lemmas, pickingActive, onAdd, onRemove, onReq
 
   function pickSuggestion(s: LemmaSuggestion) {
     const id = canonicalId(s);
-    if (id) onAdd(id);
+    if (id) {
+      const label = displayLabel(s);
+      if (label && label !== id) setDisplayLabels((m) => new Map(m).set(id, label));
+      onAdd(id, label !== id ? label : undefined);
+    }
     setInputVal("");
     setSuggestions([]);
     setShowSuggestions(false);
@@ -303,7 +309,10 @@ function LemmaPickerInput({ color, lemmas, pickingActive, onAdd, onRemove, onReq
 
   function handlePickFromText() {
     if (pickingActive) { onCancelWordClick(); return; }
-    onRequestWordClick((lemma) => { onAdd(lemma); });
+    onRequestWordClick((lemma, label) => {
+      if (label && label !== lemma) setDisplayLabels((m) => new Map(m).set(lemma, label));
+      onAdd(lemma, label !== lemma ? label : undefined);
+    });
   }
 
   return (
@@ -311,14 +320,17 @@ function LemmaPickerInput({ color, lemmas, pickingActive, onAdd, onRemove, onReq
       <span className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>Lemmas</span>
       {lemmas.length > 0 && (
         <div className="flex flex-wrap gap-1">
-          {lemmas.map((l) => (
-            <span key={l} className="flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded-full border"
-              style={{ borderColor: color, color: "var(--foreground)", ...hebrewStyle(l) }}>
-              {l}
-              <button type="button" onClick={() => onRemove(l)}
-                className="ml-0.5 opacity-50 hover:opacity-100 leading-none">×</button>
-            </span>
-          ))}
+          {lemmas.map((l) => {
+            const chipLabel = displayLabels.get(l) ?? externalDisplayLabels?.get(l) ?? l;
+            return (
+              <span key={l} className="flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded-full border"
+                style={{ borderColor: color, color: "var(--foreground)", ...hebrewStyle(chipLabel) }}>
+                {chipLabel}
+                <button type="button" onClick={() => { setDisplayLabels((m) => { const n = new Map(m); n.delete(l); return n; }); onRemove(l); }}
+                  className="ml-0.5 opacity-50 hover:opacity-100 leading-none">×</button>
+              </span>
+            );
+          })}
         </div>
       )}
       <div className="flex gap-1 items-center" ref={containerRef}>
@@ -408,6 +420,7 @@ export default function WordTagPanel({
   const [newName, setNewName] = useState("");
   const [newColor, setNewColor] = useState(TAG_PALETTE[0]);
   const [newLemmas, setNewLemmas] = useState<string[]>([]);
+  const [newLemmaDisplayLabels, setNewLemmaDisplayLabels] = useState<Map<string, string>>(new Map());
   const [newCorpusMode, setNewCorpusMode] = useState<CorpusMode>("book");
   const [newCorpusGroupingId, setNewCorpusGroupingId] = useState<number | null>(null);
 
@@ -425,11 +438,27 @@ export default function WordTagPanel({
   const [reorderList, setReorderList] = useState<WordTag[]>([]);
   const dragIdx = useRef<number | null>(null);
 
+  // Auto-activate word picking while the cluster creation form is open
+  useEffect(() => {
+    if (showNew && newType === "cluster") {
+      onRequestWordClick((lemma, displayLabel) => {
+        if (displayLabel && displayLabel !== lemma) {
+          setNewLemmaDisplayLabels((m) => new Map(m).set(lemma, displayLabel));
+        }
+        setNewLemmas((prev) => prev.includes(lemma) ? prev : [...prev, lemma]);
+      });
+    } else {
+      onCancelWordClick();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showNew, newType]);
+
   function resetNew() {
     setNewName("");
     setNewColor(TAG_PALETTE[0]);
     setNewType("concept");
     setNewLemmas([]);
+    setNewLemmaDisplayLabels(new Map());
     setNewCorpusMode("book");
     setNewCorpusGroupingId(null);
   }
@@ -708,8 +737,15 @@ export default function WordTagPanel({
                 color={newColor}
                 lemmas={newLemmas}
                 pickingActive={clusterPickingActive}
-                onAdd={(lemma) => setNewLemmas((prev) => prev.includes(lemma) ? prev : [...prev, lemma])}
-                onRemove={(lemma) => setNewLemmas((prev) => prev.filter((x) => x !== lemma))}
+                externalDisplayLabels={newLemmaDisplayLabels}
+                onAdd={(lemma, displayLabel) => {
+                  if (displayLabel) setNewLemmaDisplayLabels((m) => new Map(m).set(lemma, displayLabel));
+                  setNewLemmas((prev) => prev.includes(lemma) ? prev : [...prev, lemma]);
+                }}
+                onRemove={(lemma) => {
+                  setNewLemmaDisplayLabels((m) => { const n = new Map(m); n.delete(lemma); return n; });
+                  setNewLemmas((prev) => prev.filter((x) => x !== lemma));
+                }}
                 onRequestWordClick={onRequestWordClick}
                 onCancelWordClick={onCancelWordClick}
               />

@@ -1,8 +1,9 @@
 import { eq, and, asc, inArray, or, gte, lte, gt, lt, sql, max, like } from "drizzle-orm";
-import { sourceDb, userDb, sourceLookups, lxxLookups, getLxxDb, getLxxSqlite, getUltSqlite, getVcbSqlite, getUserSqlite, getOshbDb, getSblgntDb, getDbAndLookups } from "./index";
+import { sourceDb, userDb, sourceLookups, lxxLookups, getLxxDb, getLxxSqlite, getUltSqlite, getVcbSqlite, getUserSqlite, getOshbDb, getSblgntDb, getDbAndLookups, getLexiconDbsForLanguage } from "./index";
 import { getMtToKjvInstructions } from "@/lib/versification/mt-kjv-mapping";
 import type { LookupMaps } from "./index";
 import { books, words } from "./source-schema";
+import { lexiconEntries } from "./lexica-schema";
 import type { Word, WordRow } from "./source-schema";
 import { translations, translationVerses, paragraphBreaks, paragraphHeadings, characters, characterRefs, speechSections, wordTags, wordTagRefs, lineIndents, sceneBreaks, passages, rstRelations, wordArrows, wordFormatting, lineAnnotations, bookGroupings, appSettings, translationFootnotes, translationVersions, workspaces, users, textCriticalMarks, notes, intertextualLinks } from "./user-schema";
 import type { Book, Translation, TranslationVerse, Character, CharacterRef, SpeechSection, WordTag, WordTagRef, Passage, RstRelation, WordArrow, LineAnnotation, BookGrouping, TranslationFootnote, TranslationVersion, IntertextualLink } from "./schema";
@@ -1150,6 +1151,36 @@ export async function deleteWordTagRefsByTagId(tagId: number): Promise<void> {
   await userDb.delete(wordTagRefs).where(eq(wordTagRefs.tagId, tagId));
 }
 
+function stripHebVowels(s: string): string {
+  return s.replace(/[֑-ׇ]/g, "");
+}
+
+function isConsonantalHebrew(s: string): boolean {
+  return /[א-ת]/.test(s) && !/[ְ-ׇ]/.test(s);
+}
+
+/** For a consonantal Hebrew string (e.g. "אמר"), return all matching Strong's
+ *  numbers from the Hebrew lexicon (e.g. ["H559","H560",…]). */
+async function resolveConsonantalToStrongs(consonantal: string): Promise<string[]> {
+  const hebrewDbs = getLexiconDbsForLanguage("hebrew");
+  if (hebrewDbs.length === 0) return [];
+  // Use an expanded LIKE to narrow the DB scan before JS filtering
+  const expandedPattern = consonantal.split("").join("%");
+  const seen = new Set<string>();
+  for (const { db } of hebrewDbs) {
+    const rows = await db
+      .select({ strongNumber: lexiconEntries.strongNumber, lemma: lexiconEntries.lemma })
+      .from(lexiconEntries)
+      .where(and(eq(lexiconEntries.language, "hebrew"), like(lexiconEntries.lemma, `${expandedPattern}%`)));
+    for (const row of rows) {
+      if (row.strongNumber && row.lemma && stripHebVowels(row.lemma) === consonantal) {
+        seen.add(row.strongNumber);
+      }
+    }
+  }
+  return [...seen];
+}
+
 /** Search for words by a list of lemma strings (supports Strong's H/G numbers)
  *  within a given set of corpus books and text source.
  *  Returns lightweight refs suitable for bulk word-tag-ref insertion. */
@@ -1161,6 +1192,19 @@ export async function getWordRefsByLemmas(
   if (lemmas.length === 0 || corpusBooks.length === 0) return [];
 
   const isLxx = textSourceName === "STEPBIBLE_LXX" || textSourceName === "LXX";
+
+  // Resolve consonantal Hebrew lemmas (e.g. "אמר") to Strong's numbers before searching
+  const resolvedLemmas: string[] = [];
+  for (const q of lemmas) {
+    if (!isLxx && isConsonantalHebrew(q)) {
+      const strongs = await resolveConsonantalToStrongs(q);
+      if (strongs.length > 0) resolvedLemmas.push(...strongs);
+      else resolvedLemmas.push(q);
+    } else {
+      resolvedLemmas.push(q);
+    }
+  }
+  const dedupedLemmas = [...new Set(resolvedLemmas)];
 
   function buildLemmaConditions(lemmaList: string[]) {
     return lemmaList.map((q) => {
@@ -1177,7 +1221,7 @@ export async function getWordRefsByLemmas(
     const bookCond = corpusBooks.length === 1
       ? eq(books.osisCode, corpusBooks[0])
       : inArray(books.osisCode, corpusBooks);
-    const lemmaConds = buildLemmaConditions(lemmas);
+    const lemmaConds = buildLemmaConditions(dedupedLemmas);
     const rows = await lxxDb
       .select({ wordId: words.wordId, osisCode: books.osisCode, chapter: words.chapter })
       .from(words)
@@ -1188,7 +1232,7 @@ export async function getWordRefsByLemmas(
     const bookCond = corpusBooks.length === 1
       ? eq(books.osisCode, corpusBooks[0])
       : inArray(books.osisCode, corpusBooks);
-    const lemmaConds = buildLemmaConditions(lemmas);
+    const lemmaConds = buildLemmaConditions(dedupedLemmas);
     const { db: _lemmaDb, lookups: _lemmaLookups } = getDbAndLookups(textSourceName);
     const rows = await _lemmaDb
       .select({ wordId: words.wordId, osisCode: books.osisCode, chapter: words.chapter, textSourceId: words.textSourceId })

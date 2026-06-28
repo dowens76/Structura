@@ -331,7 +331,7 @@ export default function ChapterDisplay({
   const [pendingWordTagColor, setPendingWordTagColor] = useState<string | null>(null);
   const [pendingWordTagCorpusGroupingId, setPendingWordTagCorpusGroupingId] = useState<number | null>(null);
   // When set, the next source-word click adds its canonical lemma to a cluster being built
-  const [clusterLemmaCallback, setClusterLemmaCallback] = useState<((lemma: string) => void) | null>(null);
+  const [clusterLemmaCallback, setClusterLemmaCallback] = useState<((lemma: string, displayLabel?: string) => void) | null>(null);
 
   const wordTagMap = useMemo(
     () => new Map(wordTags.map((t) => [t.id, t])),
@@ -2195,7 +2195,10 @@ export default function ChapterDisplay({
       const canonicalLemma = word.language === "hebrew"
         ? (word.strongNumber ?? word.lemma ?? word.surfaceText?.replace(/\//g, "") ?? "?")
         : (word.lemma ?? word.surfaceText ?? "?");
-      clusterLemmaCallback(canonicalLemma);
+      const displayLabel = word.language === "hebrew"
+        ? ((hebrewLemmas as Record<string, string>)[word.strongNumber ?? ""] ?? word.lemma ?? word.surfaceText?.replace(/\//g, "") ?? "?")
+        : (word.lemma ?? word.surfaceText ?? "?");
+      clusterLemmaCallback(canonicalLemma, displayLabel !== canonicalLemma ? displayLabel : undefined);
       return;
     }
     if (pendingWordTag && pendingWordTagColor !== null) {
@@ -2342,7 +2345,7 @@ export default function ChapterDisplay({
     setPendingWordTagCorpusGroupingId(corpusGroupingId);
   }
 
-  function handleRequestWordClick(cb: (lemma: string) => void) {
+  function handleRequestWordClick(cb: (lemma: string, displayLabel?: string) => void) {
     setClusterLemmaCallback(() => cb);
   }
 
@@ -2371,7 +2374,7 @@ export default function ChapterDisplay({
     }
   }
 
-  async function handleUpdateWordTag(id: number, name: string, color: string, corpusGroupingId?: number | null, lemmas?: string[] | null) {
+  async function handleUpdateWordTag(id: number, name: string, color: string, corpusGroupingId?: number | null, lemmas?: string[] | null, prevLemmas?: string[] | null, corpusBooks?: string[]) {
     const prev = wordTags.find((t) => t.id === id);
     const lemmasJson = lemmas?.length ? JSON.stringify(lemmas) : null;
     setWordTags((ts) => ts.map((t) => t.id === id ? {
@@ -2380,11 +2383,28 @@ export default function ChapterDisplay({
       lemmas: lemmas !== undefined ? lemmasJson : t.lemmas,
     } : t));
     try {
-      await fetch(`/api/word-tags/${id}`, {
+      const res = await fetch(`/api/word-tags/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, color, corpusGroupingId, lemmas }),
+        body: JSON.stringify({
+          name, color, corpusGroupingId, lemmas, prevLemmas,
+          corpusBooks, textSource, currentChapter: chapter, book,
+        }),
       });
+      const data = await res.json();
+      const chapterRefs = (data.chapterRefs ?? []) as Array<{ wordId: string; book: string; chapter: number; textSource: string }>;
+      if (chapterRefs.length > 0 || (prevLemmas?.length && lemmas !== prevLemmas)) {
+        setWordTagRefMap((prev) => {
+          const next = new Map(prev);
+          for (const [wid, ref] of next) {
+            if (ref.tagId === id) next.delete(wid);
+          }
+          for (const r of chapterRefs) {
+            next.set(r.wordId, { id: -1, wordId: r.wordId, tagId: id, textSource: r.textSource, book: r.book, chapter: r.chapter, workspaceId: 0 });
+          }
+          return next;
+        });
+      }
     } catch {
       if (prev) setWordTags((ts) => ts.map((t) => t.id === id ? prev : t));
     }

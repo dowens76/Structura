@@ -414,7 +414,7 @@ export default function PassageView({
   const [pendingWordTag, setPendingWordTag] = useState(false);
   const [pendingWordTagColor, setPendingWordTagColor] = useState<string | null>(null);
   const [pendingWordTagCorpusGroupingId, setPendingWordTagCorpusGroupingId] = useState<number | null>(null);
-  const [clusterLemmaCallback, setClusterLemmaCallback] = useState<((lemma: string) => void) | null>(null);
+  const [clusterLemmaCallback, setClusterLemmaCallback] = useState<((lemma: string, displayLabel?: string) => void) | null>(null);
   const [bookGroupings, setBookGroupings] = useState<import("@/lib/db/schema").BookGrouping[]>([]);
 
   const wordTagMap = useMemo(
@@ -1510,7 +1510,10 @@ export default function PassageView({
       const canonicalLemma = word.language === "hebrew"
         ? (word.strongNumber ?? word.lemma ?? word.surfaceText?.replace(/\//g, "") ?? "?")
         : (word.lemma ?? word.surfaceText ?? "?");
-      clusterLemmaCallback(canonicalLemma);
+      const displayLabel = word.language === "hebrew"
+        ? ((hebrewLemmas as Record<string, string>)[word.strongNumber ?? ""] ?? word.lemma ?? word.surfaceText?.replace(/\//g, "") ?? "?")
+        : (word.lemma ?? word.surfaceText ?? "?");
+      clusterLemmaCallback(canonicalLemma, displayLabel !== canonicalLemma ? displayLabel : undefined);
       return;
     }
     const wordChapter = wordToChapter.get(word.wordId) ?? passage.startChapter;
@@ -1640,7 +1643,7 @@ export default function PassageView({
     setPendingWordTagCorpusGroupingId(corpusGroupingId);
   }
 
-  function handleRequestWordClick(cb: (lemma: string) => void) {
+  function handleRequestWordClick(cb: (lemma: string, displayLabel?: string) => void) {
     setClusterLemmaCallback(() => cb);
   }
 
