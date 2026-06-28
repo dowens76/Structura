@@ -32,7 +32,7 @@ interface WordTagPanelProps {
   onCreatePendingWordTag: (color: string, corpusGroupingId: number | null) => void;
   onCreateClusterTag: (name: string, lemmas: string[], color: string, corpusGroupingId: number | null, corpusBooks: string[]) => void;
   onDeleteTag: (id: number) => void;
-  onUpdateTag: (id: number, name: string, color: string, corpusGroupingId?: number | null, lemmas?: string[] | null) => void;
+  onUpdateTag: (id: number, name: string, color: string, corpusGroupingId?: number | null, lemmas?: string[] | null, prevLemmas?: string[] | null, corpusBooks?: string[]) => void;
   onReorder: (ids: number[]) => void;
   onToggleHighlight: (id: number) => void;
   onCreateGrouping: (name: string, books: string[], features: string[]) => Promise<BookGrouping>;
@@ -419,6 +419,7 @@ export default function WordTagPanel({
   const [editCorpusMode, setEditCorpusMode] = useState<CorpusMode>("book");
   const [editCorpusGroupingId, setEditCorpusGroupingId] = useState<number | null>(null);
   const [editLemmas, setEditLemmas] = useState<string[]>([]);
+  const editOriginalLemmasRef = useRef<string[]>([]);
 
   const [showReorder, setShowReorder] = useState(false);
   const [reorderList, setReorderList] = useState<WordTag[]>([]);
@@ -441,6 +442,7 @@ export default function WordTagPanel({
     setEditCorpusMode(t.corpusGroupingId != null ? "grouping" : "book");
     const parsed = t.lemmas ? (() => { try { return JSON.parse(t.lemmas) as string[]; } catch { return []; } })() : [];
     setEditLemmas(parsed);
+    editOriginalLemmasRef.current = parsed;
     setConfirmDeleteId(null);
   }
 
@@ -448,7 +450,8 @@ export default function WordTagPanel({
     if (!editingTagId || !editName.trim()) return;
     const corpusId = editCorpusMode === "grouping" ? editCorpusGroupingId : null;
     const lemmasToSave = editLemmas.length > 0 ? editLemmas : null;
-    onUpdateTag(editingTagId, editName.trim(), editColor, corpusId, lemmasToSave);
+    const corpusBooks = resolveCorpusBooks(editCorpusMode, editCorpusGroupingId);
+    onUpdateTag(editingTagId, editName.trim(), editColor, corpusId, lemmasToSave, editOriginalLemmasRef.current, corpusBooks);
     setEditingTagId(null);
   }
 

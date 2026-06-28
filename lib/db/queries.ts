@@ -1146,6 +1146,10 @@ export async function removeWordTagRef(wordId: string, workspaceId: number): Pro
   );
 }
 
+export async function deleteWordTagRefsByTagId(tagId: number): Promise<void> {
+  await userDb.delete(wordTagRefs).where(eq(wordTagRefs.tagId, tagId));
+}
+
 /** Search for words by a list of lemma strings (supports Strong's H/G numbers)
  *  within a given set of corpus books and text source.
  *  Returns lightweight refs suitable for bulk word-tag-ref insertion. */

@@ -1668,7 +1668,7 @@ export default function PassageView({
     }
   }
 
-  async function handleUpdateWordTag(id: number, name: string, color: string, corpusGroupingId?: number | null, lemmas?: string[] | null) {
+  async function handleUpdateWordTag(id: number, name: string, color: string, corpusGroupingId?: number | null, lemmas?: string[] | null, prevLemmas?: string[] | null, corpusBooks?: string[]) {
     const prev = wordTags.find((t) => t.id === id);
     const lemmasJson = lemmas?.length ? JSON.stringify(lemmas) : null;
     setWordTags((ts) => ts.map((t) => t.id === id ? {
@@ -1677,11 +1677,30 @@ export default function PassageView({
       lemmas: lemmas !== undefined ? lemmasJson : t.lemmas,
     } : t));
     try {
-      await fetch(`/api/word-tags/${id}`, {
+      const res = await fetch(`/api/word-tags/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, color, corpusGroupingId, lemmas }),
+        body: JSON.stringify({
+          name, color, corpusGroupingId, lemmas, prevLemmas,
+          corpusBooks, textSource, currentChapter: passage.startChapter, book: osisBook,
+        }),
       });
+      const data = await res.json();
+      const chapterRefs = (data.chapterRefs ?? []) as Array<{ wordId: string; book: string; chapter: number; textSource: string }>;
+      if (chapterRefs.length > 0 || (prevLemmas?.length && lemmas !== prevLemmas)) {
+        setWordTagRefMap((prev) => {
+          const next = new Map(prev);
+          // Remove refs for this tag from the current chapter
+          for (const [wid, ref] of next) {
+            if (ref.tagId === id) next.delete(wid);
+          }
+          // Add new refs for the current chapter
+          for (const r of chapterRefs) {
+            next.set(r.wordId, { id: -1, wordId: r.wordId, tagId: id, textSource: r.textSource, book: r.book, chapter: r.chapter, workspaceId: 0 });
+          }
+          return next;
+        });
+      }
     } catch {
       if (prev) setWordTags((ts) => ts.map((t) => t.id === id ? prev : t));
     }
