@@ -16,20 +16,18 @@ const TAG_PALETTE: string[] = [
   "#0f766e", "#1d4ed8", "#6d28d9", "#be185d",
 ];
 
-type TagType = "concept" | "word" | "cluster";
+type TagType = "concept" | "lemma";
 type CorpusMode = "book" | "grouping" | "new";
 
 interface WordTagPanelProps {
   tags: WordTag[];
   activeTagId: number | null;
   highlightedTagIds: Set<number>;
-  pendingWordTag: boolean;
   currentBook: string;
   bookGroupings: BookGrouping[];
   clusterPickingActive: boolean;
   onSelectTag: (id: number) => void;
   onCreateConceptTag: (name: string, color: string, corpusGroupingId: number | null) => void;
-  onCreatePendingWordTag: (color: string, corpusGroupingId: number | null) => void;
   onCreateClusterTag: (name: string, lemmas: string[], color: string, corpusGroupingId: number | null, corpusBooks: string[]) => void;
   onDeleteTag: (id: number) => void;
   onUpdateTag: (id: number, name: string, color: string, corpusGroupingId?: number | null, lemmas?: string[] | null, prevLemmas?: string[] | null, corpusBooks?: string[]) => void;
@@ -399,13 +397,11 @@ export default function WordTagPanel({
   tags,
   activeTagId,
   highlightedTagIds,
-  pendingWordTag,
   currentBook,
   bookGroupings,
   clusterPickingActive,
   onSelectTag,
   onCreateConceptTag,
-  onCreatePendingWordTag,
   onCreateClusterTag,
   onDeleteTag,
   onUpdateTag,
@@ -418,6 +414,7 @@ export default function WordTagPanel({
   const [showNew, setShowNew] = useState(false);
   const [newType, setNewType] = useState<TagType>("concept");
   const [newName, setNewName] = useState("");
+  const [newNameAutoFilled, setNewNameAutoFilled] = useState(false);
   const [newColor, setNewColor] = useState(TAG_PALETTE[0]);
   const [newLemmas, setNewLemmas] = useState<string[]>([]);
   const [newLemmaDisplayLabels, setNewLemmaDisplayLabels] = useState<Map<string, string>>(new Map());
@@ -438,23 +435,9 @@ export default function WordTagPanel({
   const [reorderList, setReorderList] = useState<WordTag[]>([]);
   const dragIdx = useRef<number | null>(null);
 
-  // Auto-activate word picking while the cluster creation form is open
-  useEffect(() => {
-    if (showNew && newType === "cluster") {
-      onRequestWordClick((lemma, displayLabel) => {
-        if (displayLabel && displayLabel !== lemma) {
-          setNewLemmaDisplayLabels((m) => new Map(m).set(lemma, displayLabel));
-        }
-        setNewLemmas((prev) => prev.includes(lemma) ? prev : [...prev, lemma]);
-      });
-    } else {
-      onCancelWordClick();
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showNew, newType]);
-
   function resetNew() {
     setNewName("");
+    setNewNameAutoFilled(false);
     setNewColor(TAG_PALETTE[0]);
     setNewType("concept");
     setNewLemmas([]);
@@ -502,10 +485,8 @@ export default function WordTagPanel({
     if (newType === "concept") {
       if (!newName.trim()) return;
       onCreateConceptTag(newName.trim(), newColor, corpusId);
-    } else if (newType === "word") {
-      onCreatePendingWordTag(newColor, corpusId);
     } else {
-      // cluster
+      // lemma
       if (!newName.trim() || newLemmas.length === 0) return;
       onCreateClusterTag(newName.trim(), newLemmas, newColor, corpusId, corpusBooks);
     }
@@ -556,8 +537,7 @@ export default function WordTagPanel({
   );
 
   const typeBadge = (t: WordTag) => {
-    if (t.type === "word")    return "W";
-    if (t.type === "cluster") return "K";
+    if (t.type === "word" || t.type === "cluster") return "L";
     if (t.type === "search")  return "S";
     return "C";
   };
@@ -581,14 +561,6 @@ export default function WordTagPanel({
         <button type="button" onClick={openReorder} title="Reorder tags"
           className="shrink-0 p-1 rounded text-xs transition-colors hover:bg-stone-100 dark:hover:bg-stone-800"
           style={{ color: "var(--text-muted)" }}>⇅</button>
-
-        {/* Pending hint */}
-        {pendingWordTag && (
-          <span className="text-xs italic shrink-0 px-2 py-1 rounded"
-            style={{ color: "var(--accent)", backgroundColor: `${TAG_PALETTE[0]}11` }}>
-            Click a source word to name this tag by its lemma
-          </span>
-        )}
 
         {/* Tag chips */}
         {tags.map((t) => {
@@ -619,7 +591,7 @@ export default function WordTagPanel({
                   onSelect={(mode, gid) => { setEditCorpusMode(mode); setEditCorpusGroupingId(gid); }}
                   onCreateGrouping={handleCreateGroupingForEdit} />
 
-                {/* Lemma editor for word/cluster */}
+                {/* Lemma editor for lemma-type tags */}
                 {isWordOrCluster && (
                   <LemmaPickerInput
                     color={editColor}
@@ -709,30 +681,30 @@ export default function WordTagPanel({
             {/* Type toggle */}
             <div className="flex items-center gap-1">
               <div className="flex rounded overflow-hidden border text-xs" style={{ borderColor: "var(--border)" }}>
-                {(["concept", "word", "cluster"] as TagType[]).map((tp) => (
-                  <button key={tp} type="button" onClick={() => { setNewType(tp); setNewLemmas([]); }}
+                {(["concept", "lemma"] as TagType[]).map((tp) => (
+                  <button key={tp} type="button" onClick={() => { setNewType(tp); setNewLemmas([]); setNewName(""); setNewNameAutoFilled(false); }}
                     className="px-2 py-0.5 capitalize transition-colors"
                     style={{ backgroundColor: newType === tp ? "var(--accent)" : "transparent", color: newType === tp ? "#fff" : "var(--text-muted)" }}>
-                    {tp === "cluster" ? "Set of words" : tp}
+                    {tp === "lemma" ? "Lemma" : "Concept"}
                   </button>
                 ))}
               </div>
             </div>
 
             {/* Name input */}
-            {(newType === "concept" || newType === "cluster") && (
-              <input autoFocus={newType === "concept"} type="text" value={newName} onChange={(e) => setNewName(e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Enter" && newType === "concept") handleCreate(); if (e.key === "Escape") { setShowNew(false); resetNew(); } }}
-                placeholder={newType === "cluster" ? "Set name" : "Label"}
-                className="w-full text-xs bg-transparent outline-none border-b pb-0.5"
-                style={{ borderColor: "var(--border)", color: "var(--foreground)" }} />
-            )}
-            {newType === "word" && (
-              <span className="text-xs italic" style={{ color: "var(--text-muted)" }}>Label will come from lemma</span>
-            )}
+            <input
+              autoFocus={newType === "concept"}
+              type="text"
+              value={newName}
+              onChange={(e) => { setNewName(e.target.value); setNewNameAutoFilled(false); }}
+              onKeyDown={(e) => { if (e.key === "Enter" && newType === "concept") handleCreate(); if (e.key === "Escape") { setShowNew(false); resetNew(); } }}
+              placeholder={newType === "lemma" ? "Tag name" : "Label"}
+              className="w-full text-xs bg-transparent outline-none border-b pb-0.5"
+              style={{ borderColor: "var(--border)", color: "var(--foreground)" }}
+            />
 
-            {/* Lemma inputs for cluster */}
-            {newType === "cluster" && (
+            {/* Lemma inputs for lemma type */}
+            {newType === "lemma" && (
               <LemmaPickerInput
                 color={newColor}
                 lemmas={newLemmas}
@@ -740,11 +712,24 @@ export default function WordTagPanel({
                 externalDisplayLabels={newLemmaDisplayLabels}
                 onAdd={(lemma, displayLabel) => {
                   if (displayLabel) setNewLemmaDisplayLabels((m) => new Map(m).set(lemma, displayLabel));
-                  setNewLemmas((prev) => prev.includes(lemma) ? prev : [...prev, lemma]);
+                  setNewLemmas((prev) => {
+                    if (prev.includes(lemma)) return prev;
+                    // Auto-fill name from first lemma's display label
+                    if (prev.length === 0) {
+                      const label = displayLabel ?? lemma;
+                      setNewName((cur) => { if (!cur.trim()) { setNewNameAutoFilled(true); return label; } return cur; });
+                    }
+                    return [...prev, lemma];
+                  });
                 }}
                 onRemove={(lemma) => {
                   setNewLemmaDisplayLabels((m) => { const n = new Map(m); n.delete(lemma); return n; });
-                  setNewLemmas((prev) => prev.filter((x) => x !== lemma));
+                  setNewLemmas((prev) => {
+                    const next = prev.filter((x) => x !== lemma);
+                    // Clear auto-filled name if the first lemma was removed
+                    if (prev[0] === lemma && newNameAutoFilled) { setNewName(""); setNewNameAutoFilled(false); }
+                    return next;
+                  });
                 }}
                 onRequestWordClick={onRequestWordClick}
                 onCancelWordClick={onCancelWordClick}
@@ -765,14 +750,14 @@ export default function WordTagPanel({
             {/* Action buttons */}
             <div className="flex items-center gap-2">
               <button type="button" onClick={handleCreate}
-                disabled={(newType === "concept" && !newName.trim()) || (newType === "cluster" && (!newName.trim() || newLemmas.length === 0))}
+                disabled={(newType === "concept" && !newName.trim()) || (newType === "lemma" && (!newName.trim() || newLemmas.length === 0))}
                 className="text-xs font-semibold px-2 py-0.5 rounded bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 transition-colors">
-                {newType === "word" ? "Create →" : "Create"}
+                Create
               </button>
-              <button type="button" onClick={() => { setShowNew(false); resetNew(); }}
+              <button type="button" onClick={() => { setShowNew(false); resetNew(); onCancelWordClick(); }}
                 className="text-xs px-1.5 py-0.5 rounded hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors"
                 style={{ color: "var(--text-muted)" }}>Cancel</button>
-              {newType === "cluster" && newLemmas.length === 0 && (
+              {newType === "lemma" && newLemmas.length === 0 && (
                 <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>Add at least one lemma</span>
               )}
             </div>

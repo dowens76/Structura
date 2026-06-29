@@ -327,9 +327,6 @@ export default function ChapterDisplay({
   );
   const [highlightWordTagIds, setHighlightWordTagIds] = useState<Set<number>>(new Set());
   // When true, the next source-word click creates a "word"-type tag using its lemma
-  const [pendingWordTag, setPendingWordTag] = useState(false);
-  const [pendingWordTagColor, setPendingWordTagColor] = useState<string | null>(null);
-  const [pendingWordTagCorpusGroupingId, setPendingWordTagCorpusGroupingId] = useState<number | null>(null);
   // When set, the next source-word click adds its canonical lemma to a cluster being built
   const [clusterLemmaCallback, setClusterLemmaCallback] = useState<((lemma: string, displayLabel?: string) => void) | null>(null);
 
@@ -1588,7 +1585,7 @@ export default function ChapterDisplay({
     const source = abbr ?? textSource;
     if (editingRefs && activeCharId !== null) {
       handleToggleCharacterRefById(focusId, source);
-    } else if (editingWordTags && activeWordTagId !== null && !pendingWordTag) {
+    } else if (editingWordTags && activeWordTagId !== null) {
       handleToggleWordTagRefById(focusId, source);
     }
   };
@@ -2134,7 +2131,7 @@ export default function ChapterDisplay({
         setRefRangeStart(wordId);
         handleToggleCharacterRefById(wordId, abbr);
       }
-    } else if (editingWordTags && activeWordTagId !== null && !pendingWordTag) {
+    } else if (editingWordTags && activeWordTagId !== null) {
       if (shiftHeld && wordTagRangeStart?.startsWith(`tv:${abbr}:`)) {
         const tvList = tvWordIdLists.get(abbr) ?? [];
         const startPos = tvList.indexOf(wordTagRangeStart);
@@ -2199,25 +2196,6 @@ export default function ChapterDisplay({
         ? ((hebrewLemmas as Record<string, string>)[word.strongNumber ?? ""] ?? word.lemma ?? word.surfaceText?.replace(/\//g, "") ?? "?")
         : (word.lemma ?? word.surfaceText ?? "?");
       clusterLemmaCallback(canonicalLemma, displayLabel !== canonicalLemma ? displayLabel : undefined);
-      return;
-    }
-    if (pendingWordTag && pendingWordTagColor !== null) {
-      // "Word" type: create a tag named after the lemma and auto-tag ALL matching words
-      // in the current chapter via the cluster endpoint.
-      const displayName = word.language === "hebrew"
-        ? ((hebrewLemmas as Record<string, string>)[word.strongNumber ?? ""]
-            ?? word.surfaceText?.replace(/\//g, "")
-            ?? "?")
-        : (word.lemma ?? word.surfaceText ?? "?");
-      const canonicalLemma = word.language === "hebrew"
-        ? (word.strongNumber ?? word.lemma ?? word.surfaceText?.replace(/\//g, "") ?? "?")
-        : (word.lemma ?? word.surfaceText ?? "?");
-      const color = pendingWordTagColor;
-      const corpusGroupingId = pendingWordTagCorpusGroupingId;
-      setPendingWordTag(false);
-      setPendingWordTagColor(null);
-      setPendingWordTagCorpusGroupingId(null);
-      await handleCreateClusterTag(displayName, [canonicalLemma], color, corpusGroupingId, [book], "word");
       return;
     }
     if (activeWordTagId === null) return;
@@ -2337,12 +2315,6 @@ export default function ChapterDisplay({
 
   function handleCreateConceptTag(name: string, color: string, corpusGroupingId: number | null) {
     return handleCreateTag("concept", name, color, undefined, undefined, corpusGroupingId);
-  }
-
-  function handleCreatePendingWordTag(color: string, corpusGroupingId: number | null) {
-    setPendingWordTag(true);
-    setPendingWordTagColor(color);
-    setPendingWordTagCorpusGroupingId(corpusGroupingId);
   }
 
   function handleRequestWordClick(cb: (lemma: string, displayLabel?: string) => void) {
@@ -3504,7 +3476,7 @@ export default function ChapterDisplay({
     if (!keep.has("annotations")) { setEditingAnnotations(false); setAnnotRangeStart(null); setAnnotRangeEnd(null); }
     if (!keep.has("refs"))        { setEditingRefs(false); setRefRangeStart(null); }
     if (!keep.has("speech"))      { setEditingSpeech(false); setSpeechRangeStart(null); }
-    if (!keep.has("wordTags"))    { setEditingWordTags(false); setPendingWordTag(false); setWordTagRangeStart(null); }
+    if (!keep.has("wordTags"))    { setEditingWordTags(false); setWordTagRangeStart(null); }
     if (!keep.has("indents"))     setEditingIndents(false);
     if (!keep.has("rst"))         { setEditingRst(false); setRstSegA(null); setRstSegB(null); setShowRstPicker(false); setRstEditGroupId(null); }
     if (!keep.has("arrows"))      { setEditingArrows(false); setArrowFromWordId(null); }
@@ -3787,6 +3759,7 @@ export default function ChapterDisplay({
 
               {/* Paragraph edit mode toggle */}
               {toolbarVis.paragraphs && <button
+                disabled={editingWordTags}
                 onClick={() => { if (!editingParagraphs) deactivateIncompatible("paragraph"); setEditingParagraphs((v) => !v); }}
                 data-tip={editingParagraphs
                   ? t("toolbar.titleParagraphOn")
@@ -3796,6 +3769,7 @@ export default function ChapterDisplay({
                   editingParagraphs
                     ? "bg-amber-500 text-white"
                     : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
+                  "disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-stone-100 dark:disabled:hover:bg-stone-800",
                 ].join(" ")}
               >
                 ¶
@@ -3852,6 +3826,7 @@ export default function ChapterDisplay({
 
               {/* RST relation mode */}
               {toolbarVis.rst && <button
+                disabled={editingWordTags}
                 onClick={() => {
                   const entering = !editingRst;
                   if (entering) {
@@ -3873,6 +3848,7 @@ export default function ChapterDisplay({
                   editingRst
                     ? "bg-rose-600 text-white"
                     : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
+                  "disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-stone-100 dark:disabled:hover:bg-stone-800",
                 ].join(" ")}
               >
                 ↳
@@ -3942,6 +3918,7 @@ export default function ChapterDisplay({
 
               {/* Word arrow mode */}
               {toolbarVis.arrows && <button
+                disabled={editingWordTags}
                 onClick={() => {
                   const entering = !editingArrows;
                   if (entering) {
@@ -3959,6 +3936,7 @@ export default function ChapterDisplay({
                   editingArrows
                     ? "bg-rose-600 text-white"
                     : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
+                  "disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-stone-100 dark:disabled:hover:bg-stone-800",
                 ].join(" ")}
               >
                 <svg width="20" height="10" viewBox="0 0 20 10" fill="none" aria-hidden="true" style={{ display: "inline-block", verticalAlign: "middle" }}>
@@ -4068,6 +4046,7 @@ export default function ChapterDisplay({
 
               {/* Character reference tag mode */}
               {toolbarVis.refs && <button
+                disabled={editingWordTags}
                 onClick={() => {
                   if (!editingRefs) deactivateIncompatible("refs");
                   setEditingRefs((v) => !v);
@@ -4078,6 +4057,7 @@ export default function ChapterDisplay({
                   editingRefs
                     ? "bg-violet-600 text-white"
                     : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
+                  "disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-stone-100 dark:disabled:hover:bg-stone-800",
                 ].join(" ")}
               >
                 👤
@@ -4085,6 +4065,7 @@ export default function ChapterDisplay({
 
               {/* Speech section tag mode */}
               {toolbarVis.speech && <button
+                disabled={editingWordTags}
                 onClick={() => {
                   if (!editingSpeech) deactivateIncompatible("speech");
                   setEditingSpeech((v) => !v);
@@ -4097,6 +4078,7 @@ export default function ChapterDisplay({
                   editingSpeech
                     ? "bg-violet-600 text-white"
                     : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
+                  "disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-stone-100 dark:disabled:hover:bg-stone-800",
                 ].join(" ")}
               >
                 💬
@@ -4485,16 +4467,11 @@ export default function ChapterDisplay({
             tags={wordTags}
             activeTagId={activeWordTagId}
             highlightedTagIds={highlightWordTagIds}
-            pendingWordTag={pendingWordTag}
             currentBook={book}
             bookGroupings={bookGroupings}
             clusterPickingActive={clusterLemmaCallback !== null}
-            onSelectTag={(id) => {
-              setActiveWordTagId(id);
-              setPendingWordTag(false);
-            }}
+            onSelectTag={(id) => { setActiveWordTagId(id); }}
             onCreateConceptTag={handleCreateConceptTag}
-            onCreatePendingWordTag={handleCreatePendingWordTag}
             onCreateClusterTag={handleCreateClusterTag}
             onDeleteTag={handleDeleteWordTag}
             onUpdateTag={handleUpdateWordTag}
@@ -4504,13 +4481,6 @@ export default function ChapterDisplay({
             onRequestWordClick={handleRequestWordClick}
             onCancelWordClick={handleCancelWordClick}
           />
-        )}
-
-        {/* Pending word tag hint */}
-        {editingWordTags && pendingWordTag && (
-          <div className="px-6 py-1 text-xs bg-yellow-50 dark:bg-yellow-950 border-b border-yellow-200 dark:border-yellow-800 text-yellow-700 dark:text-yellow-300">
-            {t("toolbar.hintPendingTag")}
-          </div>
         )}
 
         {/* RST relation hint */}

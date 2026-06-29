@@ -411,9 +411,6 @@ export default function PassageView({
     initialWordTags[0]?.id ?? null
   );
   const [highlightWordTagIds, setHighlightWordTagIds] = useState<Set<number>>(new Set());
-  const [pendingWordTag, setPendingWordTag] = useState(false);
-  const [pendingWordTagColor, setPendingWordTagColor] = useState<string | null>(null);
-  const [pendingWordTagCorpusGroupingId, setPendingWordTagCorpusGroupingId] = useState<number | null>(null);
   const [clusterLemmaCallback, setClusterLemmaCallback] = useState<((lemma: string, displayLabel?: string) => void) | null>(null);
   const [bookGroupings, setBookGroupings] = useState<import("@/lib/db/schema").BookGrouping[]>([]);
 
@@ -1469,7 +1466,7 @@ export default function PassageView({
     }
     if (editingRefs && activeCharId !== null) {
       handleToggleCharacterRefById(wordId, abbr);
-    } else if (editingWordTags && activeWordTagId !== null && !pendingWordTag) {
+    } else if (editingWordTags && activeWordTagId !== null) {
       handleToggleWordTagRefById(wordId, abbr);
     }
   }
@@ -1517,23 +1514,6 @@ export default function PassageView({
       return;
     }
     const wordChapter = wordToChapter.get(word.wordId) ?? passage.startChapter;
-    if (pendingWordTag && pendingWordTagColor !== null) {
-      const displayName = word.language === "hebrew"
-        ? ((hebrewLemmas as Record<string, string>)[word.strongNumber ?? ""]
-            ?? word.surfaceText?.replace(/\//g, "")
-            ?? "?")
-        : (word.lemma ?? word.surfaceText ?? "?");
-      const canonicalLemma = word.language === "hebrew"
-        ? (word.strongNumber ?? word.lemma ?? word.surfaceText?.replace(/\//g, "") ?? "?")
-        : (word.lemma ?? word.surfaceText ?? "?");
-      const color = pendingWordTagColor;
-      const corpusGroupingId = pendingWordTagCorpusGroupingId;
-      setPendingWordTag(false);
-      setPendingWordTagColor(null);
-      setPendingWordTagCorpusGroupingId(null);
-      await handleCreateClusterTag(displayName, [canonicalLemma], color, corpusGroupingId, [osisBook], "word");
-      return;
-    }
     if (activeWordTagId === null) return;
     await handleToggleWordTagRefById(word.wordId, textSource);
   }
@@ -1635,12 +1615,6 @@ export default function PassageView({
 
   function handleCreateConceptTag(name: string, color: string, corpusGroupingId: number | null) {
     return handleCreateTag("concept", name, color, undefined, undefined, undefined, corpusGroupingId);
-  }
-
-  function handleCreatePendingWordTag(color: string, corpusGroupingId: number | null) {
-    setPendingWordTag(true);
-    setPendingWordTagColor(color);
-    setPendingWordTagCorpusGroupingId(corpusGroupingId);
   }
 
   function handleRequestWordClick(cb: (lemma: string, displayLabel?: string) => void) {
@@ -2830,7 +2804,7 @@ export default function PassageView({
     const source = abbr ?? textSource;
     if (editingRefs && activeCharId !== null) {
       handleToggleCharacterRefById(focusId, source);
-    } else if (editingWordTags && activeWordTagId !== null && !pendingWordTag) {
+    } else if (editingWordTags && activeWordTagId !== null) {
       handleToggleWordTagRefById(focusId, source);
     }
   };
@@ -3313,16 +3287,18 @@ export default function PassageView({
 
           {/* Paragraph edit mode */}
           {toolbarVis.paragraphs && <button
+            disabled={editingWordTags}
             onClick={() => {
               setEditingParagraphs((v) => !v);
               setEditingBold(false); setEditingItalic(false);
               setEditingRefs(false); setEditingSpeech(false); setSpeechRangeStart(null);
-              setEditingWordTags(false); setPendingWordTag(false);
+              setEditingWordTags(false);
             }}
             data-tip={editingParagraphs ? "Exit paragraph edit mode" : "Enter paragraph edit mode — click any word to start/remove a paragraph there"}
             className={["px-2.5 py-1 rounded text-xs font-medium transition-colors",
               editingParagraphs ? "bg-amber-500 text-white"
                 : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
+              "disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-stone-100 dark:disabled:hover:bg-stone-800",
             ].join(" ")}
           >¶</button>}
 
@@ -3332,7 +3308,7 @@ export default function PassageView({
               setEditingIndents((v) => !v);
               setEditingRefs(false); setEditingSpeech(false);
               setEditingWordTags(false); setSpeechRangeStart(null);
-              setPendingWordTag(false);
+              
             }}
             data-tip={editingIndents ? "Exit indent mode" : "Indent paragraphs to indicate subordinate clauses"}
             className={["px-2.5 py-1 rounded text-xs font-medium transition-colors",
@@ -3373,6 +3349,7 @@ export default function PassageView({
 
           {/* RST relation mode */}
           {toolbarVis.rst && <button
+            disabled={editingWordTags}
             onClick={() => {
               const entering = !editingRst;
               setEditingRst(entering);
@@ -3387,6 +3364,7 @@ export default function PassageView({
             className={["px-2.5 py-1 rounded text-xs font-medium transition-colors",
               editingRst ? "bg-rose-600 text-white"
                 : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
+              "disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-stone-100 dark:disabled:hover:bg-stone-800",
             ].join(" ")}
           >↳</button>}
           {toolbarVis.rst && editingRst && (
@@ -3404,6 +3382,7 @@ export default function PassageView({
 
           {/* Word arrow mode */}
           {toolbarVis.arrows && <button
+            disabled={editingWordTags}
             onClick={() => {
               setEditingArrows((v) => !v);
               setEditingRst(false);
@@ -3412,12 +3391,13 @@ export default function PassageView({
               setShowRstPicker(false);
               setArrowFromWordId(null);
               setEditingWordTags(false);
-              setPendingWordTag(false);
+
             }}
             data-tip={editingArrows ? "Exit word arrow mode" : "Draw free-form arrows between words"}
             className={["px-2.5 py-1 rounded text-xs font-medium transition-colors",
               editingArrows ? "bg-rose-600 text-white"
                 : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
+              "disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-stone-100 dark:disabled:hover:bg-stone-800",
             ].join(" ")}
           >
             <svg width="20" height="10" viewBox="0 0 20 10" fill="none" aria-hidden="true" style={{ display: "inline-block", verticalAlign: "middle" }}>
@@ -3429,6 +3409,7 @@ export default function PassageView({
 
           {/* Bold formatting mode */}
           {toolbarVis.bold && <button
+            disabled={editingWordTags}
             onClick={() => {
               setEditingBold((v) => !v);
               setEditingParagraphs(false);
@@ -3439,7 +3420,6 @@ export default function PassageView({
               setEditingRst(false);
               setEditingArrows(false);
               setSpeechRangeStart(null);
-              setPendingWordTag(false);
               setRstSegA(null);
               setArrowFromWordId(null);
             }}
@@ -3447,11 +3427,13 @@ export default function PassageView({
             className={["px-2.5 py-1 rounded text-xs font-bold transition-colors",
               editingBold ? "bg-stone-800 text-white dark:bg-stone-200 dark:text-stone-900"
                 : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
+              "disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-stone-100 dark:disabled:hover:bg-stone-800",
             ].join(" ")}
           >B</button>}
 
           {/* Italic formatting mode */}
           {toolbarVis.italic && <button
+            disabled={editingWordTags}
             onClick={() => {
               setEditingItalic((v) => !v);
               setEditingParagraphs(false);
@@ -3462,7 +3444,6 @@ export default function PassageView({
               setEditingRst(false);
               setEditingArrows(false);
               setSpeechRangeStart(null);
-              setPendingWordTag(false);
               setRstSegA(null);
               setArrowFromWordId(null);
             }}
@@ -3470,6 +3451,7 @@ export default function PassageView({
             className={["px-2.5 py-1 rounded text-xs italic transition-colors",
               editingItalic ? "bg-stone-800 text-white dark:bg-stone-200 dark:text-stone-900"
                 : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
+              "disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-stone-100 dark:disabled:hover:bg-stone-800",
             ].join(" ")}
           >I</button>}
 
@@ -3500,33 +3482,37 @@ export default function PassageView({
 
           {/* Character reference mode */}
           {toolbarVis.refs && <button
+            disabled={editingWordTags}
             onClick={() => {
               setEditingRefs((v) => !v);
               setEditingBold(false); setEditingItalic(false);
               setEditingParagraphs(false);
               setEditingSpeech(false); setSpeechRangeStart(null);
-              setEditingWordTags(false); setPendingWordTag(false);
+              setEditingWordTags(false);
             }}
             data-tip={editingRefs ? "Exit reference tagging" : "Tag words as referring to a character"}
             className={["px-2.5 py-1 rounded text-xs font-medium transition-colors",
               editingRefs ? "bg-violet-600 text-white"
                 : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
+              "disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-stone-100 dark:disabled:hover:bg-stone-800",
             ].join(" ")}
           >👤</button>}
 
           {/* Speech section mode */}
           {toolbarVis.speech && <button
+            disabled={editingWordTags}
             onClick={() => {
               setEditingSpeech((v) => !v);
               setEditingBold(false); setEditingItalic(false);
               setEditingParagraphs(false);
               setEditingRefs(false); setSpeechRangeStart(null);
-              setEditingWordTags(false); setPendingWordTag(false);
+              setEditingWordTags(false);
             }}
             data-tip={editingSpeech ? "Exit speech tagging" : "Mark word ranges as spoken by a character (two clicks: start then end)"}
             className={["px-2.5 py-1 rounded text-xs font-medium transition-colors",
               editingSpeech ? "bg-violet-600 text-white"
                 : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
+              "disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-stone-100 dark:disabled:hover:bg-stone-800",
             ].join(" ")}
           >💬</button>}
 
@@ -3537,7 +3523,7 @@ export default function PassageView({
               setEditingBold(false); setEditingItalic(false);
               setEditingParagraphs(false);
               setEditingRefs(false); setEditingSpeech(false); setSpeechRangeStart(null);
-              setEditingIndents(false); setPendingWordTag(false);
+              setEditingIndents(false);
               setEditingArrows(false); setArrowFromWordId(null);
             }}
             data-tip={editingWordTags ? "Exit word/concept tag mode" : "Tag words or concepts with colour highlights"}
@@ -3840,13 +3826,11 @@ export default function PassageView({
             tags={wordTags}
             activeTagId={activeWordTagId}
             highlightedTagIds={highlightWordTagIds}
-            pendingWordTag={pendingWordTag}
             currentBook={osisBook}
             bookGroupings={bookGroupings}
             clusterPickingActive={clusterLemmaCallback !== null}
-            onSelectTag={(id) => { setActiveWordTagId(id); setPendingWordTag(false); }}
+            onSelectTag={(id) => { setActiveWordTagId(id); }}
             onCreateConceptTag={handleCreateConceptTag}
-            onCreatePendingWordTag={handleCreatePendingWordTag}
             onCreateClusterTag={handleCreateClusterTag}
             onDeleteTag={handleDeleteWordTag}
             onUpdateTag={handleUpdateWordTag}
@@ -3856,13 +3840,6 @@ export default function PassageView({
             onRequestWordClick={handleRequestWordClick}
             onCancelWordClick={handleCancelWordClick}
           />
-        )}
-
-        {/* Pending word tag hint */}
-        {editingWordTags && pendingWordTag && (
-          <div className="px-6 py-1 text-xs bg-yellow-50 dark:bg-yellow-950 border-b border-yellow-200 dark:border-yellow-800 text-yellow-700 dark:text-yellow-300">
-            Click a source word to name this tag by its lemma
-          </div>
         )}
 
         {/* RST relation hint */}
