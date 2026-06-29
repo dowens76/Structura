@@ -168,11 +168,27 @@ for (const key of ["APPLE_CERTIFICATE", "APPLE_CERTIFICATE_PASSWORD", "APPLE_SIG
 const overrideCfgPath = path.join(ROOT, ".tauri-build-override.json");
 writeFileSync(overrideCfgPath, JSON.stringify({ build: { beforeBuildCommand: "" } }));
 try {
-  run(
-    `npx tauri build ${targetFlag} ${bundleFlag} ${verboseFlag} --config .tauri-build-override.json`.replace(/\s+/g, " ").trim(),
-    `tauri build ${targetFlag} ${bundleFlag}`.trim(),
-    tauriBuildEnv
-  );
+  const tauriBuildCmd = `npx tauri build ${targetFlag} ${bundleFlag} ${verboseFlag} --config .tauri-build-override.json`.replace(/\s+/g, " ").trim();
+  const tauriBuildLabel = `tauri build ${targetFlag} ${bundleFlag}`.trim();
+  const MAX_ATTEMPTS = 3;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    try {
+      run(tauriBuildCmd, tauriBuildLabel, tauriBuildEnv);
+      break;
+    } catch (err) {
+      // execSync with stdio:"inherit" doesn't capture output into the error
+      // object, so we can't inspect stderr. On macOS, any failure here (after
+      // a successful compile+sign) is almost certainly a notarization timeout.
+      const isRetryable = process.platform === "darwin" && attempt < MAX_ATTEMPTS;
+      if (isRetryable) {
+        const delaySec = attempt * 30;
+        console.log(`\n⚠ Notarization timed out (attempt ${attempt}/${MAX_ATTEMPTS}). Retrying in ${delaySec}s…`);
+        await new Promise(r => setTimeout(r, delaySec * 1000));
+      } else {
+        throw err;
+      }
+    }
+  }
 } finally {
   unlinkSync(overrideCfgPath);
 }
