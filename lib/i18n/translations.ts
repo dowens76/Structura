@@ -324,7 +324,7 @@ const en = {
     featureParagraphBreaks: "Paragraph Breaks",
     featureCharacters: "Characters & Speech",
     featureWordTags: "Word / Concept Tags",
-    featureRstRelations: "RST Relations",
+    featureRstRelations: "Clause Relationships",
     featureWordArrows: "Word Arrows",
     featureLineIndents: "Poetic Line Indents",
     featureClauseRelations: "Clause Relationships",

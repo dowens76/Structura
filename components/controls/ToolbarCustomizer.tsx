@@ -60,7 +60,7 @@ const SECTIONS: { label: string; items: { key: keyof ToolbarVisibility; label: s
       { key: "atnachInsert",label: "¶ Atnach",     hebrew: true },
       { key: "paragraphs",  label: "¶ Paragraphs" },
       { key: "indents",     label: "⇥ Indents" },
-      { key: "rst",         label: "↳ RST" },
+      { key: "rst",         label: "↳ Clause Relationships" },
       { key: "arrows",      label: "↷ Arrows" },
     ],
   },
