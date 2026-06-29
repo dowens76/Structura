@@ -74,7 +74,6 @@ if (existsSync(DMG)) {
 const spec = {
   title: "Structura",
   background: path.join(ROOT, "src-tauri/icons/dmg-background.png"),
-  "background-scaling": "proportional",
   "icon-size": 80,
   window: { size: { width: 660, height: 480 } },
   contents: [
