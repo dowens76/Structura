@@ -213,7 +213,7 @@ const manifest = `<?xml version="1.0" encoding="utf-8"?>
       <uap:VisualElements
         DisplayName="Structura"
         Description="Biblical language reading and analysis tools"
-        BackgroundColor="transparent"
+        BackgroundColor="#1E3A5F"
         Square150x150Logo="Assets\\Square150x150Logo.png"
         Square44x44Logo="Assets\\Square44x44Logo.png">
         <uap:DefaultTile
