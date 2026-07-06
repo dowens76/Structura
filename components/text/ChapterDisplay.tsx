@@ -1516,6 +1516,10 @@ export default function ChapterDisplay({
   }
 
   function handleSelectWord(word: Word, shiftHeld = false) {
+    if (editingWordTags) {
+      handleToggleWordTagRef(word, shiftHeld);
+      return;
+    }
     if (editingAnnotations) {
       // Map the clicked word to its paragraph-segment first-word-id
       const segId = wordToParaStart.get(word.wordId) ?? word.wordId;
@@ -1560,10 +1564,6 @@ export default function ChapterDisplay({
     if (editingSpeech) {
       if (activeCharId === null) return;
       handleToggleSpeechSection(word, shiftHeld);
-      return;
-    }
-    if (editingWordTags) {
-      handleToggleWordTagRef(word, shiftHeld);
       return;
     }
     if (editingTc) {
@@ -3468,7 +3468,7 @@ export default function ChapterDisplay({
     scenes:      [],
     annotations: [],
     refs:        ["annotations", "indents", "rst"],
-    wordTags:    ["annotations", "indents", "rst"],
+    wordTags:    ["indents", "rst"],
   };
   function deactivateIncompatible(mode: string) {
     const keep = new Set([mode, ...(COMPAT[mode] ?? [])]);
@@ -3730,6 +3730,7 @@ export default function ChapterDisplay({
 
               {/* Line annotation mode */}
               {toolbarVis.annotations && <button
+                disabled={editingWordTags}
                 onClick={() => {
                   if (!editingAnnotations) deactivateIncompatible("annotations");
                   setEditingAnnotations((v) => !v);
@@ -3742,6 +3743,7 @@ export default function ChapterDisplay({
                   editingAnnotations
                     ? "bg-indigo-600 text-white"
                     : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
+                  "disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-stone-100 dark:disabled:hover:bg-stone-800",
                 ].join(" ")}
               >
                 ≡
