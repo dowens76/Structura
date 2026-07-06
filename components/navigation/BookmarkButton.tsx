@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { OSIS_BOOK_ORDER } from "@/lib/utils/osis";
+import { OSIS_BOOK_ORDER, OSIS_REF_BOOK_NAMES } from "@/lib/utils/osis";
 
 export interface BookmarkView {
   translations: string[];
@@ -27,14 +27,30 @@ const SORT_KEY = "structura:bookmarkSort";
 /** Custom event dispatched when a bookmark navigation should apply a saved view. */
 export const APPLY_BOOKMARK_VIEW_EVENT = "structura:applyBookmarkView";
 
-function parseCanonicalKey(href: string): number {
+function parseCanonicalKey(href: string, label: string): number {
   const parts = href.split("/").filter(Boolean);
   const book = decodeURIComponent(parts[0] ?? "");
   const chapterOrPassage = parts[2] ?? "";
   const bookOrder = OSIS_BOOK_ORDER[book] ?? 999;
   const isPassage = chapterOrPassage === "passage";
-  const chapter = isPassage ? 9999 : parseInt(parts[2] ?? "0", 10) || 0;
-  return bookOrder * 100000 + chapter;
+
+  if (!isPassage) {
+    const chapter = parseInt(parts[2] ?? "0", 10) || 0;
+    return bookOrder * 1_000_000 + chapter * 1000;
+  }
+
+  // Passage bookmarks only carry an opaque passage id in the href (e.g.
+  // "/1Pet/SBLGNT/passage/20"), not the chapter/verse — recover the starting
+  // chapter[:verse] from the label instead, e.g. "1 Peter 2:4–10 · SBLGNT" or
+  // "1 Peter 1–2 · SBLGNT". Cross-book passage labels start the same way
+  // ("{bookName} {chapter}:{verse} – {otherBook}..."), so this also picks out
+  // the correct starting position for those.
+  const bookName = OSIS_REF_BOOK_NAMES[book] ?? book;
+  const ref = label.startsWith(bookName) ? label.slice(bookName.length) : label;
+  const match = ref.match(/(\d+)(?::(\d+))?/);
+  const chapter = match ? parseInt(match[1], 10) : 9999;
+  const verse   = match?.[2] ? parseInt(match[2], 10) : 0;
+  return bookOrder * 1_000_000 + chapter * 1000 + verse;
 }
 
 /** Parse the `translations` JSON column — supports legacy string[] and new BookmarkView object. */
@@ -114,7 +130,7 @@ export default function BookmarkButton({ href, label, buttonLabel }: BookmarkBut
   }
 
   const sortedBookmarks = [...bookmarks].sort((a, b) => {
-    if (sortOrder === "canonical") return parseCanonicalKey(a.href) - parseCanonicalKey(b.href);
+    if (sortOrder === "canonical") return parseCanonicalKey(a.href, a.label) - parseCanonicalKey(b.href, b.label);
     return b.createdAt - a.createdAt;
   });
 
