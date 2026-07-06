@@ -43,7 +43,7 @@ const VOWEL_MAP: Record<string, string> = {
   [HOLAM]:     "ō",
   [HOLAM_WAW]: "ō",
   [QIBBUTS]:   "u",
-  [SHEVA]:     "ĕ",   // vocal sheva; silent sheva omitted
+  [SHEVA]:     "ĕ",   // vocal sheva; silent sheva is detected and suppressed by classifyShevas()
   [HATAF_SEG]: "ĕ",
   [HATAF_PAT]: "ă",
   [HATAF_QAM]: "ŏ",
@@ -88,6 +88,46 @@ const CANTILLATION_RE = /[֑-ֽֿ֯׀׃ׅׄ׆׳״]/g;
 const HE_SEGMENTER = new Intl.Segmenter("he", { granularity: "grapheme" });
 
 /**
+ * Determines whether each plain sheva (U+05B0) in a word's consonant sequence
+ * is vocal or silent, per the standard Biblical Hebrew rules:
+ *   - Sheva under the first letter of a word is always vocal.
+ *   - Sheva under the last letter of a word is always silent.
+ *   - Sheva under a letter bearing a dagesh (lene or forte) is always vocal —
+ *     dagesh only marks a syllable-onset consonant, and a syllable-initial
+ *     sheva can't be silent.
+ *   - Of two consecutive shevas in the middle of a word, the first is silent
+ *     (closes the preceding syllable) and the second is vocal (opens the next).
+ *   - Sheva immediately after a long vowel (ā/ē/ō/û) is vocal — the long
+ *     vowel's syllable is already open, so the following consonant starts a
+ *     new syllable (e.g. וּלְמִקְוֵה "û-lə-miqwēh": lamed's sheva is vocal).
+ *   - Otherwise (a lone sheva closing a syllable mid-word), it is silent.
+ * Hataf vowels (ĕ/ă/ŏ) are always vocal by nature and are not affected.
+ */
+function classifyShevas(
+  consonantClusters: { base: string; hasShewa: boolean; hasDagesh: boolean; hasLongVowel: boolean }[]
+): boolean[] {
+  const n = consonantClusters.length;
+  const isVocal: boolean[] = new Array(n).fill(false);
+  for (let p = 0; p < n; p++) {
+    if (!consonantClusters[p].hasShewa) continue;
+    if (p === n - 1) {
+      isVocal[p] = false; // word-final sheva: silent
+    } else if (p === 0) {
+      isVocal[p] = true; // word-initial sheva: vocal
+    } else if (consonantClusters[p].hasDagesh) {
+      isVocal[p] = true; // dagesh marks a syllable onset: vocal
+    } else if (consonantClusters[p - 1].hasShewa) {
+      isVocal[p] = true; // second of two consecutive shevas: vocal
+    } else if (consonantClusters[p - 1].hasLongVowel) {
+      isVocal[p] = true; // follows a long vowel in an open syllable: vocal
+    } else {
+      isVocal[p] = false; // default: silent
+    }
+  }
+  return isVocal;
+}
+
+/**
  * Transliterate a Hebrew word (surface text) to SBL academic romanization.
  * Input may contain morpheme slashes — strip them before calling.
  */
@@ -98,9 +138,32 @@ export function transliterateHebrew(surfaceText: string): string {
   // Use Intl.Segmenter for grapheme clusters (base + combining diacritics)
   const clusters  = [...HE_SEGMENTER.segment(clean)].map((s) => s.segment);
 
+  // Precompute vocal/silent status for every plain sheva, indexed by position
+  // among recognized consonant clusters (matres/unrecognized marks excluded).
+  const consonantClusters = clusters
+    .filter((cluster) => CONSONANT_MAP[cluster[0]])
+    .map((cluster) => {
+      const hasDagesh = cluster.includes(DAGESH);
+      return {
+        base: cluster[0],
+        hasShewa: cluster.includes(SHEVA),
+        hasDagesh,
+        // ā / ē / ō, plus waw+dagesh (shureq û) — the long vowels that leave
+        // the following syllable open (see classifyShevas).
+        hasLongVowel:
+          cluster.includes(QAMATS) ||
+          cluster.includes(TSERE) ||
+          cluster.includes(HOLAM) ||
+          cluster.includes(HOLAM_WAW) ||
+          (cluster[0] === "ו" && hasDagesh),
+      };
+    });
+  const shevaIsVocal = classifyShevas(consonantClusters);
+
   // We need a forward-looking pass because holam on waw merges waw+holam into ō
   let result = "";
   let i = 0;
+  let consonantPos = 0; // index into consonantClusters / shevaIsVocal
 
   while (i < clusters.length) {
     const cluster = clusters[i];
@@ -117,6 +180,8 @@ export function transliterateHebrew(surfaceText: string): string {
     const hasShinDot = cluster.includes(SHIN_DOT);
     const hasSinDot  = cluster.includes(SIN_DOT);
     const hasHolam   = cluster.includes(HOLAM);
+    const hasSilentShewa = cluster.includes(SHEVA) && !shevaIsVocal[consonantPos];
+    consonantPos++;
 
     // ── Shin/sin dot overrides default consonant ─────────────────────────────
     let consonant: string;
@@ -153,8 +218,10 @@ export function transliterateHebrew(surfaceText: string): string {
 
     // ── Emit vowel diacritic ─────────────────────────────────────────────────
     let vowel = "";
-    for (const cp of cluster) {
-      if (VOWEL_MAP[cp]) { vowel = VOWEL_MAP[cp]; break; }
+    if (!hasSilentShewa) {
+      for (const cp of cluster) {
+        if (VOWEL_MAP[cp]) { vowel = VOWEL_MAP[cp]; break; }
+      }
     }
     // Holam already handled for waw above; for other consonants, add ō
     if (!vowel && hasHolam) vowel = "ō";
