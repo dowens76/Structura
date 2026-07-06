@@ -169,6 +169,8 @@ interface VerseDisplayProps {
   editingAnnotations?: boolean;
   annotRangeStartWordId?: string | null;
   annotRangeEndWordId?: string | null;
+  editingAnnotationId?: number | null;
+  onSetEditingAnnotationId?: (id: number | null) => void;
   onSelectAnnotationSegment?: (wordId: string, shiftHeld?: boolean) => void;
   onSaveAnnotation?: (data: { annotType: string; label: string; color: string; description: string | null; outOfSequence: boolean; transitional: boolean }) => void;
   onCancelAnnotation?: () => void;
@@ -286,6 +288,8 @@ function AnnotBadge({
   isStart,
   isEnd,
   editingAnnotations,
+  isEditing,
+  onSetEditing,
   presentationMode,
   thematicSubscript,
   onDelete,
@@ -296,6 +300,8 @@ function AnnotBadge({
   isStart: boolean;
   isEnd: boolean;
   editingAnnotations: boolean;
+  isEditing: boolean;
+  onSetEditing: (v: boolean) => void;
   presentationMode?: boolean;
   thematicSubscript?: number;
   onDelete?: (id: number) => void;
@@ -303,7 +309,6 @@ function AnnotBadge({
   onAdjustRange?: (id: number, direction: "expand-start" | "shrink-start" | "expand-end" | "shrink-end") => void;
 }) {
   const { t } = useTranslation();
-  const [isEditing, setIsEditing] = useState(false);
   const [draftDesc, setDraftDesc] = useState(annotation.description ?? "");
   const [draftColor, setDraftColor] = useState(annotation.color);
   const [draftOos, setDraftOos] = useState(annotation.outOfSequence ?? false);
@@ -364,7 +369,7 @@ function AnnotBadge({
     if (draftTransitional !== (annotation.transitional ?? false)) updates.transitional = draftTransitional;
     if (annotation.annotType === "desc" && draftSpeechAct !== (annotation.label ?? "")) updates.label = draftSpeechAct;
     if (Object.keys(updates).length > 0) onUpdate?.(annotation.id, updates);
-    setIsEditing(false);
+    onSetEditing(false);
   }
 
   const hasLabel = annotation.label !== "";
@@ -389,7 +394,7 @@ function AnnotBadge({
           )}
           <button
             type="button"
-            onClick={() => { setDraftDesc(annotation.description ?? ""); setDraftOos(annotation.outOfSequence ?? false); setDraftTransitional(annotation.transitional ?? false); setIsEditing(false); }}
+            onClick={() => { setDraftDesc(annotation.description ?? ""); setDraftOos(annotation.outOfSequence ?? false); setDraftTransitional(annotation.transitional ?? false); onSetEditing(false); }}
             className="shrink-0 ml-auto text-stone-400 hover:text-stone-600 text-xs leading-none"
             title="Close"
           >
@@ -407,7 +412,7 @@ function AnnotBadge({
             onBlur={commitEdit}
             onKeyDown={(e) => {
               if (e.key === "Enter") { e.preventDefault(); commitEdit(); }
-              if (e.key === "Escape") { setDraftDesc(annotation.description ?? ""); setIsEditing(false); }
+              if (e.key === "Escape") { setDraftDesc(annotation.description ?? ""); onSetEditing(false); }
               e.stopPropagation();
             }}
             placeholder="Description (optional)"
@@ -502,7 +507,7 @@ function AnnotBadge({
         editingAnnotations ? "cursor-pointer hover:brightness-95 dark:hover:brightness-110" : "",
       ].join(" ")}
       style={{ borderLeft: `3px solid ${color}`, backgroundColor: `${color}18` }}
-      onClick={editingAnnotations ? (e) => { e.stopPropagation(); setIsEditing(true); } : undefined}
+      onClick={editingAnnotations ? (e) => { e.stopPropagation(); onSetEditing(true); } : undefined}
       title={editingAnnotations ? "Click to edit" : undefined}
     >
       {/* position:relative here so the multi-segment description's top:"100%"
@@ -964,6 +969,8 @@ export default function VerseDisplay({
   editingAnnotations = false,
   annotRangeStartWordId = null,
   annotRangeEndWordId = null,
+  editingAnnotationId = null,
+  onSetEditingAnnotationId,
   onSelectAnnotationSegment,
   onSaveAnnotation,
   onCancelAnnotation,
@@ -1571,6 +1578,8 @@ export default function VerseDisplay({
             isStart={isStart}
             isEnd={isEnd}
             editingAnnotations={editingAnnotations}
+            isEditing={editingAnnotationId === annotation.id}
+            onSetEditing={(v) => onSetEditingAnnotationId?.(v ? annotation.id : null)}
             presentationMode={presentationMode}
             thematicSubscript={isStart ? thematicSubscripts.get(annotation.id) : undefined}
             onDelete={onDeleteAnnotation}

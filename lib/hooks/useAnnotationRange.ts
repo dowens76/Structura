@@ -29,6 +29,8 @@ export interface UseAnnotationRangeReturn {
   setAnnotRangeStart: Dispatch<SetStateAction<string | null>>;
   annotRangeEnd: string | null;
   setAnnotRangeEnd: Dispatch<SetStateAction<string | null>>;
+  editingAnnotationId: number | null;
+  setEditingAnnotationId: Dispatch<SetStateAction<number | null>>;
   handleSelectAnnotationSegment: (segWordId: string, shiftHeld?: boolean) => void;
   handleCancelAnnotation: () => void;
   handleSaveAnnotation: (data: {
@@ -61,8 +63,37 @@ export function useAnnotationRange({
   const [editingAnnotations, setEditingAnnotations] = useState(false);
   const [annotRangeStart, setAnnotRangeStart] = useState<string | null>(null);
   const [annotRangeEnd, setAnnotRangeEnd] = useState<string | null>(null);
+  const [editingAnnotationId, setEditingAnnotationId] = useState<number | null>(null);
+
+  // Finds the annotation (if any) whose start..end range already covers this
+  // paragraph segment, so a click there can open it for editing instead of
+  // starting a new (overlapping) range selection.
+  function findCoveringAnnotation(segWordId: string): LineAnnotation | null {
+    const segIds = paragraphFirstWordIds;
+    const posMap = new Map(segIds.map((id, i) => [id, i]));
+    const pos = posMap.get(segWordId);
+    if (pos === undefined) return null;
+    for (const ann of lineAnnotations) {
+      const startPos = posMap.get(ann.startWordId);
+      if (startPos === undefined) continue;
+      const endPos = posMap.get(ann.endWordId) ?? startPos;
+      const lo = Math.min(startPos, endPos);
+      const hi = Math.max(startPos, endPos);
+      if (pos >= lo && pos <= hi) return ann;
+    }
+    return null;
+  }
 
   function handleSelectAnnotationSegment(segWordId: string, shiftHeld = false) {
+    // A segment that's already labeled can't be clicked into a new range
+    // selection — open its existing annotation for editing instead.
+    const covering = findCoveringAnnotation(segWordId);
+    if (covering) {
+      setEditingAnnotationId(covering.id);
+      setAnnotRangeStart(null);
+      setAnnotRangeEnd(null);
+      return;
+    }
     if (annotRangeEnd !== null) {
       if (shiftHeld) {
         setAnnotRangeEnd(segWordId);
@@ -127,6 +158,7 @@ export function useAnnotationRange({
 
   async function handleDeleteAnnotation(id: number) {
     setLineAnnotations((prev) => prev.filter((a) => a.id !== id));
+    setEditingAnnotationId((prev) => (prev === id ? null : prev));
     try {
       await fetch("/api/line-annotations", {
         method: "DELETE",
@@ -204,6 +236,8 @@ export function useAnnotationRange({
     setAnnotRangeStart,
     annotRangeEnd,
     setAnnotRangeEnd,
+    editingAnnotationId,
+    setEditingAnnotationId,
     handleSelectAnnotationSegment,
     handleCancelAnnotation,
     handleSaveAnnotation,

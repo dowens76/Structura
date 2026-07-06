@@ -989,6 +989,7 @@ export default function PassageView({
     editingAnnotations, setEditingAnnotations,
     annotRangeStart, setAnnotRangeStart,
     annotRangeEnd, setAnnotRangeEnd,
+    editingAnnotationId, setEditingAnnotationId,
     handleSelectAnnotationSegment,
     handleCancelAnnotation,
     handleSaveAnnotation,
@@ -4154,6 +4155,8 @@ export default function PassageView({
                     editingAnnotations={editingAnnotations}
                     annotRangeStartWordId={annotRangeStart}
                     annotRangeEndWordId={annotRangeEnd}
+                    editingAnnotationId={editingAnnotationId}
+                    onSetEditingAnnotationId={setEditingAnnotationId}
                     onSelectAnnotationSegment={handleSelectAnnotationSegment}
                     onSaveAnnotation={handleSaveAnnotation}
                     onCancelAnnotation={handleCancelAnnotation}
