@@ -43,6 +43,11 @@ const REQUIRED_TABLES = [
   "constituent_labels", "word_datasets", "word_dataset_entries",
 ];
 
+// Restored opportunistically when present, but not required — lets older
+// backups taken before this table existed still restore successfully.
+// Holds Zotero/api.bible credentials, font settings, hidden sources, etc.
+const OPTIONAL_TABLES = ["app_settings"];
+
 // ── POST /api/backup ───────────────────────────────────────────────────────────
 // Accepts a multipart form upload of a .db file. Validates it is a Structura
 // backup, then atomically replaces all data in user.db via ATTACH + a single
@@ -102,17 +107,22 @@ export async function POST(request: NextRequest) {
     userSqlite.exec(`ATTACH DATABASE '${safeTmpPath}' AS restore_src`);
 
     try {
+      // Only restore optional tables that actually exist in the uploaded file —
+      // lets backups taken before a given optional table existed still restore.
+      const optionalTablesPresent = OPTIONAL_TABLES.filter((t) => presentTables.has(t));
+      const tablesToRestore = [...REQUIRED_TABLES, ...optionalTablesPresent];
+
       const doRestore = userSqlite.transaction(() => {
         // Delete existing data (FK is OFF so order doesn't matter, but
         // reverse order is clearer intent).
-        for (const table of [...REQUIRED_TABLES].reverse()) {
+        for (const table of [...tablesToRestore].reverse()) {
           userSqlite.exec(`DELETE FROM "${table}"`);
         }
         // Insert from the backup, using only columns present in both schemas.
         // This allows restoring from older backups that predate schema additions
         // (e.g. scene_breaks gaining `thematic` / `thematic_letter`): missing
         // columns are omitted from the INSERT and fall back to their DEFAULT values.
-        for (const table of REQUIRED_TABLES) {
+        for (const table of tablesToRestore) {
           const backupCols = new Set(
             (userSqlite.prepare(`PRAGMA restore_src.table_info("${table}")`).all() as { name: string }[])
               .map((r) => r.name)

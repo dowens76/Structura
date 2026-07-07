@@ -5,6 +5,7 @@ import { parseScriptureRefs } from "@/lib/scripture/reference-parser";
 import type { FetchBibleTranslation } from "@/app/api/fetchbible/route";
 
 import { langLabel, readBibleLookupLangs, writeBibleLookupLangs } from "@/lib/utils/bible-lookup-langs";
+import { fetchJsonRetry } from "@/lib/utils/fetchJsonRetry";
 
 const STORAGE_KEY = "structura:bibleLookup:translation";
 
@@ -100,10 +101,11 @@ export default function BibleLookupPane({ onClose }: Props) {
       .then((r) => r.json())
       .then((rows: LocalTranslation[]) => { if (Array.isArray(rows)) setLocalTransls(rows); })
       .catch(() => {});
-    fetch("/api/credentials/apibible")
-      .then((r) => r.json())
-      .then((d: { hasApiKey?: boolean }) => setHasApiKey(d.hasApiKey ?? false))
-      .catch(() => {});
+    // A failed check leaves hasApiKey untouched rather than defaulting to
+    // false — a transient error shouldn't make api.bible look unconfigured.
+    fetchJsonRetry<{ hasApiKey?: boolean }>("/api/credentials/apibible").then((d) => {
+      if (d) setHasApiKey(d.hasApiKey ?? false);
+    });
     fetch("/api/fetchbible")
       .then((r) => r.json())
       .then((rows: FetchBibleTranslation[]) => { if (Array.isArray(rows)) setFetchBibleTransls(rows); })

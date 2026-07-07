@@ -13,6 +13,7 @@ import {
 } from "@/lib/fonts";
 import { langLabel, readBibleLookupLangs, writeBibleLookupLangs } from "@/lib/utils/bible-lookup-langs";
 import FontPickerDialog, { type FontLanguage } from "@/components/FontPickerDialog";
+import { fetchJsonRetry } from "@/lib/utils/fetchJsonRetry";
 
 export type GreekLexicon  = "AbbottSmith" | "Dodson";
 export type HebrewLexicon = "BDB" | "HebrewStrong";
@@ -168,20 +169,20 @@ export default function SettingsButton() {
     setScripturePrefs(prefs);
   }, []);
 
-  // Load api.bible key status, Zotero credentials, local translations, and fetch.bible list when panel opens
+  // Load api.bible key status, Zotero credentials, local translations, and fetch.bible list when panel opens.
+  // Uses fetchJsonRetry so a transient failure doesn't overwrite a previously-confirmed
+  // "configured" state with a false negative — null means "couldn't check", not "not configured".
   useEffect(() => {
     if (!open) return;
-    fetch("/api/credentials/apibible")
-      .then((r) => r.json())
-      .then((d: { hasApiKey?: boolean }) => setHasApiBibleKey(d.hasApiKey ?? false))
-      .catch(() => {});
-    fetch("/api/credentials/zotero")
-      .then((r) => r.json())
-      .then((d: { userId?: string; hasApiKey?: boolean }) => {
+    fetchJsonRetry<{ hasApiKey?: boolean }>("/api/credentials/apibible").then((d) => {
+      if (d) setHasApiBibleKey(d.hasApiKey ?? false);
+    });
+    fetchJsonRetry<{ userId?: string; hasApiKey?: boolean }>("/api/credentials/zotero").then((d) => {
+      if (d) {
         setZoteroUserId(d.userId ?? "");
         setHasZoteroKey(d.hasApiKey ?? false);
-      })
-      .catch(() => {});
+      }
+    });
     fetch("/api/translations")
       .then((r) => r.json())
       .then((rows: LocalTranslation[]) => setLocalTransls(Array.isArray(rows) ? rows : []))

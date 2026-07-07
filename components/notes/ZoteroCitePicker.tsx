@@ -7,6 +7,7 @@ import {
   formatItemSummary,
 } from "@/lib/utils/zotero";
 import { useTranslation } from "@/lib/i18n/LocaleContext";
+import { fetchJsonRetry } from "@/lib/utils/fetchJsonRetry";
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
@@ -29,6 +30,7 @@ export default function ZoteroCitePicker({
   const [apiKey,    setApiKey]    = useState("");   // only used in the setup form input
   const [hasApiKey, setHasApiKey] = useState(false);
   const [credsLoaded, setCredsLoaded] = useState(false);
+  const [credsError, setCredsError] = useState(false);
   const [showSetup, setShowSetup] = useState(false);
 
   const [query,   setQuery]   = useState("");
@@ -39,22 +41,30 @@ export default function ZoteroCitePicker({
   const [saveError, setSaveError] = useState<string | null>(null);
 
   // ── Load credentials from server on mount ───────────────────────────────────
-  useEffect(() => {
-    fetch("/api/credentials/zotero")
-      .then(r => r.json())
-      .then((d: { userId?: string; hasApiKey?: boolean }) => {
-        const uid = d.userId ?? "";
-        const has = d.hasApiKey ?? false;
-        setUserId(uid);
-        setHasApiKey(has);
-        setShowSetup(!uid || !has);
+  // A failed check (after fetchJsonRetry's built-in retry) surfaces a distinct
+  // "couldn't verify" state rather than silently falling back to the setup
+  // form — that would look identical to "no credentials configured" and could
+  // prompt the user to needlessly re-enter a Zotero API key that's still fine.
+  const loadCredentials = useCallback(() => {
+    setCredsError(false);
+    fetchJsonRetry<{ userId?: string; hasApiKey?: boolean }>("/api/credentials/zotero").then((d) => {
+      if (!d) {
+        setCredsError(true);
         setCredsLoaded(true);
-      })
-      .catch(() => {
-        setShowSetup(true);
-        setCredsLoaded(true);
-      });
+        return;
+      }
+      const uid = d.userId ?? "";
+      const has = d.hasApiKey ?? false;
+      setUserId(uid);
+      setHasApiKey(has);
+      setShowSetup(!uid || !has);
+      setCredsLoaded(true);
+    });
   }, []);
+
+  useEffect(() => {
+    loadCredentials();
+  }, [loadCredentials]);
 
   // ── Click-outside + Escape close ─────────────────────────────────────────────
   useEffect(() => {
@@ -245,6 +255,19 @@ export default function ZoteroCitePicker({
         /* ── Loading state ── */
         <div className="px-3 py-4 text-xs" style={{ color: "var(--text-muted)" }}>
           {t("zotero.loading")}
+        </div>
+      ) : credsError ? (
+        /* ── Couldn't verify credentials — distinct from "not configured" ── */
+        <div className="px-3 py-4 text-xs space-y-2" style={{ color: "var(--text-muted)" }}>
+          <p>Couldn&apos;t check your Zotero connection. Your saved credentials are probably fine — this looks like a temporary issue.</p>
+          <button
+            type="button"
+            onClick={loadCredentials}
+            className="text-xs px-2 py-1 rounded"
+            style={{ background: "var(--accent)", color: "white" }}
+          >
+            Retry
+          </button>
         </div>
       ) : showSetup ? (
         /* ── Setup view ── */
