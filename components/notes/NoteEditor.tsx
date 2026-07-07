@@ -210,7 +210,7 @@ export default function NoteEditor({
       Subscript,
       Placeholder.configure({ placeholder: "Add notes…" }),
       SearchHighlightExtension,
-      ScriptureRefPlugin,
+      ScriptureRefPlugin.configure({ currentBook: book, currentChapter: chapter }),
     ],
     content: parsedContent ?? { type: "doc", content: [{ type: "paragraph" }] },
     onUpdate: ({ editor }) => {

@@ -13,6 +13,14 @@
  *   "Gen 1:1; 3, 5"   — series: same book + chapter, comma/semicolon-separated
  *   "Gen 1:1; 2:3"    — series: new chapter (same book)
  *
+ * When a `context.currentBook` is supplied, book-less references are also
+ * recognised and resolved against it (and `context.currentChapter` for
+ * verse-only refs):
+ *   "ch. 1"           — chapter in the current book
+ *   "1:1"             — chapter:verse in the current book
+ *   "1:1-3"           — verse range in the current book
+ *   "v. 1"            — verse in the current book + current chapter
+ *
  * No React, no network — safe to call in ProseMirror plugin state updates.
  */
 
@@ -28,6 +36,13 @@ export interface ScriptureMatch {
   from: number;
   /** End character offset (exclusive) */
   to: number;
+}
+
+export interface ScriptureRefContext {
+  /** OSIS code of the book the note belongs to, e.g. "Gen" */
+  currentBook?: string;
+  /** Chapter number the note belongs to (needed to resolve "v. N") */
+  currentChapter?: number;
 }
 
 // ─── Alias map ────────────────────────────────────────────────────────────────
@@ -109,9 +124,26 @@ const SCRIPTURE_REGEX = buildRegex();
 // Group 2 = the reference text  (linked)
 const CONTINUATION_RE = /^([;.,]\s*)(\d+(?::\d+)?)(?!\w)/;
 
+// ─── Book-less reference regexes ──────────────────────────────────────────────
+// Only used when a `currentBook` context is supplied (see parseScriptureRefs).
+
+// "ch. 5", "ch 5", "chapter 5" — chapter-only, resolved against currentBook.
+const CHAPTER_ONLY_RE = /(?<!\w)ch(?:apter)?\.?\s+(\d+)(?!\w)/giu;
+
+// "v. 3", "v 3", "verse 3" — verse-only, resolved against currentBook + currentChapter.
+const VERSE_ONLY_RE = /(?<!\w)v(?:erse)?\.?\s+(\d+)(?!\w)/giu;
+
+// "1:1", "1:1-3", "1:1-2:3" — bare chapter:verse (optionally a range), resolved
+// against currentBook. Same shape as the book-anchored pattern above.
+const BARE_CHAPTER_VERSE_RE =
+  /(?<!\w)(\d+):(\d+)(?:\s*[-–]\s*(?:(\d+):)?(\d+))?(?!\w)/gu;
+
 // ─── Public API ───────────────────────────────────────────────────────────────
 
-export function parseScriptureRefs(text: string): ScriptureMatch[] {
+export function parseScriptureRefs(
+  text: string,
+  context?: ScriptureRefContext
+): ScriptureMatch[] {
   const results: ScriptureMatch[] = [];
   SCRIPTURE_REGEX.lastIndex = 0;
 
@@ -187,6 +219,70 @@ export function parseScriptureRefs(text: string): ScriptureMatch[] {
 
       pos += cm[0].length;
     }
+  }
+
+  // ── Book-less references ──────────────────────────────────────────────────
+  // Resolved against the current book/chapter when supplied. Skips any span
+  // already claimed by a book-anchored match or series continuation above.
+  if (context?.currentBook) {
+    const book = context.currentBook;
+    const occupied: Array<[number, number]> = results.map((r) => [r.from, r.to]);
+    const overlaps = (from: number, to: number) =>
+      occupied.some(([of, ot]) => from < ot && to > of);
+    const claim = (from: number, to: number) => occupied.push([from, to]);
+
+    let bm: RegExpExecArray | null;
+
+    CHAPTER_ONLY_RE.lastIndex = 0;
+    while ((bm = CHAPTER_ONLY_RE.exec(text)) !== null) {
+      const from = bm.index;
+      const to = from + bm[0].length;
+      if (!overlaps(from, to)) {
+        results.push({ raw: bm[0], osisRef: `${book}.${parseInt(bm[1], 10)}`, from, to });
+        claim(from, to);
+      }
+    }
+
+    if (context.currentChapter !== undefined) {
+      const chapter = context.currentChapter;
+      VERSE_ONLY_RE.lastIndex = 0;
+      while ((bm = VERSE_ONLY_RE.exec(text)) !== null) {
+        const from = bm.index;
+        const to = from + bm[0].length;
+        if (!overlaps(from, to)) {
+          results.push({
+            raw: bm[0],
+            osisRef: `${book}.${chapter}.${parseInt(bm[1], 10)}`,
+            from,
+            to,
+          });
+          claim(from, to);
+        }
+      }
+    }
+
+    BARE_CHAPTER_VERSE_RE.lastIndex = 0;
+    while ((bm = BARE_CHAPTER_VERSE_RE.exec(text)) !== null) {
+      const from = bm.index;
+      const to = from + bm[0].length;
+      if (overlaps(from, to)) continue;
+
+      const [, chStr, vStr, endChStr, endVStr] = bm;
+      const chapterNum = parseInt(chStr, 10);
+      const verseNum = parseInt(vStr, 10);
+      let osisRef: string;
+      if (endVStr === undefined) {
+        osisRef = `${book}.${chapterNum}.${verseNum}`;
+      } else {
+        const endCh = endChStr !== undefined ? parseInt(endChStr, 10) : chapterNum;
+        osisRef = `${book}.${chapterNum}.${verseNum}-${book}.${endCh}.${parseInt(endVStr, 10)}`;
+      }
+
+      results.push({ raw: bm[0], osisRef, from, to });
+      claim(from, to);
+    }
+
+    results.sort((a, b) => a.from - b.from);
   }
 
   return results;

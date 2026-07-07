@@ -68,6 +68,8 @@ export default function PassageNotesPane({
     key: `passage:${passageId}`,
     noteType: "passage",
     label: `Passage notes: ${passageLabel}`,
+    book,
+    chapter: isWholeChapter ? wholeChapterNum : undefined,
   });
 
   // 2. Per-chapter and per-verse notes
@@ -286,6 +288,8 @@ export default function PassageNotesPane({
           sermonKey={isWholeChapter && wholeChapterNum != null
             ? `sermon:chapter:${book}.${wholeChapterNum}`
             : `sermon:passage:${passageId}`}
+          book={book}
+          chapter={isWholeChapter ? wholeChapterNum : undefined}
           searchQuery={q || undefined}
         />
         {!loaded ? (

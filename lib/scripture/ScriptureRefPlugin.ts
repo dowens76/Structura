@@ -11,16 +11,16 @@ import { Extension } from "@tiptap/core";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
-import { parseScriptureRefs } from "./reference-parser";
+import { parseScriptureRefs, type ScriptureRefContext } from "./reference-parser";
 
 export const ScriptureRefKey = new PluginKey<DecorationSet>("scriptureRef");
 
-function buildDecorations(doc: ProseMirrorNode): DecorationSet {
+function buildDecorations(doc: ProseMirrorNode, context?: ScriptureRefContext): DecorationSet {
   const decorations: Decoration[] = [];
 
   doc.descendants((node, pos) => {
     if (!node.isText || !node.text) return;
-    const matches = parseScriptureRefs(node.text);
+    const matches = parseScriptureRefs(node.text, context);
     for (const m of matches) {
       decorations.push(
         Decoration.inline(pos + m.from, pos + m.to, {
@@ -34,20 +34,34 @@ function buildDecorations(doc: ProseMirrorNode): DecorationSet {
   return DecorationSet.create(doc, decorations);
 }
 
-export const ScriptureRefPlugin = Extension.create({
+export interface ScriptureRefOptions {
+  currentBook?: string;
+  currentChapter?: number;
+}
+
+export const ScriptureRefPlugin = Extension.create<ScriptureRefOptions>({
   name: "scriptureRef",
 
+  addOptions() {
+    return { currentBook: undefined, currentChapter: undefined };
+  },
+
   addProseMirrorPlugins() {
+    const context: ScriptureRefContext = {
+      currentBook: this.options.currentBook,
+      currentChapter: this.options.currentChapter,
+    };
+
     return [
       new Plugin({
         key: ScriptureRefKey,
         state: {
           init(_, { doc }) {
-            return buildDecorations(doc);
+            return buildDecorations(doc, context);
           },
           apply(tr, old) {
             return tr.docChanged
-              ? buildDecorations(tr.doc)
+              ? buildDecorations(tr.doc, context)
               : old.map(tr.mapping, tr.doc);
           },
         },
