@@ -13,6 +13,7 @@ export type Scope =
 export type DataType =
   | "translationVerses"
   | "sectionBreaks"
+  | "paragraphBreaks"
   | "lineAnnotations"
   | "wordTags"
   | "wordFormatting"
@@ -21,7 +22,21 @@ export type DataType =
   | "wordArrows"
   | "rstRelations"
   | "notes"
-  | "passages";
+  | "passages"
+  // Group A — trivial flat chapter-scoped copies
+  | "constituentLabels"
+  | "transliterationFormats"
+  | "textCriticalMarks"
+  | "paragraphHeadings"
+  // Group B — translation-adjacent (translationId remap)
+  | "translationFootnotes"
+  | "translationVersions"
+  // Group C — parent/child match-or-create
+  | "wordDatasets"
+  // Group D — bespoke scope logic
+  | "bookGroupings"
+  | "bookmarks"
+  | "intertextualLinks";
 
 /** Data types the copy feature can detect pre-existing target data for and ask overwrite/skip. */
 export type OverwritableDataType = "translationVerses" | "lineAnnotations";

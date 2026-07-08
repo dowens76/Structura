@@ -19,6 +19,17 @@ import {
   rstCustomTypes,
   notes,
   passages,
+  constituentLabels,
+  transliterationFormats,
+  textCriticalMarks,
+  paragraphHeadings,
+  translationFootnotes,
+  translationVersions,
+  wordDatasets,
+  wordDatasetEntries,
+  bookGroupings,
+  bookmarks,
+  intertextualLinks,
 } from "@/lib/db/user-schema";
 import { getActiveWorkspaceId } from "@/lib/workspace";
 import {
@@ -54,7 +65,6 @@ async function importSectionBreaks(
 ): Promise<number> {
   if (chapters.length === 0) return 0;
 
-  // Scene breaks
   const cond = chapterCondition(sceneBreaks, src, chapters);
   if (!cond) return 0;
   let sbRows = await userDb.select().from(sceneBreaks).where(cond);
@@ -67,20 +77,29 @@ async function importSectionBreaks(
       .onConflictDoNothing();
   }
 
-  // Paragraph breaks
-  const pbCond = chapterCondition(paragraphBreaks, src, chapters);
-  if (pbCond) {
-    let pbRows = await userDb.select().from(paragraphBreaks).where(pbCond);
-    pbRows = filterByChapters(pbRows, chapters);
-    if (pbRows.length > 0) {
-      await userDb
-        .insert(paragraphBreaks)
-        .values(pbRows.map((r) => ({ ...r, id: undefined, workspaceId: tgt })))
-        .onConflictDoNothing();
-    }
+  return sbRows.length;
+}
+
+async function importParagraphBreaks(
+  src: number,
+  tgt: number,
+  chapters: Chapter[]
+): Promise<number> {
+  if (chapters.length === 0) return 0;
+
+  const cond = chapterCondition(paragraphBreaks, src, chapters);
+  if (!cond) return 0;
+  let rows = await userDb.select().from(paragraphBreaks).where(cond);
+  rows = filterByChapters(rows, chapters);
+
+  if (rows.length > 0) {
+    await userDb
+      .insert(paragraphBreaks)
+      .values(rows.map((r) => ({ ...r, id: undefined, workspaceId: tgt })))
+      .onConflictDoNothing();
   }
 
-  return sbRows.length;
+  return rows.length;
 }
 
 async function importLineAnnotations(
@@ -145,6 +164,90 @@ async function importLineIndents(
   if (rows.length > 0) {
     await userDb
       .insert(lineIndents)
+      .values(rows.map((r) => ({ ...r, id: undefined, workspaceId: tgt })))
+      .onConflictDoNothing();
+  }
+  return rows.length;
+}
+
+async function importConstituentLabels(
+  src: number,
+  tgt: number,
+  chapters: Chapter[]
+): Promise<number> {
+  if (chapters.length === 0) return 0;
+
+  const cond = chapterCondition(constituentLabels, src, chapters);
+  if (!cond) return 0;
+  let rows = await userDb.select().from(constituentLabels).where(cond);
+  rows = filterByChapters(rows, chapters);
+
+  if (rows.length > 0) {
+    await userDb
+      .insert(constituentLabels)
+      .values(rows.map((r) => ({ ...r, id: undefined, workspaceId: tgt })))
+      .onConflictDoNothing();
+  }
+  return rows.length;
+}
+
+async function importTransliterationFormats(
+  src: number,
+  tgt: number,
+  chapters: Chapter[]
+): Promise<number> {
+  if (chapters.length === 0) return 0;
+
+  const cond = chapterCondition(transliterationFormats, src, chapters);
+  if (!cond) return 0;
+  let rows = await userDb.select().from(transliterationFormats).where(cond);
+  rows = filterByChapters(rows, chapters);
+
+  if (rows.length > 0) {
+    await userDb
+      .insert(transliterationFormats)
+      .values(rows.map((r) => ({ ...r, id: undefined, workspaceId: tgt })))
+      .onConflictDoNothing();
+  }
+  return rows.length;
+}
+
+async function importTextCriticalMarks(
+  src: number,
+  tgt: number,
+  chapters: Chapter[]
+): Promise<number> {
+  if (chapters.length === 0) return 0;
+
+  const cond = chapterCondition(textCriticalMarks, src, chapters);
+  if (!cond) return 0;
+  let rows = await userDb.select().from(textCriticalMarks).where(cond);
+  rows = filterByChapters(rows, chapters);
+
+  if (rows.length > 0) {
+    await userDb
+      .insert(textCriticalMarks)
+      .values(rows.map((r) => ({ ...r, id: undefined, workspaceId: tgt })))
+      .onConflictDoNothing();
+  }
+  return rows.length;
+}
+
+async function importParagraphHeadings(
+  src: number,
+  tgt: number,
+  chapters: Chapter[]
+): Promise<number> {
+  if (chapters.length === 0) return 0;
+
+  const cond = chapterCondition(paragraphHeadings, src, chapters);
+  if (!cond) return 0;
+  let rows = await userDb.select().from(paragraphHeadings).where(cond);
+  rows = filterByChapters(rows, chapters);
+
+  if (rows.length > 0) {
+    await userDb
+      .insert(paragraphHeadings)
       .values(rows.map((r) => ({ ...r, id: undefined, workspaceId: tgt })))
       .onConflictDoNothing();
   }
@@ -299,6 +402,67 @@ async function importWordTags(
       .onConflictDoNothing();
   }
   return refs.length;
+}
+
+async function importWordDatasets(
+  src: number,
+  tgt: number,
+  chapters: Chapter[]
+): Promise<number> {
+  if (chapters.length === 0) return 0;
+
+  // wordDatasetEntries has no workspaceId of its own (only datasetId), so we
+  // have to go entries-first: find the source workspace's datasets, fetch
+  // their entries, filter by scope, and only then figure out which datasets
+  // are actually referenced in scope.
+  const srcDatasets = await userDb
+    .select()
+    .from(wordDatasets)
+    .where(eq(wordDatasets.workspaceId, src));
+  if (srcDatasets.length === 0) return 0;
+
+  const srcDatasetIds = srcDatasets.map((d) => d.id);
+  let entries = await userDb
+    .select()
+    .from(wordDatasetEntries)
+    .where(inArray(wordDatasetEntries.datasetId, srcDatasetIds));
+  entries = filterByChapters(entries, chapters);
+
+  if (entries.length === 0) return 0;
+
+  // Match-or-create each referenced dataset in the target workspace by name.
+  const referencedDatasetIds = [...new Set(entries.map((e) => e.datasetId))];
+  const datasetIdMap = new Map<number, number>();
+  for (const datasetId of referencedDatasetIds) {
+    const dataset = srcDatasets.find((d) => d.id === datasetId)!;
+    const existing = await userDb
+      .select()
+      .from(wordDatasets)
+      .where(and(eq(wordDatasets.workspaceId, tgt), eq(wordDatasets.name, dataset.name)));
+
+    if (existing.length > 0) {
+      datasetIdMap.set(dataset.id, existing[0].id);
+    } else {
+      const inserted = await userDb
+        .insert(wordDatasets)
+        .values({ ...dataset, id: undefined, workspaceId: tgt })
+        .returning({ id: wordDatasets.id });
+      datasetIdMap.set(dataset.id, inserted[0].id);
+    }
+  }
+
+  await userDb
+    .insert(wordDatasetEntries)
+    .values(
+      entries.map((e) => ({
+        ...e,
+        id: undefined,
+        datasetId: datasetIdMap.get(e.datasetId)!,
+      }))
+    )
+    .onConflictDoNothing();
+
+  return entries.length;
 }
 
 async function importCharacters(
@@ -503,6 +667,74 @@ async function importTranslationVerses(
   return versesToInsert.length;
 }
 
+async function importTranslationFootnotes(
+  src: number,
+  tgt: number,
+  chapters: Chapter[]
+): Promise<number> {
+  if (chapters.length === 0) return 0;
+
+  const cond = chapterCondition(translationFootnotes, src, chapters);
+  if (!cond) return 0;
+  let rows = await userDb.select().from(translationFootnotes).where(cond);
+  rows = filterByChapters(rows, chapters);
+
+  if (rows.length === 0) return 0;
+
+  const srcTransIds = [...new Set(rows.map((r) => r.translationId))];
+  const transIdMap = await resolveTranslationIdMap(srcTransIds, tgt);
+
+  const rowsToInsert = rows.filter((r) => transIdMap.has(r.translationId));
+  if (rowsToInsert.length > 0) {
+    await userDb
+      .insert(translationFootnotes)
+      .values(
+        rowsToInsert.map((r) => ({
+          ...r,
+          id: undefined,
+          workspaceId: tgt,
+          translationId: transIdMap.get(r.translationId)!,
+        }))
+      );
+  }
+  return rowsToInsert.length;
+}
+
+async function importTranslationVersions(
+  src: number,
+  tgt: number,
+  chapters: Chapter[]
+): Promise<number> {
+  if (chapters.length === 0) return 0;
+
+  // No book/chapter columns — only osisRef — so scope by prefix like translationVerses.
+  let rows = await userDb
+    .select()
+    .from(translationVersions)
+    .where(eq(translationVersions.workspaceId, src));
+  rows = filterVersesByChapters(rows, chapters);
+
+  if (rows.length === 0) return 0;
+
+  const srcTransIds = [...new Set(rows.map((r) => r.translationId))];
+  const transIdMap = await resolveTranslationIdMap(srcTransIds, tgt);
+
+  const rowsToInsert = rows.filter((r) => transIdMap.has(r.translationId));
+  if (rowsToInsert.length > 0) {
+    await userDb
+      .insert(translationVersions)
+      .values(
+        rowsToInsert.map((r) => ({
+          ...r,
+          id: undefined,
+          workspaceId: tgt,
+          translationId: transIdMap.get(r.translationId)!,
+        }))
+      );
+  }
+  return rowsToInsert.length;
+}
+
 async function importRstRelations(
   src: number,
   tgt: number,
@@ -547,6 +779,145 @@ async function importRstRelations(
   }
 
   return rows.length;
+}
+
+// ─── Group D: bespoke scope logic ────────────────────────────────────────────
+// These tables don't fit the book+chapter scope model used above, so each
+// gets its own matching rule instead of chapterCondition/filterByChapters.
+
+async function importBookGroupings(
+  src: number,
+  tgt: number,
+  chapters: Chapter[]
+): Promise<number> {
+  if (chapters.length === 0) return 0;
+
+  const scopeBooks = new Set(chapters.map((c) => c.book));
+
+  const srcGroupings = await userDb
+    .select()
+    .from(bookGroupings)
+    .where(eq(bookGroupings.workspaceId, src));
+
+  const inScope = srcGroupings.filter((g) => {
+    let books: string[];
+    try {
+      books = JSON.parse(g.books);
+    } catch {
+      return false;
+    }
+    return books.some((b) => scopeBooks.has(b));
+  });
+
+  if (inScope.length === 0) return 0;
+
+  // Match-or-skip by name — groupings are workspace-level metadata, not
+  // per-word annotations, so re-creating a duplicate "Pentateuch" on repeat
+  // imports would be confusing rather than additive.
+  //
+  // Known limitation: wordTags.corpusGroupingId (a plain int FK to this
+  // table) isn't remapped by importWordTags, here or previously — a copied
+  // word tag that references a grouping keeps the *source* workspace's
+  // grouping id, which may not correspond to anything in the target. Fixing
+  // that would require importWordTags to depend on this function's id map,
+  // which is out of scope unless requested separately.
+  for (const grouping of inScope) {
+    const existing = await userDb
+      .select({ id: bookGroupings.id })
+      .from(bookGroupings)
+      .where(and(eq(bookGroupings.workspaceId, tgt), eq(bookGroupings.name, grouping.name)));
+
+    if (existing.length === 0) {
+      await userDb
+        .insert(bookGroupings)
+        .values({ ...grouping, id: undefined, workspaceId: tgt });
+    }
+  }
+
+  return inScope.length;
+}
+
+/**
+ * Bookmark hrefs are always "/{book}/{source}/{chapter}" (optionally with a
+ * "?par=1" query string) or "/{book}/{source}/passage/{passageId}" — see
+ * BookmarkButton.tsx. Returns null chapter for the passage shape, since a
+ * passage id isn't portable across workspaces.
+ */
+function parseBookmarkHref(href: string): { book: string; chapter: number | null } | null {
+  const parts = href.split("?")[0].split("/");
+  if (parts.length < 4 || !parts[1]) return null;
+  const book = decodeURIComponent(parts[1]);
+  if (parts[3] === "passage") return { book, chapter: null };
+  const chapter = parseInt(parts[3], 10);
+  if (isNaN(chapter)) return null;
+  return { book, chapter };
+}
+
+async function importBookmarks(
+  src: number,
+  tgt: number,
+  chapters: Chapter[]
+): Promise<number> {
+  if (chapters.length === 0) return 0;
+
+  const scopeBooks = new Set(chapters.map((c) => c.book));
+  const chapterSet = new Set(chapters.map((c) => `${c.book}:${c.chapter}`));
+
+  const srcBookmarks = await userDb
+    .select()
+    .from(bookmarks)
+    .where(eq(bookmarks.workspaceId, src));
+
+  const inScope = srcBookmarks.filter((b) => {
+    const parsed = parseBookmarkHref(b.href);
+    if (!parsed || !scopeBooks.has(parsed.book)) return false;
+    // Chapter-shaped hrefs must match the specific chapter; passage-shaped
+    // hrefs (chapter === null) match on book alone as the practical fallback.
+    if (parsed.chapter === null) return true;
+    return chapterSet.has(`${parsed.book}:${parsed.chapter}`);
+  });
+
+  if (inScope.length === 0) return 0;
+
+  await userDb.insert(bookmarks).values(
+    inScope.map((b, i) => ({
+      ...b,
+      id: `${Date.now()}-${Math.random().toString(36).slice(2)}-${i}`,
+      workspaceId: tgt,
+    }))
+  );
+  return inScope.length;
+}
+
+async function importIntertextualLinks(
+  src: number,
+  tgt: number,
+  chapters: Chapter[]
+): Promise<number> {
+  if (chapters.length === 0) return 0;
+
+  const chapterSet = new Set(chapters.map((c) => `${c.book}:${c.chapter}`));
+
+  const srcLinks = await userDb
+    .select()
+    .from(intertextualLinks)
+    .where(eq(intertextualLinks.workspaceId, src));
+
+  // Match if either side of the link falls within scope — copying a
+  // chapter's data should bring along links that touch it from either
+  // direction.
+  const inScope = srcLinks.filter(
+    (l) =>
+      chapterSet.has(`${l.sourceBook}:${l.sourceChapter}`) ||
+      chapterSet.has(`${l.targetBook}:${l.targetChapter}`)
+  );
+
+  if (inScope.length > 0) {
+    await userDb
+      .insert(intertextualLinks)
+      .values(inScope.map((r) => ({ ...r, id: undefined, workspaceId: tgt })));
+  }
+  return inScope.length;
 }
 
 // ─── Route handler ───────────────────────────────────────────────────────────
@@ -605,6 +976,13 @@ export async function POST(request: NextRequest) {
         break;
       case "sectionBreaks":
         count = await importSectionBreaks(
+          sourceWorkspaceId,
+          targetWorkspaceId,
+          chapters
+        );
+        break;
+      case "paragraphBreaks":
+        count = await importParagraphBreaks(
           sourceWorkspaceId,
           targetWorkspaceId,
           chapters
@@ -669,6 +1047,76 @@ export async function POST(request: NextRequest) {
         break;
       case "passages":
         count = await importPassages(
+          sourceWorkspaceId,
+          targetWorkspaceId,
+          chapters
+        );
+        break;
+      case "constituentLabels":
+        count = await importConstituentLabels(
+          sourceWorkspaceId,
+          targetWorkspaceId,
+          chapters
+        );
+        break;
+      case "transliterationFormats":
+        count = await importTransliterationFormats(
+          sourceWorkspaceId,
+          targetWorkspaceId,
+          chapters
+        );
+        break;
+      case "textCriticalMarks":
+        count = await importTextCriticalMarks(
+          sourceWorkspaceId,
+          targetWorkspaceId,
+          chapters
+        );
+        break;
+      case "paragraphHeadings":
+        count = await importParagraphHeadings(
+          sourceWorkspaceId,
+          targetWorkspaceId,
+          chapters
+        );
+        break;
+      case "translationFootnotes":
+        count = await importTranslationFootnotes(
+          sourceWorkspaceId,
+          targetWorkspaceId,
+          chapters
+        );
+        break;
+      case "translationVersions":
+        count = await importTranslationVersions(
+          sourceWorkspaceId,
+          targetWorkspaceId,
+          chapters
+        );
+        break;
+      case "wordDatasets":
+        count = await importWordDatasets(
+          sourceWorkspaceId,
+          targetWorkspaceId,
+          chapters
+        );
+        break;
+      case "bookGroupings":
+        count = await importBookGroupings(
+          sourceWorkspaceId,
+          targetWorkspaceId,
+          chapters
+        );
+        break;
+      case "bookmarks":
+        count = await importBookmarks(
+          sourceWorkspaceId,
+          targetWorkspaceId,
+          chapters
+        );
+        break;
+      case "intertextualLinks":
+        count = await importIntertextualLinks(
           sourceWorkspaceId,
           targetWorkspaceId,
           chapters

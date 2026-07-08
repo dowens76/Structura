@@ -32,6 +32,7 @@ interface ImportForm {
   dataTypes: {
     translationVerses: boolean;
     sectionBreaks: boolean;
+    paragraphBreaks: boolean;
     lineAnnotations: boolean;
     wordTags: boolean;
     wordFormatting: boolean;
@@ -41,6 +42,16 @@ interface ImportForm {
     rstRelations: boolean;
     notes: boolean;
     passages: boolean;
+    constituentLabels: boolean;
+    transliterationFormats: boolean;
+    textCriticalMarks: boolean;
+    paragraphHeadings: boolean;
+    translationFootnotes: boolean;
+    translationVersions: boolean;
+    wordDatasets: boolean;
+    bookGroupings: boolean;
+    bookmarks: boolean;
+    intertextualLinks: boolean;
   };
 }
 
@@ -187,6 +198,7 @@ const defaultImportForm: ImportForm = {
   dataTypes: {
     translationVerses: true,
     sectionBreaks: true,
+    paragraphBreaks: true,
     lineAnnotations: true,
     wordTags: true,
     wordFormatting: true,
@@ -196,12 +208,23 @@ const defaultImportForm: ImportForm = {
     rstRelations: true,
     notes: true,
     passages: true,
+    constituentLabels: true,
+    transliterationFormats: true,
+    textCriticalMarks: true,
+    paragraphHeadings: true,
+    translationFootnotes: true,
+    translationVersions: true,
+    wordDatasets: true,
+    bookGroupings: true,
+    bookmarks: true,
+    intertextualLinks: true,
   },
 };
 
 const DATA_TYPE_KEYS: { key: keyof ImportForm["dataTypes"]; tKey: string }[] = [
   { key: "translationVerses", tKey: "account.dataTypeTranslationVerses" },
   { key: "sectionBreaks", tKey: "account.dataTypeSectionBreaks" },
+  { key: "paragraphBreaks", tKey: "account.dataTypeParagraphBreaks" },
   { key: "lineAnnotations", tKey: "account.dataTypeLineAnnotations" },
   { key: "wordTags", tKey: "account.dataTypeWordTags" },
   { key: "wordFormatting", tKey: "account.dataTypeWordFormatting" },
@@ -211,6 +234,16 @@ const DATA_TYPE_KEYS: { key: keyof ImportForm["dataTypes"]; tKey: string }[] = [
   { key: "rstRelations", tKey: "account.dataTypeRstRelations" },
   { key: "notes", tKey: "account.dataTypeNotes" },
   { key: "passages", tKey: "account.dataTypePassages" },
+  { key: "constituentLabels", tKey: "account.dataTypeConstituentLabels" },
+  { key: "transliterationFormats", tKey: "account.dataTypeTransliterationFormats" },
+  { key: "textCriticalMarks", tKey: "account.dataTypeTextCriticalMarks" },
+  { key: "paragraphHeadings", tKey: "account.dataTypeParagraphHeadings" },
+  { key: "translationFootnotes", tKey: "account.dataTypeTranslationFootnotes" },
+  { key: "translationVersions", tKey: "account.dataTypeTranslationVersions" },
+  { key: "wordDatasets", tKey: "account.dataTypeWordDatasets" },
+  { key: "bookGroupings", tKey: "account.dataTypeBookGroupings" },
+  { key: "bookmarks", tKey: "account.dataTypeBookmarks" },
+  { key: "intertextualLinks", tKey: "account.dataTypeIntertextualLinks" },
 ];
 
 // ── Main component ───────────────────────────────────────────────────────────
