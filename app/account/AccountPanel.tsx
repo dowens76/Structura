@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useTranslation } from "@/lib/i18n/LocaleContext";
+import { OSIS_BOOKS_OT, OSIS_BOOKS_NT, OSIS_BOOKS_LXX } from "@/lib/utils/osis";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -45,6 +46,15 @@ interface ImportForm {
 
 interface ImportResult {
   [key: string]: { imported: number };
+}
+
+/** Data types the copy feature checks for pre-existing target data. */
+type OverwritableDataType = "translationVerses" | "lineAnnotations";
+type OverwriteChoice = "overwrite" | "skip";
+
+interface ConflictInfo {
+  exists: boolean;
+  count: number;
 }
 
 interface Props {
@@ -157,6 +167,15 @@ function BtnDanger({
   );
 }
 
+// ── Book options for the import scope picker ─────────────────────────────────
+// OT canon, then LXX-only apocrypha (Wis, Sir, etc. — workspaces may hold data
+// for these even though they're not part of the standard OT list), then NT.
+const IMPORT_BOOK_OPTIONS: string[] = [
+  ...OSIS_BOOKS_OT,
+  ...OSIS_BOOKS_LXX.filter((b) => !OSIS_BOOKS_OT.includes(b)),
+  ...OSIS_BOOKS_NT,
+];
+
 // ── Default import form ──────────────────────────────────────────────────────
 
 const defaultImportForm: ImportForm = {
@@ -197,7 +216,7 @@ const DATA_TYPE_KEYS: { key: keyof ImportForm["dataTypes"]; tKey: string }[] = [
 // ── Main component ───────────────────────────────────────────────────────────
 
 export default function AccountPanel({ activeWorkspaceId: initialActiveId }: Props) {
-  const { t } = useTranslation();
+  const { t, bookName } = useTranslation();
   const router = useRouter();
 
   // ── Core state ─────────────────────────────────────────────────────────────
@@ -226,6 +245,16 @@ export default function AccountPanel({ activeWorkspaceId: initialActiveId }: Pro
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
   const [importLoading, setImportLoading] = useState(false);
   const [importError, setImportError] = useState("");
+  const [importChecking, setImportChecking] = useState(false);
+  // Set once a check finds pre-existing target data; cleared once the user
+  // resolves it (or a fresh submit starts over). Non-null means "awaiting
+  // the user's overwrite/skip choice before the real import can run".
+  const [importConflicts, setImportConflicts] = useState<Partial<
+    Record<OverwritableDataType, ConflictInfo>
+  > | null>(null);
+  const [importOverwriteChoices, setImportOverwriteChoices] = useState<
+    Partial<Record<OverwritableDataType, OverwriteChoice>>
+  >({});
 
   // ── Data loading ───────────────────────────────────────────────────────────
   useEffect(() => {
@@ -347,9 +376,58 @@ export default function AccountPanel({ activeWorkspaceId: initialActiveId }: Pro
   }
 
   // ── Import submit ──────────────────────────────────────────────────────────
+
+  /** Builds the {scope, dataTypes} pair shared by the check and real-import requests. */
+  function buildImportRequest() {
+    const scope =
+      importForm.scopeType === "chapter"
+        ? {
+            type: "chapter" as const,
+            book: importForm.book.trim(),
+            chapter: importForm.chapter,
+          }
+        : { type: "passage" as const, passageId: importForm.passageId };
+    const dataTypes = DATA_TYPE_KEYS.map((d) => d.key).filter(
+      (key) => importForm.dataTypes[key]
+    );
+    return { scope, dataTypes };
+  }
+
+  async function runImport(
+    overwrite?: Partial<Record<OverwritableDataType, OverwriteChoice>>
+  ) {
+    setImportLoading(true);
+    try {
+      const { scope, dataTypes } = buildImportRequest();
+      const res = await fetch("/api/workspace-import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sourceWorkspaceId: importForm.sourceWorkspaceId,
+          scope,
+          dataTypes,
+          overwrite,
+        }),
+      });
+      const data = (await res.json()) as
+        | { ok: true; results: ImportResult }
+        | { error: string };
+      if (!res.ok) {
+        setImportError("error" in data ? data.error : "Import failed.");
+      } else if ("results" in data) {
+        setImportResult(data.results);
+      }
+    } catch {
+      setImportError("Network error — could not reach the server.");
+    } finally {
+      setImportLoading(false);
+    }
+  }
+
   async function submitImport() {
     setImportError("");
     setImportResult(null);
+    setImportConflicts(null);
     if (!importForm.sourceWorkspaceId) {
       setImportError("Please select a source workspace.");
       return;
@@ -366,29 +444,49 @@ export default function AccountPanel({ activeWorkspaceId: initialActiveId }: Pro
       return;
     }
 
-    setImportLoading(true);
+    const { scope, dataTypes } = buildImportRequest();
+
+    // Check whether the target workspace already has translation text or
+    // clause/paragraph labels in this scope before importing — those would
+    // otherwise just pile up as duplicate rows alongside the existing data.
+    setImportChecking(true);
     try {
-      const res = await fetch("/api/workspace-import", {
+      const checkRes = await fetch("/api/workspace-import/check", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          targetWorkspaceId: activeWorkspaceId,
-          ...importForm,
+          sourceWorkspaceId: importForm.sourceWorkspaceId,
+          scope,
+          dataTypes,
         }),
       });
-      const data = (await res.json()) as
-        | { result: ImportResult }
-        | { error: string };
-      if (!res.ok) {
-        setImportError("error" in data ? data.error : "Import failed.");
-      } else if ("result" in data) {
-        setImportResult(data.result);
+      if (checkRes.ok) {
+        const { conflicts } = (await checkRes.json()) as {
+          conflicts: Partial<Record<OverwritableDataType, ConflictInfo>>;
+        };
+        const conflictingTypes = (Object.keys(conflicts) as OverwritableDataType[])
+          .filter((k) => conflicts[k]?.exists);
+        if (conflictingTypes.length > 0) {
+          setImportConflicts(conflicts);
+          setImportOverwriteChoices(
+            Object.fromEntries(conflictingTypes.map((k) => [k, "skip"]))
+          );
+          return; // wait for the user to choose overwrite/skip and confirm
+        }
       }
     } catch {
-      setImportError("Network error — could not reach the server.");
+      // Non-blocking — if the check itself fails, fall through and let the
+      // real import attempt run (it will surface its own error if needed).
     } finally {
-      setImportLoading(false);
+      setImportChecking(false);
     }
+
+    await runImport();
+  }
+
+  async function confirmImportWithChoices() {
+    await runImport(importOverwriteChoices);
+    setImportConflicts(null);
   }
 
   // ── Render helpers ─────────────────────────────────────────────────────────
@@ -762,16 +860,21 @@ export default function AccountPanel({ activeWorkspaceId: initialActiveId }: Pro
                   >
                     {t("account.bookLabel")}
                   </label>
-                  <input
-                    type="text"
-                    placeholder={t("account.bookPlaceholder")}
+                  <select
                     value={importForm.book}
                     onChange={(e) =>
                       setImportForm((f) => ({ ...f, book: e.target.value }))
                     }
                     className="w-full px-3 py-1.5 rounded-lg text-sm"
                     style={inputStyle}
-                  />
+                  >
+                    <option value="">{t("account.selectBook")}</option>
+                    {IMPORT_BOOK_OPTIONS.map((code) => (
+                      <option key={code} value={code}>
+                        {bookName(code)}
+                      </option>
+                    ))}
+                  </select>
                 </div>
                 <div>
                   <label
@@ -885,21 +988,90 @@ export default function AccountPanel({ activeWorkspaceId: initialActiveId }: Pro
               </div>
             </div>
 
-            {/* Import button */}
-            <div className="flex items-center gap-3 pt-1">
-              <BtnPrimary
-                onClick={submitImport}
-                disabled={importLoading}
-                className="px-4 py-2"
-              >
-                {importLoading ? t("account.importing") : t("account.import")}
-              </BtnPrimary>
-              {importLoading && (
-                <span className="text-xs" style={mutedStyle}>
-                  {t("account.importingMoment")}
-                </span>
-              )}
-            </div>
+            {/* Overwrite/skip conflict resolution — shown when the check finds
+                pre-existing translation text or clause/paragraph labels in scope */}
+            {importConflicts ? (
+              <div className="rounded-lg border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950 px-4 py-3 space-y-3">
+                <div>
+                  <p className="text-sm font-medium text-amber-900 dark:text-amber-100">
+                    {t("account.importConflictTitle")}
+                  </p>
+                  <p className="text-xs mt-0.5 text-amber-800 dark:text-amber-200">
+                    {t("account.importConflictDesc")}
+                  </p>
+                </div>
+                {(Object.keys(importConflicts) as OverwritableDataType[])
+                  .filter((key) => importConflicts[key]?.exists)
+                  .map((key) => {
+                    const tKey = DATA_TYPE_KEYS.find((d) => d.key === key)?.tKey;
+                    const info = importConflicts[key]!;
+                    return (
+                      <div key={key} className="flex items-center justify-between gap-3">
+                        <div className="text-xs text-amber-900 dark:text-amber-100">
+                          <span className="font-medium">{tKey ? t(tKey) : key}</span>
+                          <span className="ml-2 opacity-75">
+                            {t("account.importConflictCount", { count: info.count })}
+                          </span>
+                        </div>
+                        <div className="flex gap-1 shrink-0">
+                          {(["skip", "overwrite"] as const).map((choice) => (
+                            <button
+                              key={choice}
+                              type="button"
+                              onClick={() =>
+                                setImportOverwriteChoices((prev) => ({ ...prev, [key]: choice }))
+                              }
+                              className={`px-2.5 py-1 rounded text-xs font-medium transition-colors ${
+                                importOverwriteChoices[key] === choice
+                                  ? choice === "overwrite"
+                                    ? "bg-red-600 text-white"
+                                    : "bg-stone-600 text-white"
+                                  : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700"
+                              }`}
+                            >
+                              {choice === "overwrite"
+                                ? t("account.importConflictOverwrite")
+                                : t("account.importConflictSkip")}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                <div className="flex items-center gap-3 pt-1">
+                  <BtnPrimary
+                    onClick={confirmImportWithChoices}
+                    disabled={importLoading}
+                    className="px-4 py-2"
+                  >
+                    {importLoading ? t("account.importing") : t("account.importContinue")}
+                  </BtnPrimary>
+                  <BtnNeutral onClick={() => setImportConflicts(null)} disabled={importLoading}>
+                    {t("account.cancel")}
+                  </BtnNeutral>
+                </div>
+              </div>
+            ) : (
+              /* Import button */
+              <div className="flex items-center gap-3 pt-1">
+                <BtnPrimary
+                  onClick={submitImport}
+                  disabled={importLoading || importChecking}
+                  className="px-4 py-2"
+                >
+                  {importLoading
+                    ? t("account.importing")
+                    : importChecking
+                    ? t("account.importChecking")
+                    : t("account.import")}
+                </BtnPrimary>
+                {(importLoading || importChecking) && (
+                  <span className="text-xs" style={mutedStyle}>
+                    {t("account.importingMoment")}
+                  </span>
+                )}
+              </div>
+            )}
 
             {/* Import error */}
             {importError && (

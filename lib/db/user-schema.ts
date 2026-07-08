@@ -35,7 +35,12 @@ export const translations = sqliteTable(
     createdAt:   integer("created_at", { mode: "timestamp" }).$defaultFn(() => new Date()),
   },
   (t) => [
-    uniqueIndex("trans_ws_abbr_idx").on(t.workspaceId, t.abbreviation),
+    // Translations are shared across workspaces (see getTranslations in
+    // lib/db/queries.ts), so the abbreviation must be globally unique, not
+    // just per-workspace — otherwise two workspaces creating a translation
+    // with the same abbreviation produce duplicate rows that collide when
+    // the shared list is rendered together.
+    uniqueIndex("trans_abbr_idx").on(t.abbreviation),
   ]
 );
 

@@ -37,6 +37,19 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "name and abbreviation are required" }, { status: 400 });
   }
 
+  // Translations are shared across workspaces (see getTranslations in lib/db/queries.ts),
+  // so the abbreviation must be unique across all workspaces, not just this one.
+  const existing = await userDb
+    .select({ id: translations.id })
+    .from(translations)
+    .where(eq(translations.abbreviation, abbreviation));
+  if (existing.length > 0) {
+    return NextResponse.json(
+      { error: `A translation with abbreviation "${abbreviation}" already exists.` },
+      { status: 409 }
+    );
+  }
+
   const result = await userDb
     .insert(translations)
     .values({ workspaceId, name, abbreviation, language: body.language ?? null })
@@ -64,6 +77,19 @@ export async function PATCH(request: NextRequest) {
   if ("language" in body)     patch.language    = body.language ?? null;
 
   if (Object.keys(patch).length === 0) return NextResponse.json({ ok: true });
+
+  if (patch.abbreviation != null) {
+    const existing = await userDb
+      .select({ id: translations.id })
+      .from(translations)
+      .where(eq(translations.abbreviation, patch.abbreviation));
+    if (existing.some((row) => row.id !== id)) {
+      return NextResponse.json(
+        { error: `A translation with abbreviation "${patch.abbreviation}" already exists.` },
+        { status: 409 }
+      );
+    }
+  }
 
   await userDb
     .update(translations)

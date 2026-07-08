@@ -21,121 +21,28 @@ import {
   passages,
 } from "@/lib/db/user-schema";
 import { getActiveWorkspaceId } from "@/lib/workspace";
+import {
+  resolveScope,
+  chapterCondition,
+  filterByChapters,
+  filterVersesByChapters,
+  type Chapter,
+  type Scope,
+  type DataType,
+  type OverwritableDataType,
+  type OverwriteMode,
+} from "@/lib/workspace-import";
 
 export const dynamic = "force-dynamic";
-
-// ─── Types ──────────────────────────────────────────────────────────────────
-
-type Chapter = { book: string; chapter: number };
-
-type Scope =
-  | { type: "chapter"; book: string; chapter: number }
-  | { type: "passage"; passageId: number };
-
-type DataType =
-  | "translationVerses"
-  | "sectionBreaks"
-  | "lineAnnotations"
-  | "wordTags"
-  | "wordFormatting"
-  | "characters"
-  | "lineIndents"
-  | "wordArrows"
-  | "rstRelations"
-  | "notes"
-  | "passages";
 
 interface RequestBody {
   sourceWorkspaceId: number;
   scope: Scope;
   dataTypes: DataType[];
-}
-
-// ─── Scope resolution ────────────────────────────────────────────────────────
-
-async function resolveScope(scope: Scope, src: number): Promise<Chapter[]> {
-  if (scope.type === "chapter") {
-    return [{ book: scope.book, chapter: scope.chapter }];
-  }
-
-  // Passage scope: look up the passage in the source workspace
-  const passageRows = await userDb
-    .select()
-    .from(passages)
-    .where(
-      and(
-        eq(passages.workspaceId, src),
-        eq(passages.id, scope.passageId)
-      )
-    );
-
-  if (passageRows.length === 0) {
-    return [];
-  }
-
-  const passage = passageRows[0];
-  const chapters: Chapter[] = [];
-  for (let ch = passage.startChapter; ch <= passage.endChapter; ch++) {
-    chapters.push({ book: passage.book, chapter: ch });
-  }
-  return chapters;
-}
-
-// ─── Scope filter helpers ────────────────────────────────────────────────────
-
-/**
- * Build a Drizzle WHERE condition for rows that match any of the given chapters.
- * The table must have .workspaceId, .book, and .chapter columns.
- */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function chapterCondition<T extends { workspaceId: any; book: any; chapter: any }>(
-  table: T,
-  workspaceId: number,
-  chapters: Chapter[]
-) {
-  if (chapters.length === 0) return null;
-
-  if (chapters.length === 1) {
-    return and(
-      eq(table.workspaceId, workspaceId),
-      eq(table.book, chapters[0].book),
-      eq(table.chapter, chapters[0].chapter)
-    );
-  }
-
-  // Group chapters by book (in practice usually one book, but handle multi-book)
-  const byBook = new Map<string, number[]>();
-  for (const { book, chapter } of chapters) {
-    if (!byBook.has(book)) byBook.set(book, []);
-    byBook.get(book)!.push(chapter);
-  }
-
-  const books = [...byBook.keys()];
-  if (books.length === 1) {
-    const book = books[0];
-    return and(
-      eq(table.workspaceId, workspaceId),
-      eq(table.book, book),
-      inArray(table.chapter, byBook.get(book)!)
-    );
-  }
-
-  // Multiple books: fetch all for the workspace filtered by book set and chapter sets
-  // We use OR conditions per book. Drizzle's `or` isn't imported, so we use inArray on
-  // chapter across the full set (acceptable because cross-book chapter overlap is fine
-  // given we also filter by book below via a second pass — but to keep it simple and
-  // correct we use the broadest safe filter and let the insert be idempotent).
-  // For correctness with multiple books: return workspace-level filter and post-filter.
-  return eq(table.workspaceId, workspaceId);
-}
-
-/** Filter fetched rows to only those matching the chapters list. */
-function filterByChapters<T extends { book: string; chapter: number }>(
-  rows: T[],
-  chapters: Chapter[]
-): T[] {
-  const set = new Set(chapters.map((c) => `${c.book}:${c.chapter}`));
-  return rows.filter((r) => set.has(`${r.book}:${r.chapter}`));
+  /** Per-data-type resolution when the target workspace already has data in scope
+   *  (see /api/workspace-import/check). Defaults to "add" (insert alongside
+   *  existing data) when not specified — matches pre-existing behavior. */
+  overwrite?: Partial<Record<OverwritableDataType, OverwriteMode>>;
 }
 
 // ─── Import helpers ──────────────────────────────────────────────────────────
@@ -179,14 +86,20 @@ async function importSectionBreaks(
 async function importLineAnnotations(
   src: number,
   tgt: number,
-  chapters: Chapter[]
+  chapters: Chapter[],
+  mode: OverwriteMode
 ): Promise<number> {
-  if (chapters.length === 0) return 0;
+  if (chapters.length === 0 || mode === "skip") return 0;
 
   const cond = chapterCondition(lineAnnotations, src, chapters);
   if (!cond) return 0;
   let rows = await userDb.select().from(lineAnnotations).where(cond);
   rows = filterByChapters(rows, chapters);
+
+  if (mode === "overwrite") {
+    const tgtCond = chapterCondition(lineAnnotations, tgt, chapters);
+    if (tgtCond) await userDb.delete(lineAnnotations).where(tgtCond);
+  }
 
   if (rows.length > 0) {
     await userDb
@@ -484,51 +397,30 @@ async function importCharacters(
   return crCount + ssCount;
 }
 
-async function importTranslationVerses(
-  src: number,
-  tgt: number,
-  chapters: Chapter[]
-): Promise<number> {
-  if (chapters.length === 0) return 0;
-
-  // 1. Find translation verses for scoped chapters in source workspace
-  const chapterNums = [...new Set(chapters.map((c) => c.chapter))];
-  const srcVerses = await userDb
-    .select()
-    .from(translationVerses)
-    .where(
-      and(
-        eq(translationVerses.workspaceId, src),
-        inArray(translationVerses.chapter, chapterNums)
-      )
-    );
-
-  if (srcVerses.length === 0) return 0;
-
-  const srcTransIds = [...new Set(srcVerses.map((v) => v.translationId))];
-
-  // 2. Fetch source translation records and build ID map
+/**
+ * Resolves the target-workspace translation id for each source translation
+ * referenced by `srcTransIds`, creating a target translation row when no
+ * translation with the same abbreviation exists yet.
+ *
+ * Translations are shared across workspaces (see getTranslations in
+ * lib/db/queries.ts — abbreviation is globally unique), so this must match
+ * purely by abbreviation, never by workspaceId.
+ */
+async function resolveTranslationIdMap(
+  srcTransIds: number[],
+  tgt: number
+): Promise<Map<number, number>> {
   const srcTranslations = await userDb
     .select()
     .from(translations)
-    .where(
-      and(
-        eq(translations.workspaceId, src),
-        inArray(translations.id, srcTransIds)
-      )
-    );
+    .where(inArray(translations.id, srcTransIds));
 
   const transIdMap = new Map<number, number>();
   for (const trans of srcTranslations) {
     const existing = await userDb
       .select()
       .from(translations)
-      .where(
-        and(
-          eq(translations.workspaceId, tgt),
-          eq(translations.abbreviation, trans.abbreviation)
-        )
-      );
+      .where(eq(translations.abbreviation, trans.abbreviation));
 
     if (existing.length > 0) {
       transIdMap.set(trans.id, existing[0].id);
@@ -540,8 +432,61 @@ async function importTranslationVerses(
       transIdMap.set(trans.id, inserted[0].id);
     }
   }
+  return transIdMap;
+}
 
-  // 3. Insert translationVerses with remapped translationId
+async function importTranslationVerses(
+  src: number,
+  tgt: number,
+  chapters: Chapter[],
+  mode: OverwriteMode
+): Promise<number> {
+  if (chapters.length === 0 || mode === "skip") return 0;
+
+  // 1. Find translation verses for scoped chapters in source workspace.
+  // Chapter-number-only filtering would also pull in unrelated books that
+  // happen to share a chapter number, so narrow further by osisRef prefix.
+  const chapterNums = [...new Set(chapters.map((c) => c.chapter))];
+  let srcVerses = await userDb
+    .select()
+    .from(translationVerses)
+    .where(
+      and(
+        eq(translationVerses.workspaceId, src),
+        inArray(translationVerses.chapter, chapterNums)
+      )
+    );
+  srcVerses = filterVersesByChapters(srcVerses, chapters);
+
+  if (srcVerses.length === 0) return 0;
+
+  const srcTransIds = [...new Set(srcVerses.map((v) => v.translationId))];
+  const transIdMap = await resolveTranslationIdMap(srcTransIds, tgt);
+
+  if (mode === "overwrite") {
+    const tgtTransIds = [...transIdMap.values()];
+    if (tgtTransIds.length > 0) {
+      let existingTgtVerses = await userDb
+        .select({ id: translationVerses.id, osisRef: translationVerses.osisRef })
+        .from(translationVerses)
+        .where(
+          and(
+            eq(translationVerses.workspaceId, tgt),
+            inArray(translationVerses.translationId, tgtTransIds),
+            inArray(translationVerses.chapter, chapterNums)
+          )
+        );
+      existingTgtVerses = filterVersesByChapters(existingTgtVerses, chapters);
+      const idsToDelete = existingTgtVerses.map((v) => v.id);
+      if (idsToDelete.length > 0) {
+        await userDb
+          .delete(translationVerses)
+          .where(inArray(translationVerses.id, idsToDelete));
+      }
+    }
+  }
+
+  // 2. Insert translationVerses with remapped translationId
   const versesToInsert = srcVerses.filter((v) => transIdMap.has(v.translationId));
   if (versesToInsert.length > 0) {
     await userDb
@@ -553,8 +498,7 @@ async function importTranslationVerses(
           workspaceId: tgt,
           translationId: transIdMap.get(v.translationId)!,
         }))
-      )
-      .onConflictDoNothing();
+      );
   }
   return versesToInsert.length;
 }
@@ -617,7 +561,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const { sourceWorkspaceId, scope, dataTypes } = body;
+  const { sourceWorkspaceId, scope, dataTypes, overwrite } = body;
 
   if (
     typeof sourceWorkspaceId !== "number" ||
@@ -655,7 +599,8 @@ export async function POST(request: NextRequest) {
         count = await importTranslationVerses(
           sourceWorkspaceId,
           targetWorkspaceId,
-          chapters
+          chapters,
+          overwrite?.translationVerses ?? "add"
         );
         break;
       case "sectionBreaks":
@@ -669,7 +614,8 @@ export async function POST(request: NextRequest) {
         count = await importLineAnnotations(
           sourceWorkspaceId,
           targetWorkspaceId,
-          chapters
+          chapters,
+          overwrite?.lineAnnotations ?? "add"
         );
         break;
       case "wordTags":

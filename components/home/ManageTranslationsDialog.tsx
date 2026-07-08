@@ -118,12 +118,17 @@ export default function ManageTranslationsDialog({ onClose }: Props) {
 
   async function patchField(id: number, patch: Partial<Pick<TranslationRow, "name" | "abbreviation" | "language">>) {
     setSaving(id);
-    await fetch("/api/translations", {
+    const res = await fetch("/api/translations", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id, ...patch }),
     });
-    setRows((prev) => prev.map((r) => r.id === id ? { ...r, ...patch } : r));
+    if (res.ok) {
+      setRows((prev) => prev.map((r) => r.id === id ? { ...r, ...patch } : r));
+    } else {
+      const { error: msg } = await res.json();
+      setError(msg ?? "Failed to update translation.");
+    }
     setSaving(null);
   }
 
