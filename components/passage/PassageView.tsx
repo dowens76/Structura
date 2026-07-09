@@ -1166,11 +1166,14 @@ export default function PassageView({
     return instrs[0].mtVerseOffset;
   }, [osisBook, passage.startChapter, activeTranslationIds, allAvailableTranslations]);
 
-  // KJV cross-chapter verse label function (e.g. Jonah 2:1 in MT = Jonah 1:17 in KJV).
+  // KJV verse label function (e.g. Jonah 2:1 in MT = Jonah 1:17 in KJV, or
+  // 1Kgs 5:1 in MT = 1Kgs 4:21 in KJV). Must NOT gate on "does any
+  // instruction have a different kjvChapter" — see the matching comment in
+  // ChapterDisplay.tsx's translationVerseLabelFn for why.
   const translationVerseLabelFn = useMemo<((v: number) => string | null) | undefined>(() => {
     if (!hasActiveTranslations) return undefined;
     const instrs = getMtToKjvInstructions(osisBook, passage.startChapter);
-    if (!instrs || !instrs.some((i) => i.kjvChapter !== passage.startChapter)) return undefined;
+    if (!instrs) return undefined;
     return (v: number) => getKjvVerseLabel(osisBook, passage.startChapter, v);
   }, [osisBook, passage.startChapter, hasActiveTranslations]);
 

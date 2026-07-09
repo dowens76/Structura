@@ -1390,14 +1390,20 @@ export default function ChapterDisplay({
     return instrs[0].mtVerseOffset; // 1 or 2
   }, [book, chapter, activeTranslationIds, allAvailableTranslations]);
 
-  // Per-verse KJV cross-chapter reference label (e.g. "1:17" for MT Jonah 2:1).
-  // Only active for Jonah ch2, Joel ch3-4, Malachi ch3 tail — books where the
-  // chapter boundary differs between MT and KJV.  Returns undefined (no function)
-  // when no active translation exists or when the chapter has no cross-chapter remap.
+  // Per-verse KJV reference label (e.g. "1:17" for MT Jonah 2:1, or "4:21"
+  // for MT 1Kgs 5:1) — active for any book/chapter with a versification
+  // remap. Note this must NOT gate on "does any instruction have a different
+  // kjvChapter than the current chapter" — a chapter can shift verse numbers
+  // *within* the same chapter number (e.g. Exod 22, 1Chr 6), and those still
+  // need labels. getKjvVerseLabel itself decides label-vs-null per verse
+  // (and separately suppresses all Psalm labels, which use the
+  // translationVerseOffset mechanism above instead). Returns undefined (no
+  // function) only when no active translation exists or the chapter has no
+  // remap at all.
   const translationVerseLabelFn = useMemo<((v: number) => string | null) | undefined>(() => {
     if (!hasActiveTranslations) return undefined;
     const instrs = getMtToKjvInstructions(book, chapter);
-    if (!instrs || !instrs.some((i) => i.kjvChapter !== chapter)) return undefined;
+    if (!instrs) return undefined;
     return (v: number) => getKjvVerseLabel(book, chapter, v);
   }, [book, chapter, hasActiveTranslations]);
 

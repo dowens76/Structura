@@ -11,33 +11,42 @@
  * verse counts to ULT everywhere checked, so one table serves both.
  *
  * Covered so far (all cross-chapter or same-chapter boundary shifts that are
- * clean, monotonic renumbering — NOT the books/chapters below that involve
- * non-monotonic verse *reordering*, which this range+offset model cannot
- * represent and which are intentionally left unmapped for now):
+ * clean, monotonic renumbering):
  *  - Jonah, Joel, Mal, Ps — as before.
+ *  - Gen 31/32 boundary (the Leningrad Codex/WLC — and so OSHB — counts
+ *    "Laban rose early..." as 32:1, not the tail of 31, shifting the rest of
+ *    ch32 by +1 relative to KJV/ULT).
  *  - Exod 7/8, 21/22; Lev 5/6; Num 16/17, 29/30; Deut 12/13, 22/23, 28/29;
- *    1Sam 21 (partial — see note below), 23/24; 2Sam 18/19; 2Kgs 11/12;
- *    1Chr 5/6, 12 (same-chapter merge); 2Chr 1/2, 13/14; Neh 3/4, 9/10;
- *    Job 40/41; Eccl 4/5; Song 6/7; Isa 8/9, 63/64 (partial); Jer 8/9;
- *    Ezek 20/21; Dan 3/4, 5/6; Hos 1/2, 11/12, 13/14; Mic 4/5; Nah 1/2;
- *    Zech 1/2.
+ *    1Kgs 4/5, 22 (partial — see note below); 1Sam 21 (partial — see note
+ *    below), 23/24; 2Sam 18/19; 2Kgs 11/12; 1Chr 5/6, 12 (same-chapter
+ *    merge); 2Chr 1/2, 13/14; Neh 3/4, 9/10; Job 40/41; Eccl 4/5; Song 6/7;
+ *    Isa 8/9, 63/64 (partial); Jer 8/9; Ezek 20/21; Dan 3/4, 5/6; Hos 1/2,
+ *    11/12, 13/14; Mic 4/5; Nah 1/2; Zech 1/2.
  *
- * Explicitly NOT covered (non-monotonic reorders or multi-chapter
- * restructuring — a per-verse lookup table would be needed, not a range/
- * offset instruction): Gen 31/32/35; Exod 20:13-15, chs 35-40; Num 1, 6,
- * 25/26; Josh (verified no actual MT/KJV difference in the data despite the
- * SBL note — likely an LXX-placement issue, not English/Hebrew); 1 Kings
- * (extensive, includes mid-verse clause splits not representable at
- * verse-level at all); Proverbs 15-16, 20, 24-31; Jer 25-52 (large-scale
- * chapter reassignment, needs its own dedicated table).
+ * A number of books/passages are commonly cited (e.g. in the SBL Handbook of
+ * Style versification table) as having non-monotonic verse *reordering*
+ * between MT and English — which would need a per-verse lookup table rather
+ * than a range/offset instruction. Every such claim was checked directly
+ * against the actual Hebrew (OSHB) and English (ULT) text in this app before
+ * being excluded, and **none of them turned out to be real**: Gen 31:46-52,
+ * Gen 35, Exod 20:13-15, Exod chs 35-40, Num 1:24-37, Num 6:22-27, Num
+ * 25:19/26:1 (handled correctly by the existing default direct-query
+ * behavior — Yahweh's brief "and it happened after the plague" clause is
+ * simply fused into ULT's own 26:1 text, with no separate row for it), Josh
+ * 19:47-48, 1Kgs 6-7/9-11/18/20-21, and all of Proverbs — every one of these
+ * matched verse-for-verse (or, for the same-count cases, was spot-checked
+ * word-for-word) between OSHB and ULT with zero discrepancy. Only Jer 25-52
+ * remains unverified/unaddressed — it's a much larger restructuring (12+
+ * chapters) that needs its own dedicated investigation and table.
  *
- * A couple of entries are deliberately *partial*: 1Sam 21 v1 and Isa 64 v2
- * have no clean single English verse counterpart (their content is fused
- * into the tail of the previous English verse — e.g. ULT 1Sam 20:42 reads as
- * one sentence but contains what MT numbers as 21:1). Rather than showing
- * wrong content, those specific MT verses simply have no instruction match
- * and return nothing — the same tradeoff already used by PS_OFFSET_2 (MT
- * verse 2 of those Psalms is likewise left unmapped).
+ * A couple of entries are deliberately *partial*: 1Sam 21 v1, Isa 64 v2, and
+ * 1Kgs 22:44 have no clean single English verse counterpart (their content
+ * is fused into the tail of the previous English verse, or dropped — e.g.
+ * ULT 1Sam 20:42 reads as one sentence but contains what MT numbers as
+ * 21:1). Rather than showing wrong content, those specific MT verses simply
+ * have no instruction match and return nothing — the same tradeoff already
+ * used by PS_OFFSET_2 (MT verse 2 of those Psalms is likewise left
+ * unmapped).
  *
  * Usage: call getMtToKjvInstructions(book, mtChapter).
  * If it returns null, a direct `WHERE book=? AND chapter=?` query is correct.
@@ -106,6 +115,22 @@ const MT_KJV_INSTRUCTIONS: Readonly<
   },
 
   // ── Pentateuch ───────────────────────────────────────────────────────────
+  Gen: {
+    // MT Gen 31:1-54 = KJV 31:1-54 (direct — KJV 31:55 belongs to MT 32:1).
+    // NOTE: MT 31:46-52 is a separate, unfixed clause-reordering issue (see
+    // file header) — this instruction stops the KJV 31:55 leak but does not
+    // correct that internal scrambling.
+    31: [
+      { kjvChapter: 31, kjvVerseStart: 1, kjvVerseEnd: 54, mtVerseOffset: 0 },
+    ],
+    // MT Gen 32:1 = KJV 31:55 ("Laban rose early..."); MT 32:2-33 = KJV 32:1-32
+    // ("Then Jacob went on his way, and angels of God met him." = MT 32:2,
+    // verified against OSHB word text).
+    32: [
+      { kjvChapter: 31, kjvVerseStart: 55, kjvVerseEnd: 55,  mtVerseOffset: -54 },
+      { kjvChapter: 32, kjvVerseStart: 1,  kjvVerseEnd: 999, mtVerseOffset: 1   },
+    ],
+  },
   Exod: {
     // MT Exod 7:1-25 = KJV 7:1-25 (direct); MT 7:26-29 = KJV 8:1-4
     7: [
@@ -189,6 +214,38 @@ const MT_KJV_INSTRUCTIONS: Readonly<
   },
 
   // ── Historical books ─────────────────────────────────────────────────────
+  "1Kgs": {
+    // MT 1Kgs 4:1-20 = KJV 4:1-20 (direct — verified verse-for-verse, no
+    // reordering despite the SBL note; the actual difference is a clean
+    // cross-chapter shift starting at MT 5:1).
+    4: [
+      { kjvChapter: 4, kjvVerseStart: 1, kjvVerseEnd: 20, mtVerseOffset: 0 },
+    ],
+    // MT 1Kgs 5:1-14 = KJV 4:21-34 ("And Solomon was ruling over all of the
+    // kingdoms..." verified matching word-for-word); MT 5:15-32 = KJV 5:1-18
+    // ("Hiram, king of Tyre, sent his servants..." also verified).
+    //
+    // NOTE: kjvVerseEnd is capped at 34 (KJV ch4's real last verse), not the
+    // usual 999 "rest of chapter" sentinel — getKjvVerseLabel only checks
+    // numeric range bounds, not whether the verse actually exists, so an
+    // open-ended first instruction here would swallow MT 5:15-32 too (their
+    // kjv-equivalent, computed via *this* instruction's offset, keeps
+    // landing inside 999's unbounded range) and produce wrong labels like
+    // "[4:35]" instead of "[5:1]" — even though the fetched *text* was
+    // already correct, since getUltVerses queries real rows and ch4 has none
+    // past 34. Bug found via manual spot-check at MT 1Kgs 5:15.
+    5: [
+      { kjvChapter: 4, kjvVerseStart: 21, kjvVerseEnd: 34,  mtVerseOffset: -20 },
+      { kjvChapter: 5, kjvVerseStart: 1,  kjvVerseEnd: 999, mtVerseOffset: 14  },
+    ],
+    // MT 1Kgs 22:1-43 = KJV 22:1-43 (direct). MT 22:44 ("But the high places
+    // did not turn away...") has no separate KJV verse — dropped/fused in
+    // ULT, same gap tradeoff as elsewhere. MT 22:45-54 = KJV 22:44-53.
+    22: [
+      { kjvChapter: 22, kjvVerseStart: 1,  kjvVerseEnd: 43,  mtVerseOffset: 0 },
+      { kjvChapter: 22, kjvVerseStart: 44, kjvVerseEnd: 999, mtVerseOffset: 1 },
+    ],
+  },
   "1Sam": {
     // MT 1Sam 20:1-42 = KJV 20:1-42 (direct). ULT's v42 fuses MT 20:42 with
     // MT 21:1's content into one sentence, so no explicit instruction is
@@ -496,31 +553,33 @@ export function getMtToKjvInstructions(
 }
 
 /**
- * Returns the KJV display label for a given MT verse in a chapter that has
- * cross-chapter remapping (Jonah ch2, Joel ch3-4, Malachi ch3 tail).
+ * Returns the KJV display label for a given MT verse whose KJV/ULT source
+ * reference differs from its own MT chapter:verse (e.g. "1:17" so the UI can
+ * show "[1:17]" next to MT Jonah 2:1, or "4:21" next to MT 1Kgs 5:1).
  *
- * Returns a string like "1:17" when the KJV reference differs from the MT
- * reference, so the UI can show e.g. "[1:17]" next to MT Jonah 2:1.
  * Returns null when:
- *  - No cross-chapter remap applies to this book+chapter, OR
+ *  - The book is Psalms — superscription offsets use the simpler
+ *    `translationVerseOffset` integer mechanism instead, and are
+ *    intentionally never labeled here.
+ *  - No remap applies to this book+chapter, OR
  *  - The KJV chapter:verse for this MT verse is identical to the MT chapter:verse
  *    (i.e. no label is needed), OR
  *  - The verse falls outside all known instruction ranges.
  *
- * NOTE: Psalm superscription offsets are same-chapter and are intentionally
- * excluded — those use the simpler `translationVerseOffset` integer mechanism.
+ * IMPORTANT: this must NOT gate on "does any instruction have a different
+ * kjvChapter than mtChapter" (a chapter can shift verse numbers *within* the
+ * same chapter number, e.g. Exod 22 or 1Chr 6 — those still need labels).
+ * Whether a given verse needs a label is decided per-verse, below.
  */
 export function getKjvVerseLabel(
   book: string,
   mtChapter: number,
   mtVerse: number,
 ): string | null {
+  if (book === "Ps") return null;
+
   const instrs = getMtToKjvInstructions(book, mtChapter);
   if (!instrs) return null;
-
-  // Only applies to cross-chapter remap (Jonah/Joel/Malachi), not Psalm offsets.
-  const hasCrossChapter = instrs.some((i) => i.kjvChapter !== mtChapter);
-  if (!hasCrossChapter) return null;
 
   for (const instr of instrs) {
     const kjvVerse = mtVerse - instr.mtVerseOffset;
