@@ -33,11 +33,22 @@
  * 25:19/26:1 (handled correctly by the existing default direct-query
  * behavior — Yahweh's brief "and it happened after the plague" clause is
  * simply fused into ULT's own 26:1 text, with no separate row for it), Josh
- * 19:47-48, 1Kgs 6-7/9-11/18/20-21, and all of Proverbs — every one of these
- * matched verse-for-verse (or, for the same-count cases, was spot-checked
- * word-for-word) between OSHB and ULT with zero discrepancy. Only Jer 25-52
- * remains unverified/unaddressed — it's a much larger restructuring (12+
- * chapters) that needs its own dedicated investigation and table.
+ * 19:47-48, 1Kgs 6-7/9-11/18/20-21, all of Proverbs, and — checked last —
+ * **Jer chs 25-52 in full** (every chapter's MAX(verse) matches exactly
+ * between OSHB and ULT, and spot-checks at the start/middle/end of the range
+ * — ch25, ch46, ch51 — all matched word-for-word). The "major reordering"
+ * commonly cited for Jeremiah 25-52 is a real phenomenon, but it's MT-vs-LXX
+ * (the Septuagint relocates and renumbers the "oracles against the nations,"
+ * chs 46-51 in Hebrew, to a different position and order after 25:13), not
+ * MT-vs-English — English translations including ULT follow the Hebrew
+ * chapter order throughout. That LXX-side reordering is unrelated to this
+ * file (MT↔KJV) and, if ever wanted, belongs in lib/versification/index.ts
+ * (the MT↔LXX module), which currently only has a Psalms entry — Jeremiah
+ * and Ezekiel's real LXX chapter differences are unaddressed there.
+ *
+ * Every claim originally reported from the SBL table for this file has now
+ * been checked against real data; none required a per-verse lookup
+ * primitive, and none remain outstanding.
  *
  * A couple of entries are deliberately *partial*: 1Sam 21 v1, Isa 64 v2, and
  * 1Kgs 22:44 have no clean single English verse counterpart (their content
