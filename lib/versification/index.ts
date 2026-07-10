@@ -20,6 +20,13 @@ type Seg = readonly [number, number, number, number]; // [mtS, mtE, lxxS, lxxE]
  *
  * Verified against actual word data in source.db (OSHB) and lxx.db (STEPBIBLE_LXX).
  * Verse counts match: MT Ps 9(21v)+10(18v)=39 = LXX Ps 9(39v); etc.
+ *
+ * Ezekiel was checked (a book sometimes cited for LXX textual variants) and
+ * found to need no chapter-level remapping — all 48 chapters have identical
+ * verse counts between OSHB and lxx.db, confirmed with text spot-checks at
+ * ch1 and ch40 (the temple-vision section, often cited for variants). Any
+ * LXX Ezekiel differences that exist are verse/word-level textual variants,
+ * not chapter reordering, and are out of scope for this chapter-level module.
  */
 const MT_LXX_SEGS: Readonly<Record<string, ReadonlyArray<Seg>>> = {
   Ps: [
@@ -32,6 +39,69 @@ const MT_LXX_SEGS: Readonly<Record<string, ReadonlyArray<Seg>>> = {
     [147, 147, 146, 147],  // 1:2 split   — MT 147 = LXX 146+147
     [148, 150, 148, 150],  // 1:1 identical
     // LXX Ps 151 (7 verses) has no MT equivalent — handled via LXX_ONLY_CHAPTERS
+  ],
+
+  // Jeremiah: MT chs 1-24 are identical to LXX (no segment needed — falls
+  // through to the default same-chapter fallback). From MT ch25 on, LXX
+  // relocates the "oracles against the nations" (MT chs 46-51) to a block
+  // right after its own 25:13, in a different internal order, then resumes
+  // the MT ch26-44 narrative material shifted +7 chapters, then appends the
+  // short Baruch oracle (MT 45) onto the tail of the same LXX chapter as
+  // MT 44, before rejoining MT for the historical appendix (MT 52 = LXX 52).
+  //
+  // Verified chapter-by-chapter against actual Greek text in lxx.db (opening
+  // verse content identifies each chapter unambiguously — e.g. LXX 26:2 "τῇ
+  // Αἰγύπτῳ ἐπὶ δύναμιν Φαραω Νεχαω..." = MT 46:2's Egypt/Necho oracle) and
+  // cross-checked against verse counts: 24 of 28 mapped chapters match
+  // exactly; the other 4 have documented explanations (see below).
+  Jer: [
+    // MT 25:1-13(-14) = LXX 25 (same number). MT 25:15-38, the "cup of
+    // wrath" passed to the nations, is relocated to LXX 32 in full — not
+    // representable at chapter granularity since LXX 26-31 in between
+    // belong to other MT chapters; the parallel view will show LXX 25's
+    // truncated 20 verses rather than the cup material.
+    [25, 25, 25, 25],
+    [26, 26, 33, 33],   // MT 26 (temple sermon, trial) = LXX 33
+    [27, 27, 34, 34],   // MT 27 (yoke oracle) = LXX 34
+    [28, 28, 35, 35],   // MT 28 (Hananiah the false prophet) = LXX 35
+    [29, 29, 36, 36],   // MT 29 (letter to the exiles) = LXX 36
+    [30, 31, 37, 38],   // MT 30-31 ("Book of Consolation") = LXX 37-38
+    [32, 32, 39, 39],   // MT 32 (Jeremiah buys the field) = LXX 39
+    // MT 33 (Davidic/Levitical covenant) = LXX 40. LXX omits MT 33:14-26
+    // entirely — a well-documented LXX minus (26v MT vs 13v LXX).
+    [33, 33, 40, 40],
+    [34, 34, 41, 41],   // MT 34 (release of slaves reneged) = LXX 41
+    [35, 35, 42, 42],   // MT 35 (the Rechabites) = LXX 42
+    [36, 36, 43, 43],   // MT 36 (Baruch writes/burns the scroll) = LXX 43
+    [37, 37, 44, 44],   // MT 37 (Zedekiah's reign, Jeremiah imprisoned) = LXX 44
+    [38, 38, 45, 45],   // MT 38 (Jeremiah in the cistern) = LXX 45
+    [39, 39, 46, 46],   // MT 39 (fall of Jerusalem) = LXX 46
+    [40, 40, 47, 47],   // MT 40 (Jeremiah released, joins Gedaliah) = LXX 47
+    [41, 41, 48, 48],   // MT 41 (Ishmael assassinates Gedaliah) = LXX 48
+    [42, 42, 49, 49],   // MT 42 (Johanan seeks Jeremiah's guidance) = LXX 49
+    [43, 43, 50, 50],   // MT 43 (flight to Egypt) = LXX 50
+    // MT 44 (oracle to the Jews in Egypt, 30v) = LXX 51:1-30. MT 45 (the
+    // short Baruch oracle, 5v) is appended onto the same LXX chapter as
+    // LXX 51:31-35 (verified: LXX 51:31 "ὁ λόγος ὃν ἐλάλησεν Ιερεμιας ...
+    // πρὸς Βαρουχ..." = MT 45:1 word-for-word). 30+5=35 matches LXX 51's
+    // total exactly. Both MT chapters point at the same LXX chapter — the
+    // parallel view will show all of LXX 51 for either.
+    [44, 44, 51, 51],
+    [45, 45, 51, 51],
+    [46, 46, 26, 26],   // MT 46 (oracle against Egypt) = LXX 26
+    [47, 47, 29, 29],   // MT 47 (oracle against the Philistines) = LXX 29
+    // MT 48 (oracle against Moab, 47v) = LXX 31 (44v) — a small, documented
+    // LXX minus within the Moab oracle.
+    [48, 48, 31, 31],
+    // MT 49:1-33 (Ammon, Edom, Damascus, Kedar/Hazor — 33v) = LXX 30 (33v,
+    // exact match). MT 49:34-39 (Elam, 6v) is relocated separately to
+    // LXX 25:14-20, right after the ch25 introduction — not representable
+    // at chapter granularity; the parallel view for MT 49 will show LXX 30's
+    // Ammon/Edom/Damascus/Kedar content, not the Elam portion.
+    [49, 49, 30, 30],
+    [50, 51, 27, 28],   // MT 50-51 (oracle against Babylon) = LXX 27-28
+    // MT 52 (historical appendix) = LXX 52, identical numbering — no
+    // segment needed, falls through to the default same-chapter fallback.
   ],
 };
 
