@@ -564,6 +564,7 @@ const en = {
     bookNotesHeader: "{bookName} — Book Notes",
     loading: "Loading…",
     chapterNoteLabel: "Chapter notes: {bookName} {chapter}",
+    passageNoteLabel: "Passage notes: {label}",
   },
   // ── Outline pane ─────────────────────────────────────────────────────────────
   outlinePane: {
@@ -1114,6 +1115,7 @@ const vi: Translations = {
     bookNotesHeader: "{bookName} — Ghi chú sách",
     loading: "Đang tải…",
     chapterNoteLabel: "Ghi chú chương: {bookName} {chapter}",
+    passageNoteLabel: "Ghi chú phân đoạn: {label}",
   },
   // ── Outline pane ─────────────────────────────────────────────────────────────
   outlinePane: {

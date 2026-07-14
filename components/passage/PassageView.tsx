@@ -27,6 +27,7 @@ import OutlinePane from "@/components/text/OutlinePane";
 import SearchPane from "@/components/search/SearchPane";
 import BibleLookupPane from "@/components/bible/BibleLookupPane";
 import RstTypeManager from "@/components/controls/RstTypeManager";
+import TranslationPicker from "@/components/controls/TranslationPicker";
 import ToolbarCustomizer, { DEFAULT_TOOLBAR_VIS, type ToolbarVisibility } from "@/components/controls/ToolbarCustomizer";
 import { RELATIONSHIP_TYPES } from "@/lib/morphology/clauseRelationships";
 import type { RstTypeEntry } from "@/lib/morphology/clauseRelationships";
@@ -132,7 +133,7 @@ interface Props {
   // Word formatting (bold / italic)
   initialWordFormatting: { wordId: string; isBold: boolean; isItalic: boolean }[];
   // Scene / episode breaks
-  initialSceneBreaks: { wordId: string; heading: string | null; level: number; verse: number; outOfSequence: boolean; extendedThrough: number | null }[];
+  initialSceneBreaks: { wordId: string; heading: string | null; level: number; verse: number; outOfSequence: boolean; extendedThrough: number | null; thematic: boolean; thematicLetter: string | null; transitional: boolean }[];
   // Line annotations (plot / theme / desc)
   initialLineAnnotations: LineAnnotation[];
   // Text critical marks (MT/LXX comparison)
@@ -517,7 +518,7 @@ export default function PassageView({
       const m = new Map<string, Array<{ heading: string | null; level: number; verse: number; outOfSequence: boolean; extendedThrough: number | null; thematic: boolean; thematicLetter: string | null; transitional: boolean }>>();
       for (const sb of initialSceneBreaks) {
         const arr = m.get(sb.wordId) ?? [];
-        arr.push({ heading: sb.heading, level: sb.level, verse: sb.verse, outOfSequence: sb.outOfSequence, extendedThrough: sb.extendedThrough, thematic: (sb as { thematic?: boolean }).thematic ?? false, thematicLetter: (sb as { thematicLetter?: string | null }).thematicLetter ?? null, transitional: (sb as { transitional?: boolean }).transitional ?? false });
+        arr.push({ heading: sb.heading, level: sb.level, verse: sb.verse, outOfSequence: sb.outOfSequence, extendedThrough: sb.extendedThrough, thematic: sb.thematic, thematicLetter: sb.thematicLetter, transitional: sb.transitional });
         m.set(sb.wordId, arr);
       }
       return m;
@@ -3719,20 +3720,13 @@ export default function PassageView({
                   ].join(" ")}
                 >✏</button>
               )}
-              {allAvailableTranslations.map((t) => (
-                <button key={t.id} onClick={() => toggleTranslation(t.id)}
-                  data-tip={systemTranslationIds.has(t.id) ? `${t.name} (built-in)` : t.name}
-                  className={["px-2.5 py-1 rounded text-xs font-medium font-mono transition-colors",
-                    activeTranslationIds.has(t.id) ? "bg-emerald-600 text-white"
-                      : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
-                  ].join(" ")}
-                >
-                  {t.abbreviation}
-                  {systemTranslationIds.has(t.id) && (
-                    <span className="ml-1 text-[10px] opacity-60">★</span>
-                  )}
-                </button>
-              ))}
+              <TranslationPicker
+                availableTranslations={allAvailableTranslations}
+                activeTranslationIds={activeTranslationIds}
+                systemTranslationIds={systemTranslationIds}
+                onToggle={toggleTranslation}
+                currentBook={osisBook}
+              />
               {/* Translation editing sub-toolbar — only shown when edit mode is active */}
               {hasActiveTranslations && editingTranslation && (
                 <>

@@ -18,7 +18,7 @@ import WordTagPanel from "@/components/controls/WordTagPanel";
 import ChapterOverlays from "./ChapterOverlays";
 import ClearAnnotationsDialog, { type ClearCategory } from "@/components/controls/ClearAnnotationsDialog";
 import TranslationPicker from "@/components/controls/TranslationPicker";
-import NotesPane from "@/components/notes/NotesPane";
+import PassageNotesPane from "@/components/notes/PassageNotesPane";
 import SearchPane from "@/components/search/SearchPane";
 import OutlinePane from "@/components/text/OutlinePane";
 import BibleLookupPane from "@/components/bible/BibleLookupPane";
@@ -172,7 +172,7 @@ export default function ChapterDisplay({
   initialPresentationMode = false,
   hideToolbar = false,
 }: ChapterDisplayProps) {
-  const { t, locale } = useTranslation();
+  const { t, locale, refBookName } = useTranslation();
   const router = useRouter();
 
   // Translation footnotes keyed by translationId → verse → footnotes[]
@@ -1097,6 +1097,8 @@ export default function ChapterDisplay({
     return map;
   }, [words]);
   const verseNums = useMemo(() => [...verseGroups.keys()].sort((a, b) => a - b), [verseGroups]);
+  // PassageNotesPane's ordered-verse shape — degenerates to the single current chapter.
+  const notesOrderedVerses = useMemo(() => verseNums.map((v) => ({ ch: chapter, v })), [verseNums, chapter]);
 
   // Track topmost visible verse via IntersectionObserver and sync the notes
   // pane when notesSynced is on. Uses a ref for the synced flag to avoid
@@ -4989,11 +4991,14 @@ export default function ChapterDisplay({
       {/* Notes pane */}
       {notesOpen && (
         <ResizablePane storageKey="pane-notes-width" defaultWidth={320} minWidth={200} maxWidth={700}>
-          <NotesPane
+          <PassageNotesPane
             book={book}
-            chapter={chapter}
-            verses={verseNums}
-            scrollToVerse={notesScrollVerse}
+            bookName={refBookName(book)}
+            orderedVerses={notesOrderedVerses}
+            isMultiChapter={false}
+            isWholeChapter
+            wholeChapterNum={chapter}
+            scrollToVerse={notesScrollVerse != null ? { ch: chapter, v: notesScrollVerse } : null}
             onScrollHandled={() => setNotesScrollVerse(null)}
             onClose={() => setNotesOpen(false)}
             synced={notesSynced}

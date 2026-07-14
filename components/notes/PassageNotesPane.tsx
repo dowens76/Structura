@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import NoteEditor from "./NoteEditor";
 import ChapterSummarySection from "./ChapterSummarySection";
+import { useTranslation } from "@/lib/i18n/LocaleContext";
 import { extractTextFromTipTap } from "@/lib/utils/tiptap-text";
 
 interface VerseRef { ch: number; v: number; }
@@ -20,8 +21,10 @@ interface NoteSection {
 }
 
 interface PassageNotesPaneProps {
-  passageId: number;
-  passageLabel: string;       // e.g. "The Creation Account"
+  /** Omit both when there is no passage (e.g. a plain single-chapter view) —
+   *  the passage-level note section is only rendered when both are present. */
+  passageId?: number;
+  passageLabel?: string;      // e.g. "The Creation Account"
   book: string;               // OSIS code
   bookName: string;
   /** Ordered list of { ch, v } for all verses in the passage */
@@ -54,23 +57,54 @@ export default function PassageNotesPane({
   synced = false,
   onSyncToggle,
 }: PassageNotesPaneProps) {
+  const { t } = useTranslation();
   const paneRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
   const [matchIndex, setMatchIndex] = useState(0);
 
-  // Build ordered sections: passage note → [chapter note →] verse notes
+  // Book-level notes opt-in
+  const [showBookNotes, setShowBookNotes] = useState(() => {
+    try { return localStorage.getItem("structura:showBookNotes") === "true"; } catch { return false; }
+  });
+  const [bookNoteContent, setBookNoteContent] = useState("{}");
+  const [bookNoteLoaded, setBookNoteLoaded] = useState(false);
+
+  useEffect(() => {
+    if (!showBookNotes) return;
+    setBookNoteLoaded(false);
+    const key = `book:${book}`;
+    fetch(`/api/notes?keys=${encodeURIComponent(key)}`)
+      .then((r) => r.json())
+      .then((data: Record<string, { content: string }>) => {
+        setBookNoteContent(data[key]?.content ?? "{}");
+        setBookNoteLoaded(true);
+      })
+      .catch(() => { setBookNoteContent("{}"); setBookNoteLoaded(true); });
+  }, [book, showBookNotes]);
+
+  function toggleShowBookNotes() {
+    setShowBookNotes((v) => {
+      const next = !v;
+      try { localStorage.setItem("structura:showBookNotes", String(next)); } catch {}
+      return next;
+    });
+  }
+
+  // Build ordered sections: [passage note →] [chapter note →] verse notes
   const sections: NoteSection[] = [];
 
-  // 1. Passage-level note
-  sections.push({
-    key: `passage:${passageId}`,
-    noteType: "passage",
-    label: `Passage notes: ${passageLabel}`,
-    book,
-    chapter: isWholeChapter ? wholeChapterNum : undefined,
-  });
+  // 1. Passage-level note — only when this pane is showing an actual passage
+  if (passageId != null && passageLabel != null) {
+    sections.push({
+      key: `passage:${passageId}`,
+      noteType: "passage",
+      label: t("notes.passageNoteLabel", { label: passageLabel }),
+      book,
+      chapter: isWholeChapter ? wholeChapterNum : undefined,
+    });
+  }
 
   // 2. Per-chapter and per-verse notes
   const chaptersSeen = new Set<number>();
@@ -80,7 +114,7 @@ export default function PassageNotesPane({
       sections.push({
         key: `chapter:${book}.${ch}`,
         noteType: "chapter",
-        label: `Chapter notes: ${bookName} ${ch}`,
+        label: t("notes.chapterNoteLabel", { bookName, chapter: String(ch) }),
         book,
         chapter: ch,
         isChapterHeading: true,
@@ -197,7 +231,7 @@ export default function PassageNotesPane({
       <div className="flex items-center gap-2 px-4 py-3 border-b border-[var(--border)] shrink-0">
         {!searchOpen && (
           <h2 className="text-sm font-semibold flex-1" style={{ color: "var(--foreground)" }}>
-            Notes
+            {t("notes.panelTitle")}
           </h2>
         )}
         {searchOpen && (
@@ -279,8 +313,50 @@ export default function PassageNotesPane({
         </button>
       </div>
 
+      {/* Book notes toggle strip */}
+      <div className="shrink-0 flex items-center px-4 py-1.5 border-b" style={{ borderColor: "var(--border)" }}>
+        <label className="flex items-center gap-2 cursor-pointer select-none text-xs" style={{ color: "var(--text-muted)" }}>
+          <input
+            type="checkbox"
+            checked={showBookNotes}
+            onChange={toggleShowBookNotes}
+            className="rounded"
+          />
+          {t("notes.showBookNotes", { bookName })}
+        </label>
+      </div>
+
       {/* Scrollable content */}
       <div className="flex-1 overflow-y-auto" ref={paneRef}>
+        {/* Book-level notes at the top — when opt-in checkbox is checked */}
+        {showBookNotes && (
+          <div
+            data-note-key={`book:${book}`}
+            className="border-b border-stone-100 dark:border-stone-800"
+          >
+            <div
+              className="px-4 pt-3 pb-1 text-xs font-semibold select-none"
+              style={{ color: "var(--accent)" }}
+            >
+              {t("notes.bookNotesHeader", { bookName })}
+            </div>
+            <div className="px-2 pb-3">
+              {bookNoteLoaded ? (
+                <NoteEditor
+                  key={`book:${book}`}
+                  noteKey={`book:${book}`}
+                  noteType="book"
+                  initialContent={bookNoteContent}
+                  book={book}
+                  searchQuery={q || undefined}
+                />
+              ) : (
+                <div className="px-2 py-2 text-xs" style={{ color: "var(--text-muted)" }}>{t("notes.loading")}</div>
+              )}
+            </div>
+          </div>
+        )}
+
         <ChapterSummarySection
           metaKey={isWholeChapter && wholeChapterNum != null
             ? `meta:chapter:${book}.${wholeChapterNum}`
