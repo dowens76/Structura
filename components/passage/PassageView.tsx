@@ -3291,18 +3291,6 @@ export default function PassageView({
 
           <div className="h-5 border-l border-[var(--border)]" />
 
-          {/* Atnach marker — Hebrew only */}
-          {isHebrew && toolbarVis.atnach && (
-            <button
-              onClick={() => setShowAtnachBreaks((v) => !v)}
-              data-tip={showAtnachBreaks ? "Hide atnach half-verse markers" : "Show atnach accent markers (main cantillation accent dividing each verse)"}
-              className={["px-2.5 py-1 rounded text-xs font-medium transition-colors",
-                showAtnachBreaks ? "bg-violet-600 text-white"
-                  : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
-              ].join(" ")}
-            >Atnach</button>
-          )}
-
           {/* Scene / episode break mode */}
           {toolbarVis.scenes && <button
             onClick={() => editingScenes ? handleExitSceneEditing() : setEditingScenes(true)}
@@ -3358,20 +3346,6 @@ export default function PassageView({
             </button>
           )}
 
-          {/* Line annotation mode */}
-          {toolbarVis.annotations && <button
-            onClick={() => {
-              setEditingAnnotations((v) => !v);
-              setAnnotRangeStart(null);
-              setAnnotRangeEnd(null);
-            }}
-            data-tip={editingAnnotations ? "Exit annotation mode" : "Add clause/paragraph labels"}
-            className={["px-2.5 py-1 rounded text-xs font-medium transition-colors",
-              editingAnnotations ? "bg-indigo-600 text-white"
-                : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
-            ].join(" ")}
-          >≡</button>}
-
           {/* Paragraph edit mode */}
           {toolbarVis.paragraphs && <button
             disabled={editingWordTags}
@@ -3388,6 +3362,18 @@ export default function PassageView({
               "disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-stone-100 dark:disabled:hover:bg-stone-800",
             ].join(" ")}
           >¶</button>}
+
+          {/* Atnach marker — Hebrew only */}
+          {isHebrew && toolbarVis.atnach && (
+            <button
+              onClick={() => setShowAtnachBreaks((v) => !v)}
+              data-tip={showAtnachBreaks ? "Hide atnach half-verse markers" : "Show atnach accent markers (main cantillation accent dividing each verse)"}
+              className={["px-2.5 py-1 rounded text-xs font-medium transition-colors",
+                showAtnachBreaks ? "bg-violet-600 text-white"
+                  : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
+              ].join(" ")}
+            >Show Atnach</button>
+          )}
 
           {/* Indent mode */}
           {toolbarVis.indents && <button
@@ -3466,6 +3452,20 @@ export default function PassageView({
               ].join(" ")}
             >Labels</button>
           )}
+
+          {/* Line annotation mode */}
+          {toolbarVis.annotations && <button
+            onClick={() => {
+              setEditingAnnotations((v) => !v);
+              setAnnotRangeStart(null);
+              setAnnotRangeEnd(null);
+            }}
+            data-tip={editingAnnotations ? "Exit annotation mode" : "Add clause/paragraph labels"}
+            className={["px-2.5 py-1 rounded text-xs font-medium transition-colors",
+              editingAnnotations ? "bg-indigo-600 text-white"
+                : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
+            ].join(" ")}
+          >≡</button>}
 
           {/* Word arrow mode */}
           {toolbarVis.arrows && <button

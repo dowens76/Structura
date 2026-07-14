@@ -3683,24 +3683,6 @@ export default function ChapterDisplay({
 
               <div className="h-5 border-l border-[var(--border)]" />
 
-              {/* Atnach marker — Hebrew only */}
-              {isHebrew && toolbarVis.atnach && (
-                <button
-                  onClick={() => setShowAtnachBreaks((v) => !v)}
-                  data-tip={showAtnachBreaks
-                    ? "Hide atnach half-verse markers"
-                    : "Show atnach accent markers (main cantillation accent dividing each verse)"}
-                  className={[
-                    "px-3 py-1.5 rounded text-[13px] font-medium transition-colors",
-                    showAtnachBreaks
-                      ? "bg-violet-600 text-white"
-                      : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
-                  ].join(" ")}
-                >
-                  Atnach
-                </button>
-              )}
-
               {/* Scene / episode break mode */}
               {toolbarVis.scenes && <button
                 onClick={() => { if (editingScenes) { handleExitSceneEditing(); } else { deactivateIncompatible("scenes"); setEditingScenes(true); } }}
@@ -3734,38 +3716,6 @@ export default function ChapterDisplay({
                 </button>
               )}
 
-              {/* Line annotation mode */}
-              {toolbarVis.annotations && <button
-                disabled={editingWordTags}
-                onClick={() => {
-                  if (!editingAnnotations) deactivateIncompatible("annotations");
-                  setEditingAnnotations((v) => !v);
-                }}
-                data-tip={editingAnnotations
-                  ? t("toolbar.titleAnnotationOn")
-                  : t("toolbar.titleAnnotationOff")}
-                className={[
-                  "px-3 py-1.5 rounded text-[13px] font-medium transition-colors",
-                  editingAnnotations
-                    ? "bg-indigo-600 text-white"
-                    : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
-                  "disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-stone-100 dark:disabled:hover:bg-stone-800",
-                ].join(" ")}
-              >
-                ≡
-              </button>}
-
-              {/* ¶ Atnach insert — Hebrew only */}
-              {isHebrew && toolbarVis.atnachInsert && (
-                <button
-                  onClick={handleAddAtnachParagraphBreaks}
-                  data-tip="Insert paragraph breaks at every atnach accent in this chapter"
-                  className="px-3 py-1.5 rounded text-[13px] font-medium transition-colors bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700"
-                >
-                  ¶ Atnach
-                </button>
-              )}
-
               {/* Paragraph edit mode toggle */}
               {toolbarVis.paragraphs && <button
                 disabled={editingWordTags}
@@ -3783,6 +3733,35 @@ export default function ChapterDisplay({
               >
                 ¶
               </button>}
+
+              {/* Atnach marker — Hebrew only */}
+              {isHebrew && toolbarVis.atnach && (
+                <button
+                  onClick={() => setShowAtnachBreaks((v) => !v)}
+                  data-tip={showAtnachBreaks
+                    ? "Hide atnach half-verse markers"
+                    : "Show atnach accent markers (main cantillation accent dividing each verse)"}
+                  className={[
+                    "px-3 py-1.5 rounded text-[13px] font-medium transition-colors",
+                    showAtnachBreaks
+                      ? "bg-violet-600 text-white"
+                      : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
+                  ].join(" ")}
+                >
+                  Show Atnach
+                </button>
+              )}
+
+              {/* ¶ Atnach insert — Hebrew only */}
+              {isHebrew && toolbarVis.atnachInsert && (
+                <button
+                  onClick={handleAddAtnachParagraphBreaks}
+                  data-tip="Insert paragraph breaks at every atnach accent in this chapter"
+                  className="px-3 py-1.5 rounded text-[13px] font-medium transition-colors bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700"
+                >
+                  ¶ at Atnach
+                </button>
+              )}
 
               {/* Paragraph indent mode */}
               {toolbarVis.indents && <button
@@ -3924,6 +3903,27 @@ export default function ChapterDisplay({
                   )}
                 </>
               )}
+
+              {/* Line annotation mode */}
+              {toolbarVis.annotations && <button
+                disabled={editingWordTags}
+                onClick={() => {
+                  if (!editingAnnotations) deactivateIncompatible("annotations");
+                  setEditingAnnotations((v) => !v);
+                }}
+                data-tip={editingAnnotations
+                  ? t("toolbar.titleAnnotationOn")
+                  : t("toolbar.titleAnnotationOff")}
+                className={[
+                  "px-3 py-1.5 rounded text-[13px] font-medium transition-colors",
+                  editingAnnotations
+                    ? "bg-indigo-600 text-white"
+                    : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
+                  "disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-stone-100 dark:disabled:hover:bg-stone-800",
+                ].join(" ")}
+              >
+                ≡
+              </button>}
 
               {/* Word arrow mode */}
               {toolbarVis.arrows && <button

@@ -53,14 +53,14 @@ const SECTIONS: { label: string; items: { key: keyof ToolbarVisibility; label: s
   {
     label: "Structure",
     items: [
-      { key: "atnach",      label: "Atnach",       hebrew: true },
       { key: "scenes",      label: "§ Sections" },
       { key: "outline",     label: "📋 Outline" },
-      { key: "annotations", label: "≡ Annotations" },
-      { key: "atnachInsert",label: "¶ Atnach",     hebrew: true },
       { key: "paragraphs",  label: "¶ Paragraphs" },
+      { key: "atnach",      label: "Show Atnach", hebrew: true },
+      { key: "atnachInsert",label: "¶ at Atnach", hebrew: true },
       { key: "indents",     label: "⇥ Indents" },
       { key: "rst",         label: "↳ Clause Relationships" },
+      { key: "annotations", label: "≡ Clause/Paragraph labels" },
       { key: "arrows",      label: "↷ Arrows" },
     ],
   },
