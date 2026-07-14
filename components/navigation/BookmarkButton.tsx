@@ -99,9 +99,12 @@ interface BookmarkButtonProps {
   href?: string;
   label?: string;
   buttonLabel?: string;
+  /** "icon" (default) is the compact nav-bar star; "bordered" matches the Home-screen
+   *  Passages button — a bordered pill with icon, label, and open/close chevron. */
+  variant?: "icon" | "bordered";
 }
 
-export default function BookmarkButton({ href, label, buttonLabel }: BookmarkButtonProps) {
+export default function BookmarkButton({ href, label, buttonLabel, variant = "icon" }: BookmarkButtonProps) {
   const [open, setOpen] = useState(false);
   const [bookmarks, setBookmarks] = useState<BookmarkEntry[]>([]);
   const [isBookmarked, setIsBookmarked] = useState(false);
@@ -202,30 +205,50 @@ export default function BookmarkButton({ href, label, buttonLabel }: BookmarkBut
     router.push(bm.href);
   }
 
+  const isBordered = variant === "bordered";
+  const fg = isBordered ? "var(--foreground)" : "var(--nav-fg)";
+  const mutedFg = "var(--text-muted)";
+  const borderColor = isBordered ? "var(--border)" : "var(--nav-border)";
+  const panelBg = isBordered ? "var(--background)" : "var(--nav-bg)";
+
   return (
     <div className="relative" ref={dropdownRef}>
       <button
         onClick={toggleOpen}
         title={isBookmarked ? "Bookmarks (this page is bookmarked)" : "Bookmarks"}
-        className="px-1.5 py-1 rounded text-sm transition-colors"
-        style={{ color: isBookmarked ? "var(--accent)" : "var(--nav-fg)" }}
+        className={isBordered
+          ? "text-xs px-3 py-1.5 rounded border font-medium transition-colors flex items-center gap-1"
+          : "px-1.5 py-1 rounded text-sm transition-colors"}
+        style={isBordered
+          ? { borderColor, backgroundColor: "var(--surface)", color: isBookmarked ? "var(--accent)" : "var(--foreground)" }
+          : { color: isBookmarked ? "var(--accent)" : fg }}
         aria-label="Bookmarks"
       >
-        {buttonLabel ?? (isBookmarked ? "★" : "☆")}
+        {isBordered ? (
+          <>
+            <span>{isBookmarked ? "★" : "☆"}</span>
+            <span>Bookmarks</span>
+            <span className="text-[10px] opacity-60">{open ? "▲" : "▼"}</span>
+          </>
+        ) : (
+          buttonLabel ?? (isBookmarked ? "★" : "☆")
+        )}
       </button>
 
       {open && (
         <div
-          className="absolute right-0 top-full mt-1 z-50 rounded-lg border shadow-lg py-1 min-w-[260px] max-w-[340px]"
-          style={{ backgroundColor: "var(--nav-bg)", borderColor: "var(--nav-border)" }}
+          className={isBordered
+            ? "absolute left-0 top-full mt-1 w-80 rounded-lg shadow-xl border z-50 overflow-hidden py-1"
+            : "absolute right-0 top-full mt-1 z-50 rounded-lg border shadow-lg py-1 min-w-[260px] max-w-[340px]"}
+          style={{ backgroundColor: panelBg, borderColor }}
         >
           {href && (
-            <div className="px-3 py-2 border-b" style={{ borderColor: "var(--nav-border)" }}>
+            <div className="px-3 py-2 border-b" style={{ borderColor }}>
               {isBookmarked ? (
                 <button
                   onClick={removeBookmark}
                   className="w-full text-left text-xs flex items-center gap-2 transition-colors"
-                  style={{ color: "var(--nav-fg)" }}
+                  style={{ color: fg }}
                 >
                   <span style={{ color: "var(--accent)" }}>★</span>
                   <span>Remove bookmark for this page</span>
@@ -234,7 +257,7 @@ export default function BookmarkButton({ href, label, buttonLabel }: BookmarkBut
                 <button
                   onClick={addBookmark}
                   className="w-full text-left text-xs flex items-center gap-2 transition-colors"
-                  style={{ color: "var(--nav-fg)" }}
+                  style={{ color: fg }}
                 >
                   <span>☆</span>
                   <span>Bookmark this page</span>
@@ -244,29 +267,29 @@ export default function BookmarkButton({ href, label, buttonLabel }: BookmarkBut
           )}
 
           {bookmarks.length === 0 ? (
-            <p className="px-3 py-3 text-xs" style={{ color: "var(--text-muted)" }}>
+            <p className="px-3 py-3 text-xs" style={{ color: mutedFg }}>
               No bookmarks yet.
             </p>
           ) : (
             <>
               <div
                 className="flex items-center justify-end gap-1 px-3 py-1.5 border-b"
-                style={{ borderColor: "var(--nav-border)" }}
+                style={{ borderColor }}
               >
-                <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>Sort:</span>
+                <span className="text-[10px]" style={{ color: mutedFg }}>Sort:</span>
                 <button
                   onClick={toggleSortOrder}
                   className="text-[10px] px-1.5 py-0.5 rounded transition-colors"
-                  style={{ color: sortOrder === "time" ? "var(--accent)" : "var(--text-muted)", fontWeight: sortOrder === "time" ? 600 : 400 }}
+                  style={{ color: sortOrder === "time" ? "var(--accent)" : mutedFg, fontWeight: sortOrder === "time" ? 600 : 400 }}
                   title="Sort by time added (newest first)"
                 >
                   Recent
                 </button>
-                <span style={{ color: "var(--nav-border)" }}>·</span>
+                <span style={{ color: borderColor }}>·</span>
                 <button
                   onClick={toggleSortOrder}
                   className="text-[10px] px-1.5 py-0.5 rounded transition-colors"
-                  style={{ color: sortOrder === "canonical" ? "var(--accent)" : "var(--text-muted)", fontWeight: sortOrder === "canonical" ? 600 : 400 }}
+                  style={{ color: sortOrder === "canonical" ? "var(--accent)" : mutedFg, fontWeight: sortOrder === "canonical" ? 600 : 400 }}
                   title="Sort by canonical book order"
                 >
                   Canonical
@@ -278,12 +301,12 @@ export default function BookmarkButton({ href, label, buttonLabel }: BookmarkBut
                     <button
                       onClick={() => navigateToBookmark(bm)}
                       className="flex-1 text-left px-1 py-1 rounded text-xs truncate transition-colors"
-                      style={{ color: bm.href === href ? "var(--accent)" : "var(--nav-fg)" }}
+                      style={{ color: bm.href === href ? "var(--accent)" : fg }}
                       title={bm.label + (bm.view.translations.length ? ` · ${bm.view.translations.join(", ")}` : "")}
                     >
                       <span className="font-medium">{bm.label}</span>
                       {bm.view.translations.length > 0 && (
-                        <span className="ml-1.5 text-[10px]" style={{ color: "var(--text-muted)" }}>
+                        <span className="ml-1.5 text-[10px]" style={{ color: mutedFg }}>
                           {bm.view.translations.join(", ")}
                         </span>
                       )}
@@ -291,7 +314,7 @@ export default function BookmarkButton({ href, label, buttonLabel }: BookmarkBut
                     <button
                       onClick={() => deleteBookmark(bm.id)}
                       className="opacity-0 group-hover:opacity-100 px-1 py-0.5 rounded text-xs transition-opacity"
-                      style={{ color: "var(--text-muted)" }}
+                      style={{ color: mutedFg }}
                       title="Remove bookmark"
                       aria-label="Remove bookmark"
                     >

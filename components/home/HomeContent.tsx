@@ -11,6 +11,7 @@ import { useTranslation } from "@/lib/i18n/LocaleContext";
 import BookGroupingsDialog from "@/components/home/BookGroupingsDialog";
 import ManageTranslationsDialog from "@/components/home/ManageTranslationsDialog";
 import BookmarkButton from "@/components/navigation/BookmarkButton";
+import HomePassagesButton from "@/components/home/HomePassagesButton";
 import { MORPHGNT_BOOK_MAP, OSIS_BOOK_ORDER } from "@/lib/utils/osis";
 import AddressBar from "@/components/ui/AddressBar";
 
@@ -193,13 +194,10 @@ export default function HomeContent({ otBooks, ntBooks, lxxBooks, translationOnl
             </div>
           </div>
           <div className="flex flex-wrap gap-2">
-            <div style={{ "--nav-fg": "var(--foreground)", "--nav-bg": "var(--surface)", "--nav-border": "var(--border)" } as React.CSSProperties}>
-              <BookmarkButton buttonLabel="☆ Bookmarks" />
-            </div>
             <button
               type="button"
               onClick={() => setGroupingsOpen(true)}
-              className="text-xs px-3 py-1.5 rounded border transition-colors"
+              className="text-xs px-3 py-1.5 rounded border font-medium transition-colors"
               style={{ borderColor: "var(--border)", backgroundColor: "var(--surface)", color: "var(--foreground)" }}
             >
               {t("home.bookGroupings")}
@@ -207,53 +205,57 @@ export default function HomeContent({ otBooks, ntBooks, lxxBooks, translationOnl
             <button
               type="button"
               onClick={() => setTranslationsOpen(true)}
-              className="text-xs px-3 py-1.5 rounded border transition-colors"
+              className="text-xs px-3 py-1.5 rounded border font-medium transition-colors"
               style={{ borderColor: "var(--border)", backgroundColor: "var(--surface)", color: "var(--foreground)" }}
             >
               Manage Translations
             </button>
             <Link
               href="/import"
-              className="text-xs px-3 py-1.5 rounded border transition-colors"
+              className="text-xs px-3 py-1.5 rounded border font-medium transition-colors"
               style={{ borderColor: "var(--border)", backgroundColor: "var(--surface)", color: "var(--foreground)" }}
             >
               {t("home.importTranslation")}
             </Link>
             <Link
               href="/usfm-export"
-              className="text-xs px-3 py-1.5 rounded border transition-colors"
+              className="text-xs px-3 py-1.5 rounded border font-medium transition-colors"
               style={{ borderColor: "var(--border)", backgroundColor: "var(--surface)", color: "var(--foreground)" }}
             >
               Export USFM
             </Link>
             <Link
               href="/export/lists"
-              className="text-xs px-3 py-1.5 rounded border transition-colors"
+              className="text-xs px-3 py-1.5 rounded border font-medium transition-colors"
               style={{ borderColor: "var(--border)", backgroundColor: "var(--surface)", color: "var(--foreground)" }}
             >
               Export Lists
             </Link>
             <Link
               href="/backup"
-              className="text-xs px-3 py-1.5 rounded border transition-colors"
+              className="text-xs px-3 py-1.5 rounded border font-medium transition-colors"
               style={{ borderColor: "var(--border)", backgroundColor: "var(--surface)", color: "var(--foreground)" }}
             >
               {t("home.backup")}
             </Link>
             <Link
               href="/account"
-              className="text-xs px-3 py-1.5 rounded border transition-colors"
+              className="text-xs px-3 py-1.5 rounded border font-medium transition-colors"
               style={{ borderColor: "var(--border)", backgroundColor: "var(--surface)", color: "var(--foreground)" }}
             >
               {t("home.account")}
             </Link>
             <Link
               href="/shortcuts"
-              className="text-xs px-3 py-1.5 rounded border transition-colors"
+              className="text-xs px-3 py-1.5 rounded border font-medium transition-colors"
               style={{ borderColor: "var(--border)", backgroundColor: "var(--surface)", color: "var(--foreground)" }}
             >
               ⌨ Shortcuts
             </Link>
+          </div>
+          <div className="flex flex-wrap gap-2 mt-2">
+            <BookmarkButton variant="bordered" />
+            <HomePassagesButton />
           </div>
         </header>
 
