@@ -193,6 +193,9 @@ export default function HomeContent({ otBooks, ntBooks, lxxBooks, translationOnl
               <ThemeToggle />
             </div>
           </div>
+          <h2 className="text-xl font-semibold text-stone-700 dark:text-stone-300 mb-3 border-b border-stone-200 dark:border-stone-700 pb-2">
+            Manage
+          </h2>
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
@@ -253,6 +256,9 @@ export default function HomeContent({ otBooks, ntBooks, lxxBooks, translationOnl
               ⌨ Shortcuts
             </Link>
           </div>
+          <h2 className="text-xl font-semibold text-stone-700 dark:text-stone-300 mb-3 mt-6 border-b border-stone-200 dark:border-stone-700 pb-2">
+            Navigate
+          </h2>
           <div className="flex flex-wrap gap-2 mt-2">
             <BookmarkButton variant="bordered" />
             <HomePassagesButton />
