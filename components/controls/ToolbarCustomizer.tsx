@@ -99,17 +99,20 @@ const SECTIONS: { label: string; items: { key: keyof ToolbarVisibility; label: s
 
 export default function ToolbarCustomizer({ visibility, onChange, onClose, anchorRef }: Props) {
   const panelRef = useRef<HTMLDivElement>(null);
-  const [pos, setPos] = useState<{ top: number; right: number } | null>(null);
+  const [pos, setPos] = useState<{ top?: number; bottom?: number; right: number; maxHeight: number } | null>(null);
 
   useEffect(() => {
     if (anchorRef?.current) {
       const rect = anchorRef.current.getBoundingClientRect();
-      const panelHeight = 480; // generous estimate; panel is max-h-[70vh]
-      const spaceBelow = window.innerHeight - rect.bottom;
-      const top = spaceBelow >= panelHeight || spaceBelow >= 200
-        ? rect.bottom + 4
-        : rect.top - panelHeight - 4;
-      setPos({ top, right: window.innerWidth - rect.right });
+      const margin = 8;
+      const right = window.innerWidth - rect.right;
+      const spaceBelow = window.innerHeight - rect.bottom - margin;
+      const spaceAbove = rect.top - margin;
+      if (spaceBelow >= 200 || spaceBelow >= spaceAbove) {
+        setPos({ top: rect.bottom + 4, right, maxHeight: Math.max(spaceBelow - 4, 150) });
+      } else {
+        setPos({ bottom: window.innerHeight - rect.top + 4, right, maxHeight: Math.max(spaceAbove - 4, 150) });
+      }
     }
   }, [anchorRef]);
 
@@ -138,16 +141,18 @@ export default function ToolbarCustomizer({ visibility, onChange, onClose, ancho
   return (
     <div
       ref={panelRef}
-      className="z-50 w-52 rounded-lg shadow-xl border border-[var(--border)] overflow-hidden"
+      className="z-50 w-52 rounded-lg shadow-xl border border-[var(--border)] overflow-hidden flex flex-col"
       style={{
         backgroundColor: "var(--background)",
         position: pos ? "fixed" : "absolute",
-        top: pos?.top ?? "100%",
+        top: pos?.top,
+        bottom: pos?.bottom,
         right: pos?.right ?? 0,
+        maxHeight: pos ? pos.maxHeight : "70vh",
       }}
     >
       {/* Header */}
-      <div className="flex items-center justify-between px-3 py-2 border-b border-[var(--border)]">
+      <div className="flex items-center justify-between px-3 py-2 border-b border-[var(--border)] shrink-0">
         <span className="text-[12px] font-semibold text-stone-500 dark:text-stone-400 uppercase tracking-wide">
           Toolbar
         </span>
@@ -164,7 +169,7 @@ export default function ToolbarCustomizer({ visibility, onChange, onClose, ancho
       </div>
 
       {/* Sections */}
-      <div className="py-1 max-h-[70vh] overflow-y-auto">
+      <div className="py-1 overflow-y-auto flex-1 min-h-0">
         {SECTIONS.map((section) => (
           <div key={section.label}>
             <div className="px-3 pt-2 pb-0.5 text-[10px] font-semibold uppercase tracking-wider text-stone-400 dark:text-stone-500">
@@ -208,7 +213,7 @@ export default function ToolbarCustomizer({ visibility, onChange, onClose, ancho
       </div>
 
       {/* Footer: hide all / show all */}
-      <div className="border-t border-[var(--border)] px-3 py-2 flex justify-end gap-2">
+      <div className="border-t border-[var(--border)] px-3 py-2 flex justify-end gap-2 shrink-0">
         <button
           onClick={() => {
             const keys = Object.keys(DEFAULT_TOOLBAR_VIS) as (keyof ToolbarVisibility)[];
