@@ -11,6 +11,12 @@ import {
   FONT_SETTINGS_LS_KEY,
   type FontSettings,
 } from "@/lib/fonts";
+import {
+  applyUiFontSize,
+  readUiFontSizeFromStorage,
+  writeUiFontSizeToStorage,
+  type UiFontSizeKey,
+} from "@/lib/uiFontSize";
 import { langLabel, readBibleLookupLangs, writeBibleLookupLangs } from "@/lib/utils/bible-lookup-langs";
 import FontPickerDialog, { type FontLanguage } from "@/components/FontPickerDialog";
 import { fetchJsonRetry } from "@/lib/utils/fetchJsonRetry";
@@ -105,6 +111,7 @@ export default function SettingsButton() {
   const [greekLex, setGreekLex]       = useState<GreekLexicon>("AbbottSmith");
   const [hebrewLex, setHebrewLex]     = useState<HebrewLexicon>("BDB");
   const [hiddenSources, setHiddenSources] = useState<SourceId[]>([]);
+  const [uiFontSize, setUiFontSize]   = useState<UiFontSizeKey>("md");
   const panelRef                      = useRef<HTMLDivElement>(null);
 
   // Custom font settings
@@ -139,6 +146,7 @@ export default function SettingsButton() {
   useEffect(() => {
     setGreekLex(getGreekLexicon());
     setHebrewLex(getHebrewLexicon());
+    setUiFontSize(readUiFontSizeFromStorage());
     // Populate font inputs from localStorage (fast, no network round-trip)
     const saved = readFontSettingsFromStorage();
     setFontInputs({
@@ -293,6 +301,17 @@ export default function SettingsButton() {
     window.dispatchEvent(new CustomEvent("structura:settingsChange", { detail: { hebrewLexicon: v } }));
   }
 
+  function changeUiFontSize(v: UiFontSizeKey) {
+    setUiFontSize(v);
+    writeUiFontSizeToStorage(v);
+    applyUiFontSize(v);
+    fetch("/api/settings/ui-font-size", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ size: v }),
+    }).catch(() => {});
+  }
+
   async function saveFontsImmediate(inputs: Required<FontSettings>) {
     if (savingFonts) return;
     setSavingFonts(true);
@@ -431,6 +450,39 @@ export default function SettingsButton() {
                     {label}
                   </span>
                 </label>
+              ))}
+            </div>
+          </div>
+
+          {/* Interface Font Size */}
+          <div className="pt-3 border-t mb-4" style={{ borderColor: "var(--border)" }}>
+            <p className="text-xs font-medium mb-1.5" style={{ color: "var(--foreground)" }}>
+              {t("settings.interfaceFontSize")}
+            </p>
+            <div className="grid grid-cols-2 gap-1">
+              {(
+                [
+                  ["sm", t("settings.fontSizeSmall")],
+                  ["md", t("settings.fontSizeMedium")],
+                  ["lg", t("settings.fontSizeLarge")],
+                  ["xl", t("settings.fontSizeXLarge")],
+                ] as [UiFontSizeKey, string][]
+              ).map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => changeUiFontSize(value)}
+                  className="text-xs px-1.5 py-1 rounded border transition-colors truncate"
+                  style={{
+                    borderColor: uiFontSize === value ? "var(--accent)" : "var(--border)",
+                    color: uiFontSize === value ? "var(--accent)" : "var(--foreground)",
+                    fontWeight: uiFontSize === value ? 600 : 400,
+                    backgroundColor: "var(--surface-muted)",
+                  }}
+                  title={label}
+                >
+                  {label}
+                </button>
               ))}
             </div>
           </div>

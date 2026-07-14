@@ -3,6 +3,7 @@ import { Suspense } from "react";
 import "./globals.css";
 import FirstRunGuard from "@/components/FirstRunGuard";
 import FontSettingsApplier from "@/components/FontSettingsApplier";
+import UiFontSizeApplier from "@/components/UiFontSizeApplier";
 import { LocaleProvider } from "@/lib/i18n/LocaleContext";
 import { SessionHistoryProvider } from "@/components/navigation/SessionHistoryContext";
 import "@fontsource/gentium-plus/greek-400.css";
@@ -41,12 +42,19 @@ export default function RootLayout({
             __html: `(function(){function q(v){v=(v||'').trim();if(!v||v.includes('"')||v.includes("'")||v.includes(','))return v;if(v==='inherit'||v==='initial'||v==='unset'||v==='revert')return v;return /\s/.test(v)?'"'+v+'"':v;}try{var s=JSON.parse(localStorage.getItem('structura:fontSettings')||'{}');var r=document.documentElement;if(s.hebrew)r.style.setProperty('--hebrew-font-family',q(s.hebrew));if(s.greek)r.style.setProperty('--greek-font-family',q(s.greek));if(s.translation)r.style.setProperty('--translation-font-family',q(s.translation));}catch(e){}})()`,
           }}
         />
+        {/* Apply interface font-size preset before first paint to avoid flash. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{var pct={sm:87.5,md:100,lg:112.5,xl:125};var v=localStorage.getItem('structura:uiFontSize');if(v&&pct[v]!=null){document.documentElement.style.fontSize=pct[v]+'%';}}catch(e){}})()`,
+          }}
+        />
       </head>
       <body className="antialiased">
         <LocaleProvider>
           <Suspense>
             <SessionHistoryProvider>
               <FontSettingsApplier />
+              <UiFontSizeApplier />
               <FirstRunGuard>{children}</FirstRunGuard>
             </SessionHistoryProvider>
           </Suspense>

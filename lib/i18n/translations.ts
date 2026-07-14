@@ -205,6 +205,11 @@ const en = {
     zoteroApiKeyUpdate: "New API key (leave blank to keep current)",
     zoteroSaved: "· Credentials saved",
     zoteroClear: "Clear",
+    interfaceFontSize: "Interface Font Size",
+    fontSizeSmall: "Small",
+    fontSizeMedium: "Default",
+    fontSizeLarge: "Large",
+    fontSizeXLarge: "Extra Large",
   },
   // ── Chapter toolbar ─────────────────────────────────────────────────────────
   toolbar: {
@@ -761,6 +766,11 @@ const vi: Translations = {
     zoteroApiKeyUpdate: "Khóa API mới (để trống để giữ nguyên)",
     zoteroSaved: "· Đã lưu thông tin",
     zoteroClear: "Xóa",
+    interfaceFontSize: "Cỡ chữ giao diện",
+    fontSizeSmall: "Nhỏ",
+    fontSizeMedium: "Mặc định",
+    fontSizeLarge: "Lớn",
+    fontSizeXLarge: "Rất lớn",
   },
   toolbar: {
     displayLabel: "Hiển thị:",

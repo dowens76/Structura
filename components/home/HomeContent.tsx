@@ -41,7 +41,7 @@ function TranslationBookGrid({
       <h2 className="text-lg font-semibold text-stone-700 dark:text-stone-300 mb-3 border-b border-stone-200 dark:border-stone-700 pb-2">
         {title}
       </h2>
-      <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-2">
+      <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 xl:grid-cols-10 2xl:grid-cols-12 gap-2">
         {books.map((osisCode) => {
           const src = NT_OSIS_CODES.has(osisCode) ? "SBLGNT" : "OSHB";
           const displayName = bookName(osisCode);
@@ -80,7 +80,7 @@ function BookGrid({
       <h2 className="text-lg font-semibold text-stone-700 dark:text-stone-300 mb-3 border-b border-stone-200 dark:border-stone-700 pb-2">
         {title}
       </h2>
-      <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-2">
+      <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 xl:grid-cols-10 2xl:grid-cols-12 gap-2">
         {books.map((book) => {
           const src = linkSource ?? book.textSource;
           const displayName = bookName(book.osisCode);
@@ -168,7 +168,7 @@ export default function HomeContent({ otBooks, ntBooks, lxxBooks, translationOnl
   return (
     <main className="min-h-screen" style={{ backgroundColor: "var(--background)" }}>
       <AddressBar open={addressBarOpen} onClose={() => setAddressBarOpen(false)} textSource="OSHB" />
-      <div className="max-w-5xl mx-auto px-6 py-12">
+      <div className="max-w-[1800px] mx-auto px-6 lg:px-10 py-12">
         <header className="mb-12">
           <div className="flex items-start justify-between gap-4 mb-6">
             <Image
