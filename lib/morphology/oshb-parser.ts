@@ -6,7 +6,7 @@
  * Reference: https://github.com/openscriptures/morphhb/blob/master/parsing/HebrewMorphologyCodes.md
  */
 
-import type { ParsedMorphology } from "./types";
+import type { ParsedMorphology, PrefixInfo } from "./types";
 
 const STEM_MAP: Record<string, string> = {
   q: "qal", N: "niphal", p: "piel", P: "pual",
@@ -40,15 +40,50 @@ const STATE_MAP: Record<string, string> = {
   a: "absolute", c: "construct", d: "determined",
 };
 
-const PREFIX_MAP: Record<string, string> = {
-  C: "conjunction", c: "conjunction (ו)",
-  R: "preposition",
-  b: "preposition (ב)", i: "preposition (ל)", k: "preposition (כ)",
-  l: "preposition (ל)", m: "preposition (מ)", s: "preposition (ש)",
-  d: "definite article", T: "definite article",
-  N: "negative particle",
-  D: "adverb", P: "pronoun",
+// Bound-prefix morph codes (e.g. "C", "R", "Td") only say the prefix's
+// grammatical category, not which Hebrew letter was actually used — "R"
+// (preposition) covers ב/כ/ל/מ indiscriminately. The real letter has to be
+// read off the word's own surface text (see resolvePrefixLetter below) and
+// mapped here to its BDB lexicon entry (scripts/import-bdb.ts's letter-keyed
+// particle rows: b, c, d, i, k, l, m, s).
+const PREFIX_CONSONANT_MAP: Record<string, { label: string; lexiconKey: string }> = {
+  "ו": { label: "conjunction (ו)",       lexiconKey: "c" },
+  "ב": { label: "preposition (ב)",       lexiconKey: "b" },
+  "כ": { label: "preposition (כ)",       lexiconKey: "k" },
+  "ל": { label: "preposition (ל)",       lexiconKey: "l" },
+  "מ": { label: "preposition (מ)",       lexiconKey: "m" },
+  "ה": { label: "definite article (ה)",  lexiconKey: "d" },
+  "ש": { label: "relative pronoun (ש)",  lexiconKey: "s" },
 };
+
+// Fallback label (no lexicon link) when surface text isn't available to
+// resolve the exact letter, or for rare/ambiguous prefix codes.
+const PREFIX_CODE_FALLBACK: Record<string, string> = {
+  C: "conjunction", R: "preposition", T: "definite article",
+  N: "negative particle", D: "adverb", P: "pronoun",
+};
+
+/** Strip Hebrew niqqud/cantillation marks (U+0591–05C7) to expose bare consonants. */
+function stripNiqqud(s: string): string {
+  return s.replace(/[֑-ׇ]/g, "");
+}
+
+function resolvePrefixInfo(code: string, surfacePart: string | undefined): PrefixInfo {
+  const consonant = surfacePart ? stripNiqqud(surfacePart)[0] : undefined;
+  const known = consonant ? PREFIX_CONSONANT_MAP[consonant] : undefined;
+  if (known) {
+    // "Rd" = preposition with the definite article assimilated/invisible in
+    // the text (e.g. בָּ = ב + ה). The article has no separate visible
+    // morpheme to link, so just note it alongside the preposition's own entry.
+    const hasFusedArticle = code[0] === "R" && code[1] === "d";
+    return {
+      code,
+      label: hasFusedArticle ? `${known.label} + definite article` : known.label,
+      lexiconKey: known.lexiconKey,
+    };
+  }
+  return { code, label: PREFIX_CODE_FALLBACK[code[0]] ?? code, lexiconKey: null };
+}
 
 const SUFFIX_TYPE_MAP: Record<string, string> = {
   p: "pronominal suffix",
@@ -57,7 +92,7 @@ const SUFFIX_TYPE_MAP: Record<string, string> = {
   n: "paragogic nun",
 };
 
-export function parseOshbMorph(morphCode: string): ParsedMorphology {
+export function parseOshbMorph(morphCode: string, surfaceText?: string | null): ParsedMorphology {
   const result: ParsedMorphology = {
     partOfSpeech: null, stem: null, tense: null, voice: null,
     mood: null, person: null, gender: null, wordNumber: null,
@@ -88,8 +123,13 @@ export function parseOshbMorph(morphCode: string): ParsedMorphology {
   const prefixParts = parts.slice(0, mainIdx);
   const suffixParts = parts.slice(mainIdx + 1);
 
-  // Decode prefixes (keep only the first character of each prefix part for lookup)
-  result.prefixes = prefixParts.map((p) => PREFIX_MAP[p[0]] ?? p).filter(Boolean);
+  // Decode prefixes. surface_text's morphemes line up 1:1 with the morph
+  // code's parts (split on "/"), so the leading `prefixParts.length` slices
+  // of the surface text give the actual Hebrew letters used.
+  const surfacePrefixParts = surfaceText ? surfaceText.split("/").slice(0, prefixParts.length) : [];
+  result.prefixes = prefixParts
+    .map((p, idx) => resolvePrefixInfo(p, surfacePrefixParts[idx]))
+    .filter((p) => p.label);
 
   // Decode suffix morphemes — prioritise the pronominal suffix (type 'p') for
   // person/gender/number; record the first suffix type found.

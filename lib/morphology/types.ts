@@ -1,3 +1,10 @@
+/** A decoded Hebrew inseparable-prefix morpheme (conjunction, preposition, article). */
+export interface PrefixInfo {
+  code: string;             // raw morph-code prefix part, e.g. "C", "R", "Td"
+  label: string;            // human-readable label, e.g. "preposition (ב)"
+  lexiconKey: string | null; // BDB letter-keyed strong_number (e.g. "b"), if resolvable
+}
+
 export interface ParsedMorphology {
   partOfSpeech: string | null;
   // Verb features
@@ -12,7 +19,7 @@ export interface ParsedMorphology {
   verbCase: string | null; // Greek: nominative, genitive, dative, accusative, vocative
   state: string | null;    // Hebrew: absolute, construct, determined
   // Prefix info (Hebrew)
-  prefixes: string[];
+  prefixes: PrefixInfo[];
   // Pronominal/directional suffix (Hebrew) — attached suffix morpheme
   suffixType: string | null;   // "pronominal suffix", "directional", "paragogic nun", etc.
   suffixPerson: string | null; // 1, 2, 3

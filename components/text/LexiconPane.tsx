@@ -9,6 +9,9 @@ interface LexiconPaneProps {
   strongNumber?: string | null; // Hebrew: look up by Strong's number
   isHebrew: boolean;
   textSource?: string;          // e.g. "STEPBIBLE_LXX" — auto-selects LSJ
+  // Letter-keyed BDB particle lookup (e.g. "b", "c") requested from a
+  // MorphologyPanel prefix chip; takes priority over strongNumber while set.
+  prefixOverride?: string | null;
 }
 
 interface Suggestion {
@@ -243,6 +246,82 @@ function lsjXmlToHtml(xml: string): string {
   }
 }
 
+// ── BDB XML → HTML converter ──────────────────────────────────────────────────
+
+const BDB_CSS = `
+.bdb-entry { font-family: serif; line-height: 1.6; font-size: 0.85rem; }
+.bdb-w { font-family: "Ezra SIL", "SBL Hebrew", serif; font-size: 1.15em; margin: 0 0.05em; }
+.bdb-pos { color: #15803d; font-style: italic; }
+.bdb-def { font-weight: bold; }
+.bdb-sense { border-left: 1px solid #ccc; padding-left: 0.75em; margin: 0.35em 0; }
+.bdb-sense .bdb-sense { margin: 0.2em 0; }
+.bdb-sense-n { font-weight: bold; margin-right: 0.3em; }
+.bdb-stem { font-variant: small-caps; font-weight: 600; color: #92400e; }
+.bdb-asp { font-style: italic; color: #888; }
+.bdb-foreign { font-style: italic; }
+.bdb-foreign-rtl { font-style: italic; font-family: "Ezra SIL", "SBL Hebrew", serif; }
+.bdb-ref { color: #888; font-size: 0.9em; }
+.dark .bdb-stem { color: #d97706; }
+.dark .bdb-ref { color: #666; }
+`;
+
+let bdbCssInjected = false;
+function ensureBdbCss() {
+  if (bdbCssInjected || typeof document === "undefined") return;
+  if (document.getElementById("bdb-scoped-css")) { bdbCssInjected = true; return; }
+  const style = document.createElement("style");
+  style.id = "bdb-scoped-css";
+  style.textContent = BDB_CSS;
+  document.head.appendChild(style);
+  bdbCssInjected = true;
+}
+
+// Cognate/citation languages BDB renders right-to-left (Arabic, Syriac, Aramaic, Hebrew).
+const BDB_RTL_LANGS = new Set(["ara", "syr", "arc", "he", "heb"]);
+
+function convertBdbNode(node: ChildNode): string {
+  if (node.nodeType === Node.TEXT_NODE) return node.textContent ?? "";
+  if (node.nodeType !== Node.ELEMENT_NODE) return "";
+  const el = node as Element;
+  const tag = el.localName;
+  const ch = () => Array.from(el.childNodes).map(convertBdbNode).join("");
+
+  switch (tag) {
+    case "entry": return ch();
+    case "w":     return `<bdo dir="rtl"><span class="bdb-w">${ch()}</span></bdo>`;
+    case "pos":   return `<span class="bdb-pos">${ch()}</span>`;
+    case "def":   return `<span class="bdb-def">${ch()}</span>`;
+    case "sense": {
+      const n = el.getAttribute("n");
+      return `<div class="bdb-sense">${n ? `<span class="bdb-sense-n">${escHtml(n)}</span>` : ""}${ch()}</div>`;
+    }
+    case "stem": return `<span class="bdb-stem">${ch()}</span>`;
+    case "asp":  return `<span class="bdb-asp">${ch()}</span>`;
+    case "foreign": {
+      const lang =
+        el.getAttributeNS("http://www.w3.org/XML/1998/namespace", "lang") ??
+        el.getAttribute("xml:lang") ?? "";
+      if (BDB_RTL_LANGS.has(lang)) return `<bdo dir="rtl"><span class="bdb-foreign-rtl">${ch()}</span></bdo>`;
+      return `<span class="bdb-foreign">${ch()}</span>`;
+    }
+    case "ref":    return `<span class="bdb-ref">${ch()}</span>`;
+    case "em":     return `<em>${ch()}</em>`;
+    case "page":   return "";
+    case "status": return "";
+    default:       return ch();
+  }
+}
+
+function bdbXmlToHtml(xml: string): string {
+  try {
+    const doc = new DOMParser().parseFromString(xml, "text/xml");
+    if (doc.querySelector("parsererror")) return "";
+    return convertBdbNode(doc.documentElement);
+  } catch {
+    return "";
+  }
+}
+
 // ── Entry display ─────────────────────────────────────────────────────────────
 
 function EntryDisplay({
@@ -250,11 +329,13 @@ function EntryDisplay({
   isHebrew,
   abbottHtml,
   lsjHtml,
+  bdbHtml,
 }: {
   entry: LexiconEntry | null | "loading";
   isHebrew: boolean;
   abbottHtml: string;
   lsjHtml: string;
+  bdbHtml: string;
 }) {
   if (entry === "loading") {
     return (
@@ -354,10 +435,27 @@ function EntryDisplay({
   if (entry.source === "BDB" && entry.definition) {
     return (
       <div className="mt-3">
+        {entry.lemma && (
+          <div className="text-2xl leading-snug mb-1 lexicon-hebrew text-right" dir="rtl" lang="he">
+            {entry.lemma}
+          </div>
+        )}
+        {entry.transliteration && (
+          <div className="mb-2">
+            <span className="text-sm text-stone-500 dark:text-stone-400 italic">
+              {entry.transliteration}
+            </span>
+          </div>
+        )}
+        {entry.shortGloss && (
+          <p className="text-sm font-semibold text-stone-800 dark:text-stone-200 mb-2">
+            {entry.shortGloss}
+          </p>
+        )}
         <div
           className="bdb-entry"
           // eslint-disable-next-line react/no-danger
-          dangerouslySetInnerHTML={{ __html: entry.definition }}
+          dangerouslySetInnerHTML={{ __html: bdbHtml || "" }}
         />
         <p className="text-[10px] text-stone-300 dark:text-stone-700 mt-3">{sourceName}</p>
       </div>
@@ -413,7 +511,7 @@ function EntryDisplay({
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export default function LexiconPane({ wordLemma, strongNumber, isHebrew, textSource }: LexiconPaneProps) {
+export default function LexiconPane({ wordLemma, strongNumber, isHebrew, textSource, prefixOverride }: LexiconPaneProps) {
   const isLxx = textSource === "STEPBIBLE_LXX";
 
   const [entry, setEntry]           = useState<LexiconEntry | null | "loading">("loading");
@@ -422,6 +520,7 @@ export default function LexiconPane({ wordLemma, strongNumber, isHebrew, textSou
   );
   const [abbottHtml, setAbbottHtml] = useState("");
   const [lsjHtml,    setLsjHtml]    = useState("");
+  const [bdbHtml,    setBdbHtml]    = useState("");
 
   // ── Navigation state ───────────────────────────────────────────────────────
   // overrideLookup is set when the user manually navigates; null = use props.
@@ -458,6 +557,22 @@ export default function LexiconPane({ wordLemma, strongNumber, isHebrew, textSou
     setEditing(false);
   }, [strongNumber, wordLemma]);
 
+  // A prefix chip click from MorphologyPanel — resolve it the same way manual
+  // navigation does, so it shares one priority order (last action wins).
+  useEffect(() => {
+    if (prefixOverride) {
+      setOverrideLookup({ kind: "strong", value: prefixOverride });
+      setSuggestions([]);
+      setEditing(false);
+    }
+  }, [prefixOverride]);
+
+  // Letter-keyed prefix particles (e.g. "b", "c") only exist in BDB — no
+  // Strong's-numbered lexicon has them — so force that source regardless of
+  // the user's HebrewStrong/BDB lexicon setting.
+  const isPrefixParticle = !!resolvedStrong && /^[a-z]$/i.test(resolvedStrong);
+  const effectiveSource  = isPrefixParticle ? "BDB" : lexiconSource;
+
   // Update input display whenever the resolved key changes (but not while editing).
   useEffect(() => {
     if (editing) return;
@@ -482,15 +597,15 @@ export default function LexiconPane({ wordLemma, strongNumber, isHebrew, textSou
     const lookupKey = resolvedStrong ?? resolvedLemma ?? "";
     if (!lookupKey) { setEntry(null); return; }
 
-    const key = `${lookupKey}:${lexiconSource}`;
+    const key = `${lookupKey}:${effectiveSource}`;
     if (key === fetchKey.current) return;
     fetchKey.current = key;
     setEntry("loading");
     setAbbottHtml("");
 
     const url = resolvedStrong
-      ? `/api/lexicon?strong=${encodeURIComponent(resolvedStrong.split(/[/,\s]/)[0])}&source=${encodeURIComponent(lexiconSource)}`
-      : `/api/lexicon?lemma=${encodeURIComponent(resolvedLemma!)}&source=${encodeURIComponent(lexiconSource)}`;
+      ? `/api/lexicon?strong=${encodeURIComponent(resolvedStrong.split(/[/,\s]/)[0])}&source=${encodeURIComponent(effectiveSource)}`
+      : `/api/lexicon?lemma=${encodeURIComponent(resolvedLemma!)}&source=${encodeURIComponent(effectiveSource)}`;
 
     fetch(url)
       .then((r) => r.json())
@@ -498,7 +613,7 @@ export default function LexiconPane({ wordLemma, strongNumber, isHebrew, textSou
         if (fetchKey.current === key) setEntry(data.entry);
       })
       .catch(() => { if (fetchKey.current === key) setEntry(null); });
-  }, [resolvedStrong, resolvedLemma, lexiconSource]);
+  }, [resolvedStrong, resolvedLemma, effectiveSource]);
 
   // AbbottSmith conversion
   useEffect(() => {
@@ -516,6 +631,15 @@ export default function LexiconPane({ wordLemma, strongNumber, isHebrew, textSou
     }
     ensureLsjCss();
     setLsjHtml(lsjXmlToHtml(entry.definition));
+  }, [entry]);
+
+  // BDB conversion
+  useEffect(() => {
+    if (!entry || entry === "loading" || entry.source !== "BDB" || !entry.definition) {
+      setBdbHtml(""); return;
+    }
+    ensureBdbCss();
+    setBdbHtml(bdbXmlToHtml(entry.definition));
   }, [entry]);
 
   // ── Navigation helpers ─────────────────────────────────────────────────────
@@ -735,7 +859,7 @@ export default function LexiconPane({ wordLemma, strongNumber, isHebrew, textSou
       </div>
 
       {/* Entry content */}
-      <EntryDisplay entry={entry} isHebrew={isHebrew} abbottHtml={abbottHtml} lsjHtml={lsjHtml} />
+      <EntryDisplay entry={entry} isHebrew={isHebrew} abbottHtml={abbottHtml} lsjHtml={lsjHtml} bdbHtml={bdbHtml} />
     </div>
   );
 }

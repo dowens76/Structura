@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import type { Word } from "@/lib/db/schema";
 import { POS_COLORS, POS_LABELS, formatTense } from "@/lib/morphology/types";
 import { getMorphology } from "@/lib/morphology/decode";
@@ -22,6 +23,12 @@ function Field({ label, value }: { label: string; value: string | null | undefin
 }
 
 export default function MorphologyPanel({ word, useLinguisticTerms = false, onSearchRequest }: MorphologyPanelProps) {
+  const [prefixLookup, setPrefixLookup] = useState<string | null>(null);
+
+  useEffect(() => {
+    setPrefixLookup(null);
+  }, [word?.wordId]);
+
   if (!word) {
     return (
       <div className="h-full flex items-center justify-center text-stone-400 dark:text-stone-600 text-sm">
@@ -114,11 +121,29 @@ export default function MorphologyPanel({ word, useLinguisticTerms = false, onSe
         </div>
       )}
 
-      {/* Hebrew prefixes */}
+      {/* Hebrew prefixes — click a chip to look up its own BDB entry */}
       {isHebrew && morph.prefixes && morph.prefixes.length > 0 && (
-        <div className="mb-3 text-xs text-stone-500 dark:text-stone-400">
+        <div className="mb-3 flex flex-wrap items-center gap-1.5 text-xs">
           <span className="font-medium text-stone-600 dark:text-stone-300">Prefixes: </span>
-          {morph.prefixes.join(", ")}
+          {morph.prefixes.map((p, idx) =>
+            p.lexiconKey ? (
+              <button
+                key={idx}
+                onClick={() => setPrefixLookup(p.lexiconKey)}
+                title="Look up this prefix in BDB"
+                className={[
+                  "px-1.5 py-0.5 rounded-full border transition-colors",
+                  prefixLookup === p.lexiconKey
+                    ? "border-amber-400 bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-400"
+                    : "border-stone-200 dark:border-stone-700 text-stone-500 dark:text-stone-400 hover:border-amber-400 hover:text-amber-600 dark:hover:text-amber-400",
+                ].join(" ")}
+              >
+                {p.label}
+              </button>
+            ) : (
+              <span key={idx} className="text-stone-500 dark:text-stone-400">{p.label}</span>
+            )
+          )}
         </div>
       )}
 
@@ -161,7 +186,11 @@ export default function MorphologyPanel({ word, useLinguisticTerms = false, onSe
 
       {/* Lexicon entry: Hebrew uses Strong's number; Greek uses lemma (covers SBLGNT + LXX) */}
       {isHebrew && word.strongNumber && (
-        <LexiconPane strongNumber={word.strongNumber} isHebrew={true} />
+        <LexiconPane
+          strongNumber={word.strongNumber}
+          isHebrew={true}
+          prefixOverride={prefixLookup}
+        />
       )}
       {!isHebrew && word.lemma && (
         <LexiconPane wordLemma={word.lemma} isHebrew={false} textSource={word.textSource} />

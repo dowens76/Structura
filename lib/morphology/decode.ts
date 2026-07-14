@@ -21,7 +21,7 @@ export function getMorphology(word: Word): ParsedMorphology {
   if (!word.morphCode) return EMPTY;
 
   if (word.textSource === "OSHB") {
-    return parseOshbMorph(word.morphCode);
+    return parseOshbMorph(word.morphCode, word.surfaceText);
   }
 
   if (word.textSource === "SBLGNT") {

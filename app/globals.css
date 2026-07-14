@@ -170,65 +170,14 @@ body {
   font-family: var(--greek-font-family);
 }
 
-/* ── BDB lexicon HTML content ─────────────────────────────────────────────── */
-/*
- * DictBDB.json uses non-standard HTML elements (<heb>, <ref0>, <font>) along
- * with standard markup.  These rules make them render correctly in both themes.
- */
-.bdb-entry {
-  font-size: 0.8rem;
-  line-height: 1.7;
-  color: var(--foreground);
-}
-.bdb-entry p   { margin: 0.35em 0; }
-.bdb-entry div { margin: 0; }
-.bdb-entry b   { font-weight: 600; }
-.bdb-entry i   { font-style: italic; }
-
-/* <heb> — inline Hebrew text; Ezra SIL, RTL.
- * Use * to cover all descendants regardless of nesting (<ref0>, <font>, etc.) */
-.bdb-entry heb,
-.bdb-entry heb * {
-  font-family: var(--hebrew-font-family) !important;
-  direction: rtl;
-  display: inline;
-  unicode-bidi: embed;
-  font-size: 1.15em;
-  line-height: 1.4;
-}
-
-/* <sub> used for occurrence counts */
-.bdb-entry sub {
-  font-size: 0.7em;
-  vertical-align: sub;
-  line-height: 0;
-  color: var(--text-muted);
-}
-
-/* <ref0> cross-reference spans — show inline, muted */
-.bdb-entry ref0 {
-  display: inline;
-  color: var(--text-muted);
-}
+/* BDB lexicon entries are styled via the JS-injected scoped stylesheet in
+ * components/text/LexiconPane.tsx (ensureBdbCss / BDB_CSS), matching the
+ * Abbott-Smith and LSJ lexicons — see .abbott-smith-entry / .lsj-entry there. */
 
 /* Translation text — respects the user's custom translation font setting.
  * Falls back to `inherit` (body/system font) when no preference is set. */
 [data-seg-translation] {
   font-family: var(--translation-font-family);
-}
-
-/* Scripture links — neutralise bible:// href (won't navigate; style as subtle) */
-.bdb-entry a {
-  color: var(--accent);
-  text-decoration: none;
-}
-.bdb-entry a:hover {
-  text-decoration: underline;
-}
-
-/* Dark mode adjustments */
-.dark .bdb-entry {
-  color: var(--foreground);
 }
 
 /* ── Tiptap note editor ────────────────────────────────────────────────────── */
