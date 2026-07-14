@@ -507,16 +507,16 @@ export default function OutlinePane({
                       />
                     </div>
                   ) : (
-                    <div className="group flex items-center gap-1.5 rounded px-1 py-0.5 hover:bg-stone-100 dark:hover:bg-stone-800/60 transition-colors">
+                    <div className="group flex items-start gap-1.5 rounded px-1 py-0.5 hover:bg-stone-100 dark:hover:bg-stone-800/60 transition-colors">
                       <span className="shrink-0 text-xs font-mono" style={{ color: "var(--text-muted)", minWidth: "1.5rem" }}>
                         {item.prefix}
                       </span>
                       {item.transitional && (
                         <span className="shrink-0 text-[10px] text-sky-500 dark:text-sky-400" title="Transitional (janus)">⇔</span>
                       )}
-                      {/* Heading text — click to edit */}
+                      {/* Heading text — click to edit; wraps instead of truncating when the pane is narrow */}
                       <span
-                        className={`flex-1 min-w-0 truncate cursor-pointer ${textSize}`}
+                        className={`flex-1 min-w-0 break-words cursor-pointer ${textSize}`}
                         style={{ color: "var(--foreground)", fontFamily: "Georgia, 'Times New Roman', serif" }}
                         title="Click to edit heading"
                         onClick={() => startEdit(item.key, item.heading)}
