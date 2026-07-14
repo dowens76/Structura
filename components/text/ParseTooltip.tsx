@@ -31,6 +31,7 @@ export default function ParseTooltip({ word, flipped = false, useLinguisticTerms
   const displaySurface = (word.surfaceText ?? "").replace(/\//g, "");
 
   const [gloss, setGloss] = useState<string | null>(null);
+  const [prefixGlosses, setPrefixGlosses] = useState<Record<string, string | null>>({});
 
   useEffect(() => {
     // Greek: look up by lemma. Hebrew: look up by Strong's number.
@@ -62,6 +63,40 @@ export default function ParseTooltip({ word, flipped = false, useLinguisticTerms
       })
       .catch(() => { glossCache.set(cacheKey, null); });
   }, [word.lemma, word.strongNumber, isHebrew]);
+
+  // Hebrew bound prefixes (e.g. ב, ו, ה) only exist in BDB; fetch each
+  // resolvable prefix's own short gloss so the tooltip shows the whole
+  // compound word, not just its root.
+  useEffect(() => {
+    const keys = isHebrew
+      ? morph.prefixes.map((p) => p.lexiconKey).filter((k): k is string => !!k)
+      : [];
+    if (keys.length === 0) { setPrefixGlosses({}); return; }
+
+    let cancelled = false;
+    (async () => {
+      const results: Record<string, string | null> = {};
+      for (const key of keys) {
+        const cacheKey = `${key}:BDB`;
+        if (glossCache.has(cacheKey)) {
+          results[key] = glossCache.get(cacheKey) ?? null;
+          continue;
+        }
+        try {
+          const res = await fetch(`/api/lexicon?strong=${encodeURIComponent(key)}&source=BDB`);
+          const data: { entry: { shortGloss?: string | null } | null } = await res.json();
+          const g = data.entry?.shortGloss ?? null;
+          glossCache.set(cacheKey, g);
+          results[key] = g;
+        } catch {
+          glossCache.set(cacheKey, null);
+          results[key] = null;
+        }
+      }
+      if (!cancelled) setPrefixGlosses(results);
+    })();
+    return () => { cancelled = true; };
+  }, [isHebrew, word.morphCode, word.surfaceText]);
 
   const arrowUp = (
     <div className="flex justify-center">
@@ -102,6 +137,20 @@ export default function ParseTooltip({ word, flipped = false, useLinguisticTerms
         {gloss && (
           <div className="text-stone-300 text-xs mt-1 italic">
             {gloss}
+          </div>
+        )}
+
+        {/* Bound prefixes (e.g. ב, ו, ה) — each with its own BDB gloss */}
+        {isHebrew && morph.prefixes.length > 0 && (
+          <div className="mt-1 space-y-0.5">
+            {morph.prefixes.map((p, idx) => (
+              <div key={idx} className="text-[10px] leading-tight">
+                <span className="text-stone-400">{p.label}</span>
+                {p.lexiconKey && prefixGlosses[p.lexiconKey] && (
+                  <span className="text-stone-500 italic"> — {prefixGlosses[p.lexiconKey]}</span>
+                )}
+              </div>
+            ))}
           </div>
         )}
       </div>

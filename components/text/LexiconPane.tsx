@@ -559,12 +559,12 @@ export default function LexiconPane({ wordLemma, strongNumber, isHebrew, textSou
 
   // A prefix chip click from MorphologyPanel — resolve it the same way manual
   // navigation does, so it shares one priority order (last action wins).
+  // Switching back to null (the "root" chip) clears the override so the
+  // pane falls back to the word's own strongNumber/wordLemma prop.
   useEffect(() => {
-    if (prefixOverride) {
-      setOverrideLookup({ kind: "strong", value: prefixOverride });
-      setSuggestions([]);
-      setEditing(false);
-    }
+    setOverrideLookup(prefixOverride ? { kind: "strong", value: prefixOverride } : null);
+    setSuggestions([]);
+    setEditing(false);
   }, [prefixOverride]);
 
   // Letter-keyed prefix particles (e.g. "b", "c") only exist in BDB — no

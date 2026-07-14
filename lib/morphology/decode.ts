@@ -13,7 +13,7 @@ import { parseLxxMorph } from "./lxx-parser";
 const EMPTY: ParsedMorphology = {
   partOfSpeech: null, stem: null, tense: null, voice: null,
   mood: null, person: null, gender: null, wordNumber: null,
-  verbCase: null, state: null, prefixes: [],
+  verbCase: null, state: null, prefixes: [], rootSurface: null,
   suffixType: null, suffixPerson: null, suffixGender: null, suffixNumber: null,
 };
 

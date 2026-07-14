@@ -20,6 +20,9 @@ export interface ParsedMorphology {
   state: string | null;    // Hebrew: absolute, construct, determined
   // Prefix info (Hebrew)
   prefixes: PrefixInfo[];
+  // The word's own root morpheme as it appears in surface_text (Hebrew),
+  // i.e. the surface text with any bound prefixes/suffixes stripped off.
+  rootSurface: string | null;
   // Pronominal/directional suffix (Hebrew) — attached suffix morpheme
   suffixType: string | null;   // "pronominal suffix", "directional", "paragogic nun", etc.
   suffixPerson: string | null; // 1, 2, 3

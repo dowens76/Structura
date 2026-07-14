@@ -121,10 +121,24 @@ export default function MorphologyPanel({ word, useLinguisticTerms = false, onSe
         </div>
       )}
 
-      {/* Hebrew prefixes — click a chip to look up its own BDB entry */}
+      {/* Hebrew prefixes — click a chip to switch the lexicon entry below;
+          the root chip switches back to the word's own entry. */}
       {isHebrew && morph.prefixes && morph.prefixes.length > 0 && (
         <div className="mb-3 flex flex-wrap items-center gap-1.5 text-xs">
-          <span className="font-medium text-stone-600 dark:text-stone-300">Prefixes: </span>
+          <span className="font-medium text-stone-600 dark:text-stone-300">Lexicon: </span>
+          <button
+            onClick={() => setPrefixLookup(null)}
+            title="Show this word's own entry"
+            className={[
+              "px-1.5 py-0.5 rounded-full border transition-colors lexicon-hebrew",
+              prefixLookup === null
+                ? "border-amber-400 bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-400"
+                : "border-stone-200 dark:border-stone-700 text-stone-500 dark:text-stone-400 hover:border-amber-400 hover:text-amber-600 dark:hover:text-amber-400",
+            ].join(" ")}
+            dir="rtl"
+          >
+            {morph.rootSurface || "root"}
+          </button>
           {morph.prefixes.map((p, idx) =>
             p.lexiconKey ? (
               <button

@@ -96,7 +96,7 @@ export function parseOshbMorph(morphCode: string, surfaceText?: string | null): 
   const result: ParsedMorphology = {
     partOfSpeech: null, stem: null, tense: null, voice: null,
     mood: null, person: null, gender: null, wordNumber: null,
-    verbCase: null, state: null, prefixes: [],
+    verbCase: null, state: null, prefixes: [], rootSurface: null,
     suffixType: null, suffixPerson: null, suffixGender: null, suffixNumber: null,
   };
 
@@ -123,13 +123,15 @@ export function parseOshbMorph(morphCode: string, surfaceText?: string | null): 
   const prefixParts = parts.slice(0, mainIdx);
   const suffixParts = parts.slice(mainIdx + 1);
 
-  // Decode prefixes. surface_text's morphemes line up 1:1 with the morph
-  // code's parts (split on "/"), so the leading `prefixParts.length` slices
-  // of the surface text give the actual Hebrew letters used.
-  const surfacePrefixParts = surfaceText ? surfaceText.split("/").slice(0, prefixParts.length) : [];
+  // surface_text's morphemes line up 1:1 with the morph code's parts (split
+  // on "/"), so slicing it the same way gives the actual Hebrew text for
+  // each prefix and for the root/main morpheme itself.
+  const surfaceParts = surfaceText ? surfaceText.split("/") : [];
+  const surfacePrefixParts = surfaceParts.slice(0, prefixParts.length);
   result.prefixes = prefixParts
     .map((p, idx) => resolvePrefixInfo(p, surfacePrefixParts[idx]))
     .filter((p) => p.label);
+  result.rootSurface = surfaceParts[mainIdx] ?? null;
 
   // Decode suffix morphemes — prioritise the pronominal suffix (type 'p') for
   // person/gender/number; record the first suffix type found.

@@ -69,7 +69,7 @@ export function parseMorphgntCode(posCode: string, parseCode: string): ParsedMor
     stem: null,
     tense: null, voice: null, mood: null, person: null,
     gender: null, wordNumber: null, verbCase: null, state: null,
-    prefixes: [],
+    prefixes: [], rootSurface: null,
     suffixType: null, suffixPerson: null, suffixGender: null, suffixNumber: null,
   };
 
