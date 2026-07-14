@@ -208,13 +208,21 @@ export default async function PassagePage({ params, searchParams }: PageProps) {
   const initialSceneBreaks       = perChapterResults.flatMap(([,,,,,,,, sb]) => sb);
   const initialLineAnnotations   = perChapterResults.flatMap(([,,,,,,,,, la]) => la);
 
-  // Merge cross-book scene breaks and max verses
-  const allBookSceneBreaks = [...bookSceneBreaks, ...endBookSceneBreaks];
-  // For bookMaxVerses, for cross-book we merge start-book and end-book maps.
-  // End-book chapters are offset by startBookLastCh so they sort after.
+  // Merge cross-book scene breaks and max verses. Chapters stay in each
+  // break's own book's raw numbering (needed so PassageView's book-wide
+  // outline/filtering logic, which compares raw chapter numbers, keeps
+  // working) — each entry is tagged with its owning bookId instead, so
+  // PassageView.tsx's sectionRanges computation can offset only the specific
+  // entries it feeds into computeSectionRanges (which does raw chapter
+  // arithmetic and needs a single monotonic numbering to cross a book
+  // boundary correctly).
+  const startBookLastCh = bookRecord.chapterCount;
+  const allBookSceneBreaks = [
+    ...bookSceneBreaks.map((b) => ({ ...b, bookId: bookRecord.id })),
+    ...endBookSceneBreaks.map((b) => ({ ...b, bookId: endBookRecord.id })),
+  ];
   const mergedBookMaxVerses = new Map<number, number>(bookMaxVerses);
   if (isCrossBook) {
-    const startBookLastCh = bookRecord.chapterCount;
     for (const [ch, mv] of endBookMaxVerses) {
       mergedBookMaxVerses.set(ch + startBookLastCh, mv);
     }
@@ -436,6 +444,9 @@ export default async function PassagePage({ params, searchParams }: PageProps) {
           maxVerseOfPrevEndChapter={maxVerseOfPrevEndChapter}
           osisBook={osisBook}
           textSource={textSource}
+          startBookId={bookRecord.id}
+          endBookId={isCrossBook ? endBookRecord.id : undefined}
+          startBookChapterCount={bookRecord.chapterCount}
           initialParagraphBreakIds={initialParagraphBreakIds}
           initialCharacters={characters}
           initialCharacterRefs={initialCharacterRefs}

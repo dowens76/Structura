@@ -36,6 +36,7 @@ import { useAnnotationRange } from "@/lib/hooks/useAnnotationRange";
 import { useRstRelations } from "@/lib/hooks/useRstRelations";
 import hebrewLemmas from "@/lib/data/hebrew-lemmas.json";
 import { computeSectionRanges } from "@/lib/utils/sectionRanges";
+import { chapterKey } from "@/lib/utils/chapterKey";
 import { OSIS_BOOK_NAMES, OSIS_REF_BOOK_NAMES, CONTIGUOUS_BOOK_PAIRS, CONTIGUOUS_BOOK_PREV } from "@/lib/utils/osis";
 import AddressBar from "@/components/ui/AddressBar";
 import { useTranslation } from "@/lib/i18n/LocaleContext";
@@ -95,6 +96,16 @@ interface Props {
   maxVerseOfPrevEndChapter: number;
   osisBook: string;
   textSource: string;
+  /** Numeric book id of `passage.book` (== osisBook). Used together with
+   *  `endBookId` to disambiguate cross-book chapter-number collisions
+   *  (e.g. both "1 Samuel 1" and "2 Samuel 1" have chapter === 1). */
+  startBookId: number;
+  /** Numeric book id of `passage.endBook`, when this is a cross-book passage. */
+  endBookId?: number;
+  /** Total chapter count of the start book — used to offset end-book chapter
+   *  numbers onto one monotonic sequence, matching the scheme already used
+   *  for `bookMaxVerses`/`bookSceneBreaks` merging in page.tsx. */
+  startBookChapterCount: number;
   // Editing data
   initialParagraphBreakIds: string[];
   initialCharacters: Character[];
@@ -126,8 +137,10 @@ interface Props {
   initialLineAnnotations: LineAnnotation[];
   // Text critical marks (MT/LXX comparison)
   initialTextCriticalMarks?: { wordId: string; markType: string; textSource: string }[];
-  // Book-wide breaks + max verses for cross-chapter range computation
-  bookSceneBreaks: { wordId: string; heading: string | null; level: number; chapter: number; verse: number; positionInVerse: number; extendedThrough: number | null; thematic: boolean; thematicLetter: string | null; transitional: boolean }[];
+  // Book-wide breaks + max verses for cross-chapter range computation.
+  // `bookId` disambiguates which book each break belongs to — required for
+  // cross-book passages where the two books can share raw chapter numbers.
+  bookSceneBreaks: { wordId: string; heading: string | null; level: number; chapter: number; verse: number; positionInVerse: number; extendedThrough: number | null; thematic: boolean; thematicLetter: string | null; transitional: boolean; bookId: number }[];
   bookMaxVerses: Map<number, number>;
   // Translation footnotes (keyed by translation ID)
   initialTranslationFootnotes?: Record<number, TranslationFootnote[]>;
@@ -159,6 +172,9 @@ export default function PassageView({
   maxVerseOfPrevEndChapter,
   osisBook,
   textSource,
+  startBookId,
+  endBookId,
+  startBookChapterCount,
   initialParagraphBreakIds,
   initialCharacters,
   initialCharacterRefs,
@@ -791,6 +807,20 @@ export default function PassageView({
   // Keep the ref in sync so hook handlers (getChapterForWord) always see the latest map.
   wordToChapterRef.current = wordToChapter;
 
+  // wordId → bookId, so live (in-passage) data can be disambiguated the same
+  // way as the pre-merged bookSceneBreaks/bookMaxVerses props below.
+  const wordToBookId = useMemo(
+    () => new Map(words.map((w) => [w.wordId, w.bookId])),
+    [words]
+  );
+  // bookId → OSIS book code, for rendering the correct book per verse row.
+  const bookIdToOsis = useMemo(() => {
+    const m = new Map<number, string>();
+    m.set(startBookId, osisBook);
+    if (endBookId != null && passage.endBook) m.set(endBookId, passage.endBook);
+    return m;
+  }, [startBookId, endBookId, osisBook, passage.endBook]);
+
   // Precomputed section ranges: key = `${wordId}:${level}` → { endChapter, endVerse }
   // Uses book-wide breaks (from bookSceneBreaks prop) plus live passage breaks from sceneBreakMap.
   // Chapters covered by the passage come from live state; other chapters from the static prop.
@@ -807,22 +837,53 @@ export default function PassageView({
   }, [passage.startChapter, passage.endChapter, passage.endBook, passage.book, words]);
 
   const sectionRanges = useMemo(() => {
+    // computeSectionRanges() does plain chapter arithmetic (sorting by raw
+    // chapter number, `nextChapter - 1`, etc.), which only makes sense within
+    // a single book's numbering. For a cross-book passage, offset every
+    // end-book chapter by the start book's chapter count so both books map
+    // onto one monotonic sequence — matching the same offset already applied
+    // to bookMaxVerses (page.tsx). Chapters from bookSceneBreaks/sceneBreakMap
+    // stay in their own book's raw numbering everywhere else (e.g. the
+    // outline pane), so the offset is applied here only, right before the
+    // computeSectionRanges call.
+    const offsetChapter = (bookId: number, ch: number) =>
+      endBookId != null && bookId === endBookId ? ch + startBookChapterCount : ch;
+
     // Start with book-wide breaks, excluding chapters covered by the passage (live state overrides)
     const allBreaks: { wordId: string; level: number; chapter: number; verse: number; extendedThrough: number | null }[] =
       bookSceneBreaks
         .filter((b) => !passageChapterSet.has(b.chapter))
-        .map((b) => ({ ...b }));
+        .map((b) => ({ ...b, chapter: offsetChapter(b.bookId, b.chapter) }));
 
-    // Add passage breaks from live sceneBreakMap state
+    // Add passage breaks from live sceneBreakMap state, offset the same way.
     for (const [wordId, arr] of sceneBreakMap) {
-      const ch = wordToChapter.get(wordId) ?? passage.startChapter;
+      const rawCh = wordToChapter.get(wordId) ?? passage.startChapter;
+      const bookId = wordToBookId.get(wordId) ?? startBookId;
+      const ch = offsetChapter(bookId, rawCh);
       for (const br of arr) {
         allBreaks.push({ wordId, level: br.level, chapter: ch, verse: br.verse, extendedThrough: null });
       }
     }
 
-    return computeSectionRanges(allBreaks, bookMaxVerses, osisBook);
-  }, [sceneBreakMap, bookSceneBreaks, bookMaxVerses, wordToChapter, passage.startChapter, passage.endChapter, osisBook, passageChapterSet]);
+    const rawResult = computeSectionRanges(allBreaks, bookMaxVerses, osisBook);
+    if (endBookId == null) return rawResult;
+
+    // Un-offset endChapter back to the real per-book chapter number before
+    // this map is used for display (outline range labels, in-reading-pane
+    // section dividers) — the offset above exists only to make
+    // computeSectionRanges' internal arithmetic work, it must not leak into
+    // rendered output. Any endChapter beyond the start book's chapter count
+    // is unambiguously an offset end-book chapter (start-book chapters can
+    // never exceed startBookChapterCount).
+    const result = new Map<string, { endChapter: number; endVerse: number }>();
+    for (const [key, range] of rawResult) {
+      const endChapter = range.endChapter > startBookChapterCount
+        ? range.endChapter - startBookChapterCount
+        : range.endChapter;
+      result.set(key, { endChapter, endVerse: range.endVerse });
+    }
+    return result;
+  }, [sceneBreakMap, bookSceneBreaks, bookMaxVerses, wordToChapter, wordToBookId, endBookId, startBookId, startBookChapterCount, passage.startChapter, passage.endChapter, osisBook, passageChapterSet]);
 
   // ── Find-in-page hits ─────────────────────────────────────────────────────
   const findHitIds = useMemo<string[]>(() => {
@@ -837,11 +898,14 @@ export default function PassageView({
 
   // findTvHitIds / findHitSetFull / findAllHitIds / findFocusId declared after activeTranslationVerseMap
 
-  // ── Verse groups keyed by "chapter:verse" (for speech section handler) ────
+  // ── Verse groups keyed by "bookId:chapter:verse" (for speech section handler) ──
+  // Keyed by bookId as well as chapter/verse — raw chapter:verse alone can
+  // collide across a cross-book passage boundary (e.g. both books have a
+  // "1:1"), which would silently merge two unrelated verses' word lists.
   const chapterVerseGroups = useMemo(() => {
     const map = new Map<string, Word[]>();
     for (const w of words) {
-      const key = `${w.chapter}:${w.verse}`;
+      const key = `${w.bookId}:${w.chapter}:${w.verse}`;
       if (!map.has(key)) map.set(key, []);
       map.get(key)!.push(w);
     }
@@ -850,31 +914,41 @@ export default function PassageView({
 
   // ── Ordered verse list for rendering & prev/next lookups ─────────────────
   const orderedVerses = useMemo(() => {
-    const byChapter = new Map<number, Map<number, Word[]>>();
+    // Keyed by (bookId, chapter) composite so two books that happen to share
+    // a raw chapter number (e.g. both "chapter 1") don't get merged into one
+    // group — see lib/utils/chapterKey.ts.
+    const byChapter = new Map<string, { bookId: number; ch: number; verses: Map<number, Word[]> }>();
     for (const w of words) {
-      if (!byChapter.has(w.chapter)) byChapter.set(w.chapter, new Map());
-      const byVerse = byChapter.get(w.chapter)!;
-      if (!byVerse.has(w.verse)) byVerse.set(w.verse, []);
-      byVerse.get(w.verse)!.push(w);
+      const key = chapterKey(w.bookId, w.chapter);
+      let entry = byChapter.get(key);
+      if (!entry) {
+        entry = { bookId: w.bookId, ch: w.chapter, verses: new Map() };
+        byChapter.set(key, entry);
+      }
+      if (!entry.verses.has(w.verse)) entry.verses.set(w.verse, []);
+      entry.verses.get(w.verse)!.push(w);
     }
     // Cross-book passages have two independent chapter sequences (e.g. 1Sam ch31,
     // then 2Sam ch1–5). Sorting numerically would interleave them incorrectly
     // (ch1 < ch31). Preserve insertion order instead; within each chapter, verses
     // are always monotonically increasing so sorting is still safe.
     const isCrossBook = !!(passage.endBook && passage.endBook !== passage.book);
-    const result: { ch: number; v: number; words: Word[] }[] = [];
+    const result: { bookId: number; book: string; ch: number; v: number; words: Word[] }[] = [];
     const chapterEntries = isCrossBook
-      ? byChapter.entries()
-      : [...byChapter.entries()].sort(([a], [b]) => a - b);
-    for (const [ch, byVerse] of chapterEntries)
-      for (const [v, vWords] of [...byVerse.entries()].sort(([a], [b]) => a - b))
-        result.push({ ch, v, words: vWords });
+      ? byChapter.values()
+      : [...byChapter.values()].sort((a, b) => a.ch - b.ch);
+    for (const entry of chapterEntries) {
+      const book = bookIdToOsis.get(entry.bookId) ?? osisBook;
+      for (const [v, vWords] of [...entry.verses.entries()].sort(([a], [b]) => a - b))
+        result.push({ bookId: entry.bookId, book, ch: entry.ch, v, words: vWords });
+    }
     return result;
-  }, [words, passage.endBook, passage.book]);
+  }, [words, passage.endBook, passage.book, bookIdToOsis, osisBook]);
 
   // Whether this passage actually spans multiple chapters
   const isMultiChapter = orderedVerses.length > 0 &&
-    orderedVerses[orderedVerses.length - 1].ch !== orderedVerses[0].ch;
+    (orderedVerses[orderedVerses.length - 1].ch !== orderedVerses[0].ch ||
+     orderedVerses[orderedVerses.length - 1].bookId !== orderedVerses[0].bookId);
 
   // True when the passage covers exactly one full chapter (verse 1 through the last verse)
   const isWholeChapter = !isMultiChapter &&
@@ -883,7 +957,9 @@ export default function PassageView({
     orderedVerses[0].v === 1 &&
     orderedVerses[orderedVerses.length - 1].v === maxVerseOfStartChapter;
 
-  // Track visible verses for notes-sync scroll (keyed by "chapter:verse")
+  // Track visible verses for notes-sync scroll (keyed by "bookId:chapter:verse" —
+  // bookId disambiguates chapter/verse numbers that collide across a cross-book
+  // passage boundary, e.g. both books having a "1:1")
   useEffect(() => {
     if (!notesOpen) return;
     visibleVersesRef.current.clear();
@@ -899,15 +975,16 @@ export default function PassageView({
       syncTimerRef.current = setTimeout(() => {
         if (!notesSyncedRef.current || visibleVersesRef.current.size === 0) return;
         const keys = [...visibleVersesRef.current];
-        // Sort by chapter then verse numerically
+        // Sort by bookId, then chapter, then verse, numerically
         keys.sort((a, b) => {
-          const [ac, av] = a.split(":").map(Number);
-          const [bc, bv] = b.split(":").map(Number);
+          const [aBook, ac, av] = a.split(":").map(Number);
+          const [bBook, bc, bv] = b.split(":").map(Number);
+          if (aBook !== bBook) return aBook - bBook;
           return ac !== bc ? ac - bc : av - bv;
         });
         const parts = keys[0].split(":");
-        const ch = parseInt(parts[0]);
-        const v  = parseInt(parts[1]);
+        const ch = parseInt(parts[1]);
+        const v  = parseInt(parts[2]);
         if (!isNaN(ch) && !isNaN(v)) setNotesScrollVerse({ ch, v });
       }, 300);
     }, { threshold: 0.1 });
@@ -1795,7 +1872,7 @@ export default function PassageView({
   async function handleToggleSpeechSection(word: Word, _shiftHeld = false) {
     if (activeCharId === null) return;
 
-    const cvKey = `${word.chapter}:${word.verse}`;
+    const cvKey = `${word.bookId}:${word.chapter}:${word.verse}`;
     const splitIntoSegments = (vWords: Word[]): Word[][] => {
       const segs: Word[][] = [];
       let cur: Word[] = [];
@@ -1817,7 +1894,7 @@ export default function PassageView({
       return;
     }
 
-    const startCvKey = `${speechRangeStart.chapter}:${speechRangeStart.verse}`;
+    const startCvKey = `${speechRangeStart.bookId}:${speechRangeStart.chapter}:${speechRangeStart.verse}`;
     const startVerseWords = chapterVerseGroups.get(startCvKey) ?? [speechRangeStart];
     const startSeg = findSeg(speechRangeStart.wordId, startVerseWords);
     const posMap = new Map(words.map((w, i) => [w.wordId, i]));
@@ -2817,6 +2894,12 @@ export default function PassageView({
 
   const outlineBreaksForPane = useMemo(() => {
     // Start with book-wide breaks for chapters outside the passage (live state overrides passage chapters)
+    // NOTE: for cross-book passages, passageChapterSet mixes raw chapter numbers
+    // from both books (e.g. {30, 31, 1, 2} for a 1Sam30–2Sam2 passage), so this
+    // filter can spuriously exclude an unrelated start-book break whose raw
+    // chapter number happens to match a covered end-book chapter (e.g. an
+    // unrelated 1 Sam ch1 break, if the passage covers 2 Sam ch1). Narrow,
+    // pre-existing edge case — not fixed here, see lib/utils/chapterKey.ts.
     const result: { wordId: string; heading: string | null; level: number; chapter: number; verse: number; positionInVerse: number; thematic: boolean; thematicLetter: string | null; transitional: boolean }[] =
       bookSceneBreaks
         .filter((b) => !passageChapterSet.has(b.chapter))
@@ -4077,11 +4160,13 @@ export default function PassageView({
             }}
           >
             {orderedVerses.map((verse, idx) => {
-              const isFirstOfChapter = idx === 0 || orderedVerses[idx - 1].ch !== verse.ch;
+              const isFirstOfChapter = idx === 0 ||
+                orderedVerses[idx - 1].ch !== verse.ch ||
+                orderedVerses[idx - 1].bookId !== verse.bookId;
               const prev = orderedVerses[idx - 1];
               const next = orderedVerses[idx + 1];
               return (
-                <div key={`${verse.ch}:${verse.v}`} data-passage-verse-key={`${verse.ch}:${verse.v}`}>
+                <div key={`${verse.bookId}:${verse.ch}:${verse.v}`} data-passage-verse-key={`${verse.bookId}:${verse.ch}:${verse.v}`}>
                   {/* Chapter heading — only shown for multi-chapter passages, not in presentation mode */}
                   {isMultiChapter && isFirstOfChapter && !presentationMode && (
                     <h2
@@ -4119,7 +4204,7 @@ export default function PassageView({
                     editingSpeech={editingSpeech}
                     activeCharId={activeCharId}
                     speechRangeStartWordId={speechRangeStart?.wordId ?? null}
-                    book={osisBook}
+                    book={verse.book}
                     chapter={verse.ch}
                     onSelectTranslationWord={handleSelectTranslationWord}
                     onToggleTranslationParagraphBreak={handleToggleTranslationParagraphBreak}
