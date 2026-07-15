@@ -8,8 +8,9 @@ export interface UseAnnotationRangeOptions {
   book: string;
   textSource: string;
   /**
-   * Resolves a segWordId to the chapter number used for API POST calls.
-   * ChapterDisplay passes `() => chapter`; PassageView uses its `wordToChapter` map.
+   * Resolves a segWordId to the chapter number used for API POST calls —
+   * built from a wordId → chapter map so it stays correct across a
+   * multi-chapter passage, not just a single chapter.
    */
   getChapterForWord: (wordId: string) => number;
   /**

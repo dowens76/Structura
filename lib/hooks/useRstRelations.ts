@@ -25,14 +25,14 @@ export interface UseRstRelationsOptions {
   book: string;
   textSource: string;
   /**
-   * Resolves a segWordId (or groupId) to the chapter number for API calls.
-   * ChapterDisplay passes `() => chapter`; PassageView uses its wordToChapter map.
+   * Resolves a segWordId (or groupId) to the chapter number for API calls —
+   * built from a wordId → chapter map so it stays correct across a
+   * multi-chapter passage, not just a single chapter.
    */
   getChapterForWord: (wordId: string) => number;
   /**
-   * When true, the hook manages a parallel tv-side relation list and a linked/unlinked
-   * toggle (ChapterDisplay behaviour). When false, only the source relations are managed
-   * (PassageView behaviour).
+   * When true, the hook manages a parallel tv-side relation list and a
+   * linked/unlinked toggle. When false, only the source relations are managed.
    */
   supportsLinkedTrees: boolean;
 }

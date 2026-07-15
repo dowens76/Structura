@@ -113,16 +113,18 @@ interface ChapterDisplayProps {
   // cross-book passages where two books can share raw chapter numbers.
   bookSceneBreaks: { wordId: string; heading: string | null; level: number; chapter: number; verse: number; positionInVerse: number; extendedThrough: number | null; thematic: boolean; thematicLetter: string | null; transitional: boolean; bookId: number }[];
   bookMaxVerses: Map<number, number>;
-  /** Base verse text from data/ult.db (empty if not imported). */
-  ultBaseVerses?: { verse: number; text: string }[];
+  /** Base verse text from data/ult.db (empty if not imported). `chapter` is
+   *  omitted by the plain chapter page (falls back to the `chapter` prop) and
+   *  set per-entry by the passage page, since a passage can span chapters. */
+  ultBaseVerses?: { chapter?: number; verse: number; text: string }[];
   /** The Translation record for ULT in user.db (null if not imported). */
   ultTranslation?: Translation | null;
   /** Base verse text from data/vcb.db (empty if not imported). */
-  vcbBaseVerses?: { verse: number; text: string }[];
+  vcbBaseVerses?: { chapter?: number; verse: number; text: string }[];
   /** The Translation record for VCB in user.db (null if not imported). */
   vcbTranslation?: Translation | null;
   /** Reconstructed verse texts from lxx.db for showing LXX in the translation column. */
-  lxxBaseVerses?: { verse: number; text: string }[];
+  lxxBaseVerses?: { chapter?: number; verse: number; text: string }[];
   /** Per-verse LXX Word arrays for word-token rendering and TC marking. */
   lxxVerseWords?: Map<number, import("@/lib/db/source-schema").Word[]>;
   /** The Translation record for LXX in user.db (null if lxx.db unavailable). */
@@ -156,8 +158,7 @@ const DEFAULT_FILTER: GrammarFilterState = {
 // (derived from sceneBreakMap with real per-word chapters). Passing sceneBreakMap
 // too would tag every live break with the constant `chapter` prop, corrupting
 // entries for any other covered chapter — so it's swapped for this empty map
-// (and `chapter` for -1) whenever isMultiChapter is true. See PassageView.tsx,
-// which established this same pattern.
+// (and `chapter` for -1) whenever isMultiChapter is true.
 const EMPTY_SCENE_BREAK_MAP: Map<string, never[]> = new Map();
 
 // ── Persistent settings helpers ───────────────────────────────────────────
@@ -643,6 +644,17 @@ export default function ChapterDisplay({
       .finally(() => setLoadingPred(false));
   }, [outlinePredecessorShown, predecessorBook, predDataLoaded, textSource]);
 
+  // Raw chapter number → bookId, for tagging the synthetic ULT/VCB/LXX records
+  // below with a real bookId (instead of a constant placeholder) so they key
+  // consistently with activeTranslationVerseMap's (bookId, chapter, verse)
+  // lookup. Ambiguous only in the rare case where a cross-book passage's two
+  // books share a raw chapter number — same accepted-limitation class as
+  // outlineBreaksForPane's cross-book filter.
+  const chapterToBookId = useMemo(
+    () => new Map(words.map((w) => [w.chapter, w.bookId])),
+    [words]
+  );
+
   // ── Translation text editing ───────────────────────────────────────────────
   // Local mutable copy of translationVerseData so edits can be reflected immediately.
   // If ULT/VCB base verses are provided, merge them in: user edits (from user.db) take
@@ -653,15 +665,16 @@ export default function ChapterDisplay({
     if (ultTranslation && ultBaseVerses.length > 0) {
       const ultId = ultTranslation.id;
       const editedMap = new Map(
-        (data[ultId] ?? []).map((v) => [v.verse, v])
+        (data[ultId] ?? []).map((v) => [`${v.chapter}:${v.verse}`, v])
       );
       const merged: TranslationVerse[] = ultBaseVerses.map((base, i) => {
-        return editedMap.get(base.verse) ?? {
+        const ch = base.chapter ?? chapter;
+        return editedMap.get(`${ch}:${base.verse}`) ?? {
           id: -(i + 1),                    // synthetic — not yet saved to user.db
           workspaceId: ultTranslation.workspaceId,
           translationId: ultId,
-          osisRef: `${book}.${chapter}.${base.verse}`,
-          bookId: 0, chapter,
+          osisRef: `${book}.${ch}.${base.verse}`,
+          bookId: chapterToBookId.get(ch) ?? startBookId, chapter: ch,
           verse: base.verse,
           text: base.text,
         };
@@ -672,15 +685,16 @@ export default function ChapterDisplay({
     if (vcbTranslation && vcbBaseVerses.length > 0) {
       const vcbId = vcbTranslation.id;
       const editedMap = new Map(
-        (data[vcbId] ?? []).map((v) => [v.verse, v])
+        (data[vcbId] ?? []).map((v) => [`${v.chapter}:${v.verse}`, v])
       );
       const merged: TranslationVerse[] = vcbBaseVerses.map((base, i) => {
-        return editedMap.get(base.verse) ?? {
+        const ch = base.chapter ?? chapter;
+        return editedMap.get(`${ch}:${base.verse}`) ?? {
           id: -(i + 1),                    // synthetic — not yet saved to user.db
           workspaceId: vcbTranslation.workspaceId,
           translationId: vcbId,
-          osisRef: `${book}.${chapter}.${base.verse}`,
-          bookId: 0, chapter,
+          osisRef: `${book}.${ch}.${base.verse}`,
+          bookId: chapterToBookId.get(ch) ?? startBookId, chapter: ch,
           verse: base.verse,
           text: base.text,
         };
@@ -691,15 +705,16 @@ export default function ChapterDisplay({
     if (lxxTranslation && lxxBaseVerses.length > 0) {
       const lxxId = lxxTranslation.id;
       const editedMap = new Map(
-        (data[lxxId] ?? []).map((v) => [v.verse, v])
+        (data[lxxId] ?? []).map((v) => [`${v.chapter}:${v.verse}`, v])
       );
       const merged: TranslationVerse[] = lxxBaseVerses.map((base, i) => {
-        return editedMap.get(base.verse) ?? {
+        const ch = base.chapter ?? chapter;
+        return editedMap.get(`${ch}:${base.verse}`) ?? {
           id: -(i + 1),
           workspaceId: lxxTranslation.workspaceId,
           translationId: lxxId,
-          osisRef: `${book}.${chapter}.${base.verse}`,
-          bookId: 0, chapter,
+          osisRef: `${book}.${ch}.${base.verse}`,
+          bookId: chapterToBookId.get(ch) ?? startBookId, chapter: ch,
           verse: base.verse,
           text: base.text,
         };
@@ -1107,47 +1122,6 @@ export default function ChapterDisplay({
       .catch(() => {});
   }, []);
 
-  // ── Load constituent labels for current chapter ───────────────────────────
-  useEffect(() => {
-    if (displayMode !== "interlinear" || interlinearSubMode !== "constituent") return;
-    fetch(
-      `/api/interlinear/constituent-labels?workspaceId=1&book=${encodeURIComponent(book)}&chapter=${chapter}&textSource=${encodeURIComponent(textSource)}`
-    )
-      .then((r) => r.json())
-      .then((rows: { wordId: string; label: string }[]) =>
-        setConstituentLabelMap(new Map(rows.map((r) => [r.wordId, r.label])))
-      )
-      .catch(() => {});
-  }, [displayMode, interlinearSubMode, book, chapter, textSource]);
-
-  // ── Load dataset entries for active dataset + current chapter ─────────────
-  useEffect(() => {
-    if (displayMode !== "interlinear") return;
-    if (typeof interlinearSubMode !== "object" || interlinearSubMode.type !== "dataset") return;
-    const dsId = interlinearSubMode.id;
-    fetch(
-      `/api/interlinear/datasets/${dsId}/entries?book=${encodeURIComponent(book)}&chapter=${chapter}&textSource=${encodeURIComponent(textSource)}`
-    )
-      .then((r) => r.json())
-      .then((rows: { wordId: string; value: string }[]) =>
-        setDatasetEntryMap(new Map(rows.map((r) => [r.wordId, r.value])))
-      )
-      .catch(() => {});
-  }, [displayMode, interlinearSubMode, book, chapter, textSource]);
-
-  // ── Load transliteration formats for current chapter ─────────────────────
-  useEffect(() => {
-    if (displayMode !== "interlinear" || interlinearSubMode !== "transliteration") return;
-    fetch(
-      `/api/interlinear/transliteration-formats?workspaceId=1&book=${encodeURIComponent(book)}&chapter=${chapter}&textSource=${encodeURIComponent(textSource)}`
-    )
-      .then((r) => r.json())
-      .then((rows: { wordId: string; format: string }[]) =>
-        setTransliterationFormatMap(new Map(rows.map((r) => [r.wordId, r.format])))
-      )
-      .catch(() => {});
-  }, [displayMode, interlinearSubMode, book, chapter, textSource]);
-
   // Fetch custom RST types on mount
   useEffect(() => {
     fetch("/api/rst-custom-types")
@@ -1247,12 +1221,55 @@ export default function ChapterDisplay({
     return map;
   }, [words]);
 
-  // Verse numbers within the URL-anchored `chapter` — used by the F8/F9 nav
-  // and a few other single-chapter-scoped call sites below.
-  const verseNums = useMemo(
-    () => orderedVerses.filter((ov) => ov.ch === chapter && ov.bookId === startBookId).map((ov) => ov.v),
-    [orderedVerses, chapter, startBookId]
-  );
+  // Distinct (book, chapter) groups actually covered by `words` — degenerates
+  // to a single {book, chapter} entry for the ordinary single-chapter case.
+  const coveredBookChapters = useMemo(() => {
+    const seen = new Map<string, { book: string; ch: number }>();
+    for (const ov of orderedVerses) {
+      const key = chapterKey(ov.bookId, ov.ch);
+      if (!seen.has(key)) seen.set(key, { book: ov.book, ch: ov.ch });
+    }
+    return [...seen.values()];
+  }, [orderedVerses]);
+
+  // ── Load constituent labels for all chapters currently loaded ─────────────
+  useEffect(() => {
+    if (displayMode !== "interlinear" || interlinearSubMode !== "constituent") return;
+    Promise.all(coveredBookChapters.map((g) =>
+      fetch(`/api/interlinear/constituent-labels?workspaceId=1&book=${encodeURIComponent(g.book)}&chapter=${g.ch}&textSource=${encodeURIComponent(textSource)}`)
+        .then((r) => r.json())
+        .then((rows: { wordId: string; label: string }[]) => rows)
+    ))
+      .then((all) => setConstituentLabelMap(new Map(all.flat().map((r) => [r.wordId, r.label]))))
+      .catch(() => {});
+  }, [displayMode, interlinearSubMode, coveredBookChapters, textSource]);
+
+  // ── Load dataset entries for active dataset across all chapters loaded ────
+  useEffect(() => {
+    if (displayMode !== "interlinear") return;
+    if (typeof interlinearSubMode !== "object" || interlinearSubMode.type !== "dataset") return;
+    const dsId = interlinearSubMode.id;
+    Promise.all(coveredBookChapters.map((g) =>
+      fetch(`/api/interlinear/datasets/${dsId}/entries?book=${encodeURIComponent(g.book)}&chapter=${g.ch}&textSource=${encodeURIComponent(textSource)}`)
+        .then((r) => r.json())
+        .then((rows: { wordId: string; value: string }[]) => rows)
+    ))
+      .then((all) => setDatasetEntryMap(new Map(all.flat().map((r) => [r.wordId, r.value]))))
+      .catch(() => {});
+  }, [displayMode, interlinearSubMode, coveredBookChapters, textSource]);
+
+  // ── Load transliteration formats for all chapters currently loaded ────────
+  useEffect(() => {
+    if (displayMode !== "interlinear" || interlinearSubMode !== "transliteration") return;
+    Promise.all(coveredBookChapters.map((g) =>
+      fetch(`/api/interlinear/transliteration-formats?workspaceId=1&book=${encodeURIComponent(g.book)}&chapter=${g.ch}&textSource=${encodeURIComponent(textSource)}`)
+        .then((r) => r.json())
+        .then((rows: { wordId: string; format: string }[]) => rows)
+    ))
+      .then((all) => setTransliterationFormatMap(new Map(all.flat().map((r) => [r.wordId, r.format]))))
+      .catch(() => {});
+  }, [displayMode, interlinearSubMode, coveredBookChapters, textSource]);
+
   // PassageNotesPane's ordered-verse shape — the full loaded range, so a
   // multi-chapter passage gets a note section per chapter, not just the
   // URL-anchored one.
@@ -1263,8 +1280,7 @@ export default function ChapterDisplay({
 
   // True when the loaded words cover exactly one whole chapter (verse 1
   // through the last verse) — always true for the ordinary single-chapter
-  // case; for a passage, only when it happens to span exactly one full
-  // chapter (mirrors PassageView.tsx's isWholeChapter).
+  // case; for a passage, only when it happens to span exactly one full chapter.
   const isWholeChapter = !isMultiChapter && (
     !isPassageMode || (
       orderedVerses.length > 0 &&
@@ -1390,7 +1406,7 @@ export default function ChapterDisplay({
   // to their real per-word chapter (not the single `chapter` prop). Passed via
   // OutlinePane's bookSceneBreaks prop (with sceneBreakMap swapped for the empty
   // map and chapter for -1) so OutlinePane's own single-chapter merge logic is a
-  // no-op — see PassageView.tsx's outlineBreaksForPane for the same pattern.
+  // no-op.
   const outlineBreaksForPane = useMemo(() => {
     const result: { wordId: string; heading: string | null; level: number; chapter: number; verse: number; positionInVerse: number; thematic: boolean; thematicLetter: string | null; transitional: boolean }[] =
       bookSceneBreaks
@@ -1547,62 +1563,73 @@ export default function ChapterDisplay({
     return result;
   }, [words, speechSections]);
 
-  // Build verseNum → TranslationTextEntry[] for active translations
+  // Build "bookId:chapter:verse" composite key → TranslationTextEntry[] for
+  // active translations. Keyed by the full composite, not verse alone, so two
+  // chapters that share a raw verse number (true of nearly every multi-chapter
+  // passage) don't have their translation text collide — same class of bug
+  // fixed for scene breaks/sections in Phase 0/2, applied here since it's
+  // directly visible in the main reading view.
   const activeTranslationVerseMap = useMemo(() => {
-    const map = new Map<number, TranslationTextEntry[]>();
+    const map = new Map<string, TranslationTextEntry[]>();
     for (const t of allAvailableTranslations) {
       if (!activeTranslationIds.has(t.id)) continue;
       const verses = localTranslationVerseData[t.id] ?? [];
-      // Deduplicate by verse number (DB has no unique constraint on translationId+verse).
+      // Deduplicate by (bookId, chapter, verse) — DB has no unique constraint.
       // Keep the highest-id row, which is the most recent insert.
-      const deduped = new Map<number, typeof verses[0]>();
+      const deduped = new Map<string, typeof verses[0]>();
       for (const tv of verses) {
-        const prev = deduped.get(tv.verse);
-        if (!prev || tv.id > prev.id) deduped.set(tv.verse, tv);
+        const key = `${chapterKey(tv.bookId, tv.chapter)}:${tv.verse}`;
+        const prev = deduped.get(key);
+        if (!prev || tv.id > prev.id) deduped.set(key, tv);
       }
       for (const tv of deduped.values()) {
-        const existing = map.get(tv.verse) ?? [];
+        const key = `${chapterKey(tv.bookId, tv.chapter)}:${tv.verse}`;
+        const existing = map.get(key) ?? [];
         const entry: TranslationTextEntry = { abbr: t.abbreviation, text: tv.text, translationId: t.id };
         // Attach LXX word tokens so the translation column can render them individually.
         if (t.abbreviation === "LXX" && lxxVerseWords) {
           entry.words = lxxVerseWords.get(tv.verse);
         }
         existing.push(entry);
-        map.set(tv.verse, existing);
+        map.set(key, existing);
       }
     }
     return map;
   }, [activeTranslationIds, allAvailableTranslations, localTranslationVerseData, lxxVerseWords]);
 
-  // When editing, every verse gets entries for all active translations (empty where no data yet).
+  // When editing, every loaded verse gets entries for all active translations
+  // (empty where no data yet) — across every chapter currently loaded, not
+  // just the URL-anchored one.
   const editingTranslationVerseMap = useMemo(() => {
     if (!editingTranslation) return activeTranslationVerseMap;
     const activeList = allAvailableTranslations.filter((t) => activeTranslationIds.has(t.id));
-    const map = new Map<number, TranslationTextEntry[]>();
-    for (const verseNum of verseNums) {
-      const existing = activeTranslationVerseMap.get(verseNum) ?? [];
+    const map = new Map<string, TranslationTextEntry[]>();
+    for (const ov of orderedVerses) {
+      const key = `${chapterKey(ov.bookId, ov.ch)}:${ov.v}`;
+      const existing = activeTranslationVerseMap.get(key) ?? [];
       const existingAbbrs = new Set(existing.map((e) => e.abbr));
       const empties = activeList
         .filter((t) => !existingAbbrs.has(t.abbreviation))
         .map((t) => ({ abbr: t.abbreviation, text: "", translationId: t.id }));
-      map.set(verseNum, [...existing, ...empties]);
+      map.set(key, [...existing, ...empties]);
     }
     return map;
-  }, [editingTranslation, activeTranslationVerseMap, allAvailableTranslations, activeTranslationIds, verseNums]);
+  }, [editingTranslation, activeTranslationVerseMap, allAvailableTranslations, activeTranslationIds, orderedVerses]);
 
-  // Build abbr → ordered list of TV word IDs for shift-click range selection
+  // Build abbr → ordered list of TV word IDs for shift-click range selection,
+  // across every chapter currently loaded.
   const tvWordIdLists = useMemo(() => {
     const map = new Map<string, string[]>();
-    const verseNums = [...activeTranslationVerseMap.keys()].sort((a, b) => a - b);
-    for (const verseNum of verseNums) {
-      const entries = activeTranslationVerseMap.get(verseNum) ?? [];
+    for (const ov of orderedVerses) {
+      const key = `${chapterKey(ov.bookId, ov.ch)}:${ov.v}`;
+      const entries = activeTranslationVerseMap.get(key) ?? [];
       for (const { abbr, text, words: tvWords } of entries) {
         let list = map.get(abbr);
         if (!list) { list = []; map.set(abbr, list); }
         if (tvWords && tvWords.length > 0) {
           // LXX: use the actual word array rather than text tokens
           for (let wi = 0; wi < tvWords.length; wi++) {
-            list.push(`tv:${abbr}:${book}.${chapter}.${verseNum}.${wi}`);
+            list.push(`tv:${abbr}:${ov.book}.${ov.ch}.${ov.v}.${wi}`);
           }
         } else {
           const tokens = text
@@ -1610,13 +1637,13 @@ export default function ChapterDisplay({
             .filter(Boolean)
             .flatMap((t) => t.split(/(?<=\u2014)(?=.)/));
           for (let wi = 0; wi < tokens.length; wi++) {
-            list.push(`tv:${abbr}:${book}.${chapter}.${verseNum}.${wi}`);
+            list.push(`tv:${abbr}:${ov.book}.${ov.ch}.${ov.v}.${wi}`);
           }
         }
       }
     }
     return map;
-  }, [activeTranslationVerseMap, book, chapter]);
+  }, [activeTranslationVerseMap, orderedVerses]);
 
   const hasActiveTranslations = activeTranslationIds.size > 0;
 
@@ -1664,19 +1691,19 @@ export default function ChapterDisplay({
     const q = normalizeForSearch(findQuery);
     if (!q) return [];
     const hits: string[] = [];
-    const verseNums = [...activeTranslationVerseMap.keys()].sort((a, b) => a - b);
-    for (const verseNum of verseNums) {
-      for (const { abbr, text } of activeTranslationVerseMap.get(verseNum) ?? []) {
+    for (const ov of orderedVerses) {
+      const key = `${chapterKey(ov.bookId, ov.ch)}:${ov.v}`;
+      for (const { abbr, text } of activeTranslationVerseMap.get(key) ?? []) {
         const tokens = text.split(/\s+/).filter(Boolean).flatMap((t) => t.split(/(?<=—)(?=.)/));
         tokens.forEach((token, wi) => {
           if (normalizeForSearch(token).includes(q)) {
-            hits.push(`tv:${abbr}:${book}.${chapter}.${verseNum}.${wi}`);
+            hits.push(`tv:${abbr}:${ov.book}.${ov.ch}.${ov.v}.${wi}`);
           }
         });
       }
     }
     return hits;
-  }, [activeTranslationVerseMap, book, chapter, findQuery]);
+  }, [activeTranslationVerseMap, orderedVerses, findQuery]);
 
   // Combined hit set for highlighting (source + translation)
   const findHitSet = useMemo(() => {
@@ -3447,17 +3474,16 @@ export default function ChapterDisplay({
    * Returns footnotes for a given (translationId, verse) sorted by wordIndex asc,
    * then id asc — the same order as the `\fn \fn*` markers in the verse text.
    *
-   * KNOWN LIMITATION (deferred, matching the same class of issue already
-   * flagged in PassageView.tsx's activeTranslationVerseMap): this filters by
-   * verse only, not (chapter, verse), so once `words` spans more than one
-   * chapter, footnotes for the same verse number in two different chapters
-   * would collide. Translation verse data (translationVerseData,
-   * localTranslationVerseData, editingTranslationVerseMap) and the footnote
-   * dialog state (fnDialogVerse) are verse-only keyed throughout this
-   * component for the same reason — fixing this needs a coordinated pass
-   * across all of them plus page.tsx's per-translation verse fetch, not a
-   * local patch here. Not exercised today since no caller feeds multi-chapter
-   * data through yet.
+   * KNOWN LIMITATION (deferred): this filters by verse only, not (chapter,
+   * verse), so once `words` spans more than one chapter, footnotes for the
+   * same verse number in two different chapters would collide. The footnote
+   * dialog state (fnDialogVerse) is verse-only keyed throughout this
+   * component for the same reason. (Translation verse text itself —
+   * translationVerseData, localTranslationVerseData, editingTranslationVerseMap,
+   * activeTranslationVerseMap — is already (bookId, chapter, verse) keyed;
+   * only the footnote-specific lookups below remain verse-only.) Fixing this
+   * needs a coordinated pass across the footnote dialog/CRUD handlers plus
+   * page.tsx's per-translation footnote fetch, not a local patch here.
    */
   function sortedVerseFootnotes(translationId: number, verse: number): TranslationFootnote[] {
     return (localFootnotes[translationId] ?? [])
@@ -3613,9 +3639,8 @@ export default function ChapterDisplay({
   }
 
   async function copyTranslationText() {
-    const verseNums = [...activeTranslationVerseMap.keys()].sort((a, b) => a - b);
-    if (verseNums.length === 0) return;
-    // Build plain text: one block per active translation abbreviation
+    if (orderedVerses.length === 0) return;
+    // Build plain text: one block per (book, chapter, translation abbreviation)
     const abbrSet = new Set<string>();
     for (const entries of activeTranslationVerseMap.values()) {
       for (const e of entries) abbrSet.add(e.abbr);
@@ -3623,10 +3648,17 @@ export default function ChapterDisplay({
     const abbrs = [...abbrSet];
     const chunks: string[] = [];
     for (const abbr of abbrs) {
-      chunks.push(`${t(`books.${book}` as Parameters<typeof t>[0]) || book} ${chapter} (${abbr})`);
-      for (const v of verseNums) {
-        const entry = (activeTranslationVerseMap.get(v) ?? []).find((e) => e.abbr === abbr);
-        if (entry?.text) chunks.push(`${v} ${entry.text}`);
+      let lastCh: number | null = null;
+      let lastBookId: number | null = null;
+      for (const ov of orderedVerses) {
+        if (ov.ch !== lastCh || ov.bookId !== lastBookId) {
+          chunks.push(`${t(`books.${ov.book}` as Parameters<typeof t>[0]) || ov.book} ${ov.ch} (${abbr})`);
+          lastCh = ov.ch;
+          lastBookId = ov.bookId;
+        }
+        const key = `${chapterKey(ov.bookId, ov.ch)}:${ov.v}`;
+        const entry = (activeTranslationVerseMap.get(key) ?? []).find((e) => e.abbr === abbr);
+        if (entry?.text) chunks.push(`${ov.v} ${entry.text}`);
       }
     }
     const plain = chunks.join("\n");
@@ -5216,7 +5248,7 @@ export default function ChapterDisplay({
                 selectedWordId={selectedWord?.wordId ?? null}
                 isHebrew={isHebrew}
                 showTooltips={showTooltips}
-                translationTexts={editingTranslationVerseMap.get(verseNum) ?? []}
+                translationTexts={editingTranslationVerseMap.get(`${chapterKey(verse.bookId, verse.ch)}:${verse.v}`) ?? []}
                 hasActiveTranslations={hasActiveTranslations}
                 translationVerseOffset={translationVerseOffset}
                 translationVerseLabelFn={translationVerseLabelFn}

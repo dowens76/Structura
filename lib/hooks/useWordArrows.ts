@@ -18,9 +18,9 @@ export interface UseWordArrowsOptions {
   book: string;
   textSource: string;
   /**
-   * Resolves a wordId to the chapter number used for API POST calls.
-   * ChapterDisplay passes `() => chapter` (always the single chapter prop).
-   * PassageView builds a `wordToChapter` map and also parses `tv:` token IDs.
+   * Resolves a wordId to the chapter number used for API POST calls — built
+   * from a wordId → chapter map (with a `tv:` token ID fallback) so it stays
+   * correct across a multi-chapter passage, not just a single chapter.
    */
   getChapterForWord: (wordId: string) => number;
 }

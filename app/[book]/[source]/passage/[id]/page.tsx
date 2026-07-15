@@ -39,7 +39,7 @@ import { getActiveWorkspaceId } from "@/lib/workspace";
 import { OSIS_BOOK_NAMES, OSIS_REF_BOOK_NAMES, CONTIGUOUS_BOOK_PAIRS, CONTIGUOUS_BOOK_PREV } from "@/lib/utils/osis";
 import type { TextSource } from "@/lib/morphology/types";
 import type { TranslationVerse, TranslationFootnote } from "@/lib/db/schema";
-import PassageView from "@/components/passage/PassageView";
+import ChapterDisplay from "@/components/text/ChapterDisplay";
 import PassageNavButtons from "@/components/passage/PassageNavButtons";
 import ThemeToggle from "@/components/ThemeToggle";
 import SettingsButton from "@/components/SettingsButton";
@@ -326,7 +326,6 @@ export default async function PassagePage({ params, searchParams }: PageProps) {
   // Display metadata ───────────────────────────────────────────────────────
   const bookName    = OSIS_REF_BOOK_NAMES[osisBook] ?? osisBook;
   const endBookName = OSIS_REF_BOOK_NAMES[endOsisBook] ?? endOsisBook;
-  const isHebrew    = bookRecord.language === "hebrew";
 
   // Passage reference string shown in the nav bar for cross-book passages
   const crossBookRef = isCrossBook
@@ -431,22 +430,22 @@ export default async function PassagePage({ params, searchParams }: PageProps) {
 
       {/* Passage content */}
       <div className="flex-1 min-h-0">
-        <PassageView
+        <ChapterDisplay
           key={workspaceId}
           passage={passage}
           words={passageWords}
-          bookName={bookName}
-          isHebrew={isHebrew}
-          chapterCount={bookRecord.chapterCount}
+          book={osisBook}
+          chapter={passage.startChapter}
+          endBook={isCrossBook ? endOsisBook : undefined}
           maxVerseOfStartChapter={maxVerseOfStartChapter}
           maxVerseOfEndChapter={maxVerseOfEndChapter}
           maxVerseOfPrevStartChapter={maxVerseOfPrevStartChapter}
           maxVerseOfPrevEndChapter={maxVerseOfPrevEndChapter}
-          osisBook={osisBook}
           textSource={textSource}
           startBookId={bookRecord.id}
           endBookId={isCrossBook ? endBookRecord.id : undefined}
           startBookChapterCount={bookRecord.chapterCount}
+          sortedBooks={sourceBooks.map((b) => b.osisCode)}
           initialParagraphBreakIds={initialParagraphBreakIds}
           initialCharacters={characters}
           initialCharacterRefs={initialCharacterRefs}
