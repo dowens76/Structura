@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { Word } from "@/lib/db/schema";
 import { getMorphology } from "@/lib/morphology/decode";
 import { formatTense } from "@/lib/morphology/types";
@@ -13,6 +13,10 @@ interface ParseTooltipProps {
   word: Word;
   flipped?: boolean;
   useLinguisticTerms?: boolean;
+  /** Ref to a clipping ancestor (e.g. a narrow side pane) to keep the
+   *  tooltip's left/right edges within. When omitted, the tooltip stays
+   *  centered on the word with no horizontal clamping (existing behavior). */
+  containerRef?: React.RefObject<HTMLElement | null>;
 }
 
 function Row({ label, value }: { label: string; value: string | null | undefined }) {
@@ -25,13 +29,48 @@ function Row({ label, value }: { label: string; value: string | null | undefined
   );
 }
 
-export default function ParseTooltip({ word, flipped = false, useLinguisticTerms = false }: ParseTooltipProps) {
+export default function ParseTooltip({ word, flipped = false, useLinguisticTerms = false, containerRef }: ParseTooltipProps) {
   const isHebrew = word.language === "hebrew";
   const morph = getMorphology(word);
   const displaySurface = (word.surfaceText ?? "").replace(/\//g, "");
 
   const [gloss, setGloss] = useState<string | null>(null);
   const [prefixGlosses, setPrefixGlosses] = useState<Record<string, string | null>>({});
+
+  // When containerRef is given, clamp the tooltip's horizontal position so it
+  // doesn't overflow past that ancestor's edges (which, in a narrow side pane
+  // clipped by overflow:hidden, would otherwise make part of it invisible).
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const [shiftX, setShiftX] = useState(0);
+  const shiftXRef = useRef(0);
+
+  useLayoutEffect(() => {
+    if (!containerRef?.current || !wrapperRef.current) { setShiftX(0); shiftXRef.current = 0; return; }
+
+    // getBoundingClientRect() reflects the CURRENT transform, so back out
+    // whatever shift is already applied (tracked in shiftXRef, not the
+    // `shiftX` state, to avoid re-running this effect on every shift change)
+    // to get the tooltip's natural, centered position. Recomputing from that
+    // fixed reference every time keeps this idempotent — measuring the
+    // already-shifted rect directly (without backing it out) fed into
+    // itself and caused an infinite update loop.
+    const tipRect = wrapperRef.current.getBoundingClientRect();
+    const naturalLeft = tipRect.left - shiftXRef.current;
+
+    const margin = 6;
+    const containerRect = containerRef.current.getBoundingClientRect();
+    const minLeft = containerRect.left + margin;
+    const maxLeft = containerRect.right - margin - tipRect.width;
+    // Clamp into [minLeft, maxLeft] in one step (rather than checking each
+    // edge separately) so correcting one side's overflow can never itself
+    // push the other side out of bounds. When the container is narrower
+    // than the tooltip + margins, maxLeft < minLeft and this falls back to
+    // favoring the right edge — an unavoidable compromise, not a bug.
+    const clampedLeft = Math.min(Math.max(naturalLeft, minLeft), maxLeft);
+    const shift = clampedLeft - naturalLeft;
+    shiftXRef.current = shift;
+    setShiftX(shift);
+  });
 
   useEffect(() => {
     // Greek: look up by lemma. Hebrew: look up by Strong's number.
@@ -118,6 +157,7 @@ export default function ParseTooltip({ word, flipped = false, useLinguisticTerms
           className={`text-lg leading-tight ${isHebrew ? "text-hebrew text-right" : "text-greek"}`}
           dir={isHebrew ? "rtl" : "ltr"}
           lang={isHebrew ? "he" : "grc"}
+          style={{ color: "#f5f5f4" /* stone-100 — .text-hebrew/[lang] force color: var(--foreground), which is unreadable on this box's black background */ }}
         >
           {displaySurface}
         </div>
@@ -126,6 +166,7 @@ export default function ParseTooltip({ word, flipped = false, useLinguisticTerms
             className={`text-stone-400 text-xs mt-0.5 ${isHebrew ? "text-hebrew" : "text-greek"}`}
             dir={isHebrew ? "rtl" : "ltr"}
             lang={isHebrew ? "he" : "grc"}
+            style={{ color: "#a8a29e" /* stone-400, same override reason as above */ }}
           >
             {word.lemma}
           </div>
@@ -186,8 +227,9 @@ export default function ParseTooltip({ word, flipped = false, useLinguisticTerms
 
   return (
     <div
-      className={`absolute left-1/2 -translate-x-1/2 z-50 pointer-events-none flex flex-col ${flipped ? "top-full mt-1" : "bottom-full mb-1"}`}
-      style={{ minWidth: "180px" }}
+      ref={wrapperRef}
+      className={`absolute left-1/2 z-50 pointer-events-none flex flex-col ${flipped ? "top-full mt-1" : "bottom-full mb-1"}`}
+      style={{ minWidth: "180px", transform: `translateX(calc(-50% + ${shiftX}px))` }}
     >
       {flipped ? arrowUp : null}
       {box}
