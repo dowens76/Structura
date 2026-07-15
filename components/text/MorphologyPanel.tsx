@@ -10,6 +10,7 @@ interface MorphologyPanelProps {
   word: Word | null;
   useLinguisticTerms?: boolean;
   onSearchRequest?: (query: string, source: string) => void;
+  onScriptureRefClick?: (osisRef: string, lexiconSource: string) => void;
 }
 
 function Field({ label, value }: { label: string; value: string | null | undefined }) {
@@ -22,7 +23,7 @@ function Field({ label, value }: { label: string; value: string | null | undefin
   );
 }
 
-export default function MorphologyPanel({ word, useLinguisticTerms = false, onSearchRequest }: MorphologyPanelProps) {
+export default function MorphologyPanel({ word, useLinguisticTerms = false, onSearchRequest, onScriptureRefClick }: MorphologyPanelProps) {
   const [prefixLookup, setPrefixLookup] = useState<string | null>(null);
 
   useEffect(() => {
@@ -204,10 +205,16 @@ export default function MorphologyPanel({ word, useLinguisticTerms = false, onSe
           strongNumber={word.strongNumber}
           isHebrew={true}
           prefixOverride={prefixLookup}
+          onScriptureRefClick={onScriptureRefClick}
         />
       )}
       {!isHebrew && word.lemma && (
-        <LexiconPane wordLemma={word.lemma} isHebrew={false} textSource={word.textSource} />
+        <LexiconPane
+          wordLemma={word.lemma}
+          isHebrew={false}
+          textSource={word.textSource}
+          onScriptureRefClick={onScriptureRefClick}
+        />
       )}
 
       {/* Word ID */}

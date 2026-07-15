@@ -22,6 +22,7 @@ import PassageNotesPane from "@/components/notes/PassageNotesPane";
 import SearchPane from "@/components/search/SearchPane";
 import OutlinePane from "@/components/text/OutlinePane";
 import BibleLookupPane from "@/components/bible/BibleLookupPane";
+import PassagePreviewPane from "@/components/text/PassagePreviewPane";
 import IntertextualPanel from "@/components/text/IntertextualPanel";
 import ResizablePane from "@/components/ResizablePane";
 import RstTypeManager from "@/components/controls/RstTypeManager";
@@ -145,6 +146,8 @@ interface ChapterDisplayProps {
   initialPresentationMode?: boolean;
   /** When true, hide the sticky toolbar entirely (for clean iframe embeds). */
   hideToolbar?: boolean;
+  /** Verse to scroll to on initial load (driven by the ?v= URL param). */
+  initialVerse?: number;
 }
 
 const DEFAULT_FILTER: GrammarFilterState = {
@@ -220,6 +223,7 @@ export default function ChapterDisplay({
   sortedBooks = [],
   initialPresentationMode = false,
   hideToolbar = false,
+  initialVerse,
 }: ChapterDisplayProps) {
   const { t, locale, refBookName } = useTranslation();
   const router = useRouter();
@@ -288,6 +292,8 @@ export default function ChapterDisplay({
   const syncTimerRef     = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [bibleOpen, setBibleOpen] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewRequest, setPreviewRequest] = useState<{ osisRef: string; lexiconSource: string; nonce: number } | null>(null);
   const [intertextualOpen, setIntertextualOpen] = useState(false);
   const [searchHits, setSearchHits] = useState<Set<string>>(new Set());
   const [searchRequest, setSearchRequest] = useState<{ query: string; source: string; nonce: number } | null>(null);
@@ -451,6 +457,13 @@ export default function ChapterDisplay({
   const handleSearchFromWord = useCallback((query: string, source: string) => {
     setSearchOpen(true);
     setSearchRequest({ query, source, nonce: Date.now() });
+  }, []);
+
+  /** Called by MorphologyPanel/LexiconPane when the user clicks a scripture
+   *  citation embedded in a lexicon entry (e.g. BDB's "Jb 8:12"). */
+  const handleScriptureRefClick = useCallback((osisRef: string, lexiconSource: string) => {
+    setPreviewOpen(true);
+    setPreviewRequest({ osisRef, lexiconSource, nonce: Date.now() });
   }, []);
 
   /** Called when the user clicks a lemma in interlinear mode. */
@@ -1007,6 +1020,18 @@ export default function ChapterDisplay({
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [router]);
+
+  // Scroll to the ?v= verse on initial load (e.g. arriving from a lexicon
+  // citation's "Open in main view" link). The keydown-driven verse-jump above
+  // only reads ?v= reactively; this handles the one-time initial deep link.
+  useEffect(() => {
+    if (!initialVerse) return;
+    const t = setTimeout(() => {
+      document.getElementById(`verse-${initialVerse}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 50);
+    return () => clearTimeout(t);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Keep live-value refs in sync for the static keydown listener (non-find ones only;
   // findHitIds/findFocusId refs are updated below, after those values are declared)
@@ -5564,6 +5589,19 @@ export default function ChapterDisplay({
         </ResizablePane>
       )}
 
+      {/* Passage preview pane — opened from a scripture citation clicked inside a lexicon entry */}
+      {previewOpen && previewRequest && (
+        <ResizablePane storageKey="pane-passage-preview-width" defaultWidth={340} minWidth={260} maxWidth={700}>
+          <PassagePreviewPane
+            key={previewRequest.nonce}
+            osisRef={previewRequest.osisRef}
+            lexiconSource={previewRequest.lexiconSource}
+            useLinguisticTerms={useLinguisticTerms}
+            onClose={() => setPreviewOpen(false)}
+          />
+        </ResizablePane>
+      )}
+
       {/* Intertextual links pane */}
       {intertextualOpen && (
         <ResizablePane storageKey="pane-intertextual-width" defaultWidth={340} minWidth={260} maxWidth={700}>
@@ -5641,7 +5679,7 @@ export default function ChapterDisplay({
                 </button>
               </div>
               <div className="flex-1 overflow-y-auto">
-                <MorphologyPanel word={selectedWord} useLinguisticTerms={useLinguisticTerms} onSearchRequest={handleSearchFromWord} />
+                <MorphologyPanel word={selectedWord} useLinguisticTerms={useLinguisticTerms} onSearchRequest={handleSearchFromWord} onScriptureRefClick={handleScriptureRefClick} />
               </div>
             </div>
           </ResizablePane>

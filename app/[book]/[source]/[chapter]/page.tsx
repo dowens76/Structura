@@ -50,10 +50,13 @@ interface PageProps {
 
 export default async function ChapterPage({ params, searchParams }: PageProps) {
   const { book, source, chapter: chapterStr } = await params;
-  const { par, present, toolbar } = await searchParams;
+  const { par, present, toolbar, v } = await searchParams;
   const chapter = parseInt(chapterStr, 10);
   const initialPresentationMode = present !== undefined;
   const hideToolbar = toolbar === "0";
+  const vStr = Array.isArray(v) ? v[0] : v;
+  const parsedInitialVerse = vStr ? parseInt(vStr, 10) : NaN;
+  const initialVerse = Number.isFinite(parsedInitialVerse) ? parsedInitialVerse : undefined;
 
   if (isNaN(chapter) || chapter < 1) notFound();
 
@@ -408,6 +411,7 @@ export default async function ChapterPage({ params, searchParams }: PageProps) {
             sortedBooks={sourceBooks.map((b) => b.osisCode)}
             initialPresentationMode={initialPresentationMode}
             hideToolbar={hideToolbar}
+            initialVerse={initialVerse}
             headingSlot={
               <div
                 key="chapter-heading"

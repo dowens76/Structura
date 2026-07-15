@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import type { LexiconEntry } from "@/lib/db/schema";
 import { getGreekLexicon, getHebrewLexicon } from "@/components/SettingsButton";
+import { parseLexiconOsisRef, splitStepBibleMultiRef } from "@/lib/utils/lexiconRef";
 
 interface LexiconPaneProps {
   wordLemma?: string | null;    // Greek: look up by lemma (SBLGNT / LXX)
@@ -12,6 +13,9 @@ interface LexiconPaneProps {
   // Letter-keyed BDB particle lookup (e.g. "b", "c") requested from a
   // MorphologyPanel prefix chip; takes priority over strongNumber while set.
   prefixOverride?: string | null;
+  // Called when the user clicks a scripture citation embedded in an entry
+  // (e.g. BDB's "Jb 8:12"). osisRef is a clean "Book.Chapter.Verse" string.
+  onScriptureRefClick?: (osisRef: string, lexiconSource: string) => void;
 }
 
 interface Suggestion {
@@ -94,7 +98,13 @@ function convertTeiNode(node: ChildNode): string {
         return `<sup> [<span>${escHtml(n)}. ${ch()}</span>] </sup>`;
       return `<sup> [<span>${ch()}</span>] </sup>`;
     }
-    case "ref": return ch();
+    case "ref": {
+      const raw = el.getAttribute("osisRef") ?? "";
+      const parsed = parseLexiconOsisRef(raw);
+      if (!parsed) return ch();
+      const osisRef = `${parsed.book}.${parsed.chapter}.${parsed.verse}`;
+      return `<span class="as-ref lexicon-ref-link" data-scripture-ref="${escHtml(osisRef)}">${ch()}</span>`;
+    }
     default:    return ch();
   }
 }
@@ -126,6 +136,8 @@ const ABBOTT_SMITH_CSS = `
 .abbott-smith-entry .sense .sense { border-left: none; padding-left: 0; display: inline; }
 .abbott-smith-entry .re { margin: 0.5em 0 0.5em 1.5em; font-family: serif; }
 .abbott-smith-entry .re .sense { border-left: none; padding-left: 0; margin: 0; display: inline; }
+.abbott-smith-entry .lexicon-ref-link { cursor: pointer; }
+.abbott-smith-entry .lexicon-ref-link:hover { text-decoration: underline; }
 `;
 
 let cssInjected = false;
@@ -166,6 +178,8 @@ const LSJ_CSS = `
 /* Citation spans */
 .lsj-entry .lsj-cite { color: #888; font-size: 0.8em; }
 .dark .lsj-entry .lsj-cite { color: #555; }
+.lsj-entry .lexicon-ref-link { cursor: pointer; }
+.lsj-entry .lexicon-ref-link:hover { text-decoration: underline; }
 `;
 
 let lsjCssInjected = false;
@@ -224,13 +238,37 @@ function convertLsjNode(node: ChildNode): string {
   }
 }
 
+// STEPBible's raw text uses non-standard single-quoted <ref='...'> tags for
+// scripture citations (distinct from Perseus TEI's <ref> for cross-references
+// to other headwords, handled separately in convertLsjNode). May bundle
+// multiple refs in one tag, semicolon-separated.
+const STEPBIBLE_REF_RE = /<ref=['"]([^'"]+)['"]>([\s\S]*?)<\/ref>/gi;
+
+function linkifyStepBibleRefs(html: string): string {
+  return html.replace(STEPBIBLE_REF_RE, (_match, rawAttr: string, label: string) => {
+    if (rawAttr.includes(";")) {
+      const segs = splitStepBibleMultiRef(rawAttr, label);
+      if (segs) {
+        return segs
+          .map((s) => `<span class="lsj-ref-link lexicon-ref-link" data-scripture-ref="${escHtml(s.osisRef)}">${s.label}</span>`)
+          .join(", ");
+      }
+      return label; // ambiguous multi-ref — leave as plain text
+    }
+    const parsed = parseLexiconOsisRef(rawAttr);
+    if (!parsed) return label;
+    const osisRef = `${parsed.book}.${parsed.chapter}.${parsed.verse}`;
+    return `<span class="lsj-ref-link lexicon-ref-link" data-scripture-ref="${escHtml(osisRef)}">${label}</span>`;
+  });
+}
+
 function lsjXmlToHtml(xml: string): string {
   if (!xml) return "";
   // STEPBible format: definition is already HTML (starts with <b> or similar tags).
   // Legacy Perseus format: definition is TEI XML (starts with <entryFree).
   if (!xml.trimStart().startsWith("<entryFree")) {
     // Convert STEPBible's custom Level tags to styled divs and strip __ indent markers.
-    const html = xml
+    const html = linkifyStepBibleRefs(xml)
       .replace(/<Level2>([\s\S]*?)<\/Level2>/gi, '<div class="lsj-level-2">$1</div>')
       .replace(/<Level3>([\s\S]*?)<\/Level3>/gi, '<div class="lsj-level-3">$1</div>')
       .replace(/<Level4>([\s\S]*?)<\/Level4>/gi, '<div class="lsj-level-4">$1</div>')
@@ -263,6 +301,8 @@ const BDB_CSS = `
 .bdb-ref { color: #888; font-size: 0.9em; }
 .dark .bdb-stem { color: #d97706; }
 .dark .bdb-ref { color: #666; }
+.bdb-entry .lexicon-ref-link { cursor: pointer; }
+.bdb-entry .lexicon-ref-link:hover { text-decoration: underline; }
 `;
 
 let bdbCssInjected = false;
@@ -304,7 +344,13 @@ function convertBdbNode(node: ChildNode): string {
       if (BDB_RTL_LANGS.has(lang)) return `<bdo dir="rtl"><span class="bdb-foreign-rtl">${ch()}</span></bdo>`;
       return `<span class="bdb-foreign">${ch()}</span>`;
     }
-    case "ref":    return `<span class="bdb-ref">${ch()}</span>`;
+    case "ref": {
+      const raw = el.getAttribute("r") ?? "";
+      const parsed = parseLexiconOsisRef(raw);
+      if (!parsed) return `<span class="bdb-ref">${ch()}</span>`;
+      const osisRef = `${parsed.book}.${parsed.chapter}.${parsed.verse}`;
+      return `<span class="bdb-ref lexicon-ref-link" data-scripture-ref="${escHtml(osisRef)}">${ch()}</span>`;
+    }
     case "em":     return `<em>${ch()}</em>`;
     case "page":   return "";
     case "status": return "";
@@ -330,13 +376,22 @@ function EntryDisplay({
   abbottHtml,
   lsjHtml,
   bdbHtml,
+  onScriptureRefClick,
 }: {
   entry: LexiconEntry | null | "loading";
   isHebrew: boolean;
   abbottHtml: string;
   lsjHtml: string;
   bdbHtml: string;
+  onScriptureRefClick?: (osisRef: string, lexiconSource: string) => void;
 }) {
+  function handleRefClick(e: React.MouseEvent<HTMLDivElement>) {
+    if (!onScriptureRefClick || !entry || entry === "loading") return;
+    const target = (e.target as HTMLElement).closest<HTMLElement>("[data-scripture-ref]");
+    const ref = target?.dataset.scriptureRef;
+    if (ref) onScriptureRefClick(ref, entry.source ?? "");
+  }
+
   if (entry === "loading") {
     return (
       <div className="space-y-2 animate-pulse mt-3">
@@ -402,6 +457,7 @@ function EntryDisplay({
       <div className="mt-3">
         <div
           className="abbott-smith-entry"
+          onClick={handleRefClick}
           // eslint-disable-next-line react/no-danger
           dangerouslySetInnerHTML={{ __html: abbottHtml || "" }}
         />
@@ -424,6 +480,7 @@ function EntryDisplay({
           </p>
         )}
         <div
+          onClick={handleRefClick}
           // eslint-disable-next-line react/no-danger
           dangerouslySetInnerHTML={{ __html: lsjHtml || "" }}
         />
@@ -454,6 +511,7 @@ function EntryDisplay({
         )}
         <div
           className="bdb-entry"
+          onClick={handleRefClick}
           // eslint-disable-next-line react/no-danger
           dangerouslySetInnerHTML={{ __html: bdbHtml || "" }}
         />
@@ -511,7 +569,7 @@ function EntryDisplay({
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export default function LexiconPane({ wordLemma, strongNumber, isHebrew, textSource, prefixOverride }: LexiconPaneProps) {
+export default function LexiconPane({ wordLemma, strongNumber, isHebrew, textSource, prefixOverride, onScriptureRefClick }: LexiconPaneProps) {
   const isLxx = textSource === "STEPBIBLE_LXX";
 
   const [entry, setEntry]           = useState<LexiconEntry | null | "loading">("loading");
@@ -859,7 +917,7 @@ export default function LexiconPane({ wordLemma, strongNumber, isHebrew, textSou
       </div>
 
       {/* Entry content */}
-      <EntryDisplay entry={entry} isHebrew={isHebrew} abbottHtml={abbottHtml} lsjHtml={lsjHtml} bdbHtml={bdbHtml} />
+      <EntryDisplay entry={entry} isHebrew={isHebrew} abbottHtml={abbottHtml} lsjHtml={lsjHtml} bdbHtml={bdbHtml} onScriptureRefClick={onScriptureRefClick} />
     </div>
   );
 }
