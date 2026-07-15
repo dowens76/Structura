@@ -10,35 +10,27 @@ import {
   getChapterMaxVerse,
   getCharacters,
   getWordTags,
-  getChapterParagraphBreaks,
-  getChapterCharacterRefs,
-  getChapterSpeechSections,
-  getChapterWordTagRefs,
-  getChapterLineIndents,
   getAvailableTranslationsForChapter,
-  getTranslationVerses,
   getUltVerses,
   getUltTranslation,
   getVcbVerses,
   getVcbTranslation,
   getLxxVerseTexts,
   getLxxTranslation,
-  getChapterRstRelations,
-  getChapterWordArrows,
-  getChapterWordFormatting,
-  getChapterSceneBreaks,
-  getChapterLineAnnotations,
-  getChapterTranslationFootnotes,
-  getChapterTextCriticalMarks,
-  getBookSceneBreaks,
-  getBookChapterMaxVerses,
-  getGroupedBooksFor,
   getWorkspaceById,
 } from "@/lib/db/queries";
+import {
+  getScriptureLocusEditingData,
+  getScriptureLocusUserTranslationVerses,
+  getScriptureLocusFootnotes,
+  getScriptureLocusBuiltInTranslation,
+  getScriptureLocusBookWideData,
+  getCharTagBookPool,
+  type ChapterLocus,
+} from "@/lib/db/scriptureLocus";
 import { getActiveWorkspaceId } from "@/lib/workspace";
-import { OSIS_BOOK_NAMES, OSIS_REF_BOOK_NAMES, CONTIGUOUS_BOOK_PAIRS, CONTIGUOUS_BOOK_PREV } from "@/lib/utils/osis";
+import { OSIS_BOOK_NAMES, OSIS_REF_BOOK_NAMES } from "@/lib/utils/osis";
 import type { TextSource } from "@/lib/morphology/types";
-import type { TranslationVerse, TranslationFootnote } from "@/lib/db/schema";
 import ChapterDisplay from "@/components/text/ChapterDisplay";
 import PassageNavButtons from "@/components/passage/PassageNavButtons";
 import ThemeToggle from "@/components/ThemeToggle";
@@ -98,8 +90,7 @@ export default async function PassagePage({ params, searchParams }: PageProps) {
   // For a single-book passage: chapters startChapter..endChapter in osisBook.
   // For a cross-book passage: chapters startChapter..endOfStartBook in osisBook,
   //   then chapters 1..endChapter in endOsisBook.
-  type ChapterEntry = { book: string; chapter: number };
-  const chapterEntries: ChapterEntry[] = [];
+  const chapterEntries: ChapterLocus[] = [];
 
   if (!isCrossBook) {
     for (let ch = passage.startChapter; ch <= passage.endChapter; ch++) {
@@ -118,25 +109,10 @@ export default async function PassagePage({ params, searchParams }: PageProps) {
   // ── Books to query for characters / word-tags ─────────────────────────────
   // Union: hardcoded contiguous-pair canonical books + user-defined grouping
   // members for each book involved in this passage.
-  const [groupedBooksStart, groupedBooksEnd] = await Promise.all([
-    getGroupedBooksFor(osisBook, workspaceId),
-    isCrossBook ? getGroupedBooksFor(endOsisBook, workspaceId) : Promise.resolve([] as string[]),
-  ]);
-
-  const _siblingStart = (CONTIGUOUS_BOOK_PAIRS[osisBook]    ?? CONTIGUOUS_BOOK_PREV[osisBook])    ?? null;
-  const _siblingEnd   = isCrossBook
-    ? ((CONTIGUOUS_BOOK_PAIRS[endOsisBook] ?? CONTIGUOUS_BOOK_PREV[endOsisBook]) ?? null)
-    : null;
-
-  const charTagSet = new Set<string>([
-    osisBook,
-    ...(_siblingStart ? [_siblingStart] : []),
-    ...groupedBooksStart,
-    ...(isCrossBook ? [endOsisBook] : []),
-    ...(_siblingEnd ? [_siblingEnd] : []),
-    ...groupedBooksEnd,
-  ]);
-  const charTagBooks: string | string[] = charTagSet.size === 1 ? osisBook : [...charTagSet];
+  const charTagBooks = await getCharTagBookPool(
+    isCrossBook ? [osisBook, endOsisBook] : [osisBook],
+    workspaceId
+  );
 
   // ── Pre-fetch words and supporting data ────────────────────────────────────
   const [
@@ -147,11 +123,8 @@ export default async function PassagePage({ params, searchParams }: PageProps) {
     maxVerseOfPrevEndChapter,
     characters,
     wordTags,
-    bookSceneBreaks,
-    endBookSceneBreaks,
-    bookMaxVerses,
-    endBookMaxVerses,
-    perChapterResults,
+    bookWideData,
+    editingData,
   ] = await Promise.all([
     getPassageWords(
       osisBook, textSource,
@@ -171,157 +144,61 @@ export default async function PassagePage({ params, searchParams }: PageProps) {
     // share the same pool (e.g. 1Sam+2Sam, or user-defined Pentateuch group).
     getCharacters(charTagBooks, workspaceId),
     getWordTags(charTagBooks, workspaceId),
-    getBookSceneBreaks(osisBook, textSource, workspaceId),
-    isCrossBook ? getBookSceneBreaks(endOsisBook, textSource, workspaceId) : Promise.resolve([]),
-    getBookChapterMaxVerses(osisBook, textSource),
-    isCrossBook ? getBookChapterMaxVerses(endOsisBook, textSource) : Promise.resolve(new Map<number, number>()),
-    // Per-chapter editing data — use the correct book for each entry
-    Promise.all(
-      chapterEntries.map(({ book: entryBook, chapter: ch }) =>
-        Promise.all([
-          getChapterParagraphBreaks(entryBook, ch, workspaceId),
-          getChapterCharacterRefs(entryBook, ch, workspaceId),
-          getChapterSpeechSections(entryBook, ch, textSource, workspaceId),
-          getChapterWordTagRefs(entryBook, ch, workspaceId),
-          getChapterLineIndents(entryBook, ch, workspaceId),
-          getChapterRstRelations(entryBook, ch, textSource, workspaceId),
-          getChapterWordArrows(entryBook, ch, textSource, workspaceId),
-          getChapterWordFormatting(entryBook, ch, workspaceId),
-          getChapterSceneBreaks(entryBook, ch, workspaceId),
-          getChapterLineAnnotations(entryBook, ch, textSource, workspaceId),
-        ])
-      )
+    getScriptureLocusBookWideData(
+      isCrossBook
+        ? [
+            { osisBook, bookId: bookRecord.id, chapterCount: bookRecord.chapterCount },
+            { osisBook: endOsisBook, bookId: endBookRecord.id, chapterCount: endBookRecord.chapterCount },
+          ]
+        : [{ osisBook, bookId: bookRecord.id, chapterCount: bookRecord.chapterCount }],
+      textSource, workspaceId
     ),
+    getScriptureLocusEditingData(chapterEntries, textSource, workspaceId),
   ]);
 
   // (characters and wordTags already cover all canonical books via charTagBooks)
 
-  // Flatten per-chapter editing data
-  const initialParagraphBreakIds = perChapterResults.flatMap(([p]) => p);
-  const initialCharacterRefs     = perChapterResults.flatMap(([, r]) => r);
-  const initialSpeechSections    = perChapterResults.flatMap(([,, s]) => s);
-  const initialWordTagRefs       = perChapterResults.flatMap(([,,, t]) => t);
-  const initialLineIndents       = perChapterResults.flatMap(([,,,, l]) => l);
-  const initialRstRelations      = perChapterResults.flatMap(([,,,,, cr]) => cr);
-  const initialWordArrows        = perChapterResults.flatMap(([,,,,,, wa]) => wa);
-  const initialWordFormatting    = perChapterResults.flatMap(([,,,,,,, wf]) => wf);
-  const initialSceneBreaks       = perChapterResults.flatMap(([,,,,,,,, sb]) => sb);
-  const initialLineAnnotations   = perChapterResults.flatMap(([,,,,,,,,, la]) => la);
+  const {
+    initialParagraphBreakIds, initialCharacterRefs, initialSpeechSections,
+    initialWordTagRefs, initialLineIndents, initialRstRelations,
+    initialWordArrows, initialWordFormatting, initialSceneBreaks,
+    initialLineAnnotations, initialTextCriticalMarks,
+  } = editingData;
 
-  // Merge cross-book scene breaks and max verses. Chapters stay in each
-  // break's own book's raw numbering (needed so PassageView's book-wide
-  // outline/filtering logic, which compares raw chapter numbers, keeps
-  // working) — each entry is tagged with its owning bookId instead, so
-  // PassageView.tsx's sectionRanges computation can offset only the specific
-  // entries it feeds into computeSectionRanges (which does raw chapter
-  // arithmetic and needs a single monotonic numbering to cross a book
-  // boundary correctly).
-  const startBookLastCh = bookRecord.chapterCount;
-  const allBookSceneBreaks = [
-    ...bookSceneBreaks.map((b) => ({ ...b, bookId: bookRecord.id })),
-    ...endBookSceneBreaks.map((b) => ({ ...b, bookId: endBookRecord.id })),
-  ];
-  const mergedBookMaxVerses = new Map<number, number>(bookMaxVerses);
-  if (isCrossBook) {
-    for (const [ch, mv] of endBookMaxVerses) {
-      mergedBookMaxVerses.set(ch + startBookLastCh, mv);
-    }
-  }
+  // Book-wide scene breaks/max-verses, merged across 1 or 2 books. Chapters
+  // in `bookSceneBreaks` stay in each break's own book's raw numbering
+  // (needed so the outline pane's book-wide filtering, which compares raw
+  // chapter numbers, keeps working) — each entry is tagged with its owning
+  // bookId instead, so ChapterDisplay's sectionRanges computation can offset
+  // only the specific entries it feeds into computeSectionRanges (which does
+  // raw chapter arithmetic and needs a single monotonic numbering to cross a
+  // book boundary correctly). `bookMaxVerses` is pre-offset by the helper.
+  const { bookSceneBreaks: allBookSceneBreaks, bookMaxVerses: mergedBookMaxVerses } = bookWideData;
 
   // ── Translations ───────────────────────────────────────────────────────────
   const availableTranslations = await getAvailableTranslationsForChapter(osisBook, passage.startChapter);
-  const translationVerseData: Record<number, TranslationVerse[]> = {};
-  await Promise.all(
-    availableTranslations.map(async (t) => {
-      const versesPerEntry = await Promise.all(
-        chapterEntries.map(({ book: entryBook, chapter: ch }) =>
-          getTranslationVerses(t.id, entryBook, ch)
-        )
-      );
-      translationVerseData[t.id] = versesPerEntry.flat();
-    })
-  );
+  const translationVerseData = await getScriptureLocusUserTranslationVerses(chapterEntries, availableTranslations);
+  const initialTranslationFootnotes = await getScriptureLocusFootnotes(chapterEntries, availableTranslations);
 
-  // ── ULT ────────────────────────────────────────────────────────────────────
-  const ultBaseVerses: { chapter: number; verse: number; text: string }[] = [];
-  let ultTranslation: Awaited<ReturnType<typeof getUltTranslation>> = null;
-  for (const { book: entryBook, chapter: ch } of chapterEntries) {
-    const verses = getUltVerses(entryBook, ch);
-    for (const v of verses) ultBaseVerses.push({ ...v, chapter: ch });
-  }
-  if (ultBaseVerses.length > 0) {
-    ultTranslation = await getUltTranslation();
-    if (ultTranslation !== null) {
-      const ultEditsPerEntry = await Promise.all(
-        chapterEntries.map(({ book: entryBook, chapter: ch }) =>
-          getTranslationVerses(ultTranslation!.id, entryBook, ch)
-        )
-      );
-      translationVerseData[ultTranslation.id] = ultEditsPerEntry.flat();
-    }
-  }
+  // ULT/VCB/LXX: built-in base text + any user overrides/footnotes
+  const [ult, vcb, lxx] = await Promise.all([
+    getScriptureLocusBuiltInTranslation(chapterEntries, getUltVerses, () => getUltTranslation()),
+    getScriptureLocusBuiltInTranslation(chapterEntries, getVcbVerses, () => getVcbTranslation(workspaceId)),
+    getScriptureLocusBuiltInTranslation(chapterEntries, getLxxVerseTexts, () => getLxxTranslation()),
+  ]);
+  const { baseVerses: ultBaseVerses, translation: ultTranslation } = ult;
+  const { baseVerses: vcbBaseVerses, translation: vcbTranslation } = vcb;
+  const { baseVerses: lxxBaseVerses, translation: lxxTranslation } = lxx;
 
-  // ── VCB ────────────────────────────────────────────────────────────────────
-  const vcbBaseVerses: { chapter: number; verse: number; text: string }[] = [];
-  let vcbTranslation: Awaited<ReturnType<typeof getVcbTranslation>> = null;
-  for (const { book: entryBook, chapter: ch } of chapterEntries) {
-    const verses = getVcbVerses(entryBook, ch);
-    for (const v of verses) vcbBaseVerses.push({ ...v, chapter: ch });
+  for (const t of [ultTranslation, vcbTranslation, lxxTranslation]) {
+    if (!t) continue;
+    const [verses, footnotes] = await Promise.all([
+      getScriptureLocusUserTranslationVerses(chapterEntries, [t]),
+      getScriptureLocusFootnotes(chapterEntries, [t]),
+    ]);
+    Object.assign(translationVerseData, verses);
+    Object.assign(initialTranslationFootnotes, footnotes);
   }
-  if (vcbBaseVerses.length > 0) {
-    vcbTranslation = await getVcbTranslation(workspaceId);
-    if (vcbTranslation !== null) {
-      const vcbEditsPerEntry = await Promise.all(
-        chapterEntries.map(({ book: entryBook, chapter: ch }) =>
-          getTranslationVerses(vcbTranslation!.id, entryBook, ch)
-        )
-      );
-      translationVerseData[vcbTranslation.id] = vcbEditsPerEntry.flat();
-    }
-  }
-
-  // ── LXX ────────────────────────────────────────────────────────────────────
-  const lxxBaseVerses: { chapter: number; verse: number; text: string }[] = [];
-  let lxxTranslation: Awaited<ReturnType<typeof getLxxTranslation>> = null;
-  for (const { book: entryBook, chapter: ch } of chapterEntries) {
-    const verses = getLxxVerseTexts(entryBook, ch);
-    for (const v of verses) lxxBaseVerses.push({ ...v, chapter: ch });
-  }
-  if (lxxBaseVerses.length > 0) {
-    lxxTranslation = await getLxxTranslation();
-    if (lxxTranslation !== null) {
-      const lxxEditsPerEntry = await Promise.all(
-        chapterEntries.map(({ book: entryBook, chapter: ch }) =>
-          getTranslationVerses(lxxTranslation!.id, entryBook, ch)
-        )
-      );
-      translationVerseData[lxxTranslation.id] = lxxEditsPerEntry.flat();
-    }
-  }
-
-  // ── Text Critical Marks ────────────────────────────────────────────────────
-  const initialTextCriticalMarks = chapterEntries.flatMap(({ book: entryBook, chapter: ch }) =>
-    getChapterTextCriticalMarks(entryBook, ch, workspaceId)
-  );
-
-  // ── Translation footnotes ──────────────────────────────────────────────────
-  const allTranslationsForFootnotes = [
-    ...availableTranslations,
-    ...(ultTranslation ? [ultTranslation] : []),
-    ...(vcbTranslation ? [vcbTranslation] : []),
-    ...(lxxTranslation ? [lxxTranslation] : []),
-  ];
-  const initialTranslationFootnotes: Record<number, TranslationFootnote[]> = {};
-  await Promise.all(
-    allTranslationsForFootnotes.map(async (t) => {
-      const fnPerEntry = await Promise.all(
-        chapterEntries.map(({ book: entryBook, chapter: ch }) =>
-          getChapterTranslationFootnotes(t.id, entryBook, ch)
-        )
-      );
-      initialTranslationFootnotes[t.id] = fnPerEntry.flat();
-    })
-  );
 
   // Display metadata ───────────────────────────────────────────────────────
   const bookName    = OSIS_REF_BOOK_NAMES[osisBook] ?? osisBook;
