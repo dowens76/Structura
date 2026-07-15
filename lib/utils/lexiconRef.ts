@@ -18,12 +18,19 @@ export interface ParsedLexiconRef {
   verse: number;
 }
 
-// STEPBible's LSJ data cites books using its own 3-4 letter abbreviations
-// (e.g. "Exo", "Luk", "Act", "Jhn"), which mostly don't match this app's
-// canonical OSIS codes ("Exod", "Luke", "Acts", "John"). "3Ki"/"4Ki" (LXX
-// Kingdoms numbering) are deliberately omitted — mapping them would require
-// guessing a versification shift, so they fall through and stay plain text.
-const STEPBIBLE_BOOK_ALIASES: Record<string, string> = {
+// Book-abbreviation aliases from the lexicon sources whose citations don't
+// use this app's canonical OSIS codes. Two dialects feed this one table:
+//  - STEPBible's LSJ data uses its own 3-4 letter abbreviations (e.g. "Exo",
+//    "Luk", "Act", "Jhn"). "3Ki"/"4Ki" (LXX Kingdoms numbering) are
+//    deliberately omitted — mapping them would require guessing a
+//    versification shift, so they fall through and stay plain text.
+//  - The full BDB text's `data-ref` citations use a different, shorter
+//    dialect (e.g. "Ge", "Ex", "Nu", "Jam", "Da"), plus a handful of rare
+//    inconsistent alternates for the same books found in the source data
+//    ("Gn"/"Lv"/"Dt"/"Jud"-for-Judges). The two dialects don't collide, so a
+//    single merged table is safe.
+const LEXICON_BOOK_ALIASES: Record<string, string> = {
+  // STEPBible (LSJ)
   Exo: "Exod", Jdg: "Judg", Rut: "Ruth",
   "1Sa": "1Sam", "2Sa": "2Sam", "1Ki": "1Kgs", "2Ki": "2Kgs",
   "1Ch": "1Chr", "2Ch": "2Chr", Est: "Esth", Psa: "Ps", Pro: "Prov",
@@ -32,14 +39,23 @@ const STEPBIBLE_BOOK_ALIASES: Record<string, string> = {
   "1Co": "1Cor", "2Co": "2Cor", Php: "Phil",
   "1Th": "1Thess", "2Th": "2Thess", "1Ti": "1Tim", "2Ti": "2Tim", Tit: "Titus",
   "1Pe": "1Pet", "2Pe": "2Pet", "1Jn": "1John", "2Jn": "2John", "3Jn": "3John",
+  // Full BDB text
+  Ge: "Gen", Ex: "Exod", Le: "Lev", Nu: "Num", De: "Deut", Jos: "Josh",
+  Ru: "Ruth", Ezr: "Ezra", Ne: "Neh", Es: "Esth", Pr: "Prov", Ec: "Eccl",
+  So: "Song", Ct: "Song", Is: "Isa", Je: "Jer", Eze: "Ezek", Da: "Dan",
+  Ho: "Hos", Joe: "Joel", Am: "Amos", Ob: "Obad", Jon: "Jonah", Na: "Nah",
+  Zep: "Zeph", Mt: "Matt", Mk: "Mark", Lu: "Luke", Jn: "John", Ac: "Acts",
+  Ro: "Rom", Ga: "Gal", Jam: "Jas",
+  // Rare inconsistent alternates observed in the full BDB text
+  Gn: "Gen", Lv: "Lev", Dt: "Deut", Jo: "Josh", Jud: "Judg", Ez: "Ezra",
 };
 
 /** Resolves a book code to its canonical OSIS form, trying an exact match
- *  before falling back to the STEPBible alias table. Returns null if neither
- *  recognizes it. */
+ *  before falling back to the lexicon-specific alias table. Returns null if
+ *  neither recognizes it. */
 function resolveBookCode(code: string): string | null {
   if (OSIS_BOOK_NAMES[code]) return code;
-  const alias = STEPBIBLE_BOOK_ALIASES[code];
+  const alias = LEXICON_BOOK_ALIASES[code];
   return alias && OSIS_BOOK_NAMES[alias] ? alias : null;
 }
 
@@ -59,6 +75,7 @@ export function parseLexiconOsisRef(raw: string, inheritedBook?: string): Parsed
   s = s.replace(/^LXX:/i, "");        // stray "LXX:Ps.30.4" prefix
   s = s.split("-")[0].trim();         // ranges "Exod.3.12-Exod.3.15" — take the start
   s = s.split("!")[0].trim();         // sub-verse letters "1Chr.9.8!a"
+  s = s.replace(/^([1-4]?[A-Za-z]+)\s+(?=\d)/, "$1."); // full BDB's "Nu 24:20" (space-separated) -> "Nu.24:20"
   s = s.replace(/:/g, ".").replace(/,/g, "."); // colon/comma typos ("Job.37:23", "Ezra,6,15")
 
   let parts = s.split(".").map((p) => p.trim()).filter(Boolean);

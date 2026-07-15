@@ -303,6 +303,15 @@ const BDB_CSS = `
 .dark .bdb-ref { color: #666; }
 .bdb-entry .lexicon-ref-link { cursor: pointer; }
 .bdb-entry .lexicon-ref-link:hover { text-decoration: underline; }
+/* Full BDB text (scripts/import-bdb-full.ts) — its own span-class vocabulary,
+   distinct from the bdb-w/bdb-pos/etc. classes the OpenScriptures converter
+   above emits, so both coexist in this one scoped stylesheet without collision. */
+.bdb-entry span.hebrew { font-family: "Ezra SIL", "SBL Hebrew", serif; font-size: 1.15em; margin: 0 0.05em; }
+.bdb-entry span.greek { font-family: "Gentium Plus", "SBL Greek", serif; }
+.bdb-entry span.arabic, .bdb-entry span.syriac, .bdb-entry span.samaritan,
+.bdb-entry span.ethiopic, .bdb-entry span.persian { font-style: italic; }
+.bdb-entry span.ref { color: #888; font-size: 0.9em; }
+.dark .bdb-entry span.ref { color: #666; }
 `;
 
 let bdbCssInjected = false;
@@ -366,6 +375,27 @@ function bdbXmlToHtml(xml: string): string {
   } catch {
     return "";
   }
+}
+
+// ── Full BDB text (bdb-full import) — already near-final HTML ────────────────
+// Unlike the OpenScriptures XML above, scripts/import-bdb-full.ts stores the
+// entry's cleaned HTML directly (real <span class="hebrew">/"greek"/etc. tags,
+// <strong>/<em>), so no recursive tag-by-tag conversion is needed — just
+// linkify the source's own `<span class="ref" data-ref="...">` citations into
+// this app's clickable convention, the same way linkifyStepBibleRefs does.
+// Rendered into the same ".bdb-entry" wrapper/scoped stylesheet as the
+// OpenScriptures converter above (see BDB_CSS) — both tag vocabularies
+// coexist there under different class names, so one shared wrapper works.
+
+const BDB_FULL_REF_RE = /<span class="ref" data-ref="([^"]*)">([\s\S]*?)<\/span>/g;
+
+function bdbFullHtmlToDisplay(html: string): string {
+  return html.replace(BDB_FULL_REF_RE, (match, rawRef: string, label: string) => {
+    const parsed = parseLexiconOsisRef(rawRef);
+    if (!parsed) return match; // leave the original span unchanged (still styled as .ref)
+    const osisRef = `${parsed.book}.${parsed.chapter}.${parsed.verse}`;
+    return `<span class="ref lexicon-ref-link" data-scripture-ref="${escHtml(osisRef)}">${label}</span>`;
+  });
 }
 
 // ── Entry display ─────────────────────────────────────────────────────────────
@@ -691,13 +721,19 @@ export default function LexiconPane({ wordLemma, strongNumber, isHebrew, textSou
     setLsjHtml(lsjXmlToHtml(entry.definition));
   }, [entry]);
 
-  // BDB conversion
+  // BDB conversion — dispatches on content shape, not just source, because
+  // the letter-keyed prefix-particle rows (see scripts/import-bdb-full.ts's
+  // header comment) still carry the old OpenScriptures XML wrapper even
+  // after the numeric Strong's-number rows were replaced with bdb-full's
+  // near-final HTML. REVERT: to fully undo the bdb-full swap, change this to
+  // unconditionally call bdbXmlToHtml, matching pre-bdb-full behavior.
   useEffect(() => {
     if (!entry || entry === "loading" || entry.source !== "BDB" || !entry.definition) {
       setBdbHtml(""); return;
     }
     ensureBdbCss();
-    setBdbHtml(bdbXmlToHtml(entry.definition));
+    const isOpenScripturesXml = entry.definition.trimStart().startsWith("<entry");
+    setBdbHtml(isOpenScripturesXml ? bdbXmlToHtml(entry.definition) : bdbFullHtmlToDisplay(entry.definition));
   }, [entry]);
 
   // ── Navigation helpers ─────────────────────────────────────────────────────
