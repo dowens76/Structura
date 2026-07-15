@@ -405,6 +405,7 @@ export default async function ChapterPage({ params, searchParams }: PageProps) {
             book={osisBook}
             chapter={chapter}
             textSource={textSource}
+            startBookId={bookRecord?.id ?? 0}
             availableTranslations={availableTranslations}
             translationVerseData={translationVerseData}
             ultBaseVerses={ultBaseVerses}
@@ -428,7 +429,7 @@ export default async function ChapterPage({ params, searchParams }: PageProps) {
             initialWordFormatting={initialWordFormatting}
             initialSceneBreaks={initialSceneBreaks}
             initialLineAnnotations={initialLineAnnotations}
-            bookSceneBreaks={bookSceneBreaks}
+            bookSceneBreaks={bookSceneBreaks.map((b) => ({ ...b, bookId: bookRecord?.id ?? 0 }))}
             bookMaxVerses={bookMaxVerses}
             initialTranslationFootnotes={initialTranslationFootnotes}
             translationOnly={translationOnly}

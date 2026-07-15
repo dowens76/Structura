@@ -1,9 +1,9 @@
 "use client";
 
-import { useMemo, useState, useEffect, useRef, useCallback } from "react";
+import { useMemo, useState, useEffect, useRef, useCallback, useTransition } from "react";
 import { getMtToKjvInstructions, getKjvVerseLabel } from "@/lib/versification/mt-kjv-mapping";
-import { useRouter } from "next/navigation";
-import type { Word, Character, CharacterRef, SpeechSection, WordTag, WordTagRef, RstRelation, WordArrow, LineAnnotation } from "@/lib/db/schema";
+import { useRouter, useSearchParams } from "next/navigation";
+import type { Word, Character, CharacterRef, SpeechSection, WordTag, WordTagRef, RstRelation, WordArrow, LineAnnotation, Passage } from "@/lib/db/schema";
 import type { Translation, TranslationVerse, TranslationFootnote } from "@/lib/db/schema";
 import type { DisplayMode, GrammarFilterState, TranslationTextEntry, InterlinearSubMode } from "@/lib/morphology/types";
 import VerseDisplay from "./VerseDisplay";
@@ -35,6 +35,7 @@ import { useAnnotationRange } from "@/lib/hooks/useAnnotationRange";
 import { useRstRelations } from "@/lib/hooks/useRstRelations";
 import hebrewLemmas from "@/lib/data/hebrew-lemmas.json";
 import { computeSectionRanges } from "@/lib/utils/sectionRanges";
+import { chapterKey } from "@/lib/utils/chapterKey";
 import { generateOutline } from "@/lib/utils/outlineExport";
 import { useTranslation } from "@/lib/i18n/LocaleContext";
 import { CONTIGUOUS_BOOK_PAIRS, CONTIGUOUS_BOOK_PREV, OSIS_BOOK_NAMES, OSIS_REF_BOOK_NAMES } from "@/lib/utils/osis";
@@ -66,6 +67,33 @@ interface ChapterDisplayProps {
   book: string;
   chapter: number;
   textSource: string;
+  /** Numeric book id of `book`. Used together with `endBookId` to disambiguate
+   *  cross-book chapter-number collisions when `words` spans more than one
+   *  chapter (e.g. both "1 Samuel 1" and "2 Samuel 1" have chapter === 1). */
+  startBookId: number;
+  /** OSIS code of the book `words` extends into, when rendering a cross-book
+   *  passage. Undefined for the ordinary single-chapter/single-book case. */
+  endBook?: string;
+  /** Numeric book id of `endBook`, when this is a cross-book passage. */
+  endBookId?: number;
+  /** Total chapter count of `book`. Used to offset end-book chapter numbers
+   *  onto one monotonic sequence for computeSectionRanges' internal chapter
+   *  arithmetic (see lib/utils/chapterKey.ts) when endBookId is set, and as
+   *  the passage range header's "can extend end" bound when `passage` is set. */
+  startBookChapterCount?: number;
+  /** Present only when rendering a saved passage (multi-chapter, possibly
+   *  cross-book) rather than a plain single chapter — gates the passage-only
+   *  range header (extend/shrink, delete, new-passage prompt, cross-book
+   *  label), rendered in place of `headingSlot`. */
+  passage?: Passage;
+  /** Max verse of passage.startChapter (for shrink-start cross-chapter). */
+  maxVerseOfStartChapter?: number;
+  /** Max verse of passage.endChapter (for extend-end cross-chapter). */
+  maxVerseOfEndChapter?: number;
+  /** Max verse of (startChapter − 1), 0 if startChapter === 1. */
+  maxVerseOfPrevStartChapter?: number;
+  /** Max verse of (endChapter − 1), 0 if endChapter === 1. */
+  maxVerseOfPrevEndChapter?: number;
   availableTranslations: Translation[];
   translationVerseData: Record<number, TranslationVerse[]>;
   initialParagraphBreakIds: string[];
@@ -81,7 +109,9 @@ interface ChapterDisplayProps {
   initialWordFormatting: { wordId: string; isBold: boolean; isItalic: boolean }[];
   initialSceneBreaks: { wordId: string; heading: string | null; level: number; verse: number; outOfSequence: boolean; extendedThrough: number | null; thematic: boolean; thematicLetter: string | null; transitional: boolean }[];
   initialLineAnnotations: LineAnnotation[];
-  bookSceneBreaks: { wordId: string; heading: string | null; level: number; chapter: number; verse: number; positionInVerse: number; extendedThrough: number | null; thematic: boolean; thematicLetter: string | null; transitional: boolean }[];
+  // `bookId` disambiguates which book each break belongs to — required for
+  // cross-book passages where two books can share raw chapter numbers.
+  bookSceneBreaks: { wordId: string; heading: string | null; level: number; chapter: number; verse: number; positionInVerse: number; extendedThrough: number | null; thematic: boolean; thematicLetter: string | null; transitional: boolean; bookId: number }[];
   bookMaxVerses: Map<number, number>;
   /** Base verse text from data/ult.db (empty if not imported). */
   ultBaseVerses?: { verse: number; text: string }[];
@@ -121,6 +151,15 @@ const DEFAULT_FILTER: GrammarFilterState = {
   particle: true, article: true, interjection: true,
 };
 
+// OutlinePane receives sceneBreakMap for live in-chapter edits, but once `words`
+// spans multiple chapters every break is already included in outlineBreaksForPane
+// (derived from sceneBreakMap with real per-word chapters). Passing sceneBreakMap
+// too would tag every live break with the constant `chapter` prop, corrupting
+// entries for any other covered chapter — so it's swapped for this empty map
+// (and `chapter` for -1) whenever isMultiChapter is true. See PassageView.tsx,
+// which established this same pattern.
+const EMPTY_SCENE_BREAK_MAP: Map<string, never[]> = new Map();
+
 // ── Persistent settings helpers ───────────────────────────────────────────
 function readLocal<T>(key: string, fallback: T): T {
   if (typeof window === "undefined") return fallback;
@@ -140,6 +179,15 @@ export default function ChapterDisplay({
   book,
   chapter,
   textSource,
+  startBookId,
+  endBook,
+  endBookId,
+  startBookChapterCount,
+  passage,
+  maxVerseOfStartChapter,
+  maxVerseOfEndChapter,
+  maxVerseOfPrevStartChapter,
+  maxVerseOfPrevEndChapter,
   availableTranslations,
   translationVerseData,
   initialParagraphBreakIds,
@@ -174,6 +222,17 @@ export default function ChapterDisplay({
 }: ChapterDisplayProps) {
   const { t, locale, refBookName } = useTranslation();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const [isPending, startTransition] = useTransition();
+
+  // ── Passage mode (multi-chapter / cross-book) ─────────────────────────────
+  const isPassageMode = !!passage;
+  const [passageState, setPassageState] = useState(passage);
+  useEffect(() => { setPassageState(passage); }, [passage?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showNewPassagePrompt, setShowNewPassagePrompt] = useState(() => searchParams.get("newPassage") === "true");
+  const [newPassageLevel, setNewPassageLevel] = useState(1);
+  const [newPassageHeading, setNewPassageHeading] = useState("");
 
   // Translation footnotes keyed by translationId → verse → footnotes[]
   const [localFootnotes, setLocalFootnotes] = useState<Record<number, TranslationFootnote[]>>(
@@ -220,7 +279,10 @@ export default function ChapterDisplay({
   const [notesSynced, setNotesSynced] = useState(() => {
     try { const v = localStorage.getItem("structura:notesSynced"); return v === null ? true : v === "true"; } catch { return true; }
   });
-  const visibleVersesRef = useRef(new Set<number>());
+  // Keyed by "bookId:chapter:verse" (data-passage-verse-key on each verse's
+  // wrapper div) — bookId disambiguates chapter/verse numbers that collide
+  // across a cross-book passage boundary, e.g. both books having a "1:1".
+  const visibleVersesRef = useRef(new Set<string>());
   const notesSyncedRef   = useRef(notesSynced);
   const syncTimerRef     = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -228,7 +290,7 @@ export default function ChapterDisplay({
   const [intertextualOpen, setIntertextualOpen] = useState(false);
   const [searchHits, setSearchHits] = useState<Set<string>>(new Set());
   const [searchRequest, setSearchRequest] = useState<{ query: string; source: string; nonce: number } | null>(null);
-  const [notesScrollVerse, setNotesScrollVerse] = useState<number | null>(null);
+  const [notesScrollVerse, setNotesScrollVerse] = useState<{ ch: number; v: number } | null>(null);
 
   // ── Text Critical Markup ─────────────────────────────────────────────────────
   const [tcMarkMap, setTcMarkMap] = useState<Map<string, string>>(
@@ -412,10 +474,25 @@ export default function ChapterDisplay({
   const [indentsLinked, setIndentsLinked] = useState(true);
   const [editingIndents, setEditingIndents] = useState(false);
 
+  // getChapterForWord resolves a wordId → chapter number, handling both regular
+  // word IDs (via wordToChapter map, populated below once `words` is processed)
+  // and tv: token IDs (parsed from the ID). The hooks below are called before
+  // that useMemo exists in declaration order, so a ref keeps the callbacks
+  // seeing the latest map without requiring a reorder of calls. Degenerates to
+  // always returning `chapter` for the ordinary single-chapter case (map is
+  // trivially {wordId → chapter} for every word).
+  const wordToChapterRef = useRef<Map<string, number>>(new Map());
+  function getChapterForWord(wordId: string): number {
+    let ch = wordToChapterRef.current.get(wordId);
+    if (ch === undefined && wordId.startsWith("tv:")) {
+      const dotParts = wordId.split(":")[2]?.split(".");
+      const parsed = dotParts ? parseInt(dotParts[1]) : NaN;
+      ch = isNaN(parsed) ? chapter : parsed;
+    }
+    return ch ?? chapter;
+  }
+
   // ── RST relations (hook) ──────────────────────────────────────────────────
-  // ChapterDisplay is always a single chapter, so getChapterForWord always returns
-  // the chapter prop.  The hook handles all state, handlers, and localStorage for
-  // the rstLinked setting.
   const {
     rstRelations, setRstRelations,
     tvRstRelations, setTvRstRelations,
@@ -441,7 +518,7 @@ export default function ChapterDisplay({
     initialTvRstRelations,
     book,
     textSource,
-    getChapterForWord: () => chapter,
+    getChapterForWord,
     supportsLinkedTrees: true,
   });
 
@@ -461,7 +538,7 @@ export default function ChapterDisplay({
     initialWordArrows,
     book,
     textSource,
-    getChapterForWord: () => chapter,
+    getChapterForWord,
   });
 
   // ── Word formatting (bold / italic) state ─────────────────────────────────
@@ -704,7 +781,7 @@ export default function ChapterDisplay({
     initialLineAnnotations,
     book,
     textSource,
-    getChapterForWord: () => chapter,
+    getChapterForWord,
     paragraphFirstWordIds,
   });
 
@@ -1087,48 +1164,159 @@ export default function ChapterDisplay({
 
   const isHebrew = words[0]?.language === "hebrew";
 
-  // Group words by verse (stable for the chapter)
-  const verseGroups = useMemo(() => {
-    const map = new Map<number, Word[]>();
+  // wordId → chapter / bookId lookups (for the shared annotation hooks above,
+  // and for disambiguating chapter numbers that collide across a cross-book
+  // boundary — see lib/utils/chapterKey.ts).
+  const wordToChapter = useMemo(
+    () => new Map(words.map((w) => [w.wordId, w.chapter])),
+    [words]
+  );
+  wordToChapterRef.current = wordToChapter;
+  const wordToBookId = useMemo(
+    () => new Map(words.map((w) => [w.wordId, w.bookId])),
+    [words]
+  );
+  const bookIdToOsis = useMemo(() => {
+    const m = new Map<number, string>();
+    m.set(startBookId, book);
+    if (endBookId != null && endBook) m.set(endBookId, endBook);
+    return m;
+  }, [startBookId, endBookId, book, endBook]);
+
+  // Resolves the actual (book, chapter) a given wordId lives in, falling back
+  // to the outer `book`/`chapter` props for ids not present in `words` (e.g.
+  // synthetic ids). Every API call that persists data for a specific wordId
+  // must use this instead of the outer props directly, since those only name
+  // the "current" chapter — wrong for any other chapter/book once `words`
+  // spans more than one (e.g. a passage).
+  function getWordLocation(wordId: string): { book: string; chapter: number } {
+    const bId = wordToBookId.get(wordId) ?? startBookId;
+    return {
+      book: bookIdToOsis.get(bId) ?? book,
+      chapter: wordToChapter.get(wordId) ?? chapter,
+    };
+  }
+
+  // Ordered verse list for rendering & prev/next lookups. Keyed by (bookId,
+  // chapter) so two books that happen to share a raw chapter number don't get
+  // merged into one group. Degenerates to a single chapter/book group for the
+  // ordinary case (no endBook), identical to the old verse-only grouping.
+  const orderedVerses = useMemo(() => {
+    const byChapter = new Map<string, { bookId: number; ch: number; verses: Map<number, Word[]> }>();
     for (const w of words) {
-      if (!map.has(w.verse)) map.set(w.verse, []);
-      map.get(w.verse)!.push(w);
+      const key = chapterKey(w.bookId, w.chapter);
+      let entry = byChapter.get(key);
+      if (!entry) {
+        entry = { bookId: w.bookId, ch: w.chapter, verses: new Map() };
+        byChapter.set(key, entry);
+      }
+      if (!entry.verses.has(w.verse)) entry.verses.set(w.verse, []);
+      entry.verses.get(w.verse)!.push(w);
+    }
+    // Cross-book passages have two independent chapter sequences (e.g. 1Sam ch31,
+    // then 2Sam ch1–5). Sorting numerically would interleave them incorrectly;
+    // preserve insertion order instead. Within each chapter, verses are always
+    // monotonically increasing so sorting is still safe.
+    const isCrossBook = !!(endBook && endBook !== book);
+    const result: { bookId: number; book: string; ch: number; v: number; words: Word[] }[] = [];
+    const chapterEntries = isCrossBook
+      ? byChapter.values()
+      : [...byChapter.values()].sort((a, b) => a.ch - b.ch);
+    for (const entry of chapterEntries) {
+      const entryBook = bookIdToOsis.get(entry.bookId) ?? book;
+      for (const [v, vWords] of [...entry.verses.entries()].sort(([a], [b]) => a - b))
+        result.push({ bookId: entry.bookId, book: entryBook, ch: entry.ch, v, words: vWords });
+    }
+    return result;
+  }, [words, endBook, book, bookIdToOsis]);
+
+  // Whether the current `words` actually spans multiple chapters.
+  const isMultiChapter = orderedVerses.length > 0 &&
+    (orderedVerses[orderedVerses.length - 1].ch !== orderedVerses[0].ch ||
+     orderedVerses[orderedVerses.length - 1].bookId !== orderedVerses[0].bookId);
+
+  // Verse groups keyed by "bookId:chapter:verse" (for the speech-section
+  // handler, which needs to grab all words sharing a clicked word's verse).
+  const chapterVerseGroups = useMemo(() => {
+    const map = new Map<string, Word[]>();
+    for (const w of words) {
+      const key = `${w.bookId}:${w.chapter}:${w.verse}`;
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(w);
     }
     return map;
   }, [words]);
-  const verseNums = useMemo(() => [...verseGroups.keys()].sort((a, b) => a - b), [verseGroups]);
-  // PassageNotesPane's ordered-verse shape — degenerates to the single current chapter.
-  const notesOrderedVerses = useMemo(() => verseNums.map((v) => ({ ch: chapter, v })), [verseNums, chapter]);
+
+  // Verse numbers within the URL-anchored `chapter` — used by the F8/F9 nav
+  // and a few other single-chapter-scoped call sites below.
+  const verseNums = useMemo(
+    () => orderedVerses.filter((ov) => ov.ch === chapter && ov.bookId === startBookId).map((ov) => ov.v),
+    [orderedVerses, chapter, startBookId]
+  );
+  // PassageNotesPane's ordered-verse shape — the full loaded range, so a
+  // multi-chapter passage gets a note section per chapter, not just the
+  // URL-anchored one.
+  const notesOrderedVerses = useMemo(
+    () => orderedVerses.map((ov) => ({ ch: ov.ch, v: ov.v })),
+    [orderedVerses]
+  );
+
+  // True when the loaded words cover exactly one whole chapter (verse 1
+  // through the last verse) — always true for the ordinary single-chapter
+  // case; for a passage, only when it happens to span exactly one full
+  // chapter (mirrors PassageView.tsx's isWholeChapter).
+  const isWholeChapter = !isMultiChapter && (
+    !isPassageMode || (
+      orderedVerses.length > 0 &&
+      orderedVerses[0].v === 1 &&
+      maxVerseOfStartChapter != null &&
+      orderedVerses[orderedVerses.length - 1].v === maxVerseOfStartChapter
+    )
+  );
+  const wholeChapterNum = isWholeChapter ? (orderedVerses[0]?.ch ?? chapter) : undefined;
 
   // Track topmost visible verse via IntersectionObserver and sync the notes
   // pane when notesSynced is on. Uses a ref for the synced flag to avoid
-  // recreating the observer on every toggle.
-  // Placed after verseNums so the dependency is in scope.
+  // recreating the observer on every toggle. Keyed by the "bookId:chapter:verse"
+  // data-passage-verse-key on each verse's wrapper div (not VerseDisplay's own
+  // id="verse-N", which collides across chapters/books) so this works
+  // identically whether `words` covers one chapter or a whole passage.
+  // Placed after orderedVerses so the dependency is in scope.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!notesOpen) return;
     visibleVersesRef.current.clear();
     const observer = new IntersectionObserver((entries) => {
       entries.forEach((entry) => {
-        const m = entry.target.id.match(/^verse-(\d+)$/);
-        if (!m) return;
-        const v = parseInt(m[1]);
-        if (entry.isIntersecting) visibleVersesRef.current.add(v);
-        else visibleVersesRef.current.delete(v);
+        const key = (entry.target as HTMLElement).dataset.passageVerseKey;
+        if (!key) return;
+        if (entry.isIntersecting) visibleVersesRef.current.add(key);
+        else visibleVersesRef.current.delete(key);
       });
       if (!notesSyncedRef.current || visibleVersesRef.current.size === 0) return;
       if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
       syncTimerRef.current = setTimeout(() => {
         if (!notesSyncedRef.current || visibleVersesRef.current.size === 0) return;
-        setNotesScrollVerse(Math.min(...visibleVersesRef.current));
+        const keys = [...visibleVersesRef.current];
+        // Sort by bookId, then chapter, then verse, numerically
+        keys.sort((a, b) => {
+          const [aBook, ac, av] = a.split(":").map(Number);
+          const [bBook, bc, bv] = b.split(":").map(Number);
+          if (aBook !== bBook) return aBook - bBook;
+          return ac !== bc ? ac - bc : av - bv;
+        });
+        const parts = keys[0].split(":");
+        const ch = parseInt(parts[1]);
+        const v  = parseInt(parts[2]);
+        if (!isNaN(ch) && !isNaN(v)) setNotesScrollVerse({ ch, v });
       }, 300);
     }, { threshold: 0.1 });
-    document.querySelectorAll("[id^='verse-']").forEach((el) => observer.observe(el));
+    document.querySelectorAll("[data-passage-verse-key]").forEach((el) => observer.observe(el));
     return () => {
       observer.disconnect();
       if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
     };
-  }, [notesOpen, verseNums]);
+  }, [notesOpen, orderedVerses]);
 
   // Find-in-page: source word hits (ordered by position in chapter)
   // Find-in-page: source word hits (ordered by position in chapter).
@@ -1143,25 +1331,84 @@ export default function ChapterDisplay({
       .map((w) => w.wordId);
   }, [words, findQuery]);
 
+  // Chapters actually covered by the currently-loaded `words` (degenerates to
+  // {chapter} in the ordinary single-chapter case).
+  const coveredChapterSet = useMemo(() => new Set(words.map((w) => w.chapter)), [words]);
+
   // Flatten sceneBreakMap + book-wide breaks into sorted array for cross-chapter range computation.
-  // Current-chapter breaks come from live state (sceneBreakMap); other chapters come from the
+  // Breaks for covered chapters come from live state (sceneBreakMap); other chapters come from the
   // static bookSceneBreaks prop fetched at page load.
   const sectionRanges = useMemo(() => {
-    // Start with book-wide breaks, excluding the current chapter (live state overrides those)
+    // computeSectionRanges() does plain chapter arithmetic (sorting by raw
+    // chapter number, `nextChapter - 1`, etc.), which only makes sense within
+    // a single book's numbering. For a cross-book passage, offset every
+    // end-book chapter by the start book's chapter count so both books map
+    // onto one monotonic sequence — matching the same offset applied to
+    // bookMaxVerses server-side. Chapters from bookSceneBreaks/sceneBreakMap
+    // stay in their own book's raw numbering everywhere else, so the offset
+    // is applied here only, right before the computeSectionRanges call.
+    const offsetChapter = (bookId: number, ch: number) =>
+      endBookId != null && bookId === endBookId && startBookChapterCount != null
+        ? ch + startBookChapterCount
+        : ch;
+
+    // Start with book-wide breaks, excluding chapters covered by the loaded words (live state overrides)
     const allBreaks: { wordId: string; level: number; chapter: number; verse: number; extendedThrough: number | null }[] =
       bookSceneBreaks
-        .filter((b) => b.chapter !== chapter)
-        .map((b) => ({ ...b }));
+        .filter((b) => !coveredChapterSet.has(b.chapter))
+        .map((b) => ({ ...b, chapter: offsetChapter(b.bookId, b.chapter) }));
 
-    // Add current chapter breaks from live sceneBreakMap state
+    // Add covered-chapter breaks from live sceneBreakMap state, offset the same way.
     for (const [wordId, arr] of sceneBreakMap) {
+      const rawCh = wordToChapter.get(wordId) ?? chapter;
+      const bookId = wordToBookId.get(wordId) ?? startBookId;
+      const ch = offsetChapter(bookId, rawCh);
       for (const br of arr) {
-        allBreaks.push({ wordId, level: br.level, chapter, verse: br.verse, extendedThrough: null });
+        allBreaks.push({ wordId, level: br.level, chapter: ch, verse: br.verse, extendedThrough: null });
       }
     }
 
-    return computeSectionRanges(allBreaks, bookMaxVerses, book);
-  }, [sceneBreakMap, bookSceneBreaks, bookMaxVerses, chapter, book]);
+    const rawResult = computeSectionRanges(allBreaks, bookMaxVerses, book);
+    if (endBookId == null || startBookChapterCount == null) return rawResult;
+
+    // Un-offset endChapter back to the real per-book chapter number before
+    // this map is used for display — the offset above exists only to make
+    // computeSectionRanges' internal arithmetic work, it must not leak into
+    // rendered output.
+    const result = new Map<string, { endChapter: number; endVerse: number }>();
+    for (const [key, range] of rawResult) {
+      const endChapter = range.endChapter > startBookChapterCount
+        ? range.endChapter - startBookChapterCount
+        : range.endChapter;
+      result.set(key, { endChapter, endVerse: range.endVerse });
+    }
+    return result;
+  }, [sceneBreakMap, bookSceneBreaks, bookMaxVerses, wordToChapter, wordToBookId, endBookId, startBookId, startBookChapterCount, chapter, book, coveredChapterSet]);
+
+  // Outline pane data for the isMultiChapter case: book-wide breaks for chapters
+  // outside the currently-loaded words, plus live sceneBreakMap breaks resolved
+  // to their real per-word chapter (not the single `chapter` prop). Passed via
+  // OutlinePane's bookSceneBreaks prop (with sceneBreakMap swapped for the empty
+  // map and chapter for -1) so OutlinePane's own single-chapter merge logic is a
+  // no-op — see PassageView.tsx's outlineBreaksForPane for the same pattern.
+  const outlineBreaksForPane = useMemo(() => {
+    const result: { wordId: string; heading: string | null; level: number; chapter: number; verse: number; positionInVerse: number; thematic: boolean; thematicLetter: string | null; transitional: boolean }[] =
+      bookSceneBreaks
+        .filter((b) => !coveredChapterSet.has(b.chapter))
+        .map((b) => ({ ...b }));
+    for (const [wordId, arr] of sceneBreakMap) {
+      const ch = wordToChapter.get(wordId) ?? chapter;
+      for (const br of arr) {
+        result.push({ wordId, heading: br.heading, level: br.level, chapter: ch, verse: br.verse, positionInVerse: wordPositionMap.get(wordId) ?? 1, thematic: br.thematic, thematicLetter: br.thematicLetter, transitional: br.transitional });
+      }
+    }
+    result.sort((a, b) =>
+      a.chapter !== b.chapter ? a.chapter - b.chapter :
+      a.verse   !== b.verse   ? a.verse   - b.verse   :
+      a.level   - b.level
+    );
+    return result;
+  }, [bookSceneBreaks, sceneBreakMap, wordToChapter, chapter, coveredChapterSet, wordPositionMap]);
 
   // When the outline is extended into the continuation book, post-process sectionRanges:
   // any break whose range ends at the very last verse of this book gets its end extended
@@ -1620,7 +1867,7 @@ export default function ChapterDisplay({
       await fetch("/api/paragraph-breaks", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ wordId, book, chapter, source }),
+        body: JSON.stringify({ wordId, ...getWordLocation(wordId), source }),
       });
     } catch {
       setParagraphBreakIds((prev) => {
@@ -1679,7 +1926,7 @@ export default function ChapterDisplay({
           fetch("/api/paragraph-breaks", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ wordId: id, book, chapter, source: textSource }),
+            body: JSON.stringify({ wordId: id, ...getWordLocation(id), source: textSource }),
           })
         );
       },
@@ -1696,7 +1943,7 @@ export default function ChapterDisplay({
         fetch("/api/paragraph-breaks", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ wordId: id, book, chapter, source: textSource }),
+          body: JSON.stringify({ wordId: id, ...getWordLocation(id), source: textSource }),
         })
       )
     );
@@ -1739,7 +1986,7 @@ export default function ChapterDisplay({
       await fetch("/api/scene-breaks", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ wordId, book, chapter, verse, source: textSource, level }),
+        body: JSON.stringify({ wordId, ...getWordLocation(wordId), verse, source: textSource, level }),
       });
     } catch {
       // Rollback on error
@@ -1841,9 +2088,9 @@ export default function ChapterDisplay({
     try {
       // Toggle old level off, new level on
       await fetch("/api/scene-breaks", { method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ wordId, book, chapter, verse, source: textSource, level: fromLevel }) });
+        body: JSON.stringify({ wordId, ...getWordLocation(wordId), verse, source: textSource, level: fromLevel }) });
       await fetch("/api/scene-breaks", { method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ wordId, book, chapter, verse, source: textSource, level: toLevel }) });
+        body: JSON.stringify({ wordId, ...getWordLocation(wordId), verse, source: textSource, level: toLevel }) });
       // Restore heading on the new level
       if (existing.heading) {
         await fetch("/api/scene-breaks", { method: "PATCH", headers: { "Content-Type": "application/json" },
@@ -1994,6 +2241,7 @@ export default function ChapterDisplay({
   // `source` is the textSource string stored in the DB (e.g. "OSHB", "KJV").
   async function handleToggleCharacterRefById(wordId: string, source: string) {
     if (activeCharId === null) return;
+    const { book: refBook, chapter: refChapter } = getWordLocation(wordId);
 
     // Capture the state before any change for undo
     const beforeRef = characterRefMap.get(wordId) ?? null;
@@ -2011,7 +2259,7 @@ export default function ChapterDisplay({
             await fetch("/api/character-refs", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ wordId, character1Id: null, book, chapter, source }),
+              body: JSON.stringify({ wordId, character1Id: null, book: refBook, chapter: refChapter, source }),
             });
           } else {
             await fetch("/api/character-refs", {
@@ -2021,7 +2269,7 @@ export default function ChapterDisplay({
                 wordId,
                 character1Id: beforeRef.character1Id,
                 character2Id: beforeRef.character2Id ?? null,
-                book, chapter, source,
+                book: refBook, chapter: refChapter, source,
               }),
             });
           }
@@ -2038,7 +2286,7 @@ export default function ChapterDisplay({
       // No ref → add with character1
       nextRef = {
         id: -1, wordId, character1Id: activeCharId,
-        character2Id: null, textSource: source, book, chapter, workspaceId: 0,
+        character2Id: null, textSource: source, book: refBook, chapter: refChapter, workspaceId: 0,
       };
     } else if (existing.character1Id === activeCharId) {
       if (existing.character2Id !== null) {
@@ -2073,7 +2321,7 @@ export default function ChapterDisplay({
         await fetch("/api/character-refs", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ wordId, character1Id: null, book, chapter, source }),
+          body: JSON.stringify({ wordId, character1Id: null, book: refBook, chapter: refChapter, source }),
         });
       } else if (nextRef) {
         await fetch("/api/character-refs", {
@@ -2083,7 +2331,7 @@ export default function ChapterDisplay({
             wordId,
             character1Id: nextRef.character1Id,
             character2Id: nextRef.character2Id,
-            book, chapter, source,
+            book: refBook, chapter: refChapter, source,
           }),
         });
       }
@@ -2165,6 +2413,7 @@ export default function ChapterDisplay({
 
   async function handleToggleWordTagRefById(wordId: string, source: string) {
     if (activeWordTagId === null) return;
+    const { book: refBook, chapter: refChapter } = getWordLocation(wordId);
     const existing = wordTagRefMap.get(wordId);
     const isRemove = existing?.tagId === activeWordTagId;
     const tagId = isRemove ? null : activeWordTagId;
@@ -2173,7 +2422,7 @@ export default function ChapterDisplay({
     setWordTagRefMap((prev) => {
       const next = new Map(prev);
       if (isRemove) next.delete(wordId);
-      else next.set(wordId, { id: -1, wordId, tagId: activeWordTagId!, textSource: source, book, chapter, workspaceId: 0 });
+      else next.set(wordId, { id: -1, wordId, tagId: activeWordTagId!, textSource: source, book: refBook, chapter: refChapter, workspaceId: 0 });
       return next;
     });
 
@@ -2181,7 +2430,7 @@ export default function ChapterDisplay({
       await fetch("/api/word-tag-refs", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ wordId, tagId, book, chapter, source }),
+        body: JSON.stringify({ wordId, tagId, book: refBook, chapter: refChapter, source }),
       });
     } catch {
       // Rollback
@@ -2256,15 +2505,16 @@ export default function ChapterDisplay({
 
       // If a source word was provided, create the ref immediately
       if (firstWordId && firstWordSource) {
+        const { book: refBook, chapter: refChapter } = getWordLocation(firstWordId);
         const ref: WordTagRef = {
           id: -1, wordId: firstWordId, tagId: realTag.id,
-          textSource: firstWordSource, book, chapter, workspaceId: 0,
+          textSource: firstWordSource, book: refBook, chapter: refChapter, workspaceId: 0,
         };
         setWordTagRefMap((prev) => new Map(prev).set(firstWordId, ref));
         await fetch("/api/word-tag-refs", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ wordId: firstWordId, tagId: realTag.id, book, chapter, source: firstWordSource }),
+          body: JSON.stringify({ wordId: firstWordId, tagId: realTag.id, book: refBook, chapter: refChapter, source: firstWordSource }),
         });
       }
     } catch {
@@ -2432,6 +2682,7 @@ export default function ChapterDisplay({
   async function handleReassignSpeechSection(sectionId: number, newCharId: number) {
     const section = speechSections.find((s) => s.id === sectionId);
     if (!section || section.characterId === newCharId) return;
+    const { book: refBook, chapter: refChapter } = getWordLocation(section.startWordId);
 
     const beforeSections = [...speechSections];
     pushUndo({
@@ -2442,7 +2693,7 @@ export default function ChapterDisplay({
           await fetch("/api/speech-sections", {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ book, chapter, source: textSource, sections: beforeSections }),
+            body: JSON.stringify({ book: refBook, chapter: refChapter, source: textSource, sections: beforeSections }),
           });
         } catch { /* best effort */ }
       },
@@ -2456,7 +2707,7 @@ export default function ChapterDisplay({
       const res = await fetch("/api/speech-sections", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sectionId, characterId: newCharId, book, chapter, source: textSource }),
+        body: JSON.stringify({ sectionId, characterId: newCharId, book: refBook, chapter: refChapter, source: textSource }),
       });
       const data = await res.json();
       setSpeechSections(data.sections);
@@ -2468,6 +2719,7 @@ export default function ChapterDisplay({
   async function handleDeleteSpeechSection(sectionId: number) {
     const section = speechSections.find((s) => s.id === sectionId);
     if (!section) return;
+    const { book: refBook, chapter: refChapter } = getWordLocation(section.startWordId);
 
     const beforeSections = [...speechSections];
     pushUndo({
@@ -2478,7 +2730,7 @@ export default function ChapterDisplay({
           await fetch("/api/speech-sections", {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ book, chapter, source: textSource, sections: beforeSections }),
+            body: JSON.stringify({ book: refBook, chapter: refChapter, source: textSource, sections: beforeSections }),
           });
         } catch { /* best effort */ }
       },
@@ -2489,7 +2741,7 @@ export default function ChapterDisplay({
       const res = await fetch("/api/speech-sections", {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ wordId: section.startWordId, book, chapter, source: textSource }),
+        body: JSON.stringify({ wordId: section.startWordId, book: refBook, chapter: refChapter, source: textSource }),
       });
       const data = await res.json();
       setSpeechSections(data.sections);
@@ -2516,7 +2768,7 @@ export default function ChapterDisplay({
       splitIntoSegments(vWords).find(s => s.some(w => w.wordId === wId)) ?? vWords.slice(0, 1);
 
     // Snap to paragraph boundaries instead of verse boundaries
-    const clickedVerseWords = verseGroups.get(word.verse) ?? [word];
+    const clickedVerseWords = chapterVerseGroups.get(`${word.bookId}:${word.chapter}:${word.verse}`) ?? [word];
     const clickedSeg = findSeg(word.wordId, clickedVerseWords);
 
     // First click: record the first word of the clicked paragraph as range start
@@ -2526,7 +2778,7 @@ export default function ChapterDisplay({
     }
 
     // Second click: snap to the paragraph segment's last word; handle reverse order
-    const startVerseWords = verseGroups.get(speechRangeStart.verse) ?? [speechRangeStart];
+    const startVerseWords = chapterVerseGroups.get(`${speechRangeStart.bookId}:${speechRangeStart.chapter}:${speechRangeStart.verse}`) ?? [speechRangeStart];
     const startSeg = findSeg(speechRangeStart.wordId, startVerseWords);
     const posMap = new Map(words.map((w, i) => [w.wordId, i]));
     const sp = posMap.get(startSeg[0].wordId) ?? 0;
@@ -2543,6 +2795,7 @@ export default function ChapterDisplay({
     }
 
     setSpeechRangeStart(null);
+    const { book: refBook, chapter: refChapter } = getWordLocation(orderedStart);
 
     // Snapshot before create (for undo)
     const beforeSections = [...speechSections];
@@ -2554,7 +2807,7 @@ export default function ChapterDisplay({
           await fetch("/api/speech-sections", {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ book, chapter, source: textSource, sections: beforeSections }),
+            body: JSON.stringify({ book: refBook, chapter: refChapter, source: textSource, sections: beforeSections }),
           });
         } catch { /* best effort */ }
       },
@@ -2564,7 +2817,7 @@ export default function ChapterDisplay({
     const tempSection: SpeechSection = {
       id: Date.now(), characterId: activeCharId,
       startWordId: orderedStart, endWordId: orderedEnd,
-      textSource, book, chapter, workspaceId: 0,
+      textSource, book: refBook, chapter: refChapter, workspaceId: 0,
     };
     setSpeechSections((prev) => [...prev, tempSection]);
 
@@ -2576,7 +2829,7 @@ export default function ChapterDisplay({
           characterId: activeCharId,
           startWordId: orderedStart,
           endWordId: orderedEnd,
-          book, chapter, source: textSource,
+          book: refBook, chapter: refChapter, source: textSource,
         }),
       });
       const data = await res.json();
@@ -2653,6 +2906,7 @@ export default function ChapterDisplay({
   // ── Indent handlers ────────────────────────────────────────────────────────
 
   async function handleSetIndent(paraStartWordId: string, level: number) {
+    const { book: refBook, chapter: refChapter } = getWordLocation(paraStartWordId);
     const prevLevel = lineIndentMap.get(paraStartWordId) ?? 0;
     const prevTvLevel = tvLineIndentMap.get(paraStartWordId) ?? 0;
     // Optimistic update — source
@@ -2675,13 +2929,13 @@ export default function ChapterDisplay({
       await fetch("/api/line-indents", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ wordId: paraStartWordId, indentLevel: level, textSource, book, chapter }),
+        body: JSON.stringify({ wordId: paraStartWordId, indentLevel: level, textSource, book: refBook, chapter: refChapter }),
       });
       if (indentsLinked) {
         await fetch("/api/line-indents", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ wordId: `tv:${paraStartWordId}`, indentLevel: level, textSource, book, chapter }),
+          body: JSON.stringify({ wordId: `tv:${paraStartWordId}`, indentLevel: level, textSource, book: refBook, chapter: refChapter }),
         });
       }
     } catch {
@@ -2704,6 +2958,7 @@ export default function ChapterDisplay({
   }
 
   async function handleSetTvIndent(paraStartWordId: string, level: number) {
+    const { book: refBook, chapter: refChapter } = getWordLocation(paraStartWordId);
     const prevLevel = tvLineIndentMap.get(paraStartWordId) ?? 0;
     setTvLineIndentMap((prev) => {
       const next = new Map(prev);
@@ -2715,7 +2970,7 @@ export default function ChapterDisplay({
       await fetch("/api/line-indents", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ wordId: `tv:${paraStartWordId}`, indentLevel: level, textSource, book, chapter }),
+        body: JSON.stringify({ wordId: `tv:${paraStartWordId}`, indentLevel: level, textSource, book: refBook, chapter: refChapter }),
       });
     } catch {
       setTvLineIndentMap((prev) => {
@@ -2824,7 +3079,7 @@ export default function ChapterDisplay({
         await fetch("/api/interlinear/constituent-labels", {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ workspaceId: 1, wordId, label, textSource, book, chapter }),
+          body: JSON.stringify({ workspaceId: 1, wordId, label, textSource, ...getWordLocation(wordId) }),
         });
       }
     } catch { /* ignore */ }
@@ -2851,7 +3106,7 @@ export default function ChapterDisplay({
         await fetch(`/api/interlinear/datasets/${dsId}/entries`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ wordId, value, textSource, book, chapter }),
+          body: JSON.stringify({ wordId, value, textSource, ...getWordLocation(wordId) }),
         });
       }
     } catch { /* ignore */ }
@@ -2896,7 +3151,7 @@ export default function ChapterDisplay({
         await fetch("/api/interlinear/transliteration-formats", {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ workspaceId: 1, wordId, format, textSource, book, chapter }),
+          body: JSON.stringify({ workspaceId: 1, wordId, format, textSource, ...getWordLocation(wordId) }),
         });
       }
     } catch { /* ignore */ }
@@ -2949,7 +3204,7 @@ export default function ChapterDisplay({
       if (sep < 1) continue;
       const wordId = trimmed.slice(0, sep).trim();
       const value  = trimmed.slice(sep + 1).trim();
-      if (wordId && value) entries.push({ wordId, value, textSource, book, chapter });
+      if (wordId && value) entries.push({ wordId, value, textSource, ...getWordLocation(wordId) });
     }
     if (entries.length === 0) return;
     try {
@@ -2986,7 +3241,7 @@ export default function ChapterDisplay({
       await fetch("/api/word-formatting", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ wordId, isBold: nextBold, isItalic: nextItalic, textSource: source, book, chapter }),
+        body: JSON.stringify({ wordId, isBold: nextBold, isItalic: nextItalic, textSource: source, ...getWordLocation(wordId) }),
       });
     } catch {
       // Rollback on error
@@ -3021,7 +3276,7 @@ export default function ChapterDisplay({
       fetch("/api/text-critical-marks", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ wordId, markType: activeTcMark, textSource: wordTextSource, book, chapter }),
+        body: JSON.stringify({ wordId, markType: activeTcMark, textSource: wordTextSource, ...getWordLocation(wordId) }),
       }).catch(() => {});
     }
   }
@@ -3042,7 +3297,7 @@ export default function ChapterDisplay({
       fetch("/api/text-critical-marks", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ wordId, markType: activeTcMark, textSource: wordTextSource, book, chapter }),
+        body: JSON.stringify({ wordId, markType: activeTcMark, textSource: wordTextSource, ...getWordLocation(wordId) }),
       }).catch(() => {});
     }
   }
@@ -3191,6 +3446,18 @@ export default function ChapterDisplay({
   /**
    * Returns footnotes for a given (translationId, verse) sorted by wordIndex asc,
    * then id asc — the same order as the `\fn \fn*` markers in the verse text.
+   *
+   * KNOWN LIMITATION (deferred, matching the same class of issue already
+   * flagged in PassageView.tsx's activeTranslationVerseMap): this filters by
+   * verse only, not (chapter, verse), so once `words` spans more than one
+   * chapter, footnotes for the same verse number in two different chapters
+   * would collide. Translation verse data (translationVerseData,
+   * localTranslationVerseData, editingTranslationVerseMap) and the footnote
+   * dialog state (fnDialogVerse) are verse-only keyed throughout this
+   * component for the same reason — fixing this needs a coordinated pass
+   * across all of them plus page.tsx's per-translation verse fetch, not a
+   * local patch here. Not exercised today since no caller feeds multi-chapter
+   * data through yet.
    */
   function sortedVerseFootnotes(translationId: number, verse: number): TranslationFootnote[] {
     return (localFootnotes[translationId] ?? [])
@@ -3494,6 +3761,223 @@ export default function ChapterDisplay({
     if (!keep.has("footnotes"))   { setEditingFootnotes(false); setFnAnchorMoveId(null); }
   }
 
+  // ── Passage range control logic (only meaningful when isPassageMode) ─────
+  const canExtendStart = !!passageState && !(passageState.startChapter === 1 && passageState.startVerse === 1);
+  const canShrinkStart = !!passageState && (passageState.startChapter < passageState.endChapter || passageState.startVerse < passageState.endVerse);
+  const canShrinkEnd   = !!passageState && (passageState.startChapter < passageState.endChapter || passageState.startVerse < passageState.endVerse);
+  const canExtendEnd   = !!passageState && !(passageState.endChapter === startBookChapterCount && passageState.endVerse >= (maxVerseOfEndChapter ?? 0));
+
+  async function applyRange(
+    updates: Partial<Pick<Passage, "startChapter" | "startVerse" | "endChapter" | "endVerse">>
+  ) {
+    if (!passageState) return;
+    const next = { ...passageState, ...updates };
+    setPassageState(next);
+    try {
+      await fetch(`/api/passages/${passageState.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updates),
+      });
+      startTransition(() => router.refresh());
+    } catch {
+      setPassageState(passageState);
+    }
+  }
+
+  function handleExtendStart() {
+    if (!passageState || !canExtendStart || isPending) return;
+    if (passageState.startVerse > 1) {
+      applyRange({ startVerse: passageState.startVerse - 1 });
+    } else {
+      applyRange({ startChapter: passageState.startChapter - 1, startVerse: maxVerseOfPrevStartChapter || 1 });
+    }
+  }
+
+  function handleShrinkStart() {
+    if (!passageState || !canShrinkStart || isPending) return;
+    if (passageState.startVerse < (maxVerseOfStartChapter ?? 0)) {
+      applyRange({ startVerse: passageState.startVerse + 1 });
+    } else {
+      applyRange({ startChapter: passageState.startChapter + 1, startVerse: 1 });
+    }
+  }
+
+  function handleShrinkEnd() {
+    if (!passageState || !canShrinkEnd || isPending) return;
+    if (passageState.endVerse > 1) {
+      applyRange({ endVerse: passageState.endVerse - 1 });
+    } else {
+      applyRange({ endChapter: passageState.endChapter - 1, endVerse: maxVerseOfPrevEndChapter || 1 });
+    }
+  }
+
+  function handleExtendEnd() {
+    if (!passageState || !canExtendEnd || isPending) return;
+    if (passageState.endVerse < (maxVerseOfEndChapter ?? 0)) {
+      applyRange({ endVerse: passageState.endVerse + 1 });
+    } else {
+      applyRange({ endChapter: passageState.endChapter + 1, endVerse: 1 });
+    }
+  }
+
+  async function handleDeletePassage() {
+    if (!passageState) return;
+    await fetch(`/api/passages/${passageState.id}`, { method: "DELETE" });
+    router.push(`/${encodeURIComponent(book)}/${textSource}/${passageState.startChapter}`);
+  }
+
+  const passageRangeLabel = passageState ? (() => {
+    const { startChapter, startVerse, endChapter, endVerse } = passageState;
+    if (passageState.endBook && passageState.endBook !== passageState.book) {
+      const endBkName = refBookName(passageState.endBook);
+      return `${refBookName(book)} ${startChapter}:${startVerse} – ${endBkName} ${endChapter}:${endVerse}`;
+    }
+    return startChapter === endChapter
+      ? `${refBookName(book)} ${startChapter}:${startVerse}–${endVerse}`
+      : `${refBookName(book)} ${startChapter}:${startVerse} – ${endChapter}:${endVerse}`;
+  })() : "";
+
+  function refStr(ch: number, v: number) { return `${ch}:${v}`; }
+
+  function rangeBtn(disabled: boolean, label: string, title: string, onClick: () => void) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        disabled={disabled || isPending}
+        title={title}
+        className={[
+          "px-2 py-0.5 rounded text-xs font-mono transition-colors select-none",
+          disabled || isPending
+            ? "opacity-30 cursor-not-allowed"
+            : "hover:bg-stone-200 dark:hover:bg-stone-700 cursor-pointer",
+        ].join(" ")}
+        style={{ color: "var(--text-muted)" }}
+      >
+        {label}
+      </button>
+    );
+  }
+
+  // Passage range header — rendered in place of `headingSlot` when isPassageMode.
+  const passageHeaderNode = isPassageMode && passageState ? (
+    <div className="shrink-0 px-6 pt-6 pb-4 border-b" style={{ borderColor: "var(--border)" }}>
+      {/* Header row: range label + outline export + delete */}
+      <div className="flex items-center gap-3 mb-3">
+        <span className="text-lg font-bold flex-1" style={{ color: "var(--foreground)", fontFamily: "Georgia, 'Times New Roman', serif" }}>
+          {passageRangeLabel}
+        </span>
+
+        {sceneBreakMap.size > 0 && (
+          <button
+            type="button"
+            onClick={() => setOutlineOpen((v) => !v)}
+            className="shrink-0 text-xs px-2 py-0.5 rounded hover:bg-stone-200 dark:hover:bg-stone-700 transition-colors"
+            style={{ color: outlineOpen ? "var(--accent)" : "var(--text-muted)" }}
+            title="Open outline sidebar"
+          >
+            📋 Outline
+          </button>
+        )}
+
+        {showDeleteConfirm ? (
+          <div className="flex items-center gap-1 shrink-0">
+            <span className="text-xs" style={{ color: "var(--text-muted)" }}>Delete?</span>
+            <button type="button" onClick={handleDeletePassage}
+              className="text-xs px-2 py-0.5 rounded bg-red-600 text-white hover:bg-red-700 transition-colors">
+              Yes
+            </button>
+            <button type="button" onClick={() => setShowDeleteConfirm(false)}
+              className="text-xs px-2 py-0.5 rounded hover:bg-stone-200 dark:hover:bg-stone-700 transition-colors"
+              style={{ color: "var(--text-muted)" }}>
+              No
+            </button>
+          </div>
+        ) : (
+          <button type="button" onClick={() => setShowDeleteConfirm(true)}
+            className="shrink-0 text-xs px-2 py-0.5 rounded hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+            style={{ color: "var(--text-muted)" }} title="Delete this passage">
+            🗑 Delete passage
+          </button>
+        )}
+      </div>
+
+      {isPending && <p className="text-xs mb-1 opacity-50" style={{ color: "var(--text-muted)" }}>updating…</p>}
+
+      {/* New passage section break prompt */}
+      {showNewPassagePrompt && (
+        <div className="flex items-center gap-2 mb-3 p-2 rounded bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700">
+          <span className="text-xs text-stone-600 dark:text-stone-300 shrink-0">Add section heading?</span>
+          <span className="text-[10px] text-stone-400 mr-1 shrink-0">Level:</span>
+          {([1, 2, 3, 4, 5, 6] as const).map((l) => (
+            <button key={l} type="button"
+              onClick={() => setNewPassageLevel(l)}
+              className={`text-[10px] px-1.5 h-5 rounded font-semibold transition-colors ${newPassageLevel === l ? "bg-amber-400 text-white" : "bg-stone-200 dark:bg-stone-700 text-stone-500 hover:bg-stone-300"}`}>
+              {l}
+            </button>
+          ))}
+          <input
+            value={newPassageHeading}
+            onChange={(e) => setNewPassageHeading(e.target.value)}
+            placeholder="Section label…"
+            className="flex-1 min-w-0 text-xs bg-transparent border-b border-stone-300 dark:border-stone-600 outline-none px-0 py-0.5"
+            style={{ color: "var(--foreground)" }}
+            onKeyDown={(e) => e.stopPropagation()}
+          />
+          <button type="button"
+            className="shrink-0 text-xs px-2 py-0.5 rounded bg-amber-500 text-white hover:bg-amber-600 transition-colors"
+            onClick={async () => {
+              const firstWord = words[0];
+              if (!firstWord) return;
+              await handleToggleSceneBreak(firstWord.wordId, newPassageLevel, firstWord.verse);
+              if (newPassageHeading.trim()) {
+                await handleUpdateSceneHeading(firstWord.wordId, newPassageLevel, newPassageHeading);
+              }
+              setShowNewPassagePrompt(false);
+              const url = new URL(window.location.href);
+              url.searchParams.delete("newPassage");
+              window.history.replaceState({}, "", url.toString());
+            }}>
+            Add
+          </button>
+          <button type="button"
+            className="shrink-0 text-xs px-2 py-0.5 rounded hover:bg-stone-200 dark:hover:bg-stone-700 transition-colors"
+            style={{ color: "var(--text-muted)" }}
+            onClick={() => {
+              setShowNewPassagePrompt(false);
+              const url = new URL(window.location.href);
+              url.searchParams.delete("newPassage");
+              window.history.replaceState({}, "", url.toString());
+            }}>
+            Skip
+          </button>
+        </div>
+      )}
+
+      {/* Range controls */}
+      <div className="flex items-center gap-4 flex-wrap">
+        <div className="flex items-center gap-1">
+          <span className="text-xs font-medium" style={{ color: "var(--text-muted)" }}>Start:</span>
+          {rangeBtn(!canExtendStart, "← +1v", `Include ${passageState.startChapter === 1 && passageState.startVerse === 1 ? "(already at beginning)" : refStr(passageState.startVerse > 1 ? passageState.startChapter : passageState.startChapter - 1, passageState.startVerse > 1 ? passageState.startVerse - 1 : (maxVerseOfPrevStartChapter || 1))}`, handleExtendStart)}
+          <span className="text-xs font-mono px-1.5 py-0.5 rounded" style={{ backgroundColor: "var(--border)", color: "var(--foreground)" }}>
+            {refStr(passageState.startChapter, passageState.startVerse)}
+          </span>
+          {rangeBtn(!canShrinkStart, "−1v →", `Exclude ${refStr(passageState.startChapter, passageState.startVerse)} (move start forward)`, handleShrinkStart)}
+        </div>
+        <span style={{ color: "var(--text-muted)" }}>–</span>
+        <div className="flex items-center gap-1">
+          {rangeBtn(!canShrinkEnd, "← −1v", `Exclude ${refStr(passageState.endChapter, passageState.endVerse)} (move end back)`, handleShrinkEnd)}
+          <span className="text-xs font-mono px-1.5 py-0.5 rounded" style={{ backgroundColor: "var(--border)", color: "var(--foreground)" }}>
+            {refStr(passageState.endChapter, passageState.endVerse)}
+          </span>
+          <span className="text-xs font-medium" style={{ color: "var(--text-muted)" }}>End:</span>
+          {rangeBtn(!canExtendEnd, "+1v →", `Include ${passageState.endChapter === startBookChapterCount && passageState.endVerse >= (maxVerseOfEndChapter ?? 0) ? "(already at end)" : refStr(passageState.endVerse < (maxVerseOfEndChapter ?? 0) ? passageState.endChapter : passageState.endChapter + 1, passageState.endVerse < (maxVerseOfEndChapter ?? 0) ? passageState.endVerse + 1 : 1)}`, handleExtendEnd)}
+        </div>
+      </div>
+    </div>
+  ) : null;
+
   return (
     <div className="relative h-full min-h-0 flex flex-row">
       <AddressBar open={addressBarOpen} onClose={() => setAddressBarOpen(false)} textSource={textSource} />
@@ -3534,7 +4018,7 @@ export default function ChapterDisplay({
             layoutRef={outerRef}
           />
         {/* Chapter heading strip — hidden in presentation mode */}
-        {!presentationMode && headingSlot}
+        {!presentationMode && (passageHeaderNode ?? headingSlot)}
 
         {/* Sticky control area: toolbar + all editing panels/hints */}
         {!hideToolbar && <div className="sticky top-0 z-20 shrink-0 flex flex-col" style={{ backgroundColor: "var(--background)" }}>
@@ -4699,15 +5183,32 @@ export default function ChapterDisplay({
               : `calc(${(2.25 * lineHeightMultiplier - 1) / 2} * var(--greek-font-size, 1.25rem))`,
           } as React.CSSProperties}
         >
-          {verseNums.map((verseNum) => {
-            const vWords   = verseGroups.get(verseNum)   ?? [];
-            const prevWords = verseGroups.get(verseNum - 1) ?? [];
-            const nextWords = verseGroups.get(verseNum + 1) ?? [];
+          {orderedVerses.map((verse, idx) => {
+            const verseNum = verse.v;
+            const isFirstOfChapter = idx === 0 ||
+              orderedVerses[idx - 1].ch !== verse.ch ||
+              orderedVerses[idx - 1].bookId !== verse.bookId;
+            const prevWords = orderedVerses[idx - 1]?.words ?? [];
+            const nextWords = orderedVerses[idx + 1]?.words ?? [];
             return (
+              <div key={`${verse.bookId}:${verse.ch}:${verse.v}`} data-passage-verse-key={`${verse.bookId}:${verse.ch}:${verse.v}`}>
+                {/* Chapter heading — only shown when `words` spans more than one chapter */}
+                {isMultiChapter && isFirstOfChapter && !presentationMode && (
+                  <h2
+                    className="text-xs font-semibold uppercase tracking-widest mb-3 pb-1 border-b"
+                    style={{
+                      color: "var(--accent)",
+                      borderColor: "var(--border)",
+                      fontFamily: "Georgia, 'Times New Roman', serif",
+                    }}
+                  >
+                    Chapter {verse.ch}
+                  </h2>
+                )}
               <VerseDisplay
                 key={verseNum}
                 verseNum={verseNum}
-                words={vWords}
+                words={verse.words}
                 displayMode={displayMode}
                 grammarFilter={grammarFilter}
                 colorRules={colorRules}
@@ -4735,8 +5236,8 @@ export default function ChapterDisplay({
                 activeCharId={activeCharId}
                 speechRangeStartWordId={speechRangeStart?.wordId ?? null}
                 tagRangeStartWordId={refRangeStart ?? wordTagRangeStart}
-                book={book}
-                chapter={chapter}
+                book={verse.book}
+                chapter={verse.ch}
                 onSelectTranslationWord={handleSelectTranslationWord}
                 onToggleTranslationParagraphBreak={handleToggleTranslationParagraphBreak}
                 highlightCharIds={highlightCharIds}
@@ -4803,7 +5304,7 @@ export default function ChapterDisplay({
                 onTcMarkWord={handleTcMarkLxxWord}
                 onVerseClick={(v) => {
                   setNotesOpen(true);
-                  setNotesScrollVerse(v);
+                  setNotesScrollVerse({ ch: verse.ch, v });
                 }}
                 rstSourcePad={rstSourcePad}
                 presentationMode={presentationMode}
@@ -4827,6 +5328,7 @@ export default function ChapterDisplay({
                 })()}
                 onMoveFootnoteAnchor={(fnId, wordIndex) => handleMoveFootnoteAnchor(fnId, wordIndex)}
               />
+              </div>
             );
           })}
         </div>
@@ -4992,13 +5494,15 @@ export default function ChapterDisplay({
       {notesOpen && (
         <ResizablePane storageKey="pane-notes-width" defaultWidth={320} minWidth={200} maxWidth={700}>
           <PassageNotesPane
+            passageId={passageState?.id}
+            passageLabel={passageState ? (passageState.label?.trim() || passageRangeLabel) : undefined}
             book={book}
             bookName={refBookName(book)}
             orderedVerses={notesOrderedVerses}
-            isMultiChapter={false}
-            isWholeChapter
-            wholeChapterNum={chapter}
-            scrollToVerse={notesScrollVerse != null ? { ch: chapter, v: notesScrollVerse } : null}
+            isMultiChapter={isMultiChapter}
+            isWholeChapter={isWholeChapter}
+            wholeChapterNum={wholeChapterNum}
+            scrollToVerse={notesScrollVerse}
             onScrollHandled={() => setNotesScrollVerse(null)}
             onClose={() => setNotesOpen(false)}
             synced={notesSynced}
@@ -5045,10 +5549,10 @@ export default function ChapterDisplay({
         <ResizablePane storageKey="pane-outline-width" defaultWidth={320} minWidth={220} maxWidth={600}>
           <OutlinePane
             book={book}
-            chapter={chapter}
+            chapter={isMultiChapter ? -1 : chapter}
             textSource={textSource}
-            sceneBreakMap={sceneBreakMap}
-            bookSceneBreaks={bookSceneBreaks}
+            sceneBreakMap={isMultiChapter ? EMPTY_SCENE_BREAK_MAP : sceneBreakMap}
+            bookSceneBreaks={isMultiChapter ? outlineBreaksForPane : bookSceneBreaks}
             wordPositionMap={wordPositionMap}
             sectionRanges={outlineExtended ? extendedSectionRanges : sectionRanges}
             onUpdateCurrentHeading={handleUpdateSceneHeading}
@@ -5061,6 +5565,7 @@ export default function ChapterDisplay({
             continuationBreaks={contBreaks}
             crossBookRangeKeys={crossBookRangeKeys}
             loadingContinuation={loadingCont}
+            passageChapters={isMultiChapter ? coveredChapterSet : undefined}
             predecessorBook={predecessorBook}
             predecessorBookName={predecessorBookName}
             predecessorBreaks={predBreaks}
