@@ -122,7 +122,7 @@ function teiXmlToHtml(xml: string): string {
 // ── Scoped Abbott-Smith styles ────────────────────────────────────────────────
 
 const ABBOTT_SMITH_CSS = `
-.abbott-smith-entry p.entry { padding-left: 1.5em; position: relative; line-height: 1.5; font-family: serif; margin: 0.25em 0; }
+.abbott-smith-entry p.entry { padding-left: 1.5em; position: relative; line-height: 1.5; font-family: system-ui, -apple-system, sans-serif; margin: 0.25em 0; }
 .abbott-smith-entry sup.count { position: absolute; left: 0; text-indent: 0; color: #999; font-size: 0.7em; }
 .abbott-smith-entry span.orth { font-family: "Gentium Plus", "SBL Greek", serif; font-size: 1.1em; font-weight: bold; }
 .abbott-smith-entry span.greek { font-family: "Gentium Plus", "SBL Greek", serif; font-size: 1.1em; }
@@ -134,9 +134,9 @@ const ABBOTT_SMITH_CSS = `
 .abbott-smith-entry span.gloss { font-weight: bold; font-style: italic; }
 .abbott-smith-entry .sense { border-left: 1px solid #ccc; padding-left: 0.75em; margin: 0.25em 0; }
 .abbott-smith-entry .sense .sense { border-left: none; padding-left: 0; display: inline; }
-.abbott-smith-entry .re { margin: 0.5em 0 0.5em 1.5em; font-family: serif; }
+.abbott-smith-entry .re { margin: 0.5em 0 0.5em 1.5em; font-family: system-ui, -apple-system, sans-serif; }
 .abbott-smith-entry .re .sense { border-left: none; padding-left: 0; margin: 0; display: inline; }
-.abbott-smith-entry .lexicon-ref-link { cursor: pointer; }
+.abbott-smith-entry .lexicon-ref-link { color: var(--accent); cursor: pointer; }
 .abbott-smith-entry .lexicon-ref-link:hover { text-decoration: underline; }
 `;
 
@@ -154,7 +154,7 @@ function ensureAbbottSmithCss() {
 // ── LSJ XML → HTML converter ──────────────────────────────────────────────────
 
 const LSJ_CSS = `
-.lsj-entry { font-family: serif; line-height: 1.55; font-size: 0.85rem; }
+.lsj-entry { font-family: system-ui, -apple-system, sans-serif; line-height: 1.55; font-size: 0.85rem; }
 .lsj-orth { font-family: "Gentium Plus", "GFS Didot", serif; font-weight: bold; font-size: 1.05em; }
 .lsj-itype { font-style: italic; color: #888; }
 .lsj-pos { color: #15803d; font-style: italic; }
@@ -178,7 +178,7 @@ const LSJ_CSS = `
 /* Citation spans */
 .lsj-entry .lsj-cite { color: #888; font-size: 0.8em; }
 .dark .lsj-entry .lsj-cite { color: #555; }
-.lsj-entry .lexicon-ref-link { cursor: pointer; }
+.lsj-entry .lexicon-ref-link { color: var(--accent); cursor: pointer; }
 .lsj-entry .lexicon-ref-link:hover { text-decoration: underline; }
 `;
 
@@ -287,7 +287,7 @@ function lsjXmlToHtml(xml: string): string {
 // ── BDB XML → HTML converter ──────────────────────────────────────────────────
 
 const BDB_CSS = `
-.bdb-entry { font-family: serif; line-height: 1.6; font-size: 0.85rem; }
+.bdb-entry { font-family: system-ui, -apple-system, sans-serif; line-height: 1.6; font-size: 0.85rem; }
 .bdb-w { font-family: "Ezra SIL", "SBL Hebrew", serif; font-size: 1.15em; margin: 0 0.05em; }
 .bdb-pos { color: #15803d; font-style: italic; }
 .bdb-def { font-weight: bold; }
@@ -301,7 +301,7 @@ const BDB_CSS = `
 .bdb-ref { color: #888; font-size: 0.9em; }
 .dark .bdb-stem { color: #d97706; }
 .dark .bdb-ref { color: #666; }
-.bdb-entry .lexicon-ref-link { cursor: pointer; }
+.bdb-entry .lexicon-ref-link { color: var(--accent); cursor: pointer; }
 .bdb-entry .lexicon-ref-link:hover { text-decoration: underline; }
 /* Full BDB text (scripts/import-bdb-full.ts) — its own span-class vocabulary,
    distinct from the bdb-w/bdb-pos/etc. classes the OpenScriptures converter
@@ -318,6 +318,10 @@ const BDB_CSS = `
 .bdb-entry span.samaritan { font-family: "Noto Sans Samaritan", serif; font-style: normal; }
 .bdb-entry span.ref { color: #888; font-size: 0.9em; }
 .dark .bdb-entry span.ref { color: #666; }
+/* Clickable refs should stand out — these must win over the muted rules
+   above regardless of cascade order, hence the extra .bdb-entry/.dark chaining. */
+.bdb-entry .bdb-ref.lexicon-ref-link, .bdb-entry span.ref.lexicon-ref-link { color: var(--accent); }
+.dark .bdb-entry .bdb-ref.lexicon-ref-link, .dark .bdb-entry span.ref.lexicon-ref-link { color: var(--accent); }
 `;
 
 let bdbCssInjected = false;
