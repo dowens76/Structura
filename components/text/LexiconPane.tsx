@@ -308,8 +308,14 @@ const BDB_CSS = `
    above emits, so both coexist in this one scoped stylesheet without collision. */
 .bdb-entry span.hebrew { font-family: "Ezra SIL", "SBL Hebrew", serif; font-size: 1.15em; margin: 0 0.05em; }
 .bdb-entry span.greek { font-family: "Gentium Plus", "SBL Greek", serif; }
-.bdb-entry span.arabic, .bdb-entry span.syriac, .bdb-entry span.samaritan,
-.bdb-entry span.ethiopic, .bdb-entry span.persian { font-style: italic; }
+.bdb-entry span.syriac { font-family: "Noto Sans Syriac", "Estrangelo Edessa", "Serto Jerusalem", "CharisSIL", serif; font-style: normal; margin: 0 0.05em; }
+/* Open Sans has no glyphs outside Latin/Cyrillic/Greek, so it can't render
+   these — Noto Sans's script-specific variants are the actual fix. None of
+   these scripts have a real italic form either, so it's turned off here too
+   (same reasoning as Syriac above). */
+.bdb-entry span.arabic, .bdb-entry span.persian { font-family: "Noto Sans Arabic", "Geeza Pro", serif; font-style: normal; }
+.bdb-entry span.ethiopic { font-family: "Noto Sans Ethiopic", "Kefa", serif; font-style: normal; }
+.bdb-entry span.samaritan { font-family: "Noto Sans Samaritan", serif; font-style: normal; }
 .bdb-entry span.ref { color: #888; font-size: 0.9em; }
 .dark .bdb-entry span.ref { color: #666; }
 `;
