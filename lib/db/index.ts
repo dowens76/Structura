@@ -27,10 +27,12 @@ const LEXICON_DB_PATHS: Record<string, string> = {
   Dodson:       path.join(RESOURCES_DIR, "dodson.db"),
   AbbottSmith:  path.join(RESOURCES_DIR, "abbott-smith.db"),
   LSJ:          path.join(RESOURCES_DIR, "lsj.db"),
+  UBSHebrew:    path.join(RESOURCES_DIR, "ubs-hebrew.db"),
+  UBSGreek:     path.join(RESOURCES_DIR, "ubs-greek.db"),
 };
 
-export const HEBREW_LEXICON_SOURCES = ["BDB", "HebrewStrong"] as const;
-export const GREEK_LEXICON_SOURCES  = ["AbbottSmith", "Dodson", "LSJ"] as const;
+export const HEBREW_LEXICON_SOURCES = ["BDB", "HebrewStrong", "UBSHebrew"] as const;
+export const GREEK_LEXICON_SOURCES  = ["AbbottSmith", "Dodson", "LSJ", "UBSGreek"] as const;
 
 // ── Lookup maps ───────────────────────────────────────────────────────────────
 

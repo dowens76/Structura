@@ -21,8 +21,8 @@ import { langLabel, readBibleLookupLangs, writeBibleLookupLangs } from "@/lib/ut
 import FontPickerDialog, { type FontLanguage } from "@/components/FontPickerDialog";
 import { fetchJsonRetry } from "@/lib/utils/fetchJsonRetry";
 
-export type GreekLexicon  = "AbbottSmith" | "Dodson";
-export type HebrewLexicon = "BDB" | "HebrewStrong";
+export type GreekLexicon  = "AbbottSmith" | "Dodson" | "UBSGreek";
+export type HebrewLexicon = "BDB" | "HebrewStrong" | "UBSHebrew";
 
 const GREEK_LEX_KEY  = "structura:greekLexicon";
 const HEBREW_LEX_KEY = "structura:hebrewLexicon";
@@ -406,6 +406,7 @@ export default function SettingsButton() {
                 [
                   ["AbbottSmith", t("settings.abbottSmith")],
                   ["Dodson",      t("settings.dodson")],
+                  ["UBSGreek",    t("settings.ubsGreek")],
                 ] as [GreekLexicon, string][]
               ).map(([value, label]) => (
                 <label key={value} className="flex items-center gap-2 cursor-pointer">
@@ -435,6 +436,7 @@ export default function SettingsButton() {
                 [
                   ["BDB",          t("settings.bdb")],
                   ["HebrewStrong", t("settings.strongHebrew")],
+                  ["UBSHebrew",    t("settings.ubsHebrew")],
                 ] as [HebrewLexicon, string][]
               ).map(([value, label]) => (
                 <label key={value} className="flex items-center gap-2 cursor-pointer">

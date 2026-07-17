@@ -408,6 +408,84 @@ function bdbFullHtmlToDisplay(html: string): string {
   });
 }
 
+// ── UBS Hebrew/Greek NT Dictionary — already near-final HTML ─────────────────
+// scripts/import-ubs-hebrew.ts / import-ubs-greek.ts store each Aquifer
+// entry's own HTML verbatim (minus the shared <style> block, which is
+// identical across every entry and duplicated here once as UBS_CSS instead).
+// The only conversion needed is turning the source's own scripture-citation
+// anchors (`<a href="https://ref.ly/Gen1:1">Gn 1:1</a>`) into this app's
+// clickable convention; any other external link (e.g. sahd-online.com cross
+// references) is left alone but pointed at a new tab so it doesn't navigate
+// the pane away.
+
+const UBS_CSS = `
+.ubs-entry { font-family: system-ui, -apple-system, sans-serif; line-height: 1.5; font-size: 0.85rem; }
+.ubs-entry .lex-lemma { display: none; } /* shown separately above, like other lexica */
+.ubs-entry .lex-entry-meta { margin: 0 0 0.5em; font-size: 0.85em; color: #666; }
+.ubs-entry .lex-lemma-meta { font-weight: bold; }
+.ubs-entry .lex-strong { font-size: 0.85em; color: #888; }
+.ubs-entry .lex-alt-lemmas { font-size: 0.85em; color: #888; }
+.ubs-entry .lex-attribution { margin-top: 0.6em; font-size: 0.8em; color: #999; text-align: right; }
+.ubs-entry .lex-base-form { margin: 0.5em 0 0 0; }
+.ubs-entry .lex-base-form-head { margin: 0.25em 0; font-size: 0.9em; color: #666; font-style: italic; }
+.ubs-entry .lex-meaning { margin: 0.6em 0; padding-left: 0.75em; border-left: 3px solid #e5e5e5; }
+.ubs-entry .lex-domains { margin: 0.2em 0; font-size: 0.8em; }
+.ubs-entry .lex-domain, .ubs-entry .lex-subdomain { background: #f0f4ff; border-radius: 3px; padding: 1px 5px; margin-right: 4px; }
+.ubs-entry .lex-collocations { margin: 0.2em 0; font-size: 0.9em; }
+.ubs-entry .lex-sense { margin: 0.3em 0; }
+.ubs-entry .lex-glosses { font-weight: 600; margin-right: 0.4em; color: #1c1917; }
+.ubs-entry .lex-def-long { font-size: 0.9em; color: #57534e; display: block; margin-top: 0.2em; }
+.ubs-entry .lex-comments { font-size: 0.85em; color: #78716c; display: block; margin-top: 0.3em; padding-left: 1em; border-left: 2px solid #e5e5e5; }
+.ubs-entry .lex-refs { margin: 0.3em 0; font-size: 0.82em; color: #999; }
+.ubs-entry .lex-abbr { border-bottom: 1px dotted #999; cursor: help; }
+.ubs-entry sup.fn-ref { font-size: 0.75em; color: #999; }
+.ubs-entry .lex-footnotes { font-size: 0.8em; color: #78716c; margin-top: 0.5em; border-top: 1px solid #e5e5e5; padding-top: 0.4em; }
+.ubs-entry .fn-ref-verse { font-weight: bold; margin-right: 0.3em; }
+.ubs-entry .lex-sahd { font-size: 0.85em; }
+.ubs-entry .lex-link { color: inherit; }
+.dark .ubs-entry .lex-entry-meta { color: #a8a29e; }
+.dark .ubs-entry .lex-strong,
+.dark .ubs-entry .lex-alt-lemmas { color: #78716c; }
+.dark .ubs-entry .lex-attribution { color: #57534e; }
+.dark .ubs-entry .lex-base-form-head { color: #a8a29e; }
+.dark .ubs-entry .lex-meaning { border-left-color: #44403c; }
+.dark .ubs-entry .lex-domain, .dark .ubs-entry .lex-subdomain { background: #292524; }
+.dark .ubs-entry .lex-glosses { color: #f5f5f4; }
+.dark .ubs-entry .lex-def-long { color: #d6d3d1; }
+.dark .ubs-entry .lex-comments { color: #a8a29e; border-left-color: #44403c; }
+.dark .ubs-entry .lex-refs { color: #78716c; }
+.dark .ubs-entry .lex-footnotes { color: #a8a29e; border-top-color: #44403c; }
+.ubs-entry .lexicon-ref-link { color: var(--accent); cursor: pointer; }
+.ubs-entry .lexicon-ref-link:hover { text-decoration: underline; }
+.ubs-entry a:not(.lexicon-ref-link) { color: var(--accent); }
+`;
+
+let ubsCssInjected = false;
+function ensureUbsCss() {
+  if (ubsCssInjected || typeof document === "undefined") return;
+  if (document.getElementById("ubs-scoped-css")) { ubsCssInjected = true; return; }
+  const style = document.createElement("style");
+  style.id = "ubs-scoped-css";
+  style.textContent = UBS_CSS;
+  document.head.appendChild(style);
+  ubsCssInjected = true;
+}
+
+const UBS_REF_A_RE = /<a href="https:\/\/ref\.ly\/([^"]+)">([\s\S]*?)<\/a>/g;
+const UBS_EXTERNAL_A_RE = /<a href="(https?:\/\/(?!ref\.ly\/)[^"]*)"/g;
+
+function ubsHtmlToDisplay(html: string): string {
+  const linkified = html.replace(UBS_REF_A_RE, (match, rawRef: string, label: string) => {
+    const parsed = parseLexiconOsisRef(rawRef);
+    if (!parsed) return label; // drop the external ref.ly link, keep the plain-text label
+    const osisRef = `${parsed.book}.${parsed.chapter}.${parsed.verse}`;
+    return `<span class="ref lexicon-ref-link" data-scripture-ref="${escHtml(osisRef)}">${label}</span>`;
+  });
+  // Remaining <a href> tags (e.g. sahd-online.com cross references) should
+  // open in a new tab rather than navigating the lexicon pane away.
+  return linkified.replace(UBS_EXTERNAL_A_RE, `<a target="_blank" rel="noopener noreferrer" href="$1"`);
+}
+
 // ── Entry display ─────────────────────────────────────────────────────────────
 
 function EntryDisplay({
@@ -416,6 +494,7 @@ function EntryDisplay({
   abbottHtml,
   lsjHtml,
   bdbHtml,
+  ubsHtml,
   onScriptureRefClick,
 }: {
   entry: LexiconEntry | null | "loading";
@@ -423,6 +502,7 @@ function EntryDisplay({
   abbottHtml: string;
   lsjHtml: string;
   bdbHtml: string;
+  ubsHtml: string;
   onScriptureRefClick?: (osisRef: string, lexiconSource: string) => void;
 }) {
   function handleRefClick(e: React.MouseEvent<HTMLDivElement>) {
@@ -455,6 +535,8 @@ function EntryDisplay({
     entry.source === "Dodson"       ? "Dodson Greek Lexicon" :
     entry.source === "AbbottSmith"  ? "Abbott-Smith" :
     entry.source === "LSJ"          ? "Liddell-Scott-Jones (LSJ)" :
+    entry.source === "UBSHebrew"    ? "UBS Dictionary of Biblical Hebrew" :
+    entry.source === "UBSGreek"     ? "UBS Dictionary of the Greek NT" :
     (entry.source ?? "");
 
   if (entry.source === "HebrewStrong" && entry.definition) {
@@ -560,6 +642,34 @@ function EntryDisplay({
     );
   }
 
+  if ((entry.source === "UBSHebrew" || entry.source === "UBSGreek") && entry.definition) {
+    return (
+      <div className="mt-3">
+        {entry.lemma && (
+          <div
+            className={`text-2xl leading-snug mb-1 ${isHebrew ? "lexicon-hebrew text-right" : "lexicon-greek"}`}
+            dir={isHebrew ? "rtl" : "ltr"}
+            lang={isHebrew ? "he" : "grc"}
+          >
+            {entry.lemma}
+          </div>
+        )}
+        {entry.shortGloss && (
+          <p className="text-sm font-semibold text-stone-800 dark:text-stone-200 mb-2">
+            {entry.shortGloss}
+          </p>
+        )}
+        <div
+          className="ubs-entry"
+          onClick={handleRefClick}
+          // eslint-disable-next-line react/no-danger
+          dangerouslySetInnerHTML={{ __html: ubsHtml || "" }}
+        />
+        <p className="text-[10px] text-stone-300 dark:text-stone-700 mt-3">{sourceName}</p>
+      </div>
+    );
+  }
+
   const headwordFont = isHebrew ? "lexicon-hebrew" : "lexicon-greek";
   const headwordDir  = isHebrew ? "rtl" : "ltr";
   const headwordLang = isHebrew ? "he"  : "grc";
@@ -619,6 +729,7 @@ export default function LexiconPane({ wordLemma, strongNumber, isHebrew, textSou
   const [abbottHtml, setAbbottHtml] = useState("");
   const [lsjHtml,    setLsjHtml]    = useState("");
   const [bdbHtml,    setBdbHtml]    = useState("");
+  const [ubsHtml,    setUbsHtml]    = useState("");
 
   // ── Navigation state ───────────────────────────────────────────────────────
   // overrideLookup is set when the user manually navigates; null = use props.
@@ -729,6 +840,15 @@ export default function LexiconPane({ wordLemma, strongNumber, isHebrew, textSou
     }
     ensureLsjCss();
     setLsjHtml(lsjXmlToHtml(entry.definition));
+  }, [entry]);
+
+  // UBS Hebrew/Greek NT Dictionary conversion
+  useEffect(() => {
+    if (!entry || entry === "loading" || (entry.source !== "UBSHebrew" && entry.source !== "UBSGreek") || !entry.definition) {
+      setUbsHtml(""); return;
+    }
+    ensureUbsCss();
+    setUbsHtml(ubsHtmlToDisplay(entry.definition));
   }, [entry]);
 
   // BDB conversion — dispatches on content shape, not just source, because
@@ -963,7 +1083,7 @@ export default function LexiconPane({ wordLemma, strongNumber, isHebrew, textSou
       </div>
 
       {/* Entry content */}
-      <EntryDisplay entry={entry} isHebrew={isHebrew} abbottHtml={abbottHtml} lsjHtml={lsjHtml} bdbHtml={bdbHtml} onScriptureRefClick={onScriptureRefClick} />
+      <EntryDisplay entry={entry} isHebrew={isHebrew} abbottHtml={abbottHtml} lsjHtml={lsjHtml} bdbHtml={bdbHtml} ubsHtml={ubsHtml} onScriptureRefClick={onScriptureRefClick} />
     </div>
   );
 }
