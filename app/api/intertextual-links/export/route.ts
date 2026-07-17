@@ -6,6 +6,7 @@ import {
 } from "@/lib/db/queries";
 import { getActiveWorkspaceId } from "@/lib/workspace";
 import type { IntertextualLink } from "@/lib/db/schema";
+import { csvField } from "@/lib/utils/csv";
 
 export const dynamic = "force-dynamic";
 
@@ -17,19 +18,10 @@ const COLUMNS = [
   "linkType", "strength", "notes", "direction", "createdAt",
 ] as const;
 
-function csvCell(val: unknown): string {
-  if (val === null || val === undefined) return "";
-  const s = String(val);
-  if (s.includes(",") || s.includes('"') || s.includes("\n") || s.includes("\r")) {
-    return '"' + s.replace(/"/g, '""') + '"';
-  }
-  return s;
-}
-
 function toCsv(links: IntertextualLink[]): string {
   const rows = [COLUMNS.join(",")];
   for (const link of links) {
-    rows.push(COLUMNS.map((col) => csvCell((link as Record<string, unknown>)[col])).join(","));
+    rows.push(COLUMNS.map((col) => csvField((link as Record<string, unknown>)[col])).join(","));
   }
   return rows.join("\r\n");
 }

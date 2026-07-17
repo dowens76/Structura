@@ -237,6 +237,13 @@ export default function HomeContent({ otBooks, ntBooks, lxxBooks, translationOnl
               Export Lists
             </Link>
             <Link
+              href="/vocabulary"
+              className="text-xs px-3 py-1.5 rounded border font-medium transition-colors"
+              style={{ borderColor: "var(--border)", backgroundColor: "var(--surface)", color: "var(--foreground)" }}
+            >
+              Vocabulary Lists
+            </Link>
+            <Link
               href="/backup"
               className="text-xs px-3 py-1.5 rounded border font-medium transition-colors"
               style={{ borderColor: "var(--border)", backgroundColor: "var(--surface)", color: "var(--foreground)" }}

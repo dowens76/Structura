@@ -204,6 +204,158 @@ export async function getChapterWordsRange(
   return rows.map((r) => decodeWord(r, lookups));
 }
 
+// ── Vocabulary List Creator ────────────────────────────────────────────────
+
+export interface ScopeWordRow {
+  key: string;              // strongNumber (OSHB) or lemma (SBLGNT/STEPBIBLE_LXX) — the grouping key
+  lemma: string | null;
+  strongNumber: string | null;
+  partOfSpeech: string | null;
+}
+
+/**
+ * Returns the set of distinct words occurring within a scope of one or more
+ * books (optionally restricted to a chapter range — only meaningful when
+ * osisBooks.length === 1). Grouping key is strongNumber for Hebrew (OSHB),
+ * lemma for Greek (SBLGNT/STEPBIBLE_LXX), matching getCorpusWideWordCounts'
+ * grouping so the two can be joined by `key`.
+ */
+export async function getDistinctWordsInScope(
+  osisBooks: string[],
+  chapterRange: { start: number; end: number } | null,
+  textSource: TextSource,
+): Promise<ScopeWordRow[]> {
+  if (osisBooks.length === 0) return [];
+
+  const bookRows = await sourceDb
+    .select({ id: books.id })
+    .from(books)
+    .where(inArray(books.osisCode, osisBooks));
+  if (bookRows.length === 0) return [];
+  const bookIds = bookRows.map((b) => b.id);
+
+  const isLxx = textSource === "STEPBIBLE_LXX";
+  const { db, lookups } = isLxx
+    ? { db: getLxxDb() ?? getOshbDb(), lookups: lxxLookups }
+    : getDbAndLookups(textSource);
+
+  const conditions = [inArray(words.bookId, bookIds)];
+  if (!isLxx) {
+    const tsId = lookups.textSourceByValue[textSource];
+    if (tsId == null) return [];
+    conditions.push(eq(words.textSourceId, tsId));
+  }
+  if (chapterRange) {
+    conditions.push(gte(words.chapter, chapterRange.start), lte(words.chapter, chapterRange.end));
+  }
+
+  const groupCol = textSource === "OSHB" ? words.strongNumber : words.lemma;
+  const rows = await db
+    .select({
+      key:            groupCol,
+      lemma:          words.lemma,
+      strongNumber:   words.strongNumber,
+      partOfSpeechId: words.partOfSpeechId,
+    })
+    .from(words)
+    .where(and(...conditions));
+
+  const seen = new Map<string, ScopeWordRow>();
+  for (const r of rows) {
+    if (!r.key || seen.has(r.key)) continue;
+    seen.set(r.key, {
+      key:          r.key,
+      lemma:        r.lemma,
+      strongNumber: r.strongNumber,
+      partOfSpeech: r.partOfSpeechId != null ? (lookups.partOfSpeechById[r.partOfSpeechId] ?? null) : null,
+    });
+  }
+  return [...seen.values()];
+}
+
+// Module-level cache of corpus-wide word counts, keyed by textSource. Lazily
+// populated on first call — a full-table GROUP BY is cheap once, but not
+// worth paying at app startup for users who never open the vocabulary tool.
+const corpusWordCountCache = new Map<TextSource, Map<string, number>>();
+
+/**
+ * Returns corpus-wide occurrence counts for every distinct word in the given
+ * corpus, grouped by strongNumber (OSHB) or lemma (SBLGNT/STEPBIBLE_LXX).
+ * Cached in memory after first call since the underlying DBs are read-only
+ * and don't change at runtime.
+ */
+export async function getCorpusWideWordCounts(textSource: TextSource): Promise<Map<string, number>> {
+  const cached = corpusWordCountCache.get(textSource);
+  if (cached) return cached;
+
+  const isLxx = textSource === "STEPBIBLE_LXX";
+  const { db, lookups } = isLxx
+    ? { db: getLxxDb() ?? getOshbDb(), lookups: lxxLookups }
+    : getDbAndLookups(textSource);
+
+  let whereClause;
+  if (!isLxx) {
+    const tsId = lookups.textSourceByValue[textSource];
+    if (tsId == null) { corpusWordCountCache.set(textSource, new Map()); return new Map(); }
+    whereClause = eq(words.textSourceId, tsId);
+  }
+
+  const groupCol = textSource === "OSHB" ? words.strongNumber : words.lemma;
+  const rows = await db
+    .select({ key: groupCol, n: sql<number>`count(*)` })
+    .from(words)
+    .where(whereClause)
+    .groupBy(groupCol);
+
+  const result = new Map<string, number>();
+  for (const r of rows) if (r.key) result.set(r.key, r.n);
+  corpusWordCountCache.set(textSource, result);
+  return result;
+}
+
+export interface LexiconGloss {
+  lemma: string | null;
+  shortGloss: string | null;
+  definition: string | null;
+  source: string;
+}
+
+/**
+ * Bulk lexicon lookup for a set of keys (strongNumber for Hebrew, lemma for
+ * Greek) across all per-language lexicon DBs, fanning out in the same
+ * source-priority order as app/api/lexicon/route.ts but batched via
+ * inArray() rather than one request per word.
+ */
+export async function getBulkLexiconGlosses(
+  keys: string[],
+  language: "hebrew" | "greek",
+  keyType: "strongNumber" | "lemma",
+): Promise<Map<string, LexiconGloss>> {
+  const result = new Map<string, LexiconGloss>();
+  if (keys.length === 0) return result;
+  const remaining = new Set(keys);
+  const CHUNK = 900; // stay under SQLite's default bound-parameter limit
+
+  for (const { db, source } of getLexiconDbsForLanguage(language)) {
+    if (remaining.size === 0) break;
+    const col = keyType === "strongNumber" ? lexiconEntries.strongNumber : lexiconEntries.lemma;
+    const remainingArr = [...remaining];
+    for (let i = 0; i < remainingArr.length; i += CHUNK) {
+      const chunk = remainingArr.slice(i, i + CHUNK);
+      const rows = await db
+        .select({ key: col, lemma: lexiconEntries.lemma, shortGloss: lexiconEntries.shortGloss, definition: lexiconEntries.definition })
+        .from(lexiconEntries)
+        .where(inArray(col, chunk));
+      for (const r of rows) {
+        if (!r.key || result.has(r.key)) continue;
+        result.set(r.key, { lemma: r.lemma, shortGloss: r.shortGloss, definition: r.definition, source });
+        remaining.delete(r.key);
+      }
+    }
+  }
+  return result;
+}
+
 export async function getWordById(wordId: string): Promise<Word | undefined> {
   if (wordId.startsWith("LXX.")) {
     const lxxDb = getLxxDb();

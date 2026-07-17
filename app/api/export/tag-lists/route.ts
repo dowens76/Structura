@@ -11,6 +11,7 @@ import {
 } from "@/lib/db/user-schema";
 import { books, words } from "@/lib/db/source-schema";
 import { getActiveWorkspaceId } from "@/lib/workspace";
+import { csvField } from "@/lib/utils/csv";
 
 export const dynamic = "force-dynamic";
 
@@ -324,11 +325,6 @@ export async function POST(request: NextRequest) {
   }
 
   // ── Build CSV ──────────────────────────────────────────────────────────────
-
-  function csvField(val: string): string {
-    if (/[,"\n\r]/.test(val)) return '"' + val.replace(/"/g, '""') + '"';
-    return val;
-  }
 
   const header = ["Reference", "Source Text", ...allTranslations.map((t) => t.abbreviation)].map(csvField).join(",");
 
