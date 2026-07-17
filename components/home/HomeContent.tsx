@@ -12,6 +12,7 @@ import BookGroupingsDialog from "@/components/home/BookGroupingsDialog";
 import ManageTranslationsDialog from "@/components/home/ManageTranslationsDialog";
 import BookmarkButton from "@/components/navigation/BookmarkButton";
 import HomePassagesButton from "@/components/home/HomePassagesButton";
+import UpdateBanner from "@/components/home/UpdateBanner";
 import { MORPHGNT_BOOK_MAP, OSIS_BOOK_ORDER } from "@/lib/utils/osis";
 import AddressBar from "@/components/ui/AddressBar";
 
@@ -193,6 +194,7 @@ export default function HomeContent({ otBooks, ntBooks, lxxBooks, translationOnl
               <ThemeToggle />
             </div>
           </div>
+          <UpdateBanner />
           <h2 className="text-xl font-semibold text-stone-700 dark:text-stone-300 mb-3 border-b border-stone-200 dark:border-stone-700 pb-2">
             Manage
           </h2>
