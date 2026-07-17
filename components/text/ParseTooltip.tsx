@@ -8,6 +8,8 @@ import { getGreekLexicon, getHebrewLexicon } from "@/components/SettingsButton";
 
 // Module-level cache: "G2316:AbbottSmith" → "a god, God"
 const glossCache = new Map<string, string | null>();
+// Module-level cache: "H7225:BDB" → "רֵאשִׁית" (Hebrew lexicon lemma text)
+const hebrewLemmaCache = new Map<string, string | null>();
 
 interface ParseTooltipProps {
   word: Word;
@@ -35,6 +37,7 @@ export default function ParseTooltip({ word, flipped = false, useLinguisticTerms
   const displaySurface = (word.surfaceText ?? "").replace(/\//g, "");
 
   const [gloss, setGloss] = useState<string | null>(null);
+  const [hebrewLemma, setHebrewLemma] = useState<string | null>(null);
   const [prefixGlosses, setPrefixGlosses] = useState<Record<string, string | null>>({});
 
   // When containerRef is given, clamp the tooltip's horizontal position so it
@@ -86,6 +89,7 @@ export default function ParseTooltip({ word, flipped = false, useLinguisticTerms
 
     if (glossCache.has(cacheKey)) {
       setGloss(glossCache.get(cacheKey) ?? null);
+      if (isHebrew) setHebrewLemma(hebrewLemmaCache.get(cacheKey) ?? null);
       return;
     }
 
@@ -95,12 +99,20 @@ export default function ParseTooltip({ word, flipped = false, useLinguisticTerms
 
     fetch(url)
       .then((r) => r.json())
-      .then((data: { entry: { shortGloss?: string | null } | null }) => {
+      .then((data: { entry: { lemma?: string | null; shortGloss?: string | null } | null }) => {
         const g = data.entry?.shortGloss ?? null;
         glossCache.set(cacheKey, g);
         setGloss(g);
+        if (isHebrew) {
+          const l = data.entry?.lemma ?? null;
+          hebrewLemmaCache.set(cacheKey, l);
+          setHebrewLemma(l);
+        }
       })
-      .catch(() => { glossCache.set(cacheKey, null); });
+      .catch(() => {
+        glossCache.set(cacheKey, null);
+        if (isHebrew) hebrewLemmaCache.set(cacheKey, null);
+      });
   }, [word.lemma, word.strongNumber, isHebrew]);
 
   // Hebrew bound prefixes (e.g. ב, ו, ה) only exist in BDB; fetch each
@@ -161,16 +173,27 @@ export default function ParseTooltip({ word, flipped = false, useLinguisticTerms
         >
           {displaySurface}
         </div>
-        {word.lemma && word.textSource !== "OSHB" && word.textSource !== "STEPBIBLE_LXX" && (
-          <div
-            className={`text-stone-400 text-xs mt-0.5 ${isHebrew ? "text-hebrew" : "text-greek"}`}
-            dir={isHebrew ? "rtl" : "ltr"}
-            lang={isHebrew ? "he" : "grc"}
-            style={{ color: "#a8a29e" /* stone-400, same override reason as above */ }}
-          >
-            {word.lemma}
-          </div>
-        )}
+        {isHebrew
+          ? hebrewLemma && (
+              <div
+                className="text-stone-400 text-xs mt-0.5 text-hebrew text-right"
+                dir="rtl"
+                lang="he"
+                style={{ color: "#a8a29e" /* stone-400, same override reason as above */ }}
+              >
+                {hebrewLemma}
+              </div>
+            )
+          : word.lemma && word.textSource !== "STEPBIBLE_LXX" && (
+              <div
+                className="text-stone-400 text-xs mt-0.5 text-greek"
+                dir="ltr"
+                lang="grc"
+                style={{ color: "#a8a29e" /* stone-400, same override reason as above */ }}
+              >
+                {word.lemma}
+              </div>
+            )}
         {word.strongNumber && (
           <div className="text-stone-500 text-[10px] font-mono mt-0.5">{word.strongNumber}</div>
         )}
