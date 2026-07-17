@@ -228,6 +228,7 @@ export default function ParseTooltip({ word, flipped = false, useLinguisticTerms
   return (
     <div
       ref={wrapperRef}
+      dir="ltr"
       className={`absolute left-1/2 z-50 pointer-events-none flex flex-col ${flipped ? "top-full mt-1" : "bottom-full mb-1"}`}
       style={{ minWidth: "180px", transform: `translateX(calc(-50% + ${shiftX}px))` }}
     >
