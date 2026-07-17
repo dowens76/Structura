@@ -305,23 +305,14 @@ export default function HomeContent({ otBooks, ntBooks, lxxBooks, translationOnl
           >
             {t("home.privacyPolicy")}
           </a>
+          <Link
+            href="/licenses"
+            style={{ color: "var(--accent)" }}
+            className="hover:underline"
+          >
+            {t("home.contentLicenses")}
+          </Link>
         </div>
-
-        <footer className="mt-4 text-xs space-y-1" style={{ color: "var(--text-muted)" }}>
-          <p className="font-semibold">{t("home.footerLicenses")}</p>
-          <p className="mt-2 font-medium">{t("home.footerBiblesHeading")}</p>
-          <p>{t("home.footerHebrew")}</p>
-          <p>{t("home.footerGreek")}</p>
-          <p>{t("home.footerLxx")}</p>
-          {ultBooks.length > 0 && <p>{t("home.footerUlt")}</p>}
-          {vcbBooks.length > 0 && <p>{t("home.footerVcb")}</p>}
-          <p className="mt-2 font-medium">{t("home.footerLexicaHeading")}</p>
-          <p>{t("home.footerLexBdb")}</p>
-          <p>{t("home.footerLexStrongs")}</p>
-          <p>{t("home.footerLexDodson")}</p>
-          <p>{t("home.footerLexAbbottSmith")}</p>
-          <p>{t("home.footerLexLsj")}</p>
-        </footer>
       </div>
 
       {translationsOpen && (
