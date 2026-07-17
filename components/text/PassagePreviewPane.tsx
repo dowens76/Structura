@@ -41,10 +41,12 @@ function PreviewWord({
   word,
   useLinguisticTerms,
   paneRef,
+  noLeadingSpace,
 }: {
   word: Word;
   useLinguisticTerms: boolean;
   paneRef: React.RefObject<HTMLElement | null>;
+  noLeadingSpace?: boolean;
 }) {
   const [hovering, setHovering] = useState(false);
   const [flipped, setFlipped] = useState(false);
@@ -65,10 +67,16 @@ function PreviewWord({
     setHovering(true);
   }
 
+  const endsWithMaqqef = display.endsWith("־");
+
   return (
     <span
       ref={wordRef}
-      className={`relative inline-block mx-0.5 cursor-default ${isHebrew ? "text-hebrew" : "text-greek"}`}
+      className={`relative inline-block cursor-default ${isHebrew ? "text-hebrew" : "text-greek"}`}
+      style={{
+        marginInlineStart: noLeadingSpace ? 0 : "0.125rem",
+        marginInlineEnd: endsWithMaqqef ? 0 : "0.125rem",
+      }}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={() => setHovering(false)}
     >
@@ -284,9 +292,19 @@ export default function PassagePreviewPane({ osisRef, lexiconSource, useLinguist
               lang={isHebrew ? "he" : "grc"}
               style={{ color: "var(--foreground)" }}
             >
-              {words.map((w) => (
-                <PreviewWord key={w.wordId} word={w} useLinguisticTerms={useLinguisticTerms} paneRef={paneRef} />
-              ))}
+              {words.map((w, i) => {
+                const prev = i > 0 ? words[i - 1] : null;
+                const prevEndsWithMaqqef = !!prev && (prev.surfaceText ?? "").replace(/\//g, "").endsWith("־");
+                return (
+                  <PreviewWord
+                    key={w.wordId}
+                    word={w}
+                    useLinguisticTerms={useLinguisticTerms}
+                    paneRef={paneRef}
+                    noLeadingSpace={prevEndsWithMaqqef}
+                  />
+                );
+              })}
             </div>
 
             {/* Default translation text, shown under the source text */}

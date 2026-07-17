@@ -1672,6 +1672,13 @@ export default function VerseDisplay({
     words: Word[];
   };
 
+  // Hebrew maqqef (־) glues two words together with no space; the following
+  // word's <w> is adjacent in the source text, so suppress the inter-word gap.
+  const MAQQEF = "־";
+  function endsWithMaqqef(word: Word): boolean {
+    return (word.surfaceText ?? "").replace(/\//g, "").endsWith(MAQQEF);
+  }
+
   function computeWordGroups(words: Word[]): WordGroup[] {
     const groups: WordGroup[] = [];
     for (const word of words) {
@@ -1823,7 +1830,7 @@ export default function VerseDisplay({
                 }}
               />
             )}
-            {!isLastInGroup && (
+            {!isLastInGroup && !endsWithMaqqef(word) && (
               spaceUnderlineStyle
                 ? <span style={spaceUnderlineStyle}>{" "}</span>
                 : " "
@@ -1844,7 +1851,7 @@ export default function VerseDisplay({
           {inner}
         </span>
       );
-      if (gi < groups.length - 1) elements.push(" ");
+      if (gi < groups.length - 1 && !endsWithMaqqef(gWords[gWords.length - 1])) elements.push(" ");
     });
 
     return elements;

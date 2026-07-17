@@ -180,7 +180,7 @@ export default function ParallelChapterView({
                                     : undefined
                                 }
                               >
-                                {surface}{" "}
+                                {surface}{!surface.endsWith("־") && " "}
                               </span>
                             );
                           })}
