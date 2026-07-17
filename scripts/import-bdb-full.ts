@@ -53,6 +53,17 @@ const CACHE_DIR   = path.join(process.cwd(), "data", "sources", "lexicon", "bdb-
 const HTML_FILE    = path.join(CACHE_DIR, "bdb.html");
 const SIBLING_REPO_FILE = "/Users/daniel/Documents/GitHub/BDB/output/bdb.html";
 
+// Strong's number -> candidate primary-gloss strings (the bold gloss BDB
+// prints immediately after the headword/POS), sourced from unfoldingWord's
+// Brown-Driver-Briggs-Enhanced and backfilled into bdb.html's own <strong>
+// markup by the sibling repo's apply_primary_gloss_bolding step. Reused here
+// (rather than re-parsing bold spans out of bdb.html, which can't be told
+// apart from the headword/POS/sense-number bold spans already in the source)
+// to populate lexicon_entries.short_gloss, which drives the Hebrew word
+// tooltip (components/text/ParseTooltip.tsx).
+const GLOSS_FILE = path.join(CACHE_DIR, "primary-gloss-overrides.json");
+const SIBLING_GLOSS_FILE = "/Users/daniel/Documents/GitHub/BDB/fixtures/primary_gloss_overrides.json";
+
 // Same OpenScriptures files scripts/import-bdb.ts uses — reused here only to
 // re-derive the letter-keyed prefix-particle entries (see header comment).
 const OS_CACHE_DIR    = path.join(process.cwd(), "data", "sources", "lexicon", "bdb");
@@ -172,6 +183,19 @@ async function main() {
     copyFileSync(SIBLING_REPO_FILE, HTML_FILE);
   }
 
+  if (!existsSync(GLOSS_FILE)) {
+    if (!existsSync(SIBLING_GLOSS_FILE)) {
+      throw new Error(
+        `Neither ${GLOSS_FILE} nor ${SIBLING_GLOSS_FILE} exist. Vendor the primary-gloss overrides file first.`
+      );
+    }
+    console.log(`Copying ${SIBLING_GLOSS_FILE} -> ${GLOSS_FILE}`);
+    copyFileSync(SIBLING_GLOSS_FILE, GLOSS_FILE);
+  }
+  const glossesByStrongs: Record<string, string[]> =
+    JSON.parse(readFileSync(GLOSS_FILE, "utf-8")).glosses_by_strongs ?? {};
+  console.log(`Loaded primary glosses for ${Object.keys(glossesByStrongs).length} Strong's numbers.`);
+
   console.log("Reading bdb.html …");
   const html = readFileSync(HTML_FILE, "utf-8");
 
@@ -214,6 +238,8 @@ async function main() {
           (existing.specificity === specificity && (existing.row.definition?.length ?? 0) >= parsed.definition.length);
         if (existingIsBetter) continue;
       }
+      const digits = strongNumber.slice(1); // "H7225" -> "7225"
+      const shortGloss = glossesByStrongs[digits]?.[0] ?? null;
       rowsByStrong.set(strongNumber, {
         specificity,
         row: {
@@ -222,7 +248,7 @@ async function main() {
           lemma: parsed.lemma,
           transliteration: null,
           pronunciation: null,
-          shortGloss: null,
+          shortGloss,
           definition: parsed.definition,
           usage: null,
           source: "BDB",
@@ -321,10 +347,15 @@ async function main() {
   console.log(`  Final row count for source='BDB': ${finalCount.n}`);
 
   const sample = sqlite
-    .prepare(`SELECT strong_number, lemma FROM lexicon_entries WHERE source='BDB' AND strong_number IN ('H1','H7225','H8','H12','H13','b','c') ORDER BY strong_number`)
-    .all() as { strong_number: string; lemma: string }[];
+    .prepare(`SELECT strong_number, lemma, short_gloss FROM lexicon_entries WHERE source='BDB' AND strong_number IN ('H1','H7225','H8','H12','H13','b','c') ORDER BY strong_number`)
+    .all() as { strong_number: string; lemma: string; short_gloss: string | null }[];
   console.log("\nSample entries:");
-  for (const s of sample) console.log(`  ${s.strong_number}  ${s.lemma}`);
+  for (const s of sample) console.log(`  ${s.strong_number}  ${s.lemma}  — ${s.short_gloss}`);
+
+  const glossCount = sqlite
+    .prepare(`SELECT COUNT(*) as n FROM lexicon_entries WHERE source='BDB' AND short_gloss IS NOT NULL`)
+    .get() as { n: number };
+  console.log(`\n${glossCount.n}/${finalCount.n} BDB rows have a primary gloss.`);
 
   sqlite.close();
 }
