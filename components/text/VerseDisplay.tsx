@@ -68,7 +68,56 @@ function splitTokenPunctuation(token: string): { leading: string; core: string; 
 
 import { SpeechActPicker, getSpeechActLeafLabel } from "./SpeechActPicker";
 import WordToken from "./WordToken";
+import ParseTooltip from "./ParseTooltip";
 import { useTranslation } from "@/lib/i18n/LocaleContext";
+
+/**
+ * Renders a single LXX word token in the translation column with the same
+ * hover-tooltip behavior as source-text WordToken instances. Kept as its own
+ * component (rather than inlined in the render loop) because it needs its
+ * own hover state per word.
+ */
+interface LxxWordSpanProps {
+  word: Word;
+  wordId: string;
+  style: React.CSSProperties;
+  className?: string;
+  isRangeStart?: boolean;
+  onClick?: React.MouseEventHandler<HTMLSpanElement>;
+  showTooltip: boolean;
+  useLinguisticTerms: boolean;
+}
+function LxxWordSpan({ word, wordId, style, className, isRangeStart, onClick, showTooltip, useLinguisticTerms }: LxxWordSpanProps) {
+  const [hovering, setHovering] = useState(false);
+  const [tooltipBelow, setTooltipBelow] = useState(false);
+  const wordRef = useRef<HTMLSpanElement>(null);
+
+  function handleMouseEnter() {
+    if (wordRef.current) {
+      const rect = wordRef.current.getBoundingClientRect();
+      setTooltipBelow(rect.top < 350);
+    }
+    setHovering(true);
+  }
+
+  return (
+    <span
+      ref={wordRef}
+      style={style}
+      className={className}
+      data-word-id={wordId}
+      data-range-start={isRangeStart ? "true" : undefined}
+      onClick={onClick}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={() => setHovering(false)}
+    >
+      {word.surfaceText.replace(/\//g, "")}
+      {showTooltip && hovering && (
+        <ParseTooltip word={word} flipped={tooltipBelow} useLinguisticTerms={useLinguisticTerms} />
+      )}
+    </span>
+  );
+}
 
 interface VerseDisplayProps {
   verseNum: number;
@@ -2223,9 +2272,11 @@ export default function VerseDisplay({
                   {abbr}
                 </span>
               )}
-              {/* LXX word-token rendering (when words are attached to the entry) */}
+              {/* LXX word-token rendering (when words are attached to the entry).
+                  Uses a <div>, not <p> — ParseTooltip renders a <div> on hover, and
+                  a <div> descendant of <p> is invalid HTML (hydration error). */}
               {rowWordSegs.length > 0 && (
-                <p
+                <div
                   className="text-greek"
                   style={{
                     color: "var(--foreground)",
@@ -2331,6 +2382,10 @@ export default function VerseDisplay({
                           : undefined;
 
                       // ── Combined span style ───────────────────────────────────
+                      const isLxxEditingMode = editingTc || editingParagraphs || editingFormatting ||
+                        editingRefs || editingWordTags || editingArrows || editingScenes;
+                      const isLxxSelected = !isLxxEditingMode && selectedWordId === lxxWord.wordId;
+
                       const spanStyle: React.CSSProperties = {
                         ...(tcMark ? {
                           textDecorationLine: "overline",
@@ -2342,7 +2397,7 @@ export default function VerseDisplay({
                         ...tvBgStyle,
                         ...formattingStyle,
                         cursor: editingTc || editingParagraphs || editingFormatting || editingRefs || editingWordTags || editingArrows
-                          ? "crosshair" : editingScenes ? "pointer" : undefined,
+                          ? "crosshair" : "pointer",
                       };
 
                       const isTvRangeStart = tvWordId === tagRangeStartWordId;
@@ -2362,7 +2417,18 @@ export default function VerseDisplay({
                         ? (e: React.MouseEvent) => onSelectTranslationWord(tvWordId, abbr, e.shiftKey)
                         : editingScenes && firstWordId
                         ? (e: React.MouseEvent) => { e.stopPropagation(); if (!(sceneBreakMap.get(firstWordId)?.length)) onToggleSceneBreak?.(firstWordId, 1, verseNum); }
-                        : undefined;
+                        // Default (non-editing) mode: select the word so its morphology
+                        // shows in the side panel, same as clicking a source-text word.
+                        : (e: React.MouseEvent) => onSelectWord(lxxWord, e.shiftKey);
+
+                      const lxxTokenClassName = [
+                        "relative rounded px-0.5 -mx-0.5 transition-colors",
+                        isLxxEditingMode
+                          ? ""
+                          : isLxxSelected
+                            ? "bg-blue-100 dark:bg-blue-900 outline outline-2 outline-blue-400"
+                            : "hover:bg-stone-100 dark:hover:bg-stone-800",
+                      ].filter(Boolean).join(" ");
 
                       return (
                         <span key={lxxWord.wordId}>
@@ -2379,14 +2445,16 @@ export default function VerseDisplay({
                               )}
                             </>
                           )}
-                          <span
+                          <LxxWordSpan
+                            word={lxxWord}
+                            wordId={tvWordId}
                             style={spanStyle}
-                            data-word-id={tvWordId}
-                            data-range-start={isTvRangeStart ? "true" : undefined}
+                            className={lxxTokenClassName}
+                            isRangeStart={isTvRangeStart}
                             onClick={handleClick as React.MouseEventHandler<HTMLSpanElement> | undefined}
-                          >
-                            {lxxWord.surfaceText.replace(/\//g, "")}
-                          </span>
+                            showTooltip={showTooltips && !isLxxEditingMode}
+                            useLinguisticTerms={useLinguisticTerms}
+                          />
                           {!isLastOverall && (
                             spaceStyle
                               ? <span style={spaceStyle}>{" "}</span>
@@ -2396,7 +2464,7 @@ export default function VerseDisplay({
                       );
                     })
                   )}
-                </p>
+                </div>
               )}
               {!tvWords && hasContent && (
                 <p
