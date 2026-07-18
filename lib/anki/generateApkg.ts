@@ -1,13 +1,17 @@
 import Database from "better-sqlite3";
 import JSZip from "jszip";
 import { createHash } from "crypto";
+import { readFileSync } from "fs";
+import path from "path";
 
 /**
  * Hand-rolled Anki .apkg generator — no genanki-style npm package exists for
  * Node, so this builds the legacy (schema ver. 11) `collection.anki2` SQLite
  * format directly using better-sqlite3 (already a dependency) and zips it
  * with jszip (already a dependency). One note + one card per vocabulary
- * word; no media files.
+ * word, with the deck's original-language font (Ezra SIL for Hebrew,
+ * Gentium Plus for Greek) embedded as a media file so the front of each
+ * card renders correctly on any device, regardless of installed fonts.
  *
  * This schema was reconstructed from the standard Anki 2.1 format, not
  * verified against a live Anki install in this repo — if anything fails to
@@ -18,6 +22,20 @@ export interface ApkgNote {
   front: string;
   back: string;
 }
+
+// Same fonts the web app embeds for these languages (see app/globals.css's
+// @font-face for Ezra SIL and the @fontsource/gentium-plus import in
+// app/layout.tsx) — copied into public/fonts/ as standalone files so they
+// can be read here regardless of dev/packaged runtime layout, and embedded
+// directly in the deck rather than relying on the recipient having them
+// installed.
+const FONT_CONFIG: Record<"hebrew" | "greek", { file: string; fontFamily: string }> = {
+  hebrew: { file: "SILEOT.woff", fontFamily: "Ezra SIL" },
+  greek:  { file: "GentiumPlus-Greek.woff", fontFamily: "Gentium Plus" },
+};
+
+// Front-of-card (lemma) size, same for every language.
+const FRONT_FONT_SIZE = 32;
 
 const FIELD_SEP = "\x1f";
 
@@ -67,7 +85,10 @@ CREATE INDEX ix_revlog_cid ON revlog (cid);
 CREATE INDEX ix_notes_csum ON notes (csum);
 `;
 
-export async function generateApkg(notes: ApkgNote[], opts: { deckName: string }): Promise<Buffer> {
+export async function generateApkg(
+  notes: ApkgNote[],
+  opts: { deckName: string; language: "hebrew" | "greek" },
+): Promise<Buffer> {
   const sqlite = new Database(":memory:");
   sqlite.exec(SCHEMA_SQL);
 
@@ -75,6 +96,20 @@ export async function generateApkg(notes: ApkgNote[], opts: { deckName: string }
   const nowSec = Math.floor(now / 1000);
   const modelId = now;
   const deckId = now + 1;
+
+  const font = FONT_CONFIG[opts.language];
+  const fontBuffer = readFileSync(path.join(process.cwd(), "public", "fonts", font.file));
+
+  // Back-of-card lines step down from the base 20px card size in 4px
+  // increments: gloss stays full-size, part of speech is one step down
+  // (16px) and green, occurrence count is two steps down (12px) and gray.
+  const css = `
+.card { font-family: arial; font-size: 20px; text-align: center; color: black; background-color: white; }
+@font-face { font-family: "${font.fontFamily}"; src: url("${font.file}") format("woff"); font-weight: normal; font-style: normal; }
+.orig-lang { font-family: "${font.fontFamily}", serif; font-size: ${FRONT_FONT_SIZE}px; }
+.pos-line { font-size: 16px; color: green; }
+.occ-line { font-size: 12px; color: gray; }
+`.trim();
 
   const models = {
     [modelId]: {
@@ -86,13 +121,21 @@ export async function generateApkg(notes: ApkgNote[], opts: { deckName: string }
       sortf: 0,
       did: deckId,
       tmpls: [
-        { name: "Card 1", ord: 0, qfmt: "{{Front}}", afmt: "{{FrontSide}}<hr id=answer>{{Back}}", did: null, bafmt: "", bqfmt: "" },
+        {
+          // Front field content already carries class="orig-lang" (see
+          // app/api/vocabulary/export/route.ts's buildAnkiNotes) so the
+          // template itself doesn't need to add another wrapper.
+          name: "Card 1", ord: 0,
+          qfmt: "{{Front}}",
+          afmt: "{{FrontSide}}<hr id=answer>{{Back}}",
+          did: null, bafmt: "", bqfmt: "",
+        },
       ],
       flds: [
-        { name: "Front", ord: 0, sticky: false, rtl: false, font: "Arial", size: 20 },
+        { name: "Front", ord: 0, sticky: false, rtl: opts.language === "hebrew", font: font.fontFamily, size: 20 },
         { name: "Back", ord: 1, sticky: false, rtl: false, font: "Arial", size: 20 },
       ],
-      css: ".card { font-family: arial; font-size: 20px; text-align: center; color: black; background-color: white; }",
+      css,
       latexPre: "",
       latexPost: "",
       req: [[0, "any", [0]]],
@@ -157,6 +200,10 @@ export async function generateApkg(notes: ApkgNote[], opts: { deckName: string }
 
   const zip = new JSZip();
   zip.file("collection.anki2", collectionBuffer);
-  zip.file("media", "{}");
+  // Media files are zip entries named by number; `media` maps each number to
+  // its real filename, which is what the @font-face `url(...)` above and
+  // Anki's own media-restore step on import both use.
+  zip.file("media", JSON.stringify({ "0": font.file }));
+  zip.file("0", fontBuffer);
   return zip.generateAsync({ type: "nodebuffer" });
 }

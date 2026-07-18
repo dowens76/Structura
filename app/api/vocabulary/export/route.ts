@@ -29,11 +29,11 @@ function escapeHtml(s: string): string {
 // — the card tests recognition of the word itself, not recall-by-number.
 function buildAnkiNotes(words: VocabWord[], isHebrew: boolean): { front: string; back: string }[] {
   return words.map((w) => {
-    const front = `<div dir="${isHebrew ? "rtl" : "ltr"}">${escapeHtml(w.lemma ?? "")}</div>`;
+    const front = `<div class="orig-lang" dir="${isHebrew ? "rtl" : "ltr"}">${escapeHtml(w.lemma ?? "")}</div>`;
     const backParts = [
       w.gloss ? escapeHtml(w.gloss) : null,
-      w.partOfSpeech ? (POS_LABELS[w.partOfSpeech] ?? w.partOfSpeech) : null,
-      `${w.corpusCount.toLocaleString()} occurrences`,
+      w.partOfSpeech ? `<span class="pos-line">${POS_LABELS[w.partOfSpeech] ?? w.partOfSpeech}</span>` : null,
+      `<span class="occ-line">${w.corpusCount.toLocaleString()} occurrences</span>`,
     ].filter((p): p is string => !!p);
     return { front, back: backParts.join("<br>") };
   });
@@ -89,7 +89,10 @@ export async function POST(request: NextRequest) {
 
   const isHebrew = textSource === "OSHB";
   const ankiNotes = buildAnkiNotes(words, isHebrew);
-  const apkgBuffer = await generateApkg(ankiNotes, { deckName: `Vocabulary-${scopeLabel}` });
+  const apkgBuffer = await generateApkg(ankiNotes, {
+    deckName: `Vocabulary-${scopeLabel}`,
+    language: isHebrew ? "hebrew" : "greek",
+  });
   return new NextResponse(new Uint8Array(apkgBuffer), {
     headers: {
       "Content-Type": "application/octet-stream",

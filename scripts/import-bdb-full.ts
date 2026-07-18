@@ -93,6 +93,23 @@ function stripTags(s: string): string {
   return s.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
 }
 
+/** A couple of BDB headwords for particles the dictionary marks "always with
+ *  Makkeph" (e.g. מִן, פֶּן) have the maqqef misplaced mid-word in this
+ *  source conversion — e.g. "פֶּ־ן" instead of the correct "פֶּן־" — landing
+ *  right before the final letter instead of after it. Detected narrowly: the
+ *  headword's last maqqef is followed by nothing but a single bare
+ *  final-form consonant (ךםןףץ). That shape can't be a real second word in
+ *  a genuine maqqef-joined compound name (e.g. בֵּית־דָּגוֺן), so it's safe to
+ *  reposition — verified against all 6,799 BDB headwords with zero other
+ *  matches. */
+function fixMisplacedMaqqef(hebrew: string): string {
+  const lastMaqqef = hebrew.lastIndexOf("־");
+  if (lastMaqqef === -1 || lastMaqqef === hebrew.length - 1) return hebrew;
+  const tail = hebrew.slice(lastMaqqef + 1);
+  if (!/^[ךםןףץ]$/.test(tail)) return hebrew;
+  return hebrew.slice(0, lastMaqqef) + tail + "־";
+}
+
 /** Expands a strongs-number span's raw text ("12, 13" / "168-69" /
  *  "1660-61,1663") into a de-duplicated list of individual number strings.
  *  Dashes are always treated as exactly two numbers — the second reconstructed
@@ -160,6 +177,7 @@ function parseEntrySnippet(snippet: string): ParsedEntry | null {
   const hebrewSpan = p.querySelector("span.hebrew");
   let lemma = hebrewSpan ? hebrewSpan.text.trim() : null;
   if (lemma?.startsWith("[") ) lemma = lemma.slice(1); // reconstructed-root bracket
+  if (lemma) lemma = fixMisplacedMaqqef(lemma);
 
   // Strip the entrynum/page/strongs-number "chrome" tags, keeping the rest of
   // the entry's HTML (already close to final display form) as the definition.
