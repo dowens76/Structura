@@ -123,40 +123,56 @@ function loadLookupMaps(dbPath: string): LookupMaps {
 
 export { USER_DB_PATH };
 
-let _sourceDb:    ReturnType<typeof drizzle<typeof sourceSchema>> | null = null;
-let _oshbDb:      ReturnType<typeof drizzle<typeof sourceSchema>> | null = null;
-let _sblgntDb:    ReturnType<typeof drizzle<typeof sourceSchema>> | null = null;
-let _lexicaDb:    ReturnType<typeof drizzle<typeof lexicaSchema>> | null = null;
-let _lxxDb:       ReturnType<typeof drizzle<typeof sourceSchema>> | null = null;
-let _lxxSqlite:   Database.Database | null = null;
-let _userDb:      ReturnType<typeof drizzle<typeof userSchema>>   | null = null;
-let _userSqlite:  Database.Database | null = null;
-let _ultSqlite:   Database.Database | null = null;
-let _vcbSqlite:   Database.Database | null = null;
+// Next.js dev mode re-evaluates this module (and re-runs the eager
+// `export const x = getX()` calls below) whenever any file that transitively
+// imports it changes — which in practice is nearly every file in the app.
+// Plain module-level `let` singletons get reset on each re-evaluation, so
+// every save-triggered reload silently opened a brand new better-sqlite3
+// connection to the same on-disk file without ever closing the previous
+// one. Multiple concurrent WAL-mode connections to one file from the same
+// process can checkpoint/truncate the WAL out from under each other,
+// silently dropping recently-committed writes (e.g. word-dataset groupings)
+// the next time the dev server restarts. Caching on `globalThis` survives
+// module re-evaluation, so the same connection is reused across reloads.
+interface DbCache {
+  sourceDb?:    ReturnType<typeof drizzle<typeof sourceSchema>>;
+  oshbDb?:      ReturnType<typeof drizzle<typeof sourceSchema>>;
+  sblgntDb?:    ReturnType<typeof drizzle<typeof sourceSchema>>;
+  lexicaDb?:    ReturnType<typeof drizzle<typeof lexicaSchema>> | null;
+  lexiconDbCache?: Map<string, ReturnType<typeof drizzle<typeof lexicaSchema>> | null>;
+  lxxDb?:       ReturnType<typeof drizzle<typeof sourceSchema>> | null;
+  lxxSqlite?:   Database.Database | null;
+  userDb?:      ReturnType<typeof drizzle<typeof userSchema>>;
+  userSqlite?:  Database.Database;
+  ultSqlite?:   Database.Database | null;
+  vcbSqlite?:   Database.Database | null;
+}
+const globalForDb = globalThis as typeof globalThis & { __structuraDbCache?: DbCache };
+const dbCache: DbCache = globalForDb.__structuraDbCache ?? (globalForDb.__structuraDbCache = {});
 
 // Per-lexicon DB cache: keyed by source name.
-const _lexiconDbCache = new Map<string, ReturnType<typeof drizzle<typeof lexicaSchema>> | null>();
+const _lexiconDbCache = dbCache.lexiconDbCache ?? (dbCache.lexiconDbCache = new Map());
 
 /** Returns the per-source DB for OSHB (Hebrew OT). Falls back to legacy source.db if oshb.db is absent. */
 export function getOshbDb(): ReturnType<typeof drizzle<typeof sourceSchema>> {
-  if (!_oshbDb) {
+  if (!dbCache.oshbDb) {
     const dbPath = fs.existsSync(OSHB_DB_PATH) ? OSHB_DB_PATH : SOURCE_DB_PATH;
     const sqlite = new Database(dbPath, { readonly: true });
     sqlite.pragma("foreign_keys = ON");
-    _oshbDb = drizzle(sqlite, { schema: sourceSchema });
+    dbCache.oshbDb = drizzle(sqlite, { schema: sourceSchema });
   }
-  return _oshbDb;
+  return dbCache.oshbDb;
 }
 
 /** Returns the per-source DB for SBLGNT (Greek NT). Falls back to legacy source.db if sblgnt.db is absent. */
 export function getSblgntDb(): ReturnType<typeof drizzle<typeof sourceSchema>> {
-  if (!_sblgntDb) {
+  if (!dbCache.sblgntDb) {
     const dbPath = fs.existsSync(SBLGNT_DB_PATH) ? SBLGNT_DB_PATH : SOURCE_DB_PATH;
     const sqlite = new Database(dbPath, { readonly: true });
     sqlite.pragma("foreign_keys = ON");
-    _sblgntDb = drizzle(sqlite, { schema: sourceSchema });
+    dbCache.sblgntDb = drizzle(sqlite, { schema: sourceSchema });
   }
-  return _sblgntDb;
+  return dbCache.sblgntDb;
 }
 
 /** Route to the correct per-source DB and its lookup maps based on textSource. */
@@ -167,23 +183,23 @@ export function getDbAndLookups(textSource: string): { db: ReturnType<typeof dri
 
 /** @deprecated Use getOshbDb() or getDbAndLookups(textSource) instead. */
 export function getSourceDb() {
-  if (!_sourceDb) {
+  if (!dbCache.sourceDb) {
     // Prefer the split oshb.db; fall back to the legacy combined source.db.
     const dbPath = fs.existsSync(OSHB_DB_PATH) ? OSHB_DB_PATH : SOURCE_DB_PATH;
     const sqlite = new Database(dbPath, { readonly: true });
     sqlite.pragma("foreign_keys = ON");
-    _sourceDb = drizzle(sqlite, { schema: sourceSchema });
+    dbCache.sourceDb = drizzle(sqlite, { schema: sourceSchema });
   }
-  return _sourceDb;
+  return dbCache.sourceDb;
 }
 
 export function getLexicaDb() {
-  if (!_lexicaDb) {
+  if (!dbCache.lexicaDb) {
     if (!fs.existsSync(LEXICA_DB_PATH)) return null;
     const sqlite = new Database(LEXICA_DB_PATH, { readonly: true });
-    _lexicaDb = drizzle(sqlite, { schema: lexicaSchema });
+    dbCache.lexicaDb = drizzle(sqlite, { schema: lexicaSchema });
   }
-  return _lexicaDb;
+  return dbCache.lexicaDb;
 }
 
 /**
@@ -245,20 +261,20 @@ export function getLexiconDbsForLanguage(
 }
 
 export function getLxxDb(): ReturnType<typeof drizzle<typeof sourceSchema>> | null {
-  if (_lxxDb) return _lxxDb;
+  if (dbCache.lxxDb) return dbCache.lxxDb;
   if (!fs.existsSync(LXX_DB_PATH)) return null;
   const sqlite = new Database(LXX_DB_PATH, { readonly: true });
   sqlite.pragma("foreign_keys = ON");
-  _lxxSqlite = sqlite;
-  _lxxDb = drizzle(sqlite, { schema: sourceSchema });
-  return _lxxDb;
+  dbCache.lxxSqlite = sqlite;
+  dbCache.lxxDb = drizzle(sqlite, { schema: sourceSchema });
+  return dbCache.lxxDb;
 }
 
 /** Raw better-sqlite3 connection to lxx.db (initialises getLxxDb if needed). */
 export function getLxxSqlite(): Database.Database | null {
-  if (_lxxSqlite) return _lxxSqlite;
-  getLxxDb(); // ensures _lxxSqlite is populated
-  return _lxxSqlite;
+  if (dbCache.lxxSqlite) return dbCache.lxxSqlite;
+  getLxxDb(); // ensures dbCache.lxxSqlite is populated
+  return dbCache.lxxSqlite ?? null;
 }
 
 function migrateUserDb(sqlite: Database.Database): void {
@@ -590,38 +606,39 @@ function _migrateUserDbInner(sqlite: Database.Database): void {
 }
 
 export function getUserDb() {
-  if (!_userDb) {
-    _userSqlite = new Database(USER_DB_PATH);
-    _userSqlite.pragma("busy_timeout = 5000");
-    _userSqlite.pragma("journal_mode = WAL");
-    _userSqlite.pragma("synchronous = NORMAL");
-    _userSqlite.pragma("foreign_keys = ON");
-    migrateUserDb(_userSqlite);
-    _userDb = drizzle(_userSqlite, { schema: userSchema });
+  if (!dbCache.userDb) {
+    const sqlite = new Database(USER_DB_PATH);
+    sqlite.pragma("busy_timeout = 5000");
+    sqlite.pragma("journal_mode = WAL");
+    sqlite.pragma("synchronous = NORMAL");
+    sqlite.pragma("foreign_keys = ON");
+    migrateUserDb(sqlite);
+    dbCache.userSqlite = sqlite;
+    dbCache.userDb = drizzle(sqlite, { schema: userSchema });
   }
-  return _userDb;
+  return dbCache.userDb;
 }
 
 /** Raw better-sqlite3 instance for user.db — used by backup/restore. */
 export function getUserSqlite(): Database.Database {
-  if (!_userSqlite) getUserDb(); // ensure initialized
-  return _userSqlite!;
+  if (!dbCache.userSqlite) getUserDb(); // ensure initialized
+  return dbCache.userSqlite!;
 }
 
 /** Read-only better-sqlite3 instance for ult.db — null if not yet imported. */
 export function getUltSqlite(): Database.Database | null {
-  if (_ultSqlite) return _ultSqlite;
+  if (dbCache.ultSqlite) return dbCache.ultSqlite;
   if (!fs.existsSync(ULT_DB_PATH)) return null;
-  _ultSqlite = new Database(ULT_DB_PATH, { readonly: true });
-  return _ultSqlite;
+  dbCache.ultSqlite = new Database(ULT_DB_PATH, { readonly: true });
+  return dbCache.ultSqlite;
 }
 
 /** Read-only better-sqlite3 instance for vcb.db — null if not yet imported. */
 export function getVcbSqlite(): Database.Database | null {
-  if (_vcbSqlite) return _vcbSqlite;
+  if (dbCache.vcbSqlite) return dbCache.vcbSqlite;
   if (!fs.existsSync(VCB_DB_PATH)) return null;
-  _vcbSqlite = new Database(VCB_DB_PATH, { readonly: true });
-  return _vcbSqlite;
+  dbCache.vcbSqlite = new Database(VCB_DB_PATH, { readonly: true });
+  return dbCache.vcbSqlite;
 }
 
 export const sourceDb     = getSourceDb();

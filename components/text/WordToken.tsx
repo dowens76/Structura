@@ -48,6 +48,14 @@ interface WordTokenProps {
   showCantillation?: boolean;
   // In interlinear mode, background highlight to apply only to the source-text span
   wordHighlightBg?: string;
+  // Dataset word-grouping mode: while active, clicking the interlinear label
+  // toggles group membership instead of opening the value-edit popover.
+  datasetGroupingActive?: boolean;
+  isPendingGroupMember?: boolean;
+  onToggleDatasetGroupMember?: (wordId: string) => void;
+  // True when this word belongs to a saved grouping — its own value is
+  // hidden since VerseDisplay renders one centered label over the whole group.
+  suppressDatasetValueDisplay?: boolean;
 }
 
 /** Split surface text into leading punctuation, core word, and trailing punctuation.
@@ -113,6 +121,10 @@ interface InterlinearLabelProps {
   onSaveDatasetEntry?: (wordId: string, value: string | null) => void;
   onSaveTransliterationFormat?: (wordId: string, format: string | null) => void;
   onLemmaClick?: () => void;
+  datasetGroupingActive?: boolean;
+  isPendingGroupMember?: boolean;
+  onToggleDatasetGroupMember?: (wordId: string) => void;
+  suppressDatasetValueDisplay?: boolean;
 }
 
 function InterlinearLabel({
@@ -126,6 +138,10 @@ function InterlinearLabel({
   onSaveDatasetEntry,
   onSaveTransliterationFormat,
   onLemmaClick,
+  datasetGroupingActive,
+  isPendingGroupMember,
+  onToggleDatasetGroupMember,
+  suppressDatasetValueDisplay,
 }: InterlinearLabelProps) {
   const [popoverOpen, setPopoverOpen] = useState(false);
   const [draftValue,  setDraftValue]  = useState("");
@@ -149,6 +165,7 @@ function InterlinearLabel({
     if (subMode === "transliteration") return word.transliteration ?? "—";
     if (subMode === "constituent")     return constituentLabel ?? "·";
     // dataset
+    if (suppressDatasetValueDisplay) return "";
     return datasetValue ?? "·";
   }
 
@@ -194,6 +211,11 @@ function InterlinearLabel({
       onLemmaClick!();
       return;
     }
+    if (typeof subMode === "object" && subMode.type === "dataset" && datasetGroupingActive) {
+      e.stopPropagation();
+      onToggleDatasetGroupMember?.(word.wordId);
+      return;
+    }
     if (!isEditable) return;
     e.stopPropagation();
     if (subMode === "constituent") {
@@ -230,12 +252,28 @@ function InterlinearLabel({
       <span
         className={[
           "word-parse",
-          isEditable ? "cursor-pointer rounded px-0.5 hover:bg-stone-100 dark:hover:bg-stone-700" : "",
+          isEditable
+            ? datasetGroupingActive
+              ? "cursor-pointer rounded px-0.5 hover:bg-blue-100 dark:hover:bg-blue-900/40"
+              : "cursor-pointer rounded px-0.5 hover:bg-stone-100 dark:hover:bg-stone-700"
+            : "",
           isLemmaSearchable ? "cursor-pointer rounded px-0.5 hover:underline" : "",
         ].join(" ")}
-        style={labelStyle}
+        style={
+          isPendingGroupMember
+            ? { ...labelStyle, backgroundColor: "rgba(37, 99, 235, 0.35)", outline: "1px solid rgba(37, 99, 235, 0.6)" }
+            : labelStyle
+        }
         onClick={handleLabelClick}
-        title={isLemmaSearchable ? "Search this lemma" : isEditable ? "Click to edit" : undefined}
+        title={
+          isLemmaSearchable
+            ? "Search this lemma"
+            : datasetGroupingActive
+              ? "Click to add/remove from grouping"
+              : isEditable
+                ? "Click to edit"
+                : undefined
+        }
       >
         {isTransliteration ? translitContent : getText()}
       </span>
@@ -419,6 +457,10 @@ export default function WordToken({
   showVowels = true,
   showCantillation = true,
   wordHighlightBg,
+  datasetGroupingActive,
+  isPendingGroupMember,
+  onToggleDatasetGroupMember,
+  suppressDatasetValueDisplay,
 }: WordTokenProps) {
   const [hovering, setHovering] = useState(false);
   const [tooltipBelow, setTooltipBelow] = useState(false);
@@ -577,6 +619,10 @@ export default function WordToken({
           onSaveDatasetEntry={onSaveDatasetEntry}
           onSaveTransliterationFormat={onSaveTransliterationFormat}
           onLemmaClick={onLemmaClick ? () => onLemmaClick(word) : undefined}
+          datasetGroupingActive={datasetGroupingActive}
+          isPendingGroupMember={isPendingGroupMember}
+          suppressDatasetValueDisplay={suppressDatasetValueDisplay}
+          onToggleDatasetGroupMember={onToggleDatasetGroupMember}
         />
       </span>
     );

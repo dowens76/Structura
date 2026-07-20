@@ -20,6 +20,16 @@ interface InterlinearSubModePickerProps {
   minVerse?: number;
   maxVerse?: number;
   onCopyTransliteration?: (opts: { format: "interlinear" | "running"; startVerse: number; endVerse: number }) => Promise<void>;
+  // Word grouping (manual multi-word grouping within a dataset)
+  groupingMode?: "off" | "new" | "edit";
+  onToggleNewGrouping?: () => void;
+  onToggleEditGrouping?: () => void;
+  pendingGroupCount?: number;
+  isEditingExistingGroup?: boolean;
+  groupDraftValue?: string;
+  onGroupDraftValueChange?: (value: string) => void;
+  onSaveGrouping?: () => void;
+  onDeleteGrouping?: () => void;
 }
 
 type SimpleMode = "lemma" | "strongs" | "morph" | "transliteration" | "constituent";
@@ -47,6 +57,15 @@ export default function InterlinearSubModePicker({
   minVerse = 1,
   maxVerse = 1,
   onCopyTransliteration,
+  groupingMode = "off",
+  onToggleNewGrouping,
+  onToggleEditGrouping,
+  pendingGroupCount = 0,
+  isEditingExistingGroup = false,
+  groupDraftValue = "",
+  onGroupDraftValueChange,
+  onSaveGrouping,
+  onDeleteGrouping,
 }: InterlinearSubModePickerProps) {
   const [dsMenuOpen,   setDsMenuOpen]   = useState(false);
   const [creating,     setCreating]     = useState(false);
@@ -59,10 +78,13 @@ export default function InterlinearSubModePicker({
   const [copyEnd,      setCopyEnd]      = useState(maxVerse);
   const [copying,      setCopying]      = useState(false);
   const [copied,       setCopied]       = useState(false);
+  const [groupPromptOpen, setGroupPromptOpen] = useState(false);
   const menuRef       = useRef<HTMLDivElement>(null);
   const copyRef       = useRef<HTMLDivElement>(null);
+  const groupRef      = useRef<HTMLDivElement>(null);
   const createInputRef = useRef<HTMLInputElement>(null);
   const renameInputRef = useRef<HTMLInputElement>(null);
+  const groupInputRef  = useRef<HTMLInputElement>(null);
 
   const activeDs      = activeDatasetId(subMode);
   const currentSimple = typeof subMode === "string" ? subMode : null;
@@ -251,6 +273,81 @@ export default function InterlinearSubModePicker({
           </div>
         )}
       </div>
+
+      {/* ── Word grouping (only when a dataset is active) ─────────────────── */}
+      {activeDs != null && (
+        <>
+          <button
+            onClick={() => { onToggleNewGrouping?.(); setGroupPromptOpen(false); }}
+            title="Toggle new-grouping mode: click words to combine them into one group"
+            className={[btnBase, groupingMode === "new" ? btnActive : btnIdle].join(" ")}
+          >
+            New grouping
+          </button>
+          <button
+            onClick={() => { onToggleEditGrouping?.(); setGroupPromptOpen(false); }}
+            title="Toggle edit-grouping mode: click a grouped word to load and modify its group"
+            className={[btnBase, groupingMode === "edit" ? btnActive : btnIdle].join(" ")}
+          >
+            Edit grouping
+          </button>
+          {groupingMode !== "off" && (
+            <div className="relative" ref={groupRef}>
+              <button
+                onClick={() => {
+                  if (pendingGroupCount === 0) return;
+                  setGroupPromptOpen((v) => !v);
+                  setTimeout(() => groupInputRef.current?.focus(), 0);
+                }}
+                disabled={pendingGroupCount === 0}
+                title="Save the selected words as one grouping"
+                className={[btnBase, "disabled:opacity-40 disabled:cursor-not-allowed", groupPromptOpen ? btnActive : btnIdle].join(" ")}
+              >
+                Save grouping{pendingGroupCount > 0 ? ` (${pendingGroupCount})` : ""}
+              </button>
+
+              {groupPromptOpen && (
+                <div
+                  className="absolute left-0 top-full mt-1 z-50 rounded-lg border shadow-lg p-2 flex flex-col gap-1.5"
+                  style={{ ...panelStyle, minWidth: "160px" }}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <input
+                    ref={groupInputRef}
+                    autoFocus
+                    value={groupDraftValue}
+                    onChange={(e) => onGroupDraftValueChange?.(e.target.value)}
+                    placeholder="Enter value…"
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") { onSaveGrouping?.(); setGroupPromptOpen(false); }
+                      if (e.key === "Escape") setGroupPromptOpen(false);
+                    }}
+                    className="rounded border px-1.5 py-0.5 text-xs outline-none w-full"
+                    style={{ borderColor: "var(--border)", backgroundColor: "var(--surface)", color: "var(--foreground)" }}
+                  />
+                  <span className="flex gap-1 justify-end">
+                    {isEditingExistingGroup && (
+                      <button
+                        onClick={() => { onDeleteGrouping?.(); setGroupPromptOpen(false); }}
+                        className="text-[10px] px-1.5 py-0.5 rounded border border-red-300 dark:border-red-800 text-red-500 hover:bg-red-50 dark:hover:bg-red-950 transition-colors"
+                      >
+                        Delete group
+                      </button>
+                    )}
+                    <button
+                      onClick={() => { onSaveGrouping?.(); setGroupPromptOpen(false); }}
+                      disabled={!groupDraftValue.trim()}
+                      className="text-[10px] px-2 py-0.5 rounded bg-blue-600 text-white disabled:opacity-40"
+                    >
+                      Save
+                    </button>
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
+        </>
+      )}
 
       {/* ── Copy transliteration (only in Translit. mode) ─────────────────── */}
       {isTranslit && onCopyTransliteration && (

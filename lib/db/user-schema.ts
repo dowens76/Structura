@@ -403,6 +403,9 @@ export const wordDatasetEntries = sqliteTable(
                   .references(() => wordDatasets.id, { onDelete: "cascade" }),
     wordId:     text("word_id").notNull(),
     value:      text("value").notNull(),
+    // Shared across all member words of a manually-created grouping; null for
+    // ordinary single-word entries.
+    groupId:    text("group_id"),
     textSource: text("text_source").notNull(),
     book:       text("book").notNull(),
     chapter:    integer("chapter").notNull(),
@@ -410,6 +413,7 @@ export const wordDatasetEntries = sqliteTable(
   (t) => [
     uniqueIndex("wde_ds_word_idx").on(t.datasetId, t.wordId),
     index("wde_ds_book_ch_idx").on(t.datasetId, t.book, t.chapter, t.textSource),
+    index("wde_ds_group_idx").on(t.datasetId, t.groupId),
   ]
 );
 

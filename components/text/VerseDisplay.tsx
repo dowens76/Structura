@@ -17,6 +17,29 @@ const HANG_PX = 32;
  */
 const SINGLE_CHAPTER_BOOKS = new Set(["Obad", "Phlm", "2John", "3John", "Jude"]);
 
+/** Deterministic subtle color for a saved dataset grouping, keyed by its value
+ *  text (e.g. "B") — so every grouping labeled "B" gets the same color,
+ *  regardless of how many separate groupings share that label. Hues are
+ *  spaced ~45° apart around the wheel so consecutive single-letter labels
+ *  (A, B, C, ...) — which hash to consecutive indices — never land on two
+ *  shades of the same color (e.g. amber and yellow used to both land here
+ *  and were indistinguishable at low opacity). */
+const DATASET_GROUP_COLORS = [
+  "rgba(239, 68, 68, 0.25)",   // red
+  "rgba(245, 158, 11, 0.25)",  // amber
+  "rgba(132, 204, 22, 0.25)",  // lime
+  "rgba(16, 185, 129, 0.25)",  // emerald
+  "rgba(6, 182, 212, 0.25)",   // cyan
+  "rgba(59, 130, 246, 0.25)",  // blue
+  "rgba(139, 92, 246, 0.25)",  // violet
+  "rgba(236, 72, 153, 0.25)",  // pink
+];
+function colorForDatasetValue(value: string): string {
+  let hash = 0;
+  for (let i = 0; i < value.length; i++) hash = (hash * 31 + value.charCodeAt(i)) >>> 0;
+  return DATASET_GROUP_COLORS[hash % DATASET_GROUP_COLORS.length];
+}
+
 /** Hebrew Unicode ranges: basic Hebrew block + presentation forms A. */
 const HEBREW_RE = /[֐-׿יִ-ﭏ]+/g;
 
@@ -189,6 +212,11 @@ interface VerseDisplayProps {
   onSaveDatasetEntry?: (wordId: string, value: string | null) => void;
   onSaveTransliterationFormat?: (wordId: string, format: string | null) => void;
   onLemmaClick?: (word: Word) => void;
+  // Dataset word grouping
+  datasetGroupMap?: Map<string, string>;
+  datasetGroupingActive?: boolean;
+  pendingGroupWordIds?: Set<string>;
+  onToggleDatasetGroupMember?: (wordId: string) => void;
   // Source text visibility
   hideSourceText?: boolean;
   // Translation text editing
@@ -995,6 +1023,10 @@ export default function VerseDisplay({
   onSaveDatasetEntry,
   onSaveTransliterationFormat,
   onLemmaClick,
+  datasetGroupMap = new Map<string, string>(),
+  datasetGroupingActive = false,
+  pendingGroupWordIds = new Set<string>(),
+  onToggleDatasetGroupMember,
   hideSourceText = false,
   editingTranslation = false,
   editingTranslationSource = false,
@@ -1803,7 +1835,10 @@ export default function VerseDisplay({
         paddingBottom: isHebrew ? "6px" : "2px",
       } : undefined;
 
-      const inner = gWords.map((word, wi) => {
+      const isInterlinear = displayMode === "interlinear";
+      const isDatasetMode = typeof interlinearSubMode === "object" && interlinearSubMode.type === "dataset";
+
+      function renderWord(word: Word, wi: number): React.ReactNode {
         const wordHasAtnach =
           showAtnachBreaks &&
           isHebrew &&
@@ -1819,11 +1854,17 @@ export default function VerseDisplay({
               ? "rgba(251, 191, 36, 0.4)"
               : undefined;
         const isLastInGroup = wi === gWords.length - 1;
-        const isInterlinear = displayMode === "interlinear";
+        const isPendingGroupMember = isDatasetMode && pendingGroupWordIds.has(word.wordId);
+        const savedGroupId = isDatasetMode ? datasetGroupMap.get(word.wordId) : undefined;
+        const datasetHighlightBg = isPendingGroupMember
+          ? "rgba(37, 99, 235, 0.35)"
+          : savedGroupId
+            ? colorForDatasetValue(datasetEntryMap.get(word.wordId) ?? savedGroupId)
+            : undefined;
         // In interlinear mode, highlights must be scoped to the source-text span
         // inside WordToken (not the outer wrapper, which covers both rows).
         const wordHighlightBg = isInterlinear
-          ? (wrapperBg ?? (hasStyle ? wrapperStyle.backgroundColor as string | undefined : undefined))
+          ? (wrapperBg ?? (hasStyle ? wrapperStyle.backgroundColor as string | undefined : undefined) ?? datasetHighlightBg)
           : wrapperBg;
         return (
           <span
@@ -1856,6 +1897,7 @@ export default function VerseDisplay({
               interlinearSubMode={interlinearSubMode}
               constituentLabel={constituentLabelMap.get(word.wordId)}
               datasetValue={datasetEntryMap.get(word.wordId)}
+              suppressDatasetValueDisplay={!!savedGroupId}
               transliterationFormat={transliterationFormatMap.get(word.wordId)}
               onSaveConstituentLabel={onSaveConstituentLabel}
               onSaveDatasetEntry={onSaveDatasetEntry}
@@ -1864,6 +1906,9 @@ export default function VerseDisplay({
               showVowels={showVowels}
               showCantillation={showCantillation}
               wordHighlightBg={wordHighlightBg}
+              datasetGroupingActive={isDatasetMode && datasetGroupingActive}
+              isPendingGroupMember={isPendingGroupMember}
+              onToggleDatasetGroupMember={onToggleDatasetGroupMember}
             />
             {wordHasAtnach && (
               <span
@@ -1884,6 +1929,58 @@ export default function VerseDisplay({
                 ? <span style={spaceUnderlineStyle}>{" "}</span>
                 : " "
             )}
+          </span>
+        );
+      }
+
+      const inner = gWords.map((word, wi) => {
+        const savedGroupId = isDatasetMode ? datasetGroupMap.get(word.wordId) : undefined;
+        if (!savedGroupId) return renderWord(word, wi);
+
+        // Contiguous runs of words sharing a grouping render as one unit, with
+        // a single centered label spanning the run instead of a per-word value.
+        const prevGid = wi > 0 ? datasetGroupMap.get(gWords[wi - 1].wordId) : undefined;
+        if (savedGroupId === prevGid) return null; // consumed by the run's start below
+
+        const runWords = [word];
+        let j = wi + 1;
+        while (j < gWords.length && datasetGroupMap.get(gWords[j].wordId) === savedGroupId) {
+          runWords.push(gWords[j]);
+          j++;
+        }
+        const groupValue = datasetEntryMap.get(word.wordId);
+
+        return (
+          <span key={`grp-${word.wordId}`} style={{ position: "relative", display: "inline-flex" }}>
+            {runWords.map((w, k) => renderWord(w, wi + k))}
+            {/* Centered label spanning the whole run. Purely a visual/click
+                proxy — clicking it forwards to the run's first word's own
+                (blank, since its value display is suppressed) interlinear
+                label span, which already has the real click behavior:
+                toggling group membership in grouping mode, or opening the
+                value-edit popover otherwise. */}
+            <span
+              onClick={(e) => {
+                e.stopPropagation();
+                const wrapper = (e.currentTarget as HTMLElement).parentElement;
+                wrapper?.querySelector<HTMLElement>(".word-parse")?.click();
+              }}
+              title={datasetGroupingActive ? "Click to add/remove from grouping" : "Click to edit"}
+              className={[
+                "absolute left-0 right-0 bottom-0 text-center cursor-pointer rounded px-0.5",
+                datasetGroupingActive
+                  ? "hover:bg-blue-100 dark:hover:bg-blue-900/40"
+                  : "hover:bg-stone-100 dark:hover:bg-stone-700",
+              ].join(" ")}
+              style={{
+                fontFamily: isHebrew ? '"Ezra SIL", "SBL Hebrew", serif' : '"Gentium Plus", "GFS Didot", serif',
+                fontSize: "0.72em",
+                lineHeight: 1.2,
+                color: "var(--interlinear-color)",
+              }}
+            >
+              {groupValue}
+            </span>
           </span>
         );
       });

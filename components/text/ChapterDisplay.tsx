@@ -273,6 +273,12 @@ export default function ChapterDisplay({
   const [constituentLabelMap, setConstituentLabelMap] = useState<Map<string, string>>(new Map());
   const [datasets, setDatasets] = useState<{ id: number; name: string }[]>([]);
   const [datasetEntryMap, setDatasetEntryMap] = useState<Map<string, string>>(new Map());
+  // Manual word groupings within a dataset: wordId -> shared groupId.
+  const [datasetGroupMap, setDatasetGroupMap] = useState<Map<string, string>>(new Map());
+  const [datasetGroupingMode, setDatasetGroupingMode] = useState<"off" | "new" | "edit">("off");
+  const [pendingGroupWordIds, setPendingGroupWordIds] = useState<Set<string>>(new Set());
+  const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
+  const [groupDraftValue, setGroupDraftValue] = useState("");
   const [transliterationFormatMap, setTransliterationFormatMap] = useState<Map<string, string>>(new Map());
   // Upload dialog state
   const [uploadDatasetId, setUploadDatasetId] = useState<number | null>(null);
@@ -1277,11 +1283,26 @@ export default function ChapterDisplay({
     Promise.all(coveredBookChapters.map((g) =>
       fetch(`/api/interlinear/datasets/${dsId}/entries?book=${encodeURIComponent(g.book)}&chapter=${g.ch}&textSource=${encodeURIComponent(textSource)}`)
         .then((r) => r.json())
-        .then((rows: { wordId: string; value: string }[]) => rows)
+        .then((rows: { wordId: string; value: string; groupId: string | null }[]) => rows)
     ))
-      .then((all) => setDatasetEntryMap(new Map(all.flat().map((r) => [r.wordId, r.value]))))
+      .then((all) => {
+        const flat = all.flat();
+        setDatasetEntryMap(new Map(flat.map((r) => [r.wordId, r.value])));
+        setDatasetGroupMap(new Map(flat.filter((r) => r.groupId).map((r) => [r.wordId, r.groupId as string])));
+      })
       .catch(() => {});
   }, [displayMode, interlinearSubMode, coveredBookChapters, textSource]);
+
+  // Reset any in-progress grouping selection when leaving/switching the active dataset.
+  const activeDatasetId = typeof interlinearSubMode === "object" && interlinearSubMode.type === "dataset"
+    ? interlinearSubMode.id
+    : null;
+  useEffect(() => {
+    setDatasetGroupingMode("off");
+    setPendingGroupWordIds(new Set());
+    setEditingGroupId(null);
+    setGroupDraftValue("");
+  }, [activeDatasetId]);
 
   // ── Load transliteration formats for all chapters currently loaded ────────
   useEffect(() => {
@@ -3140,6 +3161,30 @@ export default function ChapterDisplay({
   async function handleSaveDatasetEntry(wordId: string, value: string | null) {
     if (typeof interlinearSubMode !== "object" || interlinearSubMode.type !== "dataset") return;
     const dsId = interlinearSubMode.id;
+    const gid = datasetGroupMap.get(wordId);
+
+    // Editing the value of a word that's already part of a saved grouping
+    // updates the whole grouping, so all members stay in sync.
+    if (value !== null && gid) {
+      const members = [...datasetGroupMap.entries()].filter(([, g]) => g === gid).map(([w]) => w);
+      setDatasetEntryMap((prev) => {
+        const next = new Map(prev);
+        for (const w of members) next.set(w, value);
+        return next;
+      });
+      try {
+        // keepalive: survive a page reload/navigation triggered right after
+        // the user saves — otherwise the browser aborts the in-flight write.
+        await fetch(`/api/interlinear/datasets/${dsId}/entries`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ wordIds: members, value, groupId: gid, textSource, ...getWordLocation(wordId) }),
+          keepalive: true,
+        });
+      } catch { /* ignore */ }
+      return;
+    }
+
     // Optimistic update
     setDatasetEntryMap((prev) => {
       const next = new Map(prev);
@@ -3147,21 +3192,142 @@ export default function ChapterDisplay({
       else next.set(wordId, value);
       return next;
     });
+    if (value === null && gid) {
+      // Clearing a single grouped word just removes it from the grouping.
+      setDatasetGroupMap((prev) => {
+        const next = new Map(prev);
+        next.delete(wordId);
+        return next;
+      });
+    }
     try {
       if (value === null) {
         await fetch(`/api/interlinear/datasets/${dsId}/entries`, {
           method: "DELETE",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ wordId }),
+          keepalive: true,
         });
       } else {
         await fetch(`/api/interlinear/datasets/${dsId}/entries`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ wordId, value, textSource, ...getWordLocation(wordId) }),
+          keepalive: true,
         });
       }
     } catch { /* ignore */ }
+  }
+
+  function handleToggleNewGrouping() {
+    setDatasetGroupingMode((prev) => {
+      if (prev === "new") return "off";
+      setPendingGroupWordIds(new Set());
+      setEditingGroupId(null);
+      setGroupDraftValue("");
+      return "new";
+    });
+  }
+
+  function handleToggleEditGrouping() {
+    setDatasetGroupingMode((prev) => {
+      if (prev === "edit") return "off";
+      setPendingGroupWordIds(new Set());
+      setEditingGroupId(null);
+      setGroupDraftValue("");
+      return "edit";
+    });
+  }
+
+  function handleToggleDatasetGroupMember(wordId: string) {
+    if (datasetGroupingMode === "off") return;
+
+    // Edit mode: the first click (nothing pending yet) on an already-grouped
+    // word loads that whole group for editing rather than starting fresh.
+    if (datasetGroupingMode === "edit" && pendingGroupWordIds.size === 0) {
+      const gid = datasetGroupMap.get(wordId);
+      if (gid) {
+        const members = [...datasetGroupMap.entries()].filter(([, g]) => g === gid).map(([w]) => w);
+        setPendingGroupWordIds(new Set(members));
+        setEditingGroupId(gid);
+        setGroupDraftValue(datasetEntryMap.get(wordId) ?? "");
+        return;
+      }
+    }
+
+    setPendingGroupWordIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(wordId)) next.delete(wordId);
+      else next.add(wordId);
+      return next;
+    });
+  }
+
+  async function handleSaveGrouping() {
+    if (typeof interlinearSubMode !== "object" || interlinearSubMode.type !== "dataset") return;
+    const value = groupDraftValue.trim();
+    if (pendingGroupWordIds.size === 0 || !value) return;
+    const dsId = interlinearSubMode.id;
+    const wordIds = [...pendingGroupWordIds];
+    const groupId = editingGroupId ?? crypto.randomUUID();
+    const prevGroupId = editingGroupId;
+
+    setDatasetEntryMap((prev) => {
+      const next = new Map(prev);
+      for (const id of wordIds) next.set(id, value);
+      return next;
+    });
+    setDatasetGroupMap((prev) => {
+      const next = new Map(prev);
+      if (prevGroupId) {
+        for (const [w, g] of prev) if (g === prevGroupId && !pendingGroupWordIds.has(w)) next.delete(w);
+      }
+      for (const id of wordIds) next.set(id, groupId);
+      return next;
+    });
+
+    try {
+      await fetch(`/api/interlinear/datasets/${dsId}/entries`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ wordIds, value, groupId, textSource, ...getWordLocation(wordIds[0]) }),
+        keepalive: true,
+      });
+    } catch { /* ignore */ }
+
+    setPendingGroupWordIds(new Set());
+    setEditingGroupId(null);
+    setGroupDraftValue("");
+  }
+
+  async function handleDeleteGrouping() {
+    if (typeof interlinearSubMode !== "object" || interlinearSubMode.type !== "dataset") return;
+    if (!editingGroupId) return;
+    const dsId = interlinearSubMode.id;
+    const gid = editingGroupId;
+
+    setDatasetEntryMap((prev) => {
+      const next = new Map(prev);
+      for (const [w, g] of datasetGroupMap) if (g === gid) next.delete(w);
+      return next;
+    });
+    setDatasetGroupMap((prev) => {
+      const next = new Map(prev);
+      for (const [w, g] of prev) if (g === gid) next.delete(w);
+      return next;
+    });
+    try {
+      await fetch(`/api/interlinear/datasets/${dsId}/entries`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ groupId: gid }),
+        keepalive: true,
+      });
+    } catch { /* ignore */ }
+
+    setPendingGroupWordIds(new Set());
+    setEditingGroupId(null);
+    setGroupDraftValue("");
   }
 
   async function handleCopyTransliteration(opts: { format: "interlinear" | "running"; startVerse: number; endVerse: number }) {
@@ -4161,6 +4327,15 @@ export default function ChapterDisplay({
                   minVerse={words.length ? Math.min(...words.map((w) => w.verse)) : 1}
                   maxVerse={words.length ? Math.max(...words.map((w) => w.verse)) : 1}
                   onCopyTransliteration={handleCopyTransliteration}
+                  groupingMode={datasetGroupingMode}
+                  onToggleNewGrouping={handleToggleNewGrouping}
+                  onToggleEditGrouping={handleToggleEditGrouping}
+                  pendingGroupCount={pendingGroupWordIds.size}
+                  isEditingExistingGroup={editingGroupId != null}
+                  groupDraftValue={groupDraftValue}
+                  onGroupDraftValueChange={setGroupDraftValue}
+                  onSaveGrouping={handleSaveGrouping}
+                  onDeleteGrouping={handleDeleteGrouping}
                 />
               )}
               {toolbarVis.tooltips && <button
@@ -5324,6 +5499,10 @@ export default function ChapterDisplay({
                 onSaveDatasetEntry={handleSaveDatasetEntry}
                 onSaveTransliterationFormat={handleSaveTransliterationFormat}
                 onLemmaClick={displayMode === "interlinear" && interlinearSubMode === "lemma" ? handleLemmaClick : undefined}
+                datasetGroupMap={datasetGroupMap}
+                datasetGroupingActive={datasetGroupingMode !== "off"}
+                pendingGroupWordIds={pendingGroupWordIds}
+                onToggleDatasetGroupMember={handleToggleDatasetGroupMember}
                 hideSourceText={hideSourceText}
                 editingTranslation={editingTranslation}
                 editingTranslationSource={editingTranslationSource}

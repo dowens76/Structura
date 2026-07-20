@@ -27,16 +27,19 @@ export async function GET(
 
   const rows = userSqlite
     .prepare(
-      "SELECT word_id, value FROM word_dataset_entries WHERE dataset_id = ? AND book = ? AND chapter = ? AND text_source = ?"
+      "SELECT word_id, value, group_id FROM word_dataset_entries WHERE dataset_id = ? AND book = ? AND chapter = ? AND text_source = ?"
     )
-    .all(datasetId, book, chapter, textSource) as { word_id: string; value: string }[];
+    .all(datasetId, book, chapter, textSource) as { word_id: string; value: string; group_id: string | null }[];
 
-  return NextResponse.json(rows.map((r) => ({ wordId: r.word_id, value: r.value })));
+  return NextResponse.json(rows.map((r) => ({ wordId: r.word_id, value: r.value, groupId: r.group_id })));
 }
 
 // ── PUT /api/interlinear/datasets/[id]/entries ────────────────────────────────
-// Upserts a single entry (word → value).
-// Body: { wordId, value, textSource, book, chapter }
+// Upserts one or more entries sharing a single value.
+// Body: { wordId, value, textSource, book, chapter } — single word (legacy shape)
+//    or { wordIds, value, textSource, book, chapter, groupId } — a grouping.
+// When groupId is provided, any existing rows in that group not present in
+// wordIds are removed first (so shrinking a grouping during an edit works).
 export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -47,32 +50,55 @@ export async function PUT(
     return NextResponse.json({ error: "Invalid dataset id." }, { status: 400 });
   }
 
-  let body: { wordId?: string; value?: string; textSource?: string; book?: string; chapter?: number };
+  let body: {
+    wordId?: string;
+    wordIds?: string[];
+    value?: string;
+    textSource?: string;
+    book?: string;
+    chapter?: number;
+    groupId?: string | null;
+  };
   try {
     body = await request.json();
   } catch {
     return NextResponse.json({ error: "Invalid JSON." }, { status: 400 });
   }
 
-  const { wordId, value, textSource, book, chapter } = body;
-  if (!wordId || value == null || !textSource || !book || chapter == null) {
+  const wordIds = body.wordIds ?? (body.wordId ? [body.wordId] : []);
+  const { value, textSource, book, chapter, groupId } = body;
+  if (wordIds.length === 0 || value == null || !textSource || !book || chapter == null) {
     return NextResponse.json({ error: "Missing required fields." }, { status: 400 });
   }
 
-  userSqlite
-    .prepare(
-      `INSERT INTO word_dataset_entries (dataset_id, word_id, value, text_source, book, chapter)
-       VALUES (?, ?, ?, ?, ?, ?)
-       ON CONFLICT(dataset_id, word_id) DO UPDATE SET value = excluded.value`
-    )
-    .run(datasetId, wordId, value, textSource, book, chapter);
+  const tx = userSqlite.transaction(() => {
+    if (groupId) {
+      const placeholders = wordIds.map(() => "?").join(",");
+      userSqlite
+        .prepare(
+          `DELETE FROM word_dataset_entries WHERE dataset_id = ? AND group_id = ? AND word_id NOT IN (${placeholders})`
+        )
+        .run(datasetId, groupId, ...wordIds);
+    }
+    const stmt = userSqlite.prepare(
+      `INSERT INTO word_dataset_entries (dataset_id, word_id, value, text_source, book, chapter, group_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(dataset_id, word_id) DO UPDATE SET
+         value = excluded.value,
+         group_id = COALESCE(excluded.group_id, word_dataset_entries.group_id)`
+    );
+    for (const wordId of wordIds) {
+      stmt.run(datasetId, wordId, value, textSource, book, chapter, groupId ?? null);
+    }
+  });
+  tx();
 
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true, groupId: groupId ?? null });
 }
 
 // ── DELETE /api/interlinear/datasets/[id]/entries ─────────────────────────────
-// Removes a single entry.
-// Body: { wordId }
+// Removes a single entry, or an entire grouping.
+// Body: { wordId } or { groupId }
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -83,21 +109,25 @@ export async function DELETE(
     return NextResponse.json({ error: "Invalid dataset id." }, { status: 400 });
   }
 
-  let body: { wordId?: string };
+  let body: { wordId?: string; groupId?: string };
   try {
     body = await request.json();
   } catch {
     return NextResponse.json({ error: "Invalid JSON." }, { status: 400 });
   }
 
-  const { wordId } = body;
-  if (!wordId) {
-    return NextResponse.json({ error: "Missing wordId." }, { status: 400 });
+  const { wordId, groupId } = body;
+  if (groupId) {
+    userSqlite
+      .prepare("DELETE FROM word_dataset_entries WHERE dataset_id = ? AND group_id = ?")
+      .run(datasetId, groupId);
+  } else if (wordId) {
+    userSqlite
+      .prepare("DELETE FROM word_dataset_entries WHERE dataset_id = ? AND word_id = ?")
+      .run(datasetId, wordId);
+  } else {
+    return NextResponse.json({ error: "Missing wordId or groupId." }, { status: 400 });
   }
-
-  userSqlite
-    .prepare("DELETE FROM word_dataset_entries WHERE dataset_id = ? AND word_id = ?")
-    .run(datasetId, wordId);
 
   return NextResponse.json({ ok: true });
 }

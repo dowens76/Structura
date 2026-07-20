@@ -141,12 +141,17 @@ body {
   display: inline-flex;
   flex-direction: column;
   align-items: center;
-  margin: 0 0.15em;
+  margin: 0 0.15em 14px;
   vertical-align: bottom;
 }
 
 .word-interlinear .word-surface {
   font-size: inherit;
+  /* Without this, word-surface inherits the verse line's large --source-lh
+     line-height (2.5/2.25), which pads far more space below the word than
+     the 2px margin-top below suggests — visually pulling the label down
+     toward the *next* verse line instead of keeping it with its own word. */
+  line-height: 1.15;
 }
 
 .word-interlinear .word-parse {
