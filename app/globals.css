@@ -154,6 +154,15 @@ body {
   line-height: 1.15;
 }
 
+/* InterlinearLabel's positioning wrapper (needed for its edit popover) also
+   inherits the verse line's large line-height, inflating well beyond the
+   actual label text inside it and pushing the visible label down. Tighten
+   it so the label sits close to its own word instead of floating toward
+   the next verse line. */
+.word-interlinear .relative {
+  line-height: 1;
+}
+
 .word-interlinear .word-parse {
   letter-spacing: 0;
   line-height: 1.2;

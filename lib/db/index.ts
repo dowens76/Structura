@@ -552,12 +552,14 @@ function _migrateUserDbInner(sqlite: Database.Database): void {
       dataset_id  INTEGER NOT NULL REFERENCES word_datasets(id) ON DELETE CASCADE,
       word_id     TEXT    NOT NULL,
       value       TEXT    NOT NULL,
+      group_id    TEXT,
       text_source TEXT    NOT NULL,
       book        TEXT    NOT NULL,
       chapter     INTEGER NOT NULL
     );
     CREATE UNIQUE INDEX IF NOT EXISTS wde_ds_word_idx ON word_dataset_entries(dataset_id, word_id);
     CREATE INDEX IF NOT EXISTS wde_ds_book_ch_idx ON word_dataset_entries(dataset_id, book, chapter, text_source);
+    CREATE INDEX IF NOT EXISTS wde_ds_group_idx ON word_dataset_entries(dataset_id, group_id);
 
     CREATE TABLE IF NOT EXISTS transliteration_formats (
       id           INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -571,6 +573,12 @@ function _migrateUserDbInner(sqlite: Database.Database): void {
     CREATE UNIQUE INDEX IF NOT EXISTS trf_ws_word_idx ON transliteration_formats(workspace_id, word_id);
     CREATE INDEX IF NOT EXISTS trf_book_ch_src_idx ON transliteration_formats(book, chapter, text_source);
   `);
+
+  const wdeCols = (sqlite.prepare("PRAGMA table_info(word_dataset_entries)").all() as { name: string }[]).map(r => r.name);
+  if (!wdeCols.includes("group_id")) {
+    try { sqlite.exec("ALTER TABLE word_dataset_entries ADD COLUMN group_id TEXT"); } catch { /* already exists */ }
+    try { sqlite.exec("CREATE INDEX IF NOT EXISTS wde_ds_group_idx ON word_dataset_entries(dataset_id, group_id)"); } catch { /* already exists */ }
+  }
 
   // Seed VCB translation record if vcb.db is present but the translations row is missing
   if (fs.existsSync(VCB_DB_PATH)) {
