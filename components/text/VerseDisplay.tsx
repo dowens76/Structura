@@ -6,6 +6,7 @@ import { renderUsfmText } from "@/lib/utils/usfm-renderer";
 import type { DisplayMode, GrammarFilterState, TranslationTextEntry, InterlinearSubMode } from "@/lib/morphology/types";
 import type { ColorRule } from "@/lib/morphology/colorRules";
 import { PLOT_ELEMENTS, ANNOTATION_PALETTE, getPlotElement, getAnnotationColor } from "@/lib/utils/annotations";
+import { resolvedDatasetColor } from "@/lib/utils/datasetColors";
 
 /** Width of the hanging-indent space (px). RST lines are drawn inside this space. */
 const HANG_PX = 32;
@@ -16,29 +17,6 @@ const HANG_PX = 32;
  * (there is only ever one chapter, so it adds no information).
  */
 const SINGLE_CHAPTER_BOOKS = new Set(["Obad", "Phlm", "2John", "3John", "Jude"]);
-
-/** Deterministic subtle color for a saved dataset grouping, keyed by its value
- *  text (e.g. "B") — so every grouping labeled "B" gets the same color,
- *  regardless of how many separate groupings share that label. Hues are
- *  spaced ~45° apart around the wheel so consecutive single-letter labels
- *  (A, B, C, ...) — which hash to consecutive indices — never land on two
- *  shades of the same color (e.g. amber and yellow used to both land here
- *  and were indistinguishable at low opacity). */
-const DATASET_GROUP_COLORS = [
-  "rgba(239, 68, 68, 0.25)",   // red
-  "rgba(245, 158, 11, 0.25)",  // amber
-  "rgba(132, 204, 22, 0.25)",  // lime
-  "rgba(16, 185, 129, 0.25)",  // emerald
-  "rgba(6, 182, 212, 0.25)",   // cyan
-  "rgba(59, 130, 246, 0.25)",  // blue
-  "rgba(139, 92, 246, 0.25)",  // violet
-  "rgba(236, 72, 153, 0.25)",  // pink
-];
-function colorForDatasetValue(value: string): string {
-  let hash = 0;
-  for (let i = 0; i < value.length; i++) hash = (hash * 31 + value.charCodeAt(i)) >>> 0;
-  return DATASET_GROUP_COLORS[hash % DATASET_GROUP_COLORS.length];
-}
 
 /** Hebrew Unicode ranges: basic Hebrew block + presentation forms A. */
 const HEBREW_RE = /[֐-׿יִ-ﭏ]+/g;
@@ -214,6 +192,7 @@ interface VerseDisplayProps {
   onLemmaClick?: (word: Word) => void;
   // Dataset word grouping
   datasetGroupMap?: Map<string, string>;
+  datasetLabelColors?: Map<string, string>;
   datasetGroupingActive?: boolean;
   pendingGroupWordIds?: Set<string>;
   onToggleDatasetGroupMember?: (wordId: string) => void;
@@ -1024,6 +1003,7 @@ export default function VerseDisplay({
   onSaveTransliterationFormat,
   onLemmaClick,
   datasetGroupMap = new Map<string, string>(),
+  datasetLabelColors = new Map<string, string>(),
   datasetGroupingActive = false,
   pendingGroupWordIds = new Set<string>(),
   onToggleDatasetGroupMember,
@@ -1859,7 +1839,7 @@ export default function VerseDisplay({
         const datasetHighlightBg = isPendingGroupMember
           ? "rgba(37, 99, 235, 0.35)"
           : savedGroupId
-            ? colorForDatasetValue(datasetEntryMap.get(word.wordId) ?? savedGroupId)
+            ? resolvedDatasetColor(datasetEntryMap.get(word.wordId) ?? savedGroupId, datasetLabelColors)
             : undefined;
         // In interlinear mode, highlights must be scoped to the source-text span
         // inside WordToken (not the outer wrapper, which covers both rows).

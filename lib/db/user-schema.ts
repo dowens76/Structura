@@ -417,6 +417,21 @@ export const wordDatasetEntries = sqliteTable(
   ]
 );
 
+/** User-chosen highlight color override for a dataset's label value (e.g.
+ *  always render "A" in red instead of its auto-assigned hash color). One
+ *  row per (dataset, value); absence means the value keeps its auto color. */
+export const wordDatasetLabelColors = sqliteTable(
+  "word_dataset_label_colors",
+  {
+    id:        integer("id").primaryKey({ autoIncrement: true }),
+    datasetId: integer("dataset_id").notNull()
+                 .references(() => wordDatasets.id, { onDelete: "cascade" }),
+    value:     text("value").notNull(),
+    color:     text("color").notNull(),
+  },
+  (t) => [uniqueIndex("wdlc_ds_value_idx").on(t.datasetId, t.value)]
+);
+
 /** Per-word character-level bold/italic formatting for the transliteration label.
  *  `format` stores sanitized HTML using only <b> and <i> tags. */
 export const transliterationFormats = sqliteTable(
@@ -663,6 +678,7 @@ export type AutoBackupSettings = typeof autoBackupSettings.$inferSelect;
 export type ConstituentLabel = typeof constituentLabels.$inferSelect;
 export type WordDataset = typeof wordDatasets.$inferSelect;
 export type WordDatasetEntry = typeof wordDatasetEntries.$inferSelect;
+export type WordDatasetLabelColor = typeof wordDatasetLabelColors.$inferSelect;
 export type BookGrouping = typeof bookGroupings.$inferSelect;
 export type TranslationFootnote = typeof translationFootnotes.$inferSelect;
 export type TranslationVersion = typeof translationVersions.$inferSelect;

@@ -275,6 +275,8 @@ export default function ChapterDisplay({
   const [datasetEntryMap, setDatasetEntryMap] = useState<Map<string, string>>(new Map());
   // Manual word groupings within a dataset: wordId -> shared groupId.
   const [datasetGroupMap, setDatasetGroupMap] = useState<Map<string, string>>(new Map());
+  // User color overrides for a dataset's label values: value -> hex color.
+  const [datasetLabelColors, setDatasetLabelColors] = useState<Map<string, string>>(new Map());
   const [datasetGroupingMode, setDatasetGroupingMode] = useState<"off" | "new" | "edit">("off");
   const [pendingGroupWordIds, setPendingGroupWordIds] = useState<Set<string>>(new Set());
   const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
@@ -1302,6 +1304,20 @@ export default function ChapterDisplay({
     setPendingGroupWordIds(new Set());
     setEditingGroupId(null);
     setGroupDraftValue("");
+  }, [activeDatasetId]);
+
+  // ── Load label color overrides for the active dataset ─────────────────────
+  useEffect(() => {
+    if (activeDatasetId == null) {
+      setDatasetLabelColors(new Map());
+      return;
+    }
+    fetch(`/api/interlinear/datasets/${activeDatasetId}/label-colors`)
+      .then((r) => r.json())
+      .then((rows: { value: string; color: string }[]) => {
+        setDatasetLabelColors(new Map(rows.map((r) => [r.value, r.color])));
+      })
+      .catch(() => {});
   }, [activeDatasetId]);
 
   // ── Load transliteration formats for all chapters currently loaded ────────
@@ -3300,6 +3316,35 @@ export default function ChapterDisplay({
     setGroupDraftValue("");
   }
 
+  async function handleSetLabelColor(value: string, color: string | null) {
+    if (typeof interlinearSubMode !== "object" || interlinearSubMode.type !== "dataset") return;
+    const dsId = interlinearSubMode.id;
+
+    setDatasetLabelColors((prev) => {
+      const next = new Map(prev);
+      if (color === null) next.delete(value);
+      else next.set(value, color);
+      return next;
+    });
+    try {
+      if (color === null) {
+        await fetch(`/api/interlinear/datasets/${dsId}/label-colors`, {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ value }),
+          keepalive: true,
+        });
+      } else {
+        await fetch(`/api/interlinear/datasets/${dsId}/label-colors`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ value, color }),
+          keepalive: true,
+        });
+      }
+    } catch { /* ignore */ }
+  }
+
   async function handleDeleteGrouping() {
     if (typeof interlinearSubMode !== "object" || interlinearSubMode.type !== "dataset") return;
     if (!editingGroupId) return;
@@ -4336,6 +4381,8 @@ export default function ChapterDisplay({
                   onGroupDraftValueChange={setGroupDraftValue}
                   onSaveGrouping={handleSaveGrouping}
                   onDeleteGrouping={handleDeleteGrouping}
+                  labelColor={datasetLabelColors.get(groupDraftValue.trim()) ?? null}
+                  onSetLabelColor={(color) => handleSetLabelColor(groupDraftValue.trim(), color)}
                 />
               )}
               {toolbarVis.tooltips && <button
@@ -5500,6 +5547,7 @@ export default function ChapterDisplay({
                 onSaveTransliterationFormat={handleSaveTransliterationFormat}
                 onLemmaClick={displayMode === "interlinear" && interlinearSubMode === "lemma" ? handleLemmaClick : undefined}
                 datasetGroupMap={datasetGroupMap}
+                datasetLabelColors={datasetLabelColors}
                 datasetGroupingActive={datasetGroupingMode !== "off"}
                 pendingGroupWordIds={pendingGroupWordIds}
                 onToggleDatasetGroupMember={handleToggleDatasetGroupMember}

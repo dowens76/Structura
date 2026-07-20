@@ -561,6 +561,14 @@ function _migrateUserDbInner(sqlite: Database.Database): void {
     CREATE INDEX IF NOT EXISTS wde_ds_book_ch_idx ON word_dataset_entries(dataset_id, book, chapter, text_source);
     CREATE INDEX IF NOT EXISTS wde_ds_group_idx ON word_dataset_entries(dataset_id, group_id);
 
+    CREATE TABLE IF NOT EXISTS word_dataset_label_colors (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      dataset_id  INTEGER NOT NULL REFERENCES word_datasets(id) ON DELETE CASCADE,
+      value       TEXT    NOT NULL,
+      color       TEXT    NOT NULL
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS wdlc_ds_value_idx ON word_dataset_label_colors(dataset_id, value);
+
     CREATE TABLE IF NOT EXISTS transliteration_formats (
       id           INTEGER PRIMARY KEY AUTOINCREMENT,
       workspace_id INTEGER NOT NULL DEFAULT 1 REFERENCES workspaces(id) ON DELETE CASCADE,

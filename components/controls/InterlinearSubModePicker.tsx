@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import type { InterlinearSubMode } from "@/lib/morphology/types";
+import { DATASET_GROUP_SWATCHES } from "@/lib/utils/datasetColors";
 
 interface Dataset {
   id: number;
@@ -30,6 +31,10 @@ interface InterlinearSubModePickerProps {
   onGroupDraftValueChange?: (value: string) => void;
   onSaveGrouping?: () => void;
   onDeleteGrouping?: () => void;
+  // Color override for the label value currently in groupDraftValue; null
+  // means it uses its auto-assigned color.
+  labelColor?: string | null;
+  onSetLabelColor?: (color: string | null) => void;
 }
 
 type SimpleMode = "lemma" | "strongs" | "morph" | "transliteration" | "constituent";
@@ -66,6 +71,8 @@ export default function InterlinearSubModePicker({
   onGroupDraftValueChange,
   onSaveGrouping,
   onDeleteGrouping,
+  labelColor = null,
+  onSetLabelColor,
 }: InterlinearSubModePickerProps) {
   const [dsMenuOpen,   setDsMenuOpen]   = useState(false);
   const [creating,     setCreating]     = useState(false);
@@ -325,6 +332,34 @@ export default function InterlinearSubModePicker({
                     className="rounded border px-1.5 py-0.5 text-xs outline-none w-full"
                     style={{ borderColor: "var(--border)", backgroundColor: "var(--surface)", color: "var(--foreground)" }}
                   />
+                  {groupDraftValue.trim() && (
+                    <span className="flex flex-wrap items-center gap-1">
+                      <button
+                        onClick={() => onSetLabelColor?.(null)}
+                        title="Use the automatic color for this label"
+                        className="w-4 h-4 rounded-full border flex items-center justify-center text-[8px] leading-none"
+                        style={{
+                          borderColor: labelColor == null ? "var(--foreground)" : "var(--border)",
+                          color: "var(--text-muted)",
+                        }}
+                      >
+                        ×
+                      </button>
+                      {DATASET_GROUP_SWATCHES.map((c) => (
+                        <button
+                          key={c}
+                          onClick={() => onSetLabelColor?.(c)}
+                          title={c}
+                          className="w-4 h-4 rounded-full transition-transform hover:scale-110"
+                          style={{
+                            backgroundColor: c,
+                            outline: labelColor === c ? "2px solid var(--foreground)" : "none",
+                            outlineOffset: "1px",
+                          }}
+                        />
+                      ))}
+                    </span>
+                  )}
                   <span className="flex gap-1 justify-end">
                     {isEditingExistingGroup && (
                       <button
