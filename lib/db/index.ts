@@ -599,6 +599,39 @@ function _migrateUserDbInner(sqlite: Database.Database): void {
       sort_order   INTEGER NOT NULL DEFAULT 0
     );
     CREATE UNIQUE INDEX IF NOT EXISTS cfct_ws_key_idx ON comm_function_custom_types(workspace_id, key);
+
+    CREATE TABLE IF NOT EXISTS word_tag_columns (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      workspace_id INTEGER NOT NULL DEFAULT 1 REFERENCES workspaces(id) ON DELETE CASCADE,
+      tag_name     TEXT    NOT NULL,
+      name         TEXT    NOT NULL,
+      type         TEXT    NOT NULL,
+      sort_order   INTEGER NOT NULL DEFAULT 0,
+      created_at   TEXT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS wtc_ws_tagname_name_idx ON word_tag_columns(workspace_id, tag_name, name);
+    CREATE INDEX IF NOT EXISTS wtc_ws_tagname_idx ON word_tag_columns(workspace_id, tag_name);
+
+    CREATE TABLE IF NOT EXISTS word_tag_column_options (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      column_id  INTEGER NOT NULL REFERENCES word_tag_columns(id) ON DELETE CASCADE,
+      value      TEXT    NOT NULL,
+      color      TEXT,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS wtco_col_value_idx ON word_tag_column_options(column_id, value);
+
+    CREATE TABLE IF NOT EXISTS word_tag_column_values (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      column_id  INTEGER NOT NULL REFERENCES word_tag_columns(id) ON DELETE CASCADE,
+      word_id    TEXT    NOT NULL,
+      option_id  INTEGER REFERENCES word_tag_column_options(id) ON DELETE CASCADE,
+      text_value TEXT,
+      created_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS wtcv_col_word_idx ON word_tag_column_values(column_id, word_id);
+    CREATE UNIQUE INDEX IF NOT EXISTS wtcv_col_word_option_idx ON word_tag_column_values(column_id, word_id, option_id);
   `);
 
   const wdeCols = (sqlite.prepare("PRAGMA table_info(word_dataset_entries)").all() as { name: string }[]).map(r => r.name);

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import Link from "next/link";
 import type { WordTag, BookGrouping } from "@/lib/db/schema";
 import type { LemmaSuggestion } from "@/app/api/search/lemma-suggest/route";
 import { RULE_PALETTE } from "@/lib/morphology/colorRules";
@@ -657,6 +658,15 @@ export default function WordTagPanel({
                     <span className={`ml-0.5 text-sm leading-none cursor-pointer transition-colors ${isHighlighted ? "text-amber-400 hover:text-amber-500" : "text-stone-300 hover:text-amber-400"}`}
                       onClick={(e) => { e.stopPropagation(); onToggleHighlight(t.id); }}
                       title={isHighlighted ? "Remove highlight" : "Highlight all occurrences"}>✦</span>
+                  )}
+                  {/* manage list (opens the Word/Concept Editor in a new tab) */}
+                  {isHovered && (
+                    <Link
+                      href={`/concepts/${encodeURIComponent(t.name)}`}
+                      target="_blank"
+                      onClick={(e) => e.stopPropagation()}
+                      className="ml-0.5 text-stone-400 hover:text-blue-500 transition-colors leading-none"
+                      title="Manage this list's occurrences">✎</Link>
                   )}
                   {/* delete button */}
                   {isHovered && (

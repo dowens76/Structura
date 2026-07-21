@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 
 interface TagGroup {
   name: string;
@@ -184,11 +185,12 @@ export default function ExportListsPanel() {
           Back
         </button>
         <h1 className="text-2xl font-semibold mb-1" style={{ color: "var(--foreground)" }}>
-          Export Reference Lists
+          Manage Lists
         </h1>
         <p className="text-sm" style={{ color: "var(--text-muted)" }}>
-          Export tagged words, concepts, or characters as CSV files. Each selected tag or character
-          becomes a separate file named <code className="font-mono text-xs">List-[name].csv</code> with
+          Export tagged words, concepts, or characters as CSV files, or open a word/concept tag&apos;s
+          editor to classify each occurrence with custom columns. Each selected tag or character
+          becomes a separate CSV file named <code className="font-mono text-xs">List-[name].csv</code> with
           columns for Scripture reference, source text, and any imported translations.
         </p>
       </div>
@@ -239,6 +241,7 @@ export default function ExportListsPanel() {
                 subtitle={`${tag.type} · ${tag.books.join(", ")} · ${tag.count} ref${tag.count !== 1 ? "s" : ""}`}
                 checked={selectedTags.has(tag.name)}
                 onToggle={() => toggleTag(tag.name)}
+                editHref={`/concepts/${encodeURIComponent(tag.name)}`}
               />
             ))}
           </div>
@@ -375,43 +378,57 @@ function TagRow({
   subtitle,
   checked,
   onToggle,
+  editHref,
 }: {
   name: string;
   color: string;
   subtitle: string;
   checked: boolean;
   onToggle: () => void;
+  editHref?: string;
 }) {
   return (
-    <label
-      className="flex items-center gap-3 px-4 py-2.5 cursor-pointer transition-colors hover:bg-[var(--surface-muted)]"
+    <div
+      className="flex items-center gap-3 px-4 py-2.5 transition-colors hover:bg-[var(--surface-muted)]"
       style={{ backgroundColor: "var(--surface)" }}
     >
-      {/* Checkbox */}
-      <span
-        className="flex-shrink-0 w-4 h-4 rounded border flex items-center justify-center"
-        style={{
-          borderColor: checked ? "#059669" : "var(--border-muted)",
-          backgroundColor: checked ? "#059669" : "transparent",
-        }}
-      >
-        {checked && (
-          <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-            <polyline points="20 6 9 17 4 12" />
-          </svg>
-        )}
-      </span>
-      <input type="checkbox" checked={checked} onChange={onToggle} className="sr-only" />
-      {/* Color swatch */}
-      <span
-        className="flex-shrink-0 w-3 h-3 rounded-full"
-        style={{ backgroundColor: color }}
-      />
-      {/* Name + subtitle */}
-      <div className="min-w-0 flex-1">
-        <span className="text-sm font-medium" style={{ color: "var(--foreground)" }}>{name}</span>
-        <span className="ml-2 text-xs" style={{ color: "var(--text-muted)" }}>{subtitle}</span>
-      </div>
-    </label>
+      <label className="flex items-center gap-3 flex-1 min-w-0 cursor-pointer">
+        {/* Checkbox */}
+        <span
+          className="flex-shrink-0 w-4 h-4 rounded border flex items-center justify-center"
+          style={{
+            borderColor: checked ? "#059669" : "var(--border-muted)",
+            backgroundColor: checked ? "#059669" : "transparent",
+          }}
+        >
+          {checked && (
+            <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="20 6 9 17 4 12" />
+            </svg>
+          )}
+        </span>
+        <input type="checkbox" checked={checked} onChange={onToggle} className="sr-only" />
+        {/* Color swatch */}
+        <span
+          className="flex-shrink-0 w-3 h-3 rounded-full"
+          style={{ backgroundColor: color }}
+        />
+        {/* Name + subtitle */}
+        <div className="min-w-0 flex-1">
+          <span className="text-sm font-medium" style={{ color: "var(--foreground)" }}>{name}</span>
+          <span className="ml-2 text-xs" style={{ color: "var(--text-muted)" }}>{subtitle}</span>
+        </div>
+      </label>
+      {editHref && (
+        <Link
+          href={editHref}
+          title={`Edit occurrences of "${name}"`}
+          className="flex-shrink-0 text-xs px-1.5 py-0.5 rounded border transition-colors hover:bg-stone-100 dark:hover:bg-stone-700"
+          style={{ color: "var(--text-muted)", borderColor: "var(--border-muted)" }}
+        >
+          ✎ Edit
+        </Link>
+      )}
+    </div>
   );
 }

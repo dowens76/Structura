@@ -451,6 +451,67 @@ export const wordDatasetLabelColors = sqliteTable(
   (t) => [uniqueIndex("wdlc_ds_value_idx").on(t.datasetId, t.value)]
 );
 
+/** A custom classification column on a word/concept tag's occurrence table
+ *  (Word/Concept Editor). Keyed by tag NAME rather than a single wordTags.id,
+ *  since the same concept name can span multiple wordTags rows (one per book). */
+export const wordTagColumns = sqliteTable(
+  "word_tag_columns",
+  {
+    id:          integer("id").primaryKey({ autoIncrement: true }),
+    workspaceId: integer("workspace_id").notNull().default(1)
+                   .references(() => workspaces.id, { onDelete: "cascade" }),
+    tagName:     text("tag_name").notNull(),
+    name:        text("name").notNull(),
+    type:        text("type").notNull(), // "text" | "list"
+    sortOrder:   integer("sort_order").notNull().default(0),
+    createdAt:   text("created_at").$defaultFn(() => new Date().toISOString()),
+  },
+  (t) => [
+    uniqueIndex("wtc_ws_tagname_name_idx").on(t.workspaceId, t.tagName, t.name),
+    index("wtc_ws_tagname_idx").on(t.workspaceId, t.tagName),
+  ]
+);
+
+/** Reusable entries for a "list"-type wordTagColumns column (e.g. "lion",
+ *  "camel" for an "Animals" concept's category column). Created on demand
+ *  when the user types a new value; reusable across occurrences afterward. */
+export const wordTagColumnOptions = sqliteTable(
+  "word_tag_column_options",
+  {
+    id:        integer("id").primaryKey({ autoIncrement: true }),
+    columnId:  integer("column_id").notNull()
+                 .references(() => wordTagColumns.id, { onDelete: "cascade" }),
+    value:     text("value").notNull(),
+    color:     text("color"),
+    sortOrder: integer("sort_order").notNull().default(0),
+    createdAt: text("created_at").$defaultFn(() => new Date().toISOString()),
+  },
+  (t) => [uniqueIndex("wtco_col_value_idx").on(t.columnId, t.value)]
+);
+
+/** Per-occurrence cell value for a wordTagColumns column. List-type columns
+ *  may have multiple rows per (columnId, wordId) — one per selected option —
+ *  to support multiple tags/values on the same occurrence. Text-type columns
+ *  use textValue with optionId null, and are kept to a single row per cell
+ *  at the API layer (delete-then-insert), not via a DB constraint. */
+export const wordTagColumnValues = sqliteTable(
+  "word_tag_column_values",
+  {
+    id:        integer("id").primaryKey({ autoIncrement: true }),
+    columnId:  integer("column_id").notNull()
+                 .references(() => wordTagColumns.id, { onDelete: "cascade" }),
+    wordId:    text("word_id").notNull(),
+    optionId:  integer("option_id")
+                 .references(() => wordTagColumnOptions.id, { onDelete: "cascade" }),
+    textValue: text("text_value"),
+    createdAt: text("created_at").$defaultFn(() => new Date().toISOString()),
+  },
+  (t) => [
+    index("wtcv_col_word_idx").on(t.columnId, t.wordId),
+    uniqueIndex("wtcv_col_word_option_idx").on(t.columnId, t.wordId, t.optionId),
+  ]
+);
+
 /** Per-word character-level bold/italic formatting for the transliteration label.
  *  `format` stores sanitized HTML using only <b> and <i> tags. */
 export const transliterationFormats = sqliteTable(
@@ -698,6 +759,9 @@ export type ConstituentLabel = typeof constituentLabels.$inferSelect;
 export type WordDataset = typeof wordDatasets.$inferSelect;
 export type WordDatasetEntry = typeof wordDatasetEntries.$inferSelect;
 export type WordDatasetLabelColor = typeof wordDatasetLabelColors.$inferSelect;
+export type WordTagColumn = typeof wordTagColumns.$inferSelect;
+export type WordTagColumnOption = typeof wordTagColumnOptions.$inferSelect;
+export type WordTagColumnValue = typeof wordTagColumnValues.$inferSelect;
 export type BookGrouping = typeof bookGroupings.$inferSelect;
 export type TranslationFootnote = typeof translationFootnotes.$inferSelect;
 export type TranslationVersion = typeof translationVersions.$inferSelect;
