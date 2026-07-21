@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import type { InterlinearSubMode } from "@/lib/morphology/types";
+import { CONSTITUENT_LABELS } from "@/lib/morphology/types";
 import { DATASET_GROUP_SWATCHES } from "@/lib/utils/datasetColors";
 
 interface Dataset {
@@ -96,6 +97,7 @@ export default function InterlinearSubModePicker({
   const activeDs      = activeDatasetId(subMode);
   const currentSimple = typeof subMode === "string" ? subMode : null;
   const isTranslit    = subMode === "transliteration";
+  const isConstituent = subMode === "constituent";
 
   const btnBase =
     "px-2.5 py-1 rounded text-xs font-medium transition-colors whitespace-nowrap";
@@ -281,8 +283,8 @@ export default function InterlinearSubModePicker({
         )}
       </div>
 
-      {/* ── Word grouping (only when a dataset is active) ─────────────────── */}
-      {activeDs != null && (
+      {/* ── Word grouping (when a dataset or constituent labeling is active) ── */}
+      {(activeDs != null || isConstituent) && (
         <>
           <button
             onClick={() => { onToggleNewGrouping?.(); setGroupPromptOpen(false); }}
@@ -316,23 +318,44 @@ export default function InterlinearSubModePicker({
               {groupPromptOpen && (
                 <div
                   className="absolute left-0 top-full mt-1 z-50 rounded-lg border shadow-lg p-2 flex flex-col gap-1.5"
-                  style={{ ...panelStyle, minWidth: "160px" }}
+                  style={{ ...panelStyle, minWidth: isConstituent ? "180px" : "160px", maxWidth: isConstituent ? "220px" : undefined }}
                   onClick={(e) => e.stopPropagation()}
                 >
-                  <input
-                    ref={groupInputRef}
-                    autoFocus
-                    value={groupDraftValue}
-                    onChange={(e) => onGroupDraftValueChange?.(e.target.value)}
-                    placeholder="Enter value…"
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") { onSaveGrouping?.(); setGroupPromptOpen(false); }
-                      if (e.key === "Escape") setGroupPromptOpen(false);
-                    }}
-                    className="rounded border px-1.5 py-0.5 text-xs outline-none w-full"
-                    style={{ borderColor: "var(--border)", backgroundColor: "var(--surface)", color: "var(--foreground)" }}
-                  />
-                  {groupDraftValue.trim() && (
+                  {isConstituent ? (
+                    <div className="flex flex-wrap gap-1">
+                      {CONSTITUENT_LABELS.map(({ key, label }) => (
+                        <button
+                          key={key}
+                          onClick={() => onGroupDraftValueChange?.(groupDraftValue === key ? "" : key)}
+                          title={label}
+                          className={[
+                            "text-[10px] px-1.5 py-0.5 rounded border transition-colors",
+                            groupDraftValue === key
+                              ? "bg-blue-600 border-blue-600 text-white"
+                              : "border-stone-200 dark:border-stone-700 hover:bg-stone-100 dark:hover:bg-stone-700",
+                          ].join(" ")}
+                          style={{ color: groupDraftValue === key ? undefined : "var(--foreground)" }}
+                        >
+                          {key}
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <input
+                      ref={groupInputRef}
+                      autoFocus
+                      value={groupDraftValue}
+                      onChange={(e) => onGroupDraftValueChange?.(e.target.value)}
+                      placeholder="Enter value…"
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") { onSaveGrouping?.(); setGroupPromptOpen(false); }
+                        if (e.key === "Escape") setGroupPromptOpen(false);
+                      }}
+                      className="rounded border px-1.5 py-0.5 text-xs outline-none w-full"
+                      style={{ borderColor: "var(--border)", backgroundColor: "var(--surface)", color: "var(--foreground)" }}
+                    />
+                  )}
+                  {!isConstituent && groupDraftValue.trim() && (
                     <span className="flex flex-wrap items-center gap-1">
                       <button
                         onClick={() => onSetLabelColor?.(null)}

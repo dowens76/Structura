@@ -271,12 +271,18 @@ export default function ChapterDisplay({
   const [displayMode, setDisplayMode] = useState<DisplayMode>("clean");
   const [interlinearSubMode, setInterlinearSubMode] = useState<InterlinearSubMode>("lemma");
   const [constituentLabelMap, setConstituentLabelMap] = useState<Map<string, string>>(new Map());
+  // Manual word groupings within constituent labeling: wordId -> shared groupId.
+  const [constituentGroupMap, setConstituentGroupMap] = useState<Map<string, string>>(new Map());
   const [datasets, setDatasets] = useState<{ id: number; name: string }[]>([]);
   const [datasetEntryMap, setDatasetEntryMap] = useState<Map<string, string>>(new Map());
   // Manual word groupings within a dataset: wordId -> shared groupId.
   const [datasetGroupMap, setDatasetGroupMap] = useState<Map<string, string>>(new Map());
   // User color overrides for a dataset's label values: value -> hex color.
   const [datasetLabelColors, setDatasetLabelColors] = useState<Map<string, string>>(new Map());
+  // Grouping UI state shared between the dataset feature and the constituent
+  // feature — only one of the two grouping-capable modes can be active at a
+  // time (interlinearSubMode is a single value), so reusing this state avoids
+  // duplicating the whole New/Edit/Save-grouping flow per feature.
   const [datasetGroupingMode, setDatasetGroupingMode] = useState<"off" | "new" | "edit">("off");
   const [pendingGroupWordIds, setPendingGroupWordIds] = useState<Set<string>>(new Set());
   const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
@@ -1271,9 +1277,13 @@ export default function ChapterDisplay({
     Promise.all(coveredBookChapters.map((g) =>
       fetch(`/api/interlinear/constituent-labels?workspaceId=1&book=${encodeURIComponent(g.book)}&chapter=${g.ch}&textSource=${encodeURIComponent(textSource)}`)
         .then((r) => r.json())
-        .then((rows: { wordId: string; label: string }[]) => rows)
+        .then((rows: { wordId: string; label: string; groupId: string | null }[]) => rows)
     ))
-      .then((all) => setConstituentLabelMap(new Map(all.flat().map((r) => [r.wordId, r.label]))))
+      .then((all) => {
+        const flat = all.flat();
+        setConstituentLabelMap(new Map(flat.map((r) => [r.wordId, r.label])));
+        setConstituentGroupMap(new Map(flat.filter((r) => r.groupId).map((r) => [r.wordId, r.groupId as string])));
+      })
       .catch(() => {});
   }, [displayMode, interlinearSubMode, coveredBookChapters, textSource]);
 
@@ -1295,16 +1305,22 @@ export default function ChapterDisplay({
       .catch(() => {});
   }, [displayMode, interlinearSubMode, coveredBookChapters, textSource]);
 
-  // Reset any in-progress grouping selection when leaving/switching the active dataset.
+  // Which grouping-capable feature (if any) is currently active: a specific
+  // custom dataset, or the built-in constituent-labeling mode.
   const activeDatasetId = typeof interlinearSubMode === "object" && interlinearSubMode.type === "dataset"
     ? interlinearSubMode.id
     : null;
+  const isConstituentMode = interlinearSubMode === "constituent";
+  const groupingContextKey = isConstituentMode ? "constituent" : activeDatasetId != null ? `dataset:${activeDatasetId}` : "none";
+
+  // Reset any in-progress grouping selection when leaving/switching the active
+  // grouping-capable feature (a dataset, constituent labeling, or neither).
   useEffect(() => {
     setDatasetGroupingMode("off");
     setPendingGroupWordIds(new Set());
     setEditingGroupId(null);
     setGroupDraftValue("");
-  }, [activeDatasetId]);
+  }, [groupingContextKey]);
 
   // ── Load label color overrides for the active dataset ─────────────────────
   useEffect(() => {
@@ -3150,6 +3166,28 @@ export default function ChapterDisplay({
   // ── Interlinear annotation handlers ────────────────────────────────────────
 
   async function handleSaveConstituentLabel(wordId: string, label: string | null) {
+    const gid = constituentGroupMap.get(wordId);
+
+    // Editing the label of a word that's already part of a saved grouping
+    // updates the whole grouping, so all members stay in sync.
+    if (label !== null && gid) {
+      const members = [...constituentGroupMap.entries()].filter(([, g]) => g === gid).map(([w]) => w);
+      setConstituentLabelMap((prev) => {
+        const next = new Map(prev);
+        for (const w of members) next.set(w, label);
+        return next;
+      });
+      try {
+        await fetch("/api/interlinear/constituent-labels", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ workspaceId: 1, wordIds: members, label, groupId: gid, textSource, ...getWordLocation(wordId) }),
+          keepalive: true,
+        });
+      } catch { /* ignore */ }
+      return;
+    }
+
     // Optimistic update
     setConstituentLabelMap((prev) => {
       const next = new Map(prev);
@@ -3157,18 +3195,28 @@ export default function ChapterDisplay({
       else next.set(wordId, label);
       return next;
     });
+    if (label === null && gid) {
+      // Clearing a single grouped word just removes it from the grouping.
+      setConstituentGroupMap((prev) => {
+        const next = new Map(prev);
+        next.delete(wordId);
+        return next;
+      });
+    }
     try {
       if (label === null) {
         await fetch("/api/interlinear/constituent-labels", {
           method: "DELETE",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ workspaceId: 1, wordId }),
+          keepalive: true,
         });
       } else {
         await fetch("/api/interlinear/constituent-labels", {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ workspaceId: 1, wordId, label, textSource, ...getWordLocation(wordId) }),
+          keepalive: true,
         });
       }
     } catch { /* ignore */ }
@@ -3257,16 +3305,18 @@ export default function ChapterDisplay({
 
   function handleToggleDatasetGroupMember(wordId: string) {
     if (datasetGroupingMode === "off") return;
+    const groupMap = isConstituentMode ? constituentGroupMap : datasetGroupMap;
+    const valueMap  = isConstituentMode ? constituentLabelMap : datasetEntryMap;
 
     // Edit mode: the first click (nothing pending yet) on an already-grouped
     // word loads that whole group for editing rather than starting fresh.
     if (datasetGroupingMode === "edit" && pendingGroupWordIds.size === 0) {
-      const gid = datasetGroupMap.get(wordId);
+      const gid = groupMap.get(wordId);
       if (gid) {
-        const members = [...datasetGroupMap.entries()].filter(([, g]) => g === gid).map(([w]) => w);
+        const members = [...groupMap.entries()].filter(([, g]) => g === gid).map(([w]) => w);
         setPendingGroupWordIds(new Set(members));
         setEditingGroupId(gid);
-        setGroupDraftValue(datasetEntryMap.get(wordId) ?? "");
+        setGroupDraftValue(valueMap.get(wordId) ?? "");
         return;
       }
     }
@@ -3280,36 +3330,62 @@ export default function ChapterDisplay({
   }
 
   async function handleSaveGrouping() {
-    if (typeof interlinearSubMode !== "object" || interlinearSubMode.type !== "dataset") return;
+    if (groupingContextKey === "none") return;
     const value = groupDraftValue.trim();
     if (pendingGroupWordIds.size === 0 || !value) return;
-    const dsId = interlinearSubMode.id;
     const wordIds = [...pendingGroupWordIds];
     const groupId = editingGroupId ?? crypto.randomUUID();
     const prevGroupId = editingGroupId;
 
-    setDatasetEntryMap((prev) => {
-      const next = new Map(prev);
-      for (const id of wordIds) next.set(id, value);
-      return next;
-    });
-    setDatasetGroupMap((prev) => {
-      const next = new Map(prev);
-      if (prevGroupId) {
-        for (const [w, g] of prev) if (g === prevGroupId && !pendingGroupWordIds.has(w)) next.delete(w);
-      }
-      for (const id of wordIds) next.set(id, groupId);
-      return next;
-    });
-
-    try {
-      await fetch(`/api/interlinear/datasets/${dsId}/entries`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ wordIds, value, groupId, textSource, ...getWordLocation(wordIds[0]) }),
-        keepalive: true,
+    if (isConstituentMode) {
+      setConstituentLabelMap((prev) => {
+        const next = new Map(prev);
+        for (const id of wordIds) next.set(id, value);
+        return next;
       });
-    } catch { /* ignore */ }
+      setConstituentGroupMap((prev) => {
+        const next = new Map(prev);
+        if (prevGroupId) {
+          for (const [w, g] of prev) if (g === prevGroupId && !pendingGroupWordIds.has(w)) next.delete(w);
+        }
+        for (const id of wordIds) next.set(id, groupId);
+        return next;
+      });
+      try {
+        await fetch("/api/interlinear/constituent-labels", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ workspaceId: 1, wordIds, label: value, groupId, textSource, ...getWordLocation(wordIds[0]) }),
+          keepalive: true,
+        });
+      } catch { /* ignore */ }
+    } else {
+      if (typeof interlinearSubMode !== "object" || interlinearSubMode.type !== "dataset") return;
+      const dsId = interlinearSubMode.id;
+
+      setDatasetEntryMap((prev) => {
+        const next = new Map(prev);
+        for (const id of wordIds) next.set(id, value);
+        return next;
+      });
+      setDatasetGroupMap((prev) => {
+        const next = new Map(prev);
+        if (prevGroupId) {
+          for (const [w, g] of prev) if (g === prevGroupId && !pendingGroupWordIds.has(w)) next.delete(w);
+        }
+        for (const id of wordIds) next.set(id, groupId);
+        return next;
+      });
+
+      try {
+        await fetch(`/api/interlinear/datasets/${dsId}/entries`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ wordIds, value, groupId, textSource, ...getWordLocation(wordIds[0]) }),
+          keepalive: true,
+        });
+      } catch { /* ignore */ }
+    }
 
     setPendingGroupWordIds(new Set());
     setEditingGroupId(null);
@@ -3346,29 +3422,52 @@ export default function ChapterDisplay({
   }
 
   async function handleDeleteGrouping() {
-    if (typeof interlinearSubMode !== "object" || interlinearSubMode.type !== "dataset") return;
+    if (groupingContextKey === "none") return;
     if (!editingGroupId) return;
-    const dsId = interlinearSubMode.id;
     const gid = editingGroupId;
 
-    setDatasetEntryMap((prev) => {
-      const next = new Map(prev);
-      for (const [w, g] of datasetGroupMap) if (g === gid) next.delete(w);
-      return next;
-    });
-    setDatasetGroupMap((prev) => {
-      const next = new Map(prev);
-      for (const [w, g] of prev) if (g === gid) next.delete(w);
-      return next;
-    });
-    try {
-      await fetch(`/api/interlinear/datasets/${dsId}/entries`, {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ groupId: gid }),
-        keepalive: true,
+    if (isConstituentMode) {
+      setConstituentLabelMap((prev) => {
+        const next = new Map(prev);
+        for (const [w, g] of constituentGroupMap) if (g === gid) next.delete(w);
+        return next;
       });
-    } catch { /* ignore */ }
+      setConstituentGroupMap((prev) => {
+        const next = new Map(prev);
+        for (const [w, g] of prev) if (g === gid) next.delete(w);
+        return next;
+      });
+      try {
+        await fetch("/api/interlinear/constituent-labels", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ workspaceId: 1, groupId: gid }),
+          keepalive: true,
+        });
+      } catch { /* ignore */ }
+    } else {
+      if (typeof interlinearSubMode !== "object" || interlinearSubMode.type !== "dataset") return;
+      const dsId = interlinearSubMode.id;
+
+      setDatasetEntryMap((prev) => {
+        const next = new Map(prev);
+        for (const [w, g] of datasetGroupMap) if (g === gid) next.delete(w);
+        return next;
+      });
+      setDatasetGroupMap((prev) => {
+        const next = new Map(prev);
+        for (const [w, g] of prev) if (g === gid) next.delete(w);
+        return next;
+      });
+      try {
+        await fetch(`/api/interlinear/datasets/${dsId}/entries`, {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ groupId: gid }),
+          keepalive: true,
+        });
+      } catch { /* ignore */ }
+    }
 
     setPendingGroupWordIds(new Set());
     setEditingGroupId(null);
@@ -5540,6 +5639,7 @@ export default function ChapterDisplay({
                 editingFormatting={editingBold || editingItalic}
                 interlinearSubMode={interlinearSubMode}
                 constituentLabelMap={constituentLabelMap}
+                constituentGroupMap={constituentGroupMap}
                 datasetEntryMap={datasetEntryMap}
                 transliterationFormatMap={transliterationFormatMap}
                 onSaveConstituentLabel={handleSaveConstituentLabel}
@@ -5548,7 +5648,7 @@ export default function ChapterDisplay({
                 onLemmaClick={displayMode === "interlinear" && interlinearSubMode === "lemma" ? handleLemmaClick : undefined}
                 datasetGroupMap={datasetGroupMap}
                 datasetLabelColors={datasetLabelColors}
-                datasetGroupingActive={datasetGroupingMode !== "off"}
+                datasetGroupingActive={groupingContextKey !== "none" && datasetGroupingMode !== "off"}
                 pendingGroupWordIds={pendingGroupWordIds}
                 onToggleDatasetGroupMember={handleToggleDatasetGroupMember}
                 hideSourceText={hideSourceText}

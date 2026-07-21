@@ -371,6 +371,9 @@ export const constituentLabels = sqliteTable(
                    .references(() => workspaces.id, { onDelete: "cascade" }),
     wordId:      text("word_id").notNull(),
     label:       text("label").notNull(),
+    // Shared across all member words of a manually-created grouping; null for
+    // ordinary single-word labels.
+    groupId:     text("group_id"),
     textSource:  text("text_source").notNull(),
     book:        text("book").notNull(),
     chapter:     integer("chapter").notNull(),
@@ -378,6 +381,7 @@ export const constituentLabels = sqliteTable(
   (t) => [
     uniqueIndex("conlbl_ws_word_idx").on(t.workspaceId, t.wordId),
     index("conlbl_book_ch_src_idx").on(t.book, t.chapter, t.textSource),
+    index("conlbl_ws_group_idx").on(t.workspaceId, t.groupId),
   ]
 );
 

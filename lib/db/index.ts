@@ -411,6 +411,7 @@ function _migrateUserDbInner(sqlite: Database.Database): void {
       workspace_id INTEGER NOT NULL DEFAULT 1 REFERENCES workspaces(id) ON DELETE CASCADE,
       word_id      TEXT    NOT NULL,
       label        TEXT    NOT NULL,
+      group_id     TEXT,
       text_source  TEXT    NOT NULL,
       book         TEXT    NOT NULL,
       chapter      INTEGER NOT NULL
@@ -418,6 +419,12 @@ function _migrateUserDbInner(sqlite: Database.Database): void {
     CREATE UNIQUE INDEX IF NOT EXISTS conlbl_ws_word_idx ON constituent_labels(workspace_id, word_id);
     CREATE INDEX IF NOT EXISTS conlbl_book_ch_src_idx ON constituent_labels(book, chapter, text_source);
   `);
+
+  const conlblCols = (sqlite.prepare("PRAGMA table_info(constituent_labels)").all() as { name: string }[]).map(r => r.name);
+  if (!conlblCols.includes("group_id")) {
+    try { sqlite.exec("ALTER TABLE constituent_labels ADD COLUMN group_id TEXT"); } catch { /* already exists */ }
+  }
+  try { sqlite.exec("CREATE INDEX IF NOT EXISTS conlbl_ws_group_idx ON constituent_labels(workspace_id, group_id)"); } catch { /* already exists */ }
 
   const waCols = (sqlite.prepare("PRAGMA table_info(word_arrows)").all() as { name: string }[]).map(r => r.name);
   if (!waCols.includes("color"))       try { sqlite.exec("ALTER TABLE word_arrows ADD COLUMN color TEXT"); } catch { /* already exists */ }

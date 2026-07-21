@@ -184,6 +184,7 @@ interface VerseDisplayProps {
   // Interlinear sub-mode
   interlinearSubMode?: InterlinearSubMode;
   constituentLabelMap?: Map<string, string>;
+  constituentGroupMap?: Map<string, string>;
   datasetEntryMap?: Map<string, string>;
   transliterationFormatMap?: Map<string, string>;
   onSaveConstituentLabel?: (wordId: string, label: string | null) => void;
@@ -996,6 +997,7 @@ export default function VerseDisplay({
   onTcMarkWord,
   interlinearSubMode = "lemma" as InterlinearSubMode,
   constituentLabelMap = new Map<string, string>(),
+  constituentGroupMap = new Map<string, string>(),
   datasetEntryMap = new Map<string, string>(),
   transliterationFormatMap = new Map<string, string>(),
   onSaveConstituentLabel,
@@ -1817,10 +1819,20 @@ export default function VerseDisplay({
 
       const isInterlinear = displayMode === "interlinear";
       // Gated on isInterlinear too: interlinearSubMode stays set to a dataset
-      // even after switching back to Clean/Color, so without this the grouped
-      // label overlay (and its highlight) kept rendering outside Interlinear
-      // mode until the component remounted (e.g. navigating chapters).
+      // (or constituent) even after switching back to Clean/Color, so without
+      // this the grouped label overlay (and its highlight) kept rendering
+      // outside Interlinear mode until the component remounted (e.g.
+      // navigating chapters).
       const isDatasetMode = isInterlinear && typeof interlinearSubMode === "object" && interlinearSubMode.type === "dataset";
+      const isConstituentGroupMode = isInterlinear && interlinearSubMode === "constituent";
+      // Word grouping (New/Edit/Save grouping) is shared by two features —
+      // custom datasets and built-in constituent labeling — since only one
+      // can be active at a time. Resolve to whichever is active so the rest
+      // of the rendering below doesn't need to branch per-feature.
+      const activeGroupMap = isDatasetMode ? datasetGroupMap : isConstituentGroupMode ? constituentGroupMap : undefined;
+      const activeValueMap = isDatasetMode ? datasetEntryMap : isConstituentGroupMode ? constituentLabelMap : undefined;
+      const activeLabelColors = isDatasetMode ? datasetLabelColors : new Map<string, string>();
+      const isGroupingCapableMode = isDatasetMode || isConstituentGroupMode;
 
       function renderWord(word: Word, wi: number): React.ReactNode {
         const wordHasAtnach =
@@ -1838,12 +1850,12 @@ export default function VerseDisplay({
               ? "rgba(251, 191, 36, 0.4)"
               : undefined;
         const isLastInGroup = wi === gWords.length - 1;
-        const isPendingGroupMember = isDatasetMode && pendingGroupWordIds.has(word.wordId);
-        const savedGroupId = isDatasetMode ? datasetGroupMap.get(word.wordId) : undefined;
+        const isPendingGroupMember = isGroupingCapableMode && pendingGroupWordIds.has(word.wordId);
+        const savedGroupId = activeGroupMap?.get(word.wordId);
         const datasetHighlightBg = isPendingGroupMember
           ? "rgba(37, 99, 235, 0.35)"
           : savedGroupId
-            ? resolvedDatasetColor(datasetEntryMap.get(word.wordId) ?? savedGroupId, datasetLabelColors)
+            ? resolvedDatasetColor(activeValueMap?.get(word.wordId) ?? savedGroupId, activeLabelColors)
             : undefined;
         // In interlinear mode, highlights must be scoped to the source-text span
         // inside WordToken (not the outer wrapper, which covers both rows).
@@ -1890,7 +1902,7 @@ export default function VerseDisplay({
               showVowels={showVowels}
               showCantillation={showCantillation}
               wordHighlightBg={wordHighlightBg}
-              datasetGroupingActive={isDatasetMode && datasetGroupingActive}
+              datasetGroupingActive={isGroupingCapableMode && datasetGroupingActive}
               isPendingGroupMember={isPendingGroupMember}
               onToggleDatasetGroupMember={onToggleDatasetGroupMember}
             />
@@ -1918,21 +1930,21 @@ export default function VerseDisplay({
       }
 
       const inner = gWords.map((word, wi) => {
-        const savedGroupId = isDatasetMode ? datasetGroupMap.get(word.wordId) : undefined;
+        const savedGroupId = activeGroupMap?.get(word.wordId);
         if (!savedGroupId) return renderWord(word, wi);
 
         // Contiguous runs of words sharing a grouping render as one unit, with
         // a single centered label spanning the run instead of a per-word value.
-        const prevGid = wi > 0 ? datasetGroupMap.get(gWords[wi - 1].wordId) : undefined;
+        const prevGid = wi > 0 ? activeGroupMap?.get(gWords[wi - 1].wordId) : undefined;
         if (savedGroupId === prevGid) return null; // consumed by the run's start below
 
         const runWords = [word];
         let j = wi + 1;
-        while (j < gWords.length && datasetGroupMap.get(gWords[j].wordId) === savedGroupId) {
+        while (j < gWords.length && activeGroupMap?.get(gWords[j].wordId) === savedGroupId) {
           runWords.push(gWords[j]);
           j++;
         }
-        const groupValue = datasetEntryMap.get(word.wordId);
+        const groupValue = activeValueMap?.get(word.wordId);
 
         return (
           <span key={`grp-${word.wordId}`} style={{ position: "relative", display: "inline-flex" }}>

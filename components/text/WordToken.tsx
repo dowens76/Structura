@@ -163,7 +163,10 @@ function InterlinearLabel({
     if (subMode === "strongs")         return word.strongNumber ?? "—";
     if (subMode === "morph")           return word.morphCode ?? "—";
     if (subMode === "transliteration") return word.transliteration ?? "—";
-    if (subMode === "constituent")     return constituentLabel ?? "·";
+    if (subMode === "constituent") {
+      if (suppressDatasetValueDisplay) return "";
+      return constituentLabel ?? "·";
+    }
     // dataset
     if (suppressDatasetValueDisplay) return "";
     return datasetValue ?? "·";
@@ -211,7 +214,7 @@ function InterlinearLabel({
       onLemmaClick!();
       return;
     }
-    if (typeof subMode === "object" && subMode.type === "dataset" && datasetGroupingActive) {
+    if (((typeof subMode === "object" && subMode.type === "dataset") || subMode === "constituent") && datasetGroupingActive) {
       e.stopPropagation();
       onToggleDatasetGroupMember?.(word.wordId);
       return;
