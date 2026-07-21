@@ -67,7 +67,7 @@ function splitTokenPunctuation(token: string): { leading: string; core: string; 
   return { leading, core: rest.slice(0, rest.length - trailing.length), trailing };
 }
 
-import { SpeechActPicker, getSpeechActLeafLabel } from "./SpeechActPicker";
+import { CommunicativeFunctionPicker, getCommFunctionLeafLabel, useCommFunctionCustoms } from "./CommunicativeFunctionPicker";
 import WordToken from "./WordToken";
 import ParseTooltip from "./ParseTooltip";
 import { useTranslation } from "@/lib/i18n/LocaleContext";
@@ -229,10 +229,10 @@ interface VerseDisplayProps {
   editingAnnotationId?: number | null;
   onSetEditingAnnotationId?: (id: number | null) => void;
   onSelectAnnotationSegment?: (wordId: string, shiftHeld?: boolean) => void;
-  onSaveAnnotation?: (data: { annotType: string; label: string; color: string; description: string | null; outOfSequence: boolean; transitional: boolean }) => void;
+  onSaveAnnotation?: (data: { annotType: string; label: string; commFunction?: string | null; color: string; description: string | null; outOfSequence: boolean; transitional: boolean }) => Promise<boolean>;
   onCancelAnnotation?: () => void;
   onDeleteAnnotation?: (id: number) => void;
-  onUpdateAnnotation?: (id: number, updates: { label?: string; color?: string; description?: string | null; outOfSequence?: boolean; transitional?: boolean }) => void;
+  onUpdateAnnotation?: (id: number, updates: { label?: string; commFunction?: string | null; color?: string; description?: string | null; outOfSequence?: boolean; transitional?: boolean }) => void;
   onExpandAnnotationRange?: (id: number, direction: "expand-start" | "shrink-start" | "expand-end" | "shrink-end") => void;
   showAnnotationCol?: boolean;
   showAtnachBreaks?: boolean;
@@ -362,17 +362,22 @@ function AnnotBadge({
   presentationMode?: boolean;
   thematicSubscript?: number;
   onDelete?: (id: number) => void;
-  onUpdate?: (id: number, updates: { label?: string; description?: string | null; color?: string; outOfSequence?: boolean; transitional?: boolean }) => void;
+  onUpdate?: (id: number, updates: { label?: string; commFunction?: string | null; description?: string | null; color?: string; outOfSequence?: boolean; transitional?: boolean }) => void;
   onAdjustRange?: (id: number, direction: "expand-start" | "shrink-start" | "expand-end" | "shrink-end") => void;
 }) {
   const { t } = useTranslation();
+  const { entries: customCommFunctions } = useCommFunctionCustoms();
   const [draftDesc, setDraftDesc] = useState(annotation.description ?? "");
   const [draftColor, setDraftColor] = useState(annotation.color);
   const [draftOos, setDraftOos] = useState(annotation.outOfSequence ?? false);
   const [draftTransitional, setDraftTransitional] = useState(annotation.transitional ?? false);
-  // Speech act label (desc annotations only)
-  const [draftSpeechAct, setDraftSpeechAct] = useState(
-    annotation.annotType === "desc" ? (annotation.label ?? "") : ""
+  // Communicative function: for "desc" annotations it's stored in `label`; for
+  // "theme" annotations `label` already holds the theme letter, so it's stored
+  // in the separate `commFunction` column instead.
+  const [draftCommFunction, setDraftCommFunction] = useState(
+    annotation.annotType === "desc" ? (annotation.label ?? "")
+    : annotation.annotType === "theme" ? (annotation.commFunction ?? "")
+    : ""
   );
 
   // Keep drafts in sync if annotation is updated externally
@@ -381,8 +386,9 @@ function AnnotBadge({
   useEffect(() => { setDraftOos(annotation.outOfSequence ?? false); }, [annotation.outOfSequence]);
   useEffect(() => { setDraftTransitional(annotation.transitional ?? false); }, [annotation.transitional]);
   useEffect(() => {
-    if (annotation.annotType === "desc") setDraftSpeechAct(annotation.label ?? "");
-  }, [annotation.label, annotation.annotType]);
+    if (annotation.annotType === "desc") setDraftCommFunction(annotation.label ?? "");
+    else if (annotation.annotType === "theme") setDraftCommFunction(annotation.commFunction ?? "");
+  }, [annotation.label, annotation.commFunction, annotation.annotType]);
 
   const color = getAnnotationColor(annotation.annotType, annotation.label, annotation.color);
 
@@ -419,12 +425,13 @@ function AnnotBadge({
 
   function commitEdit() {
     const newDesc = draftDesc.trim() || null;
-    const updates: { label?: string; description?: string | null; color?: string; outOfSequence?: boolean; transitional?: boolean } = {};
+    const updates: { label?: string; commFunction?: string | null; description?: string | null; color?: string; outOfSequence?: boolean; transitional?: boolean } = {};
     if (newDesc !== annotation.description) updates.description = newDesc;
     if (draftColor !== annotation.color) updates.color = draftColor;
     if (draftOos !== (annotation.outOfSequence ?? false)) updates.outOfSequence = draftOos;
     if (draftTransitional !== (annotation.transitional ?? false)) updates.transitional = draftTransitional;
-    if (annotation.annotType === "desc" && draftSpeechAct !== (annotation.label ?? "")) updates.label = draftSpeechAct;
+    if (annotation.annotType === "desc" && draftCommFunction !== (annotation.label ?? "")) updates.label = draftCommFunction;
+    if (annotation.annotType === "theme" && draftCommFunction !== (annotation.commFunction ?? "")) updates.commFunction = draftCommFunction || null;
     if (Object.keys(updates).length > 0) onUpdate?.(annotation.id, updates);
     onSetEditing(false);
   }
@@ -438,6 +445,13 @@ function AnnotBadge({
         className={[isEnd ? "rounded" : "rounded-t", "flex-1 overflow-hidden"].join(" ")}
         style={{ borderLeft: `3px solid ${color}`, backgroundColor: `${color}18` }}
         onClick={(e) => e.stopPropagation()}
+        onBlur={(e) => {
+          // Only commit when focus truly leaves this editor — not when it
+          // moves to a nested widget like the communicative-function dropdown
+          // or its "manage categories" modal (both rendered as DOM descendants
+          // of this container despite being visually position:fixed).
+          if (!e.currentTarget.contains(e.relatedTarget as Node)) commitEdit();
+        }}
       >
         {/* Header row */}
         <div className="flex items-center gap-1 px-1.5 pt-1 pb-0.5">
@@ -446,7 +460,15 @@ function AnnotBadge({
               className="shrink-0 text-[10px] font-bold px-1 py-0.5 rounded text-white leading-none"
               style={{ backgroundColor: color }}
             >
-              {getSpeechActLeafLabel(annotation.label)}{thematicSubscript != null ? toSubscript(thematicSubscript) : ""}
+              {getCommFunctionLeafLabel(annotation.label, customCommFunctions)}{thematicSubscript != null ? toSubscript(thematicSubscript) : ""}
+            </span>
+          )}
+          {annotation.annotType === "theme" && annotation.commFunction && (
+            <span
+              className="shrink-0 text-[10px] font-bold px-1 py-0.5 rounded text-white leading-none"
+              style={{ backgroundColor: color }}
+            >
+              {getCommFunctionLeafLabel(annotation.commFunction, customCommFunctions)}
             </span>
           )}
           <button
@@ -466,7 +488,6 @@ function AnnotBadge({
             type="text"
             value={draftDesc}
             onChange={(e) => setDraftDesc(e.target.value)}
-            onBlur={commitEdit}
             onKeyDown={(e) => {
               if (e.key === "Enter") { e.preventDefault(); commitEdit(); }
               if (e.key === "Escape") { setDraftDesc(annotation.description ?? ""); onSetEditing(false); }
@@ -484,10 +505,10 @@ function AnnotBadge({
           </div>
         )}
 
-        {/* Speech act — desc annotations only */}
-        {annotation.annotType === "desc" && (
+        {/* Communicative function — theme and desc annotations only */}
+        {(annotation.annotType === "theme" || annotation.annotType === "desc") && (
           <div className="px-1.5 pb-1">
-            <SpeechActPicker value={draftSpeechAct} onChange={setDraftSpeechAct} />
+            <CommunicativeFunctionPicker value={draftCommFunction} onChange={setDraftCommFunction} />
           </div>
         )}
 
@@ -584,7 +605,15 @@ function AnnotBadge({
                 className={`shrink-0 ${badgeTextCls} font-bold px-1 py-0.5 rounded text-white leading-none`}
                 style={{ backgroundColor: color }}
               >
-                {getSpeechActLeafLabel(annotation.label)}{thematicSubscript != null ? toSubscript(thematicSubscript) : ""}
+                {getCommFunctionLeafLabel(annotation.label, customCommFunctions)}{thematicSubscript != null ? toSubscript(thematicSubscript) : ""}
+              </span>
+            )}
+            {annotation.annotType === "theme" && annotation.commFunction && (
+              <span
+                className={`shrink-0 ${badgeTextCls} font-bold px-1 py-0.5 rounded text-white leading-none`}
+                style={{ backgroundColor: color }}
+              >
+                {getCommFunctionLeafLabel(annotation.commFunction, customCommFunctions)}
               </span>
             )}
             {editingAnnotations && onDelete && (
@@ -661,7 +690,7 @@ function AnnotCreationForm({
   onCancel,
 }: {
   themeColorsByLabel?: Map<string, string>;
-  onSave: (data: { annotType: string; label: string; color: string; description: string | null; outOfSequence: boolean; transitional: boolean }) => void;
+  onSave: (data: { annotType: string; label: string; commFunction?: string | null; color: string; description: string | null; outOfSequence: boolean; transitional: boolean }) => Promise<boolean>;
   onCancel: () => void;
 }) {
   const { t } = useTranslation();
@@ -672,7 +701,9 @@ function AnnotCreationForm({
   const [description, setDescription] = useState("");
   const [outOfSequence, setOutOfSequence] = useState(false);
   const [transitional, setTransitional] = useState(false);
-  const [speechAct, setSpeechAct] = useState("");
+  const [commFunction, setCommFunction] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   // Keep color in sync when type or plot-label changes
   useEffect(() => {
@@ -686,7 +717,8 @@ function AnnotCreationForm({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [annotType, plotLabel, themeLabel, themeColorsByLabel]);
 
-  function handleSave() {
+  async function handleSave() {
+    if (saving) return;
     let label: string;
     let finalColor: string;
     if (annotType === "plot") {
@@ -696,10 +728,22 @@ function AnnotCreationForm({
       label = themeLabel.trim() || "A";
       finalColor = color;
     } else {
-      label = speechAct;   // Speech act (may be empty if none selected)
+      label = commFunction;   // Communicative function (may be empty if none selected)
       finalColor = color;
     }
-    onSave({ annotType, label, color: finalColor, description: description.trim() || null, outOfSequence, transitional });
+    setSaving(true);
+    setSaveError(null);
+    const ok = await onSave({
+      annotType,
+      label,
+      commFunction: annotType === "theme" ? (commFunction.trim() || null) : undefined,
+      color: finalColor,
+      description: description.trim() || null,
+      outOfSequence,
+      transitional,
+    });
+    setSaving(false);
+    if (!ok) setSaveError("Failed to save — please try again.");
   }
 
   const tabs: { key: "plot" | "theme" | "desc"; display: string }[] = [
@@ -751,28 +795,31 @@ function AnnotCreationForm({
       )}
 
       {annotType === "theme" && (
-        <div className="flex items-start gap-1.5 mb-2">
-          <input
-            type="text"
-            value={themeLabel}
-            onChange={(e) => setThemeLabel(e.target.value.toUpperCase().slice(0, 3))}
-            placeholder="A"
-            maxLength={3}
-            className="w-10 px-1 py-0.5 border border-stone-300 dark:border-stone-600 rounded bg-transparent text-[10px] uppercase font-bold text-center shrink-0"
-          />
-          {/* Lock colour to the existing label; let user pick freely for new labels */}
-          <ColorPalette
-            value={color}
-            onChange={setColor}
-            locked={themeColorsByLabel?.has(themeLabel)}
-          />
+        <div className="mb-2 flex flex-col gap-1.5">
+          <div className="flex items-start gap-1.5">
+            <input
+              type="text"
+              value={themeLabel}
+              onChange={(e) => setThemeLabel(e.target.value.toUpperCase().slice(0, 3))}
+              placeholder="A"
+              maxLength={3}
+              className="w-10 px-1 py-0.5 border border-stone-300 dark:border-stone-600 rounded bg-transparent text-[10px] uppercase font-bold text-center shrink-0"
+            />
+            {/* Lock colour to the existing label; let user pick freely for new labels */}
+            <ColorPalette
+              value={color}
+              onChange={setColor}
+              locked={themeColorsByLabel?.has(themeLabel)}
+            />
+          </div>
+          <CommunicativeFunctionPicker value={commFunction} onChange={setCommFunction} />
         </div>
       )}
 
       {annotType === "desc" && (
         <div className="mb-2 flex flex-col gap-1.5">
           <ColorPalette value={color} onChange={setColor} />
-          <SpeechActPicker value={speechAct} onChange={setSpeechAct} />
+          <CommunicativeFunctionPicker value={commFunction} onChange={setCommFunction} />
         </div>
       )}
 
@@ -816,10 +863,11 @@ function AnnotCreationForm({
       <div className="flex gap-1">
         <button
           type="button"
+          disabled={saving}
           onClick={handleSave}
-          className="flex-1 px-1.5 py-0.5 rounded bg-indigo-600 text-white text-[10px] font-medium hover:bg-indigo-700 transition-colors"
+          className="flex-1 px-1.5 py-0.5 rounded bg-indigo-600 text-white text-[10px] font-medium hover:bg-indigo-700 transition-colors disabled:opacity-60"
         >
-          Save
+          {saving ? "Saving…" : "Save"}
         </button>
         <button
           type="button"
@@ -829,6 +877,7 @@ function AnnotCreationForm({
           ✕
         </button>
       </div>
+      {saveError && <p className="text-[9px] text-red-500 mt-1">{saveError}</p>}
     </div>
   );
 }
@@ -1663,7 +1712,7 @@ export default function VerseDisplay({
           <AnnotCreationForm
             key={segFirstWordId}
             themeColorsByLabel={themeColorsByLabel}
-            onSave={(data) => onSaveAnnotation?.(data)}
+            onSave={(data) => onSaveAnnotation?.(data) ?? Promise.resolve(false)}
             onCancel={() => onCancelAnnotation?.()}
           />
         )}

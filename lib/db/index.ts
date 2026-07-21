@@ -304,6 +304,8 @@ function _migrateUserDbInner(sqlite: Database.Database): void {
   const lineAnnotCols = (sqlite.prepare("PRAGMA table_info(line_annotations)").all() as { name: string }[]).map(r => r.name);
   if (!lineAnnotCols.includes("transitional"))
     try { sqlite.exec("ALTER TABLE line_annotations ADD COLUMN transitional INTEGER NOT NULL DEFAULT 0"); } catch { /* already exists */ }
+  if (!lineAnnotCols.includes("comm_function"))
+    try { sqlite.exec("ALTER TABLE line_annotations ADD COLUMN comm_function TEXT"); } catch { /* already exists */ }
 
   sqlite.exec(`
     CREATE TABLE IF NOT EXISTS intertextual_links (
@@ -587,6 +589,16 @@ function _migrateUserDbInner(sqlite: Database.Database): void {
     );
     CREATE UNIQUE INDEX IF NOT EXISTS trf_ws_word_idx ON transliteration_formats(workspace_id, word_id);
     CREATE INDEX IF NOT EXISTS trf_book_ch_src_idx ON transliteration_formats(book, chapter, text_source);
+
+    CREATE TABLE IF NOT EXISTS comm_function_custom_types (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      workspace_id INTEGER NOT NULL DEFAULT 1 REFERENCES workspaces(id) ON DELETE CASCADE,
+      key          TEXT    NOT NULL,
+      category     TEXT    NOT NULL,
+      label        TEXT    NOT NULL,
+      sort_order   INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS cfct_ws_key_idx ON comm_function_custom_types(workspace_id, key);
   `);
 
   const wdeCols = (sqlite.prepare("PRAGMA table_info(word_dataset_entries)").all() as { name: string }[]).map(r => r.name);

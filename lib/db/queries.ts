@@ -1857,19 +1857,20 @@ export async function createLineAnnotation(
   textSource: string,
   book: string,
   chapter: number,
-  workspaceId: number
+  workspaceId: number,
+  commFunction: string | null = null
 ): Promise<LineAnnotation> {
   const [row] = await userDb
     .insert(lineAnnotations)
-    .values({ annotType, label, color, description, outOfSequence, transitional, startWordId, endWordId, textSource, book, chapter, workspaceId })
+    .values({ annotType, label, commFunction, color, description, outOfSequence, transitional, startWordId, endWordId, textSource, book, chapter, workspaceId })
     .returning();
   return row;
 }
 
-/** Update fields of an existing annotation (label, color, description, outOfSequence, transitional, start/end word IDs). */
+/** Update fields of an existing annotation (label, commFunction, color, description, outOfSequence, transitional, start/end word IDs). */
 export async function updateLineAnnotation(
   id: number,
-  updates: Partial<Pick<LineAnnotation, "label" | "color" | "description" | "outOfSequence" | "transitional" | "startWordId" | "endWordId">>
+  updates: Partial<Pick<LineAnnotation, "label" | "commFunction" | "color" | "description" | "outOfSequence" | "transitional" | "startWordId" | "endWordId">>
 ): Promise<LineAnnotation> {
   const [row] = await userDb
     .update(lineAnnotations)

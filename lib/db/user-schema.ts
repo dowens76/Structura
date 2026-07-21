@@ -291,6 +291,7 @@ export const lineAnnotations = sqliteTable(
                      .references(() => workspaces.id, { onDelete: "cascade" }),
     annotType:     text("annot_type").notNull(),
     label:         text("label").notNull(),
+    commFunction:  text("comm_function"),
     color:         text("color").notNull(),
     description:   text("description"),
     outOfSequence: integer("out_of_sequence", { mode: "boolean" }).notNull().default(false),
@@ -319,6 +320,20 @@ export const rstCustomTypes = sqliteTable(
     sortOrder:   integer("sort_order").notNull().default(0),
   },
   (t) => [uniqueIndex("rct_ws_key_idx").on(t.workspaceId, t.key)]
+);
+
+export const commFunctionCustomTypes = sqliteTable(
+  "comm_function_custom_types",
+  {
+    id:          integer("id").primaryKey({ autoIncrement: true }),
+    workspaceId: integer("workspace_id").notNull().default(1)
+                   .references(() => workspaces.id, { onDelete: "cascade" }),
+    key:         text("key").notNull(),
+    category:    text("category").notNull(),
+    label:       text("label").notNull(),
+    sortOrder:   integer("sort_order").notNull().default(0),
+  },
+  (t) => [uniqueIndex("cfct_ws_key_idx").on(t.workspaceId, t.key)]
 );
 
 export const notes = sqliteTable(

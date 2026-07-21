@@ -20,12 +20,12 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({ annotations });
 }
 
-/** POST { annotType, label, color, description, outOfSequence?, startWordId, endWordId, book, chapter, source }
+/** POST { annotType, label, commFunction?, color, description, outOfSequence?, startWordId, endWordId, book, chapter, source }
  *   → { annotation: LineAnnotation } */
 export async function POST(req: NextRequest) {
   const workspaceId = await getActiveWorkspaceId();
   const body = await req.json();
-  const { annotType, label, color, description, outOfSequence, transitional, startWordId, endWordId, book, chapter, source } = body;
+  const { annotType, label, commFunction, color, description, outOfSequence, transitional, startWordId, endWordId, book, chapter, source } = body;
   const annotation = await createLineAnnotation(
     annotType,
     label,
@@ -38,17 +38,19 @@ export async function POST(req: NextRequest) {
     source,
     book,
     chapter,
-    workspaceId
+    workspaceId,
+    commFunction ?? null
   );
   return NextResponse.json({ annotation });
 }
 
-/** PATCH { id, label?, color?, description?, outOfSequence?, startWordId?, endWordId? } → { annotation: LineAnnotation } */
+/** PATCH { id, label?, commFunction?, color?, description?, outOfSequence?, startWordId?, endWordId? } → { annotation: LineAnnotation } */
 export async function PATCH(req: NextRequest) {
   const body = await req.json();
   const { id, ...updates } = body as {
     id: number;
     label?: string;
+    commFunction?: string | null;
     color?: string;
     description?: string | null;
     outOfSequence?: boolean;

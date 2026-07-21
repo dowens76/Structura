@@ -34,18 +34,22 @@ export interface UseAnnotationRangeReturn {
   setEditingAnnotationId: Dispatch<SetStateAction<number | null>>;
   handleSelectAnnotationSegment: (segWordId: string, shiftHeld?: boolean) => void;
   handleCancelAnnotation: () => void;
+  /** Returns true on success. On failure, the pending range selection is left
+   *  intact (rather than silently discarded) so the caller can show an error
+   *  and let the user retry without losing their range/description/etc. */
   handleSaveAnnotation: (data: {
     annotType: string;
     label: string;
+    commFunction?: string | null;
     color: string;
     description: string | null;
     outOfSequence: boolean;
     transitional: boolean;
-  }) => Promise<void>;
+  }) => Promise<boolean>;
   handleDeleteAnnotation: (id: number) => Promise<void>;
   handleUpdateAnnotation: (
     id: number,
-    updates: { label?: string; color?: string; description?: string | null; outOfSequence?: boolean; transitional?: boolean }
+    updates: { label?: string; commFunction?: string | null; color?: string; description?: string | null; outOfSequence?: boolean; transitional?: boolean }
   ) => Promise<void>;
   handleExpandAnnotationRange: (
     id: number,
@@ -119,12 +123,13 @@ export function useAnnotationRange({
   async function handleSaveAnnotation(data: {
     annotType: string;
     label: string;
+    commFunction?: string | null;
     color: string;
     description: string | null;
     outOfSequence: boolean;
     transitional: boolean;
-  }) {
-    if (!annotRangeStart) return;
+  }): Promise<boolean> {
+    if (!annotRangeStart) return false;
     const endWordId = annotRangeEnd ?? annotRangeStart;
     const segIds = paragraphFirstWordIds;
     const posMap = new Map(segIds.map((id, i) => [id, i]));
@@ -133,9 +138,6 @@ export function useAnnotationRange({
     const lo = segIds[Math.min(startPos, endPos)] ?? annotRangeStart;
     const hi = segIds[Math.max(startPos, endPos)] ?? endWordId;
     const chapter = getChapterForWord(lo);
-
-    setAnnotRangeStart(null);
-    setAnnotRangeEnd(null);
 
     try {
       const resp = await fetch("/api/line-annotations", {
@@ -150,10 +152,17 @@ export function useAnnotationRange({
           source: textSource,
         }),
       });
+      if (!resp.ok) return false;
       const { annotation } = await resp.json();
       setLineAnnotations((prev) => [...prev, annotation]);
+      setAnnotRangeStart(null);
+      setAnnotRangeEnd(null);
+      return true;
     } catch {
-      // non-critical, silently ignore
+      // Network error — leave the range selected so the creation form stays
+      // open and the caller can surface an error instead of silently losing
+      // the user's in-progress annotation.
+      return false;
     }
   }
 
@@ -173,7 +182,7 @@ export function useAnnotationRange({
 
   async function handleUpdateAnnotation(
     id: number,
-    updates: { label?: string; color?: string; description?: string | null; outOfSequence?: boolean; transitional?: boolean }
+    updates: { label?: string; commFunction?: string | null; color?: string; description?: string | null; outOfSequence?: boolean; transitional?: boolean }
   ) {
     setLineAnnotations((prev) => prev.map((a) => (a.id === id ? { ...a, ...updates } : a)));
     try {
