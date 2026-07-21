@@ -1816,7 +1816,11 @@ export default function VerseDisplay({
       } : undefined;
 
       const isInterlinear = displayMode === "interlinear";
-      const isDatasetMode = typeof interlinearSubMode === "object" && interlinearSubMode.type === "dataset";
+      // Gated on isInterlinear too: interlinearSubMode stays set to a dataset
+      // even after switching back to Clean/Color, so without this the grouped
+      // label overlay (and its highlight) kept rendering outside Interlinear
+      // mode until the component remounted (e.g. navigating chapters).
+      const isDatasetMode = isInterlinear && typeof interlinearSubMode === "object" && interlinearSubMode.type === "dataset";
 
       function renderWord(word: Word, wi: number): React.ReactNode {
         const wordHasAtnach =
