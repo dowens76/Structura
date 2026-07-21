@@ -8,8 +8,6 @@ import SettingsButton from "@/components/SettingsButton";
 import ThemeToggle from "@/components/ThemeToggle";
 import LanguagePicker from "@/components/ui/LanguagePicker";
 import { useTranslation } from "@/lib/i18n/LocaleContext";
-import BookGroupingsDialog from "@/components/home/BookGroupingsDialog";
-import ManageTranslationsDialog from "@/components/home/ManageTranslationsDialog";
 import BookmarkButton from "@/components/navigation/BookmarkButton";
 import HomePassagesButton from "@/components/home/HomePassagesButton";
 import UpdateBanner from "@/components/home/UpdateBanner";
@@ -115,8 +113,6 @@ interface HomeContentProps {
 export default function HomeContent({ otBooks, ntBooks, lxxBooks, translationOnly = false, ultBooks = [], vcbBooks = [] }: HomeContentProps) {
   const { t, bookName, locale } = useTranslation();
   const hasData = otBooks.length + ntBooks.length + lxxBooks.length > 0;
-  const [groupingsOpen, setGroupingsOpen] = useState(false);
-  const [translationsOpen, setTranslationsOpen] = useState(false);
   const [hiddenSources, setHiddenSources] = useState<string[]>([]);
   const [addressBarOpen, setAddressBarOpen] = useState(false);
 
@@ -199,22 +195,20 @@ export default function HomeContent({ otBooks, ntBooks, lxxBooks, translationOnl
             Manage
           </h2>
           <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={() => setGroupingsOpen(true)}
+            <Link
+              href="/book-groupings"
               className="text-xs px-3 py-1.5 rounded border font-medium transition-colors"
               style={{ borderColor: "var(--border)", backgroundColor: "var(--surface)", color: "var(--foreground)" }}
             >
               {t("home.bookGroupings")}
-            </button>
-            <button
-              type="button"
-              onClick={() => setTranslationsOpen(true)}
+            </Link>
+            <Link
+              href="/translations"
               className="text-xs px-3 py-1.5 rounded border font-medium transition-colors"
               style={{ borderColor: "var(--border)", backgroundColor: "var(--surface)", color: "var(--foreground)" }}
             >
               Manage Translations
-            </button>
+            </Link>
             <Link
               href="/import"
               className="text-xs px-3 py-1.5 rounded border font-medium transition-colors"
@@ -241,7 +235,7 @@ export default function HomeContent({ otBooks, ntBooks, lxxBooks, translationOnl
               className="text-xs px-3 py-1.5 rounded border font-medium transition-colors"
               style={{ borderColor: "var(--border)", backgroundColor: "var(--surface)", color: "var(--foreground)" }}
             >
-              Vocabulary Lists
+              Vocabulary List tool
             </Link>
             <Link
               href="/backup"
@@ -321,18 +315,6 @@ export default function HomeContent({ otBooks, ntBooks, lxxBooks, translationOnl
           </Link>
         </div>
       </div>
-
-      {translationsOpen && (
-        <ManageTranslationsDialog onClose={() => setTranslationsOpen(false)} />
-      )}
-      {groupingsOpen && (
-        <BookGroupingsDialog
-          otBooks={otBooks}
-          ntBooks={ntBooks}
-          lxxBooks={lxxBooks}
-          onClose={() => setGroupingsOpen(false)}
-        />
-      )}
     </main>
   );
 }

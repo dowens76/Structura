@@ -140,6 +140,7 @@ const en = {
     workspacesHeading: "Workspaces",
     manageWorkspaces: "Manage workspaces →",
     interfaceLanguage: "Interface language",
+    home: "Home",
   },
   // ── Home page ───────────────────────────────────────────────────────────────
   home: {
@@ -403,7 +404,6 @@ const en = {
   },
   // ── Account page ─────────────────────────────────────────────────────────────
   account: {
-    backLink: "← Back to Structura",
     title: "Account & Workspaces",
     description: "Manage your profile and workspaces, or import data between workspaces.",
     yourAccount: "Your Account",
@@ -478,7 +478,6 @@ const en = {
   },
   // ── Backup page ───────────────────────────────────────────────────────────────
   backup: {
-    backLink: "← Back to Structura",
     title: "Backup & Restore",
     description: "Download a complete backup of all your workspaces and data, or restore from a previous backup file.",
     downloadTitle: "Download Backup",
@@ -538,7 +537,6 @@ const en = {
   },
   // ── Import page ───────────────────────────────────────────────────────────────
   importPage: {
-    backLink: "← Back to Structura",
     title: "Import Translation",
     description: "Paste text copied from Bible.com to add an English translation for parallel display alongside the source text.",
     translationHeading: "Translation",
@@ -712,6 +710,7 @@ const vi: Translations = {
     workspacesHeading: "Không gian làm việc",
     manageWorkspaces: "Quản lý không gian làm việc →",
     interfaceLanguage: "Ngôn ngữ giao diện",
+    home: "Trang chủ",
   },
   home: {
     importTranslation: "+ Nhập bản dịch",
@@ -963,7 +962,6 @@ const vi: Translations = {
     failedToSave: "Không thể lưu",
   },
   account: {
-    backLink: "← Quay lại Structura",
     title: "Tài khoản & Không gian làm việc",
     description: "Quản lý hồ sơ và không gian làm việc của bạn, hoặc nhập dữ liệu giữa các không gian làm việc.",
     yourAccount: "Tài khoản của bạn",
@@ -1037,7 +1035,6 @@ const vi: Translations = {
     importContinue: "Tiếp tục nhập",
   },
   backup: {
-    backLink: "← Quay lại Structura",
     title: "Sao lưu & Khôi phục",
     description: "Tải xuống bản sao lưu đầy đủ của tất cả không gian làm việc và dữ liệu, hoặc khôi phục từ tệp sao lưu trước đó.",
     downloadTitle: "Tải xuống bản sao lưu",
@@ -1096,7 +1093,6 @@ const vi: Translations = {
     backupComplete: "✓ Sao lưu hoàn tất:",
   },
   importPage: {
-    backLink: "← Quay lại Structura",
     title: "Nhập bản dịch",
     description: "Dán văn bản sao chép từ Bible.com để thêm bản dịch hiển thị song song với văn bản nguồn.",
     translationHeading: "Bản dịch",

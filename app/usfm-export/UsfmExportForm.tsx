@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from "react";
 import Link from "next/link";
+import HomeLink from "@/components/ui/HomeLink";
 import JSZip from "jszip";
 import type { Book } from "@/lib/db/source-schema";
 import type { Translation } from "@/lib/db/user-schema";
@@ -90,7 +91,7 @@ export default function UsfmExportForm({ books, translations }: Props) {
     return (
       <div>
         <div className="flex items-center gap-3 mb-8">
-          <Link href="/" className="text-sm text-stone-400 hover:text-stone-600 dark:hover:text-stone-300 transition-colors">← Home</Link>
+          <HomeLink />
           <h1 className="text-xl font-semibold">Export USFM</h1>
         </div>
         <p className="text-stone-500 dark:text-stone-400 text-sm">
@@ -143,7 +144,7 @@ export default function UsfmExportForm({ books, translations }: Props) {
   return (
     <div>
       <div className="flex items-center gap-3 mb-8">
-        <Link href="/" className="text-sm text-stone-400 hover:text-stone-600 dark:hover:text-stone-300 transition-colors">← Home</Link>
+        <HomeLink />
         <h1 className="text-xl font-semibold">Export USFM</h1>
       </div>
 

@@ -2,7 +2,7 @@
 
 import { startTransition, useActionState, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
+import HomeLink from "@/components/ui/HomeLink";
 import { importTranslationAction, checkExistingVersesAction, importUsfmFileAction, checkUsfmConflictsAction } from "./actions";
 import type { BookConflict } from "./actions";
 import type { Book, Translation } from "@/lib/db/schema";
@@ -441,12 +441,7 @@ export default function ImportForm({ books, existingTranslations }: ImportFormPr
   return (
     <>
       <header className="mb-8">
-        <Link
-          href="/"
-          className="text-sm text-stone-400 hover:text-stone-600 dark:hover:text-stone-300 mb-4 inline-block transition-colors"
-        >
-          {t("importPage.backLink")}
-        </Link>
+        <HomeLink className="mb-4" />
         <h1 className="text-3xl font-bold mt-2">{t("importPage.title")}</h1>
         <p className="mt-2 text-sm text-stone-500 dark:text-stone-400">
           {t("importPage.description")}

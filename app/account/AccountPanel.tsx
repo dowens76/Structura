@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
+import HomeLink from "@/components/ui/HomeLink";
 import { useTranslation } from "@/lib/i18n/LocaleContext";
 import { OSIS_BOOKS_OT, OSIS_BOOKS_NT, OSIS_BOOKS_LXX } from "@/lib/utils/osis";
 
@@ -541,21 +541,7 @@ export default function AccountPanel({ activeWorkspaceId: initialActiveId }: Pro
     <div className="max-w-2xl mx-auto px-6 py-10">
       {/* ── Header ─────────────────────────────────────────────────────────── */}
       <header className="mb-8">
-        <Link
-          href="/"
-          className="text-sm mb-4 inline-block transition-colors"
-          style={mutedStyle}
-          onMouseEnter={(e) =>
-            ((e.currentTarget as HTMLAnchorElement).style.color =
-              "var(--foreground)")
-          }
-          onMouseLeave={(e) =>
-            ((e.currentTarget as HTMLAnchorElement).style.color =
-              "var(--text-muted)")
-          }
-        >
-          {t("account.backLink")}
-        </Link>
+        <HomeLink className="mb-4" />
         <h1 className="text-3xl font-bold mt-2" style={fgStyle}>
           {t("account.title")}
         </h1>

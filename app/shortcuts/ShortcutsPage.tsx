@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import HomeLink from "@/components/ui/HomeLink";
 
 // Detect Mac at runtime for display only — SSR-safe (defaults to showing both)
 function useIsMac() {
@@ -215,13 +215,7 @@ export default function ShortcutsPage() {
     <div className="min-h-screen" style={{ backgroundColor: "var(--background)" }}>
       <div className="max-w-2xl mx-auto px-6 py-12">
         <div className="mb-8 flex items-center gap-4">
-          <Link
-            href="/"
-            className="text-sm hover:underline"
-            style={{ color: "var(--text-muted)" }}
-          >
-            ← Home
-          </Link>
+          <HomeLink />
         </div>
         <h1
           className="text-2xl font-bold mb-2"

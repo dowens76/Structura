@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import HomeLink from "@/components/ui/HomeLink";
 import type { Book } from "@/lib/db/schema";
 import { POS_COLORS, POS_LABELS } from "@/lib/morphology/types";
 
@@ -161,16 +162,7 @@ export default function VocabularyListPanel({ otBooks, ntBooks, lxxBooks }: Voca
     <div className="space-y-8">
       {/* Header */}
       <div>
-        <button
-          onClick={() => history.back()}
-          className="flex items-center gap-1.5 mb-4 text-sm transition-colors hover:opacity-70"
-          style={{ color: "var(--text-muted)" }}
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <polyline points="15 18 9 12 15 6" />
-          </svg>
-          Back
-        </button>
+        <HomeLink className="mb-4" />
         <h1 className="text-2xl font-semibold mb-1" style={{ color: "var(--foreground)" }}>
           Vocabulary List Creator
         </h1>

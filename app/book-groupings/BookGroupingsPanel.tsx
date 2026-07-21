@@ -5,6 +5,7 @@ import type { Book } from "@/lib/db/schema";
 import type { BookGrouping } from "@/lib/db/schema";
 import { OSIS_BOOK_NAMES } from "@/lib/utils/osis";
 import { useTranslation } from "@/lib/i18n/LocaleContext";
+import HomeLink from "@/components/ui/HomeLink";
 
 // ── Annotation features that can be toggled per grouping ─────────────────────
 
@@ -230,23 +231,21 @@ function GroupingEditor({ otBooks, ntBooks, lxxBooks, initial, onSave, onCancel 
   );
 }
 
-// ── Main dialog ───────────────────────────────────────────────────────────────
+// ── Main panel ────────────────────────────────────────────────────────────────
 
 interface Props {
   otBooks: Book[];
   ntBooks: Book[];
   lxxBooks: Book[];
-  onClose: () => void;
 }
 
-export default function BookGroupingsDialog({ otBooks, ntBooks, lxxBooks, onClose }: Props) {
+export default function BookGroupingsPanel({ otBooks, ntBooks, lxxBooks }: Props) {
   const { t } = useTranslation();
   const [groupings,  setGroupings]  = useState<BookGrouping[]>([]);
   const [loading,    setLoading]    = useState(true);
   // null = list view; "new" = create form; number = edit form for that id
   const [editingId,  setEditingId]  = useState<"new" | number | null>(null);
 
-  // Load groupings on mount
   useEffect(() => {
     fetch("/api/book-groupings")
       .then(r => r.json())
@@ -254,13 +253,6 @@ export default function BookGroupingsDialog({ otBooks, ntBooks, lxxBooks, onClos
       .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
-
-  // Close on Escape
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) { if (e.key === "Escape") onClose(); }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
 
   async function handleCreate(name: string, books: string[], features: string[]) {
     const res = await fetch("/api/book-groupings", {
@@ -294,131 +286,117 @@ export default function BookGroupingsDialog({ otBooks, ntBooks, lxxBooks, onClos
     : null;
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{ backgroundColor: "rgba(0,0,0,0.5)" }}
-      onClick={e => { if (e.target === e.currentTarget) onClose(); }}
-    >
-      <div
-        className="w-full max-w-xl rounded-lg shadow-xl border flex flex-col"
-        style={{
-          backgroundColor: "var(--background)",
-          borderColor: "var(--border)",
-          maxHeight: "90vh",
-        }}
-      >
-        {/* Header */}
-        <div
-          className="shrink-0 flex items-center justify-between px-5 py-4 border-b"
-          style={{ borderColor: "var(--border)" }}
-        >
-          <h2 className="text-base font-semibold" style={{ color: "var(--foreground)" }}>
-            {editingId === "new" ? t("bookGroupings.titleNew")
-             : editingGrouping   ? t("bookGroupings.titleEdit", { name: editingGrouping.name })
-             : t("bookGroupings.titleList")}
-          </h2>
+    <div className="space-y-6">
+      <div>
+        <HomeLink className="mb-4" />
+        <h1 className="text-2xl font-semibold mb-1" style={{ color: "var(--foreground)" }}>
+          {t("bookGroupings.titleList")}
+        </h1>
+      </div>
+
+      {editingId !== null ? (
+        <div>
           <button
             type="button"
-            onClick={editingId !== null ? () => setEditingId(null) : onClose}
-            className="text-xl leading-none opacity-50 hover:opacity-100 transition-opacity"
-            style={{ color: "var(--foreground)" }}
-            aria-label={editingId !== null ? t("bookGroupings.ariaBackToList") : t("bookGroupings.ariaClose")}
+            onClick={() => setEditingId(null)}
+            className="flex items-center gap-1.5 mb-4 text-sm transition-colors hover:opacity-70"
+            style={{ color: "var(--text-muted)" }}
           >
-            {editingId !== null ? "←" : "×"}
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="15 18 9 12 15 6" />
+            </svg>
+            {t("bookGroupings.ariaBackToList")}
+          </button>
+          <h2 className="text-base font-semibold mb-4" style={{ color: "var(--foreground)" }}>
+            {editingId === "new" ? t("bookGroupings.titleNew") : t("bookGroupings.titleEdit", { name: editingGrouping?.name ?? "" })}
+          </h2>
+          <GroupingEditor
+            otBooks={otBooks}
+            ntBooks={ntBooks}
+            lxxBooks={lxxBooks}
+            initial={editingGrouping}
+            onSave={(name, books, features) =>
+              editingId === "new"
+                ? handleCreate(name, books, features)
+                : handleUpdate(editingId, name, books, features)
+            }
+            onCancel={() => setEditingId(null)}
+          />
+        </div>
+      ) : loading ? (
+        <p className="text-sm" style={{ color: "var(--text-muted)" }}>{t("bookGroupings.loading")}</p>
+      ) : groupings.length === 0 ? (
+        <div className="text-center py-8" style={{ color: "var(--text-muted)" }}>
+          <p className="text-sm mb-4">{t("bookGroupings.noGroupings")}</p>
+          <button
+            type="button"
+            onClick={() => setEditingId("new")}
+            className="px-4 py-2 rounded text-sm font-medium transition-colors"
+            style={{ backgroundColor: "var(--accent)", color: "#fff" }}
+          >
+            {t("bookGroupings.createFirst")}
           </button>
         </div>
-
-        {/* Body */}
-        <div className="flex-1 min-h-0 overflow-y-auto px-5 py-5">
-          {editingId !== null ? (
-            <GroupingEditor
-              otBooks={otBooks}
-              ntBooks={ntBooks}
-              lxxBooks={lxxBooks}
-              initial={editingGrouping}
-              onSave={(name, books, features) =>
-                editingId === "new"
-                  ? handleCreate(name, books, features)
-                  : handleUpdate(editingId, name, books, features)
-              }
-              onCancel={() => setEditingId(null)}
-            />
-          ) : loading ? (
-            <p className="text-sm" style={{ color: "var(--text-muted)" }}>{t("bookGroupings.loading")}</p>
-          ) : groupings.length === 0 ? (
-            <div className="text-center py-8" style={{ color: "var(--text-muted)" }}>
-              <p className="text-sm mb-4">{t("bookGroupings.noGroupings")}</p>
-              <button
-                type="button"
-                onClick={() => setEditingId("new")}
-                className="px-4 py-2 rounded text-sm font-medium transition-colors"
-                style={{ backgroundColor: "var(--accent)", color: "#fff" }}
+      ) : (
+        <div className="space-y-2">
+          {groupings.map(g => {
+            const books    = parseJson<string[]>(g.books, []);
+            const features = parseJson<string[]>(g.features, []);
+            return (
+              <div
+                key={g.id}
+                className="rounded-lg border px-4 py-3 flex items-start gap-3"
+                style={{ borderColor: "var(--border)", backgroundColor: "var(--surface)" }}
               >
-                {t("bookGroupings.createFirst")}
-              </button>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {groupings.map(g => {
-                const books    = parseJson<string[]>(g.books, []);
-                const features = parseJson<string[]>(g.features, []);
-                return (
-                  <div
-                    key={g.id}
-                    className="rounded-lg border px-4 py-3 flex items-start gap-3"
-                    style={{ borderColor: "var(--border)", backgroundColor: "var(--surface)" }}
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold" style={{ color: "var(--foreground)" }}>
+                    {g.name}
+                  </p>
+                  <p className="text-[11px] mt-0.5 truncate" style={{ color: "var(--text-muted)" }}>
+                    {books.length === 0
+                      ? t("bookGroupings.noBooksSelected")
+                      : books.map(c => OSIS_BOOK_NAMES[c] ?? c).join(", ")}
+                  </p>
+                  {features.length > 0 && (
+                    <p className="text-[11px] mt-0.5" style={{ color: "var(--text-muted)" }}>
+                      {t("bookGroupings.features")}: {features.map(k => t(`bookGroupings.feature${k.charAt(0).toUpperCase()}${k.slice(1)}`)).join(", ")}
+                    </p>
+                  )}
+                </div>
+                <div className="shrink-0 flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setEditingId(g.id)}
+                    className="text-xs px-2 py-1 rounded transition-colors hover:opacity-80"
+                    style={{ color: "var(--text-muted)" }}
                   >
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold" style={{ color: "var(--foreground)" }}>
-                        {g.name}
-                      </p>
-                      <p className="text-[11px] mt-0.5 truncate" style={{ color: "var(--text-muted)" }}>
-                        {books.length === 0
-                          ? t("bookGroupings.noBooksSelected")
-                          : books.map(c => OSIS_BOOK_NAMES[c] ?? c).join(", ")}
-                      </p>
-                      {features.length > 0 && (
-                        <p className="text-[11px] mt-0.5" style={{ color: "var(--text-muted)" }}>
-                          {t("bookGroupings.features")}: {features.map(k => t(`bookGroupings.feature${k.charAt(0).toUpperCase()}${k.slice(1)}`)).join(", ")}
-                        </p>
-                      )}
-                    </div>
-                    <div className="shrink-0 flex items-center gap-1">
-                      <button
-                        type="button"
-                        onClick={() => setEditingId(g.id)}
-                        className="text-xs px-2 py-1 rounded transition-colors hover:opacity-80"
-                        style={{ color: "var(--text-muted)" }}
-                      >
-                        {t("bookGroupings.edit")}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleDelete(g.id)}
-                        className="text-xs px-2 py-1 rounded transition-colors hover:text-red-500"
-                        style={{ color: "var(--text-muted)" }}
-                      >
-                        {t("bookGroupings.delete")}
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-
-              <div className="pt-2">
-                <button
-                  type="button"
-                  onClick={() => setEditingId("new")}
-                  className="text-sm font-medium transition-colors hover:opacity-80"
-                  style={{ color: "var(--accent)" }}
-                >
-                  {t("bookGroupings.newGrouping")}
-                </button>
+                    {t("bookGroupings.edit")}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleDelete(g.id)}
+                    className="text-xs px-2 py-1 rounded transition-colors hover:text-red-500"
+                    style={{ color: "var(--text-muted)" }}
+                  >
+                    {t("bookGroupings.delete")}
+                  </button>
+                </div>
               </div>
-            </div>
-          )}
+            );
+          })}
+
+          <div className="pt-2">
+            <button
+              type="button"
+              onClick={() => setEditingId("new")}
+              className="text-sm font-medium transition-colors hover:opacity-80"
+              style={{ color: "var(--accent)" }}
+            >
+              {t("bookGroupings.newGrouping")}
+            </button>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

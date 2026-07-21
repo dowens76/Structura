@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import Link from "next/link";
+import HomeLink from "@/components/ui/HomeLink";
 
 const HEBREW_FONT: React.CSSProperties = { fontFamily: '"Ezra SIL", "SBL Hebrew", serif' };
 function isHebrew(s: string): boolean { return /[א-ת]/.test(s); }
@@ -185,16 +186,19 @@ export default function ConceptEditorPanel({ tagName }: { tagName: string }) {
   return (
     <div className="space-y-6">
       <div>
-        <Link
-          href="/export/lists"
-          className="flex items-center gap-1.5 mb-4 text-sm transition-colors hover:opacity-70 w-fit"
-          style={{ color: "var(--text-muted)" }}
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <polyline points="15 18 9 12 15 6" />
-          </svg>
-          Back to Manage Lists
-        </Link>
+        <div className="flex items-center gap-4 mb-4">
+          <HomeLink />
+          <Link
+            href="/export/lists"
+            className="flex items-center gap-1.5 text-sm transition-colors hover:opacity-70 w-fit"
+            style={{ color: "var(--text-muted)" }}
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="15 18 9 12 15 6" />
+            </svg>
+            Back to Manage Lists
+          </Link>
+        </div>
         <div className="flex items-center gap-2 flex-wrap">
           <span className="inline-block w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: data.tag.color }} />
           <h1 className="text-2xl font-semibold" style={{ color: "var(--foreground)", ...hebrewStyle(data.tag.name) }}>

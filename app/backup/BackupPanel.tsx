@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
+import HomeLink from "@/components/ui/HomeLink";
 import AutoBackupPanel from "./AutoBackupPanel";
 import { useTranslation } from "@/lib/i18n/LocaleContext";
 
@@ -54,12 +54,7 @@ export default function BackupPanel() {
   return (
     <div className="space-y-6">
       <header className="mb-8">
-        <Link
-          href="/"
-          className="text-sm text-stone-400 hover:text-stone-600 dark:hover:text-stone-300 mb-4 inline-block transition-colors"
-        >
-          {t("backup.backLink")}
-        </Link>
+        <HomeLink className="mb-4" />
         <h1 className="text-3xl font-bold mt-2" style={{ color: "var(--foreground)" }}>
           {t("backup.title")}
         </h1>

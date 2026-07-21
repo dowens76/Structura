@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
+import HomeLink from "@/components/ui/HomeLink";
 
 interface TranslationRow {
   id: number;
@@ -85,11 +86,7 @@ const LANGUAGES: { code: string; label: string }[] = [
   { code: "zu", label: "Zulu" },
 ];
 
-interface Props {
-  onClose: () => void;
-}
-
-export default function ManageTranslationsDialog({ onClose }: Props) {
+export default function TranslationsPanel() {
   const [rows, setRows] = useState<TranslationRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<number | null>(null);
@@ -100,7 +97,6 @@ export default function ManageTranslationsDialog({ onClose }: Props) {
   const [newAbbr, setNewAbbr] = useState("");
   const [newLang, setNewLang] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const dialogRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     fetch("/api/translations")
@@ -108,13 +104,6 @@ export default function ManageTranslationsDialog({ onClose }: Props) {
       .then((data: TranslationRow[]) => { setRows(data); setLoading(false); })
       .catch(() => setLoading(false));
   }, []);
-
-  // Close on backdrop click
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) { if (e.key === "Escape") onClose(); }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
 
   async function patchField(id: number, patch: Partial<Pick<TranslationRow, "name" | "abbreviation" | "language">>) {
     setSaving(id);
@@ -166,89 +155,80 @@ export default function ManageTranslationsDialog({ onClose }: Props) {
   const labelCls = "text-[10px] font-semibold uppercase tracking-wider text-stone-400 dark:text-stone-500 mb-0.5 block";
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
-      onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}
-    >
-      <div
-        ref={dialogRef}
-        className="relative w-full max-w-2xl max-h-[85vh] flex flex-col rounded-xl shadow-2xl overflow-hidden"
-        style={{ backgroundColor: "var(--background)", color: "var(--foreground)" }}
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b" style={{ borderColor: "var(--border)" }}>
-          <h2 className="text-base font-semibold">Manage Translations</h2>
-          <button onClick={onClose} className="text-stone-400 hover:text-stone-600 dark:hover:text-stone-300 text-xl leading-none transition-colors">×</button>
-        </div>
+    <div className="space-y-6">
+      <div>
+        <HomeLink className="mb-4" />
+        <h1 className="text-2xl font-semibold mb-1" style={{ color: "var(--foreground)" }}>
+          Manage Translations
+        </h1>
+      </div>
 
-        {/* Scrollable list */}
-        <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
-          {loading && <p className="text-sm text-stone-400">Loading…</p>}
-          {!loading && rows.length === 0 && (
-            <p className="text-sm text-stone-400 dark:text-stone-500">No translations yet. Create one below.</p>
-          )}
-          {rows.map((row) => (
-            <TranslationEditor
-              key={row.id}
-              row={row}
-              saving={saving === row.id}
-              onSave={(patch) => patchField(row.id, patch)}
-              confirmingDelete={confirmDeleteId === row.id}
-              deleting={deleting && confirmDeleteId === row.id}
-              onRequestDelete={() => setConfirmDeleteId(row.id)}
-              onCancelDelete={() => setConfirmDeleteId(null)}
-              onConfirmDelete={() => handleDelete(row.id)}
+      <div className="space-y-4">
+        {loading && <p className="text-sm text-stone-400">Loading…</p>}
+        {!loading && rows.length === 0 && (
+          <p className="text-sm text-stone-400 dark:text-stone-500">No translations yet. Create one below.</p>
+        )}
+        {rows.map((row) => (
+          <TranslationEditor
+            key={row.id}
+            row={row}
+            saving={saving === row.id}
+            onSave={(patch) => patchField(row.id, patch)}
+            confirmingDelete={confirmDeleteId === row.id}
+            deleting={deleting && confirmDeleteId === row.id}
+            onRequestDelete={() => setConfirmDeleteId(row.id)}
+            onCancelDelete={() => setConfirmDeleteId(null)}
+            onConfirmDelete={() => handleDelete(row.id)}
+          />
+        ))}
+      </div>
+
+      {/* Create new */}
+      <div className="border-t pt-4 space-y-3" style={{ borderColor: "var(--border)" }}>
+        <p className="text-xs font-semibold uppercase tracking-wider text-stone-400 dark:text-stone-500">New Translation</p>
+        <div className="grid grid-cols-3 gap-3">
+          <div>
+            <label className={labelCls}>Name</label>
+            <input
+              className={inputCls}
+              placeholder="e.g. My Translation"
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") handleCreate(); }}
             />
-          ))}
-        </div>
-
-        {/* Create new */}
-        <div className="border-t px-6 py-4 space-y-3" style={{ borderColor: "var(--border)" }}>
-          <p className="text-xs font-semibold uppercase tracking-wider text-stone-400 dark:text-stone-500">New Translation</p>
-          <div className="grid grid-cols-3 gap-3">
-            <div>
-              <label className={labelCls}>Name</label>
-              <input
-                className={inputCls}
-                placeholder="e.g. My Translation"
-                value={newName}
-                onChange={(e) => setNewName(e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Enter") handleCreate(); }}
-              />
-            </div>
-            <div>
-              <label className={labelCls}>Abbreviation</label>
-              <input
-                className={inputCls}
-                placeholder="e.g. MT"
-                maxLength={12}
-                value={newAbbr}
-                onChange={(e) => setNewAbbr(e.target.value.toUpperCase())}
-                onKeyDown={(e) => { if (e.key === "Enter") handleCreate(); }}
-              />
-            </div>
-            <div>
-              <label className={labelCls}>Language</label>
-              <select
-                className={inputCls}
-                value={newLang}
-                onChange={(e) => setNewLang(e.target.value)}
-              >
-                {LANGUAGES.map((l) => (
-                  <option key={l.code} value={l.code}>{l.label}</option>
-                ))}
-              </select>
-            </div>
           </div>
-          {error && <p className="text-xs text-red-500">{error}</p>}
-          <button
-            onClick={handleCreate}
-            disabled={creating}
-            className="px-4 py-1.5 rounded text-sm font-medium bg-sky-600 hover:bg-sky-700 text-white disabled:opacity-40 transition-colors"
-          >
-            {creating ? "Creating…" : "+ Create Translation"}
-          </button>
+          <div>
+            <label className={labelCls}>Abbreviation</label>
+            <input
+              className={inputCls}
+              placeholder="e.g. MT"
+              maxLength={12}
+              value={newAbbr}
+              onChange={(e) => setNewAbbr(e.target.value.toUpperCase())}
+              onKeyDown={(e) => { if (e.key === "Enter") handleCreate(); }}
+            />
+          </div>
+          <div>
+            <label className={labelCls}>Language</label>
+            <select
+              className={inputCls}
+              value={newLang}
+              onChange={(e) => setNewLang(e.target.value)}
+            >
+              {LANGUAGES.map((l) => (
+                <option key={l.code} value={l.code}>{l.label}</option>
+              ))}
+            </select>
+          </div>
         </div>
+        {error && <p className="text-xs text-red-500">{error}</p>}
+        <button
+          onClick={handleCreate}
+          disabled={creating}
+          className="px-4 py-1.5 rounded text-sm font-medium bg-sky-600 hover:bg-sky-700 text-white disabled:opacity-40 transition-colors"
+        >
+          {creating ? "Creating…" : "+ Create Translation"}
+        </button>
       </div>
     </div>
   );
@@ -330,7 +310,7 @@ function TranslationEditor({
         ) : (
           <div className="flex items-center gap-2">
             <span className="text-[11px] text-red-500 dark:text-red-400">
-              Delete "{row.name}" and all its verses?
+              Delete &quot;{row.name}&quot; and all its verses?
             </span>
             <button
               onClick={onCancelDelete}
