@@ -90,8 +90,8 @@ export default function UsfmExportForm({ books, translations }: Props) {
   if (translations.length === 0) {
     return (
       <div>
-        <div className="flex items-center gap-3 mb-8">
-          <HomeLink />
+        <div className="mb-8">
+          <HomeLink className="mb-4" />
           <h1 className="text-xl font-semibold">Export USFM</h1>
         </div>
         <p className="text-stone-500 dark:text-stone-400 text-sm">
@@ -143,8 +143,8 @@ export default function UsfmExportForm({ books, translations }: Props) {
 
   return (
     <div>
-      <div className="flex items-center gap-3 mb-8">
-        <HomeLink />
+      <div className="mb-8">
+        <HomeLink className="mb-4" />
         <h1 className="text-xl font-semibold">Export USFM</h1>
       </div>
 
