@@ -4116,7 +4116,7 @@ export default function ChapterDisplay({
     const keep = new Set([mode, ...(COMPAT[mode] ?? [])]);
     if (!keep.has("paragraph"))   setEditingParagraphs(false);
     if (!keep.has("scenes"))      setEditingScenes(false);
-    if (!keep.has("annotations")) { setEditingAnnotations(false); setAnnotRangeStart(null); setAnnotRangeEnd(null); }
+    if (!keep.has("annotations")) { setEditingAnnotations(false); setAnnotRangeStart(null); setAnnotRangeEnd(null); setEditingAnnotationId(null); }
     if (!keep.has("refs"))        { setEditingRefs(false); setRefRangeStart(null); }
     if (!keep.has("speech"))      { setEditingSpeech(false); setSpeechRangeStart(null); }
     if (!keep.has("wordTags"))    { setEditingWordTags(false); setWordTagRangeStart(null); }
@@ -4773,13 +4773,14 @@ export default function ChapterDisplay({
                 disabled={editingWordTags}
                 onClick={() => {
                   if (!editingAnnotations) deactivateIncompatible("annotations");
+                  else setEditingAnnotationId(null);
                   setEditingAnnotations((v) => !v);
                 }}
                 data-tip={editingAnnotations
                   ? t("toolbar.titleAnnotationOn")
                   : t("toolbar.titleAnnotationOff")}
                 className={[
-                  "px-3 py-1.5 rounded text-[13px] font-medium transition-colors",
+                  "px-3 py-1.5 rounded text-[20px] leading-none font-medium transition-colors",
                   editingAnnotations
                     ? "bg-indigo-600 text-white"
                     : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",

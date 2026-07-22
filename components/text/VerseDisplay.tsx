@@ -232,7 +232,7 @@ interface VerseDisplayProps {
   onSaveAnnotation?: (data: { annotType: string; label: string; commFunction?: string | null; color: string; description: string | null; outOfSequence: boolean; transitional: boolean }) => Promise<boolean>;
   onCancelAnnotation?: () => void;
   onDeleteAnnotation?: (id: number) => void;
-  onUpdateAnnotation?: (id: number, updates: { label?: string; commFunction?: string | null; color?: string; description?: string | null; outOfSequence?: boolean; transitional?: boolean }) => void;
+  onUpdateAnnotation?: (id: number, updates: { annotType?: string; label?: string; commFunction?: string | null; color?: string; description?: string | null; outOfSequence?: boolean; transitional?: boolean }) => void;
   onExpandAnnotationRange?: (id: number, direction: "expand-start" | "shrink-start" | "expand-end" | "shrink-end") => void;
   showAnnotationCol?: boolean;
   showAtnachBreaks?: boolean;
@@ -349,6 +349,7 @@ function AnnotBadge({
   onSetEditing,
   presentationMode,
   thematicSubscript,
+  themeColorsByLabel,
   onDelete,
   onUpdate,
   onAdjustRange,
@@ -361,8 +362,9 @@ function AnnotBadge({
   onSetEditing: (v: boolean) => void;
   presentationMode?: boolean;
   thematicSubscript?: number;
+  themeColorsByLabel?: Map<string, string>;
   onDelete?: (id: number) => void;
-  onUpdate?: (id: number, updates: { label?: string; commFunction?: string | null; description?: string | null; color?: string; outOfSequence?: boolean; transitional?: boolean }) => void;
+  onUpdate?: (id: number, updates: { annotType?: string; label?: string; commFunction?: string | null; description?: string | null; color?: string; outOfSequence?: boolean; transitional?: boolean }) => void;
   onAdjustRange?: (id: number, direction: "expand-start" | "shrink-start" | "expand-end" | "shrink-end") => void;
 }) {
   const { t } = useTranslation();
@@ -371,6 +373,17 @@ function AnnotBadge({
   const [draftColor, setDraftColor] = useState(annotation.color);
   const [draftOos, setDraftOos] = useState(annotation.outOfSequence ?? false);
   const [draftTransitional, setDraftTransitional] = useState(annotation.transitional ?? false);
+  // Annotation type is editable in-place; changing it swaps which per-type
+  // label control (plot element / theme letter / comm-function-as-label) is shown.
+  const [draftAnnotType, setDraftAnnotType] = useState<"plot" | "theme" | "desc">(
+    (annotation.annotType as "plot" | "theme" | "desc") ?? "plot"
+  );
+  const [draftPlotLabel, setDraftPlotLabel] = useState(
+    annotation.annotType === "plot" ? annotation.label : PLOT_ELEMENTS[0].label
+  );
+  const [draftThemeLabel, setDraftThemeLabel] = useState(
+    annotation.annotType === "theme" ? annotation.label : "A"
+  );
   // Communicative function: for "desc" annotations it's stored in `label`; for
   // "theme" annotations `label` already holds the theme letter, so it's stored
   // in the separate `commFunction` column instead.
@@ -386,9 +399,53 @@ function AnnotBadge({
   useEffect(() => { setDraftOos(annotation.outOfSequence ?? false); }, [annotation.outOfSequence]);
   useEffect(() => { setDraftTransitional(annotation.transitional ?? false); }, [annotation.transitional]);
   useEffect(() => {
+    setDraftAnnotType((annotation.annotType as "plot" | "theme" | "desc") ?? "plot");
+    if (annotation.annotType === "plot") setDraftPlotLabel(annotation.label);
+    if (annotation.annotType === "theme") setDraftThemeLabel(annotation.label);
+  }, [annotation.annotType, annotation.label]);
+  useEffect(() => {
     if (annotation.annotType === "desc") setDraftCommFunction(annotation.label ?? "");
     else if (annotation.annotType === "theme") setDraftCommFunction(annotation.commFunction ?? "");
   }, [annotation.label, annotation.commFunction, annotation.annotType]);
+
+  /** Type tabs switch which label control is active; snap the colour to a
+   *  sensible default for the newly selected type (mirrors AnnotCreationForm). */
+  function handleTypeChange(next: "plot" | "theme" | "desc") {
+    setDraftAnnotType(next);
+    if (next === "plot") setDraftColor(getPlotElement(draftPlotLabel)?.color ?? draftColor);
+    else if (next === "theme") setDraftColor(themeColorsByLabel?.get(draftThemeLabel) ?? draftColor);
+  }
+
+  /** Discard all pending edits, reverting every draft field to the saved annotation. */
+  function resetDrafts() {
+    setDraftDesc(annotation.description ?? "");
+    setDraftColor(annotation.color);
+    setDraftOos(annotation.outOfSequence ?? false);
+    setDraftTransitional(annotation.transitional ?? false);
+    setDraftAnnotType((annotation.annotType as "plot" | "theme" | "desc") ?? "plot");
+    setDraftPlotLabel(annotation.annotType === "plot" ? annotation.label : PLOT_ELEMENTS[0].label);
+    setDraftThemeLabel(annotation.annotType === "theme" ? annotation.label : "A");
+    setDraftCommFunction(
+      annotation.annotType === "desc" ? (annotation.label ?? "")
+      : annotation.annotType === "theme" ? (annotation.commFunction ?? "")
+      : ""
+    );
+  }
+
+  // Safety net: if the editor is closed by something other than the explicit
+  // commit paths below (e.g. the annotation-editing toolbar toggle being
+  // switched off while this badge is mid-edit), still persist any pending
+  // change instead of silently discarding it. A no-op cancel via the "Close"
+  // button first resets every draft to match `annotation`, so this finds no
+  // diff and stays a true cancel in that case.
+  const wasEditingRef = useRef(isEditing);
+  useEffect(() => {
+    if (wasEditingRef.current && !isEditing) {
+      const updates = computeUpdates();
+      if (Object.keys(updates).length > 0) onUpdate?.(annotation.id, updates);
+    }
+    wasEditingRef.current = isEditing;
+  }, [isEditing]);
 
   const color = getAnnotationColor(annotation.annotType, annotation.label, annotation.color);
 
@@ -423,27 +480,66 @@ function AnnotBadge({
     );
   }
 
-  function commitEdit() {
+  /** Diff the current drafts against the saved annotation. Returns only the changed fields. */
+  function computeUpdates() {
     const newDesc = draftDesc.trim() || null;
-    const updates: { label?: string; commFunction?: string | null; description?: string | null; color?: string; outOfSequence?: boolean; transitional?: boolean } = {};
+    const updates: { annotType?: string; label?: string; commFunction?: string | null; description?: string | null; color?: string; outOfSequence?: boolean; transitional?: boolean } = {};
+
+    // Resolve the label/commFunction/color triple for the (possibly changed) type.
+    let newLabel: string;
+    let newCommFunction: string | null;
+    let newColor: string;
+    if (draftAnnotType === "plot") {
+      newLabel = draftPlotLabel;
+      newCommFunction = null;
+      newColor = getPlotElement(draftPlotLabel)?.color ?? draftColor;
+    } else if (draftAnnotType === "theme") {
+      newLabel = draftThemeLabel.trim() || "A";
+      newCommFunction = draftCommFunction || null;
+      newColor = draftColor;
+    } else {
+      newLabel = draftCommFunction;
+      newCommFunction = null;
+      newColor = draftColor;
+    }
+    const oldCommFunction = annotation.annotType === "theme" ? (annotation.commFunction ?? null) : null;
+    // When the type itself changes, force-write label/commFunction/color to
+    // their freshly computed values even if they happen to equal whatever is
+    // already in the DB — a row can carry a stale value in a column its old
+    // type never displayed (e.g. a leftover commFunction on a "desc" row),
+    // and a same-value diff would otherwise leave that stale data in place.
+    const typeChanged = draftAnnotType !== annotation.annotType;
+
+    if (typeChanged) updates.annotType = draftAnnotType;
+    if (typeChanged || newLabel !== annotation.label) updates.label = newLabel;
+    if (typeChanged || newCommFunction !== oldCommFunction) updates.commFunction = newCommFunction;
+    if (typeChanged || newColor !== annotation.color) updates.color = newColor;
     if (newDesc !== annotation.description) updates.description = newDesc;
-    if (draftColor !== annotation.color) updates.color = draftColor;
     if (draftOos !== (annotation.outOfSequence ?? false)) updates.outOfSequence = draftOos;
     if (draftTransitional !== (annotation.transitional ?? false)) updates.transitional = draftTransitional;
-    if (annotation.annotType === "desc" && draftCommFunction !== (annotation.label ?? "")) updates.label = draftCommFunction;
-    if (annotation.annotType === "theme" && draftCommFunction !== (annotation.commFunction ?? "")) updates.commFunction = draftCommFunction || null;
+    return updates;
+  }
+
+  function commitEdit() {
+    const updates = computeUpdates();
     if (Object.keys(updates).length > 0) onUpdate?.(annotation.id, updates);
     onSetEditing(false);
   }
 
   const hasLabel = annotation.label !== "";
 
-  // ── Editing state: description + range controls ──────────────────────────
+  // ── Editing state: type/label + description + range controls ────────────
   if (isEditing) {
+    const editColor = draftAnnotType === "plot" ? (getPlotElement(draftPlotLabel)?.color ?? draftColor) : draftColor;
+    const typeTabs: { key: "plot" | "theme" | "desc"; display: string }[] = [
+      { key: "plot",  display: "Plot"  },
+      { key: "theme", display: "Theme" },
+      { key: "desc",  display: "Desc"  },
+    ];
     return (
       <div
         className={[isEnd ? "rounded" : "rounded-t", "flex-1 overflow-hidden"].join(" ")}
-        style={{ borderLeft: `3px solid ${color}`, backgroundColor: `${color}18` }}
+        style={{ borderLeft: `3px solid ${editColor}`, backgroundColor: `${editColor}18` }}
         onClick={(e) => e.stopPropagation()}
         onBlur={(e) => {
           // Only commit when focus truly leaves this editor — not when it
@@ -455,31 +551,101 @@ function AnnotBadge({
       >
         {/* Header row */}
         <div className="flex items-center gap-1 px-1.5 pt-1 pb-0.5">
-          {hasLabel && (
+          {draftAnnotType === "plot" && (
             <span
               className="shrink-0 text-[10px] font-bold px-1 py-0.5 rounded text-white leading-none"
-              style={{ backgroundColor: color }}
+              style={{ backgroundColor: editColor }}
             >
-              {getCommFunctionLeafLabel(annotation.label, customCommFunctions)}{thematicSubscript != null ? toSubscript(thematicSubscript) : ""}
+              {draftPlotLabel}
             </span>
           )}
-          {annotation.annotType === "theme" && annotation.commFunction && (
+          {draftAnnotType === "theme" && (
             <span
               className="shrink-0 text-[10px] font-bold px-1 py-0.5 rounded text-white leading-none"
-              style={{ backgroundColor: color }}
+              style={{ backgroundColor: editColor }}
             >
-              {getCommFunctionLeafLabel(annotation.commFunction, customCommFunctions)}
+              {(draftThemeLabel || "A")}{thematicSubscript != null ? toSubscript(thematicSubscript) : ""}
+            </span>
+          )}
+          {draftAnnotType === "theme" && draftCommFunction && (
+            <span
+              className="shrink-0 text-[10px] font-bold px-1 py-0.5 rounded text-white leading-none"
+              style={{ backgroundColor: editColor }}
+            >
+              {getCommFunctionLeafLabel(draftCommFunction, customCommFunctions)}
+            </span>
+          )}
+          {draftAnnotType === "desc" && draftCommFunction && (
+            <span
+              className="shrink-0 text-[10px] font-bold px-1 py-0.5 rounded text-white leading-none"
+              style={{ backgroundColor: editColor }}
+            >
+              {getCommFunctionLeafLabel(draftCommFunction, customCommFunctions)}
             </span>
           )}
           <button
             type="button"
-            onClick={() => { setDraftDesc(annotation.description ?? ""); setDraftOos(annotation.outOfSequence ?? false); setDraftTransitional(annotation.transitional ?? false); onSetEditing(false); }}
+            onClick={() => { resetDrafts(); onSetEditing(false); }}
             className="shrink-0 ml-auto text-stone-400 hover:text-stone-600 text-xs leading-none"
             title="Close"
           >
             ✕
           </button>
         </div>
+
+        {/* Type tabs — switch between Plot, Theme, Desc */}
+        <div className="flex gap-1 px-1.5 pb-1">
+          {typeTabs.map(({ key, display }) => (
+            <button
+              key={key}
+              type="button"
+              onMouseDown={(e) => e.preventDefault()} // don't blur description input
+              onClick={() => handleTypeChange(key)}
+              className={[
+                "flex-1 px-1 py-0.5 rounded text-[9px] font-semibold transition-colors",
+                draftAnnotType === key
+                  ? "bg-indigo-600 text-white"
+                  : "bg-white/70 dark:bg-stone-900/70 text-stone-500 dark:text-stone-400 hover:bg-white dark:hover:bg-stone-900",
+              ].join(" ")}
+            >
+              {display}
+            </button>
+          ))}
+        </div>
+
+        {/* Plot element picker — plot annotations only */}
+        {draftAnnotType === "plot" && (
+          <div className="flex flex-wrap gap-1 px-1.5 pb-1">
+            {PLOT_ELEMENTS.map((el) => (
+              <button
+                key={el.label}
+                type="button"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => { setDraftPlotLabel(el.label); setDraftColor(el.color); }}
+                className="px-1.5 py-0.5 rounded text-[10px] text-white font-bold transition-opacity leading-none"
+                style={{ backgroundColor: el.color, opacity: draftPlotLabel === el.label ? 1 : 0.35 }}
+                title={el.fullName}
+              >
+                {el.label}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Theme letter — theme annotations only */}
+        {draftAnnotType === "theme" && (
+          <div className="px-1.5 pb-1">
+            <input
+              type="text"
+              value={draftThemeLabel}
+              onChange={(e) => setDraftThemeLabel(e.target.value.toUpperCase().slice(0, 3))}
+              onKeyDown={(e) => e.stopPropagation()}
+              placeholder="A"
+              maxLength={3}
+              className="w-10 px-1 py-0.5 border border-stone-300 dark:border-stone-600 rounded bg-white dark:bg-stone-900 text-[10px] uppercase font-bold text-center"
+            />
+          </div>
+        )}
 
         {/* Description input */}
         <div className="px-1.5 pb-1">
@@ -490,7 +656,7 @@ function AnnotBadge({
             onChange={(e) => setDraftDesc(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter") { e.preventDefault(); commitEdit(); }
-              if (e.key === "Escape") { setDraftDesc(annotation.description ?? ""); onSetEditing(false); }
+              if (e.key === "Escape") { resetDrafts(); onSetEditing(false); }
               e.stopPropagation();
             }}
             placeholder="Description (optional)"
@@ -499,14 +665,18 @@ function AnnotBadge({
         </div>
 
         {/* Colour palette — theme and desc annotations only */}
-        {annotation.annotType !== "plot" && (
+        {draftAnnotType !== "plot" && (
           <div className="px-1.5 pb-1">
-            <ColorPalette value={draftColor} onChange={setDraftColor} />
+            <ColorPalette
+              value={draftColor}
+              onChange={setDraftColor}
+              locked={draftAnnotType === "theme" ? themeColorsByLabel?.has(draftThemeLabel) : false}
+            />
           </div>
         )}
 
         {/* Communicative function — theme and desc annotations only */}
-        {(annotation.annotType === "theme" || annotation.annotType === "desc") && (
+        {(draftAnnotType === "theme" || draftAnnotType === "desc") && (
           <div className="px-1.5 pb-1">
             <CommunicativeFunctionPicker value={draftCommFunction} onChange={setDraftCommFunction} />
           </div>
@@ -1694,6 +1864,7 @@ export default function VerseDisplay({
             onSetEditing={(v) => onSetEditingAnnotationId?.(v ? annotation.id : null)}
             presentationMode={presentationMode}
             thematicSubscript={isStart ? thematicSubscripts.get(annotation.id) : undefined}
+            themeColorsByLabel={themeColorsByLabel}
             onDelete={onDeleteAnnotation}
             onUpdate={onUpdateAnnotation}
             onAdjustRange={onExpandAnnotationRange}

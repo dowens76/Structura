@@ -311,7 +311,7 @@ export function CommunicativeFunctionPicker({
             maxHeight: dropPos.maxHeight,
             zIndex: 9999,
           }}
-          onMouseDown={(e) => e.stopPropagation()}
+          onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
         >
           {/* ── Left panel: quick tags + macro-categories ── */}
           <div
@@ -339,6 +339,19 @@ export function CommunicativeFunctionPicker({
                     {pin.shortLabel}
                   </button>
                 ))}
+                <button
+                  type="button"
+                  disabled={!value}
+                  onClick={() => select("")}
+                  className={[
+                    "text-[10px] px-2 py-0.5 rounded border font-medium transition-colors ml-auto",
+                    value
+                      ? "bg-stone-50 dark:bg-stone-700 text-red-500 dark:text-red-400 border-stone-200 dark:border-stone-600 hover:bg-red-50 dark:hover:bg-red-900/30 hover:border-red-300 dark:hover:border-red-600"
+                      : "bg-stone-50 dark:bg-stone-700 text-stone-300 dark:text-stone-600 border-stone-200 dark:border-stone-600 cursor-not-allowed",
+                  ].join(" ")}
+                >
+                  Clear
+                </button>
               </div>
             </div>
 

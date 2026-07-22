@@ -44,11 +44,12 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({ annotation });
 }
 
-/** PATCH { id, label?, commFunction?, color?, description?, outOfSequence?, startWordId?, endWordId? } → { annotation: LineAnnotation } */
+/** PATCH { id, annotType?, label?, commFunction?, color?, description?, outOfSequence?, startWordId?, endWordId? } → { annotation: LineAnnotation } */
 export async function PATCH(req: NextRequest) {
   const body = await req.json();
   const { id, ...updates } = body as {
     id: number;
+    annotType?: string;
     label?: string;
     commFunction?: string | null;
     color?: string;

@@ -1870,7 +1870,7 @@ export async function createLineAnnotation(
 /** Update fields of an existing annotation (label, commFunction, color, description, outOfSequence, transitional, start/end word IDs). */
 export async function updateLineAnnotation(
   id: number,
-  updates: Partial<Pick<LineAnnotation, "label" | "commFunction" | "color" | "description" | "outOfSequence" | "transitional" | "startWordId" | "endWordId">>
+  updates: Partial<Pick<LineAnnotation, "annotType" | "label" | "commFunction" | "color" | "description" | "outOfSequence" | "transitional" | "startWordId" | "endWordId">>
 ): Promise<LineAnnotation> {
   const [row] = await userDb
     .update(lineAnnotations)
