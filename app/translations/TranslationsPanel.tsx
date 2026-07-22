@@ -1,7 +1,9 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import HomeLink from "@/components/ui/HomeLink";
+import PageShell from "@/components/ui/PageShell";
+import SectionHeading from "@/components/ui/SectionHeading";
+import Button from "@/components/ui/Button";
 
 interface TranslationRow {
   id: number;
@@ -155,82 +157,73 @@ export default function TranslationsPanel() {
   const labelCls = "text-[10px] font-semibold uppercase tracking-wider text-stone-400 dark:text-stone-500 mb-0.5 block";
 
   return (
-    <div className="space-y-6">
-      <div>
-        <HomeLink className="mb-4" />
-        <h1 className="text-2xl font-semibold mb-1" style={{ color: "var(--foreground)" }}>
-          Manage Translations
-        </h1>
-      </div>
-
-      <div className="space-y-4">
-        {loading && <p className="text-sm text-stone-400">Loading…</p>}
-        {!loading && rows.length === 0 && (
-          <p className="text-sm text-stone-400 dark:text-stone-500">No translations yet. Create one below.</p>
-        )}
-        {rows.map((row) => (
-          <TranslationEditor
-            key={row.id}
-            row={row}
-            saving={saving === row.id}
-            onSave={(patch) => patchField(row.id, patch)}
-            confirmingDelete={confirmDeleteId === row.id}
-            deleting={deleting && confirmDeleteId === row.id}
-            onRequestDelete={() => setConfirmDeleteId(row.id)}
-            onCancelDelete={() => setConfirmDeleteId(null)}
-            onConfirmDelete={() => handleDelete(row.id)}
-          />
-        ))}
-      </div>
-
-      {/* Create new */}
-      <div className="border-t pt-4 space-y-3" style={{ borderColor: "var(--border)" }}>
-        <p className="text-xs font-semibold uppercase tracking-wider text-stone-400 dark:text-stone-500">New Translation</p>
-        <div className="grid grid-cols-3 gap-3">
-          <div>
-            <label className={labelCls}>Name</label>
-            <input
-              className={inputCls}
-              placeholder="e.g. My Translation"
-              value={newName}
-              onChange={(e) => setNewName(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter") handleCreate(); }}
+    <PageShell title="Manage Translations">
+      <div className="space-y-6">
+        <div className="space-y-4">
+          {loading && <p className="text-sm text-stone-400">Loading…</p>}
+          {!loading && rows.length === 0 && (
+            <p className="text-sm text-stone-400 dark:text-stone-500">No translations yet. Create one below.</p>
+          )}
+          {rows.map((row) => (
+            <TranslationEditor
+              key={row.id}
+              row={row}
+              saving={saving === row.id}
+              onSave={(patch) => patchField(row.id, patch)}
+              confirmingDelete={confirmDeleteId === row.id}
+              deleting={deleting && confirmDeleteId === row.id}
+              onRequestDelete={() => setConfirmDeleteId(row.id)}
+              onCancelDelete={() => setConfirmDeleteId(null)}
+              onConfirmDelete={() => handleDelete(row.id)}
             />
-          </div>
-          <div>
-            <label className={labelCls}>Abbreviation</label>
-            <input
-              className={inputCls}
-              placeholder="e.g. MT"
-              maxLength={12}
-              value={newAbbr}
-              onChange={(e) => setNewAbbr(e.target.value.toUpperCase())}
-              onKeyDown={(e) => { if (e.key === "Enter") handleCreate(); }}
-            />
-          </div>
-          <div>
-            <label className={labelCls}>Language</label>
-            <select
-              className={inputCls}
-              value={newLang}
-              onChange={(e) => setNewLang(e.target.value)}
-            >
-              {LANGUAGES.map((l) => (
-                <option key={l.code} value={l.code}>{l.label}</option>
-              ))}
-            </select>
-          </div>
+          ))}
         </div>
-        {error && <p className="text-xs text-red-500">{error}</p>}
-        <button
-          onClick={handleCreate}
-          disabled={creating}
-          className="px-4 py-1.5 rounded text-sm font-medium bg-sky-600 hover:bg-sky-700 text-white disabled:opacity-40 transition-colors"
-        >
-          {creating ? "Creating…" : "+ Create Translation"}
-        </button>
+
+        {/* Create new */}
+        <div className="border-t pt-4 space-y-3" style={{ borderColor: "var(--border)" }}>
+          <SectionHeading size="label">New Translation</SectionHeading>
+          <div className="grid grid-cols-3 gap-3">
+            <div>
+              <label className={labelCls}>Name</label>
+              <input
+                className={inputCls}
+                placeholder="e.g. My Translation"
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") handleCreate(); }}
+              />
+            </div>
+            <div>
+              <label className={labelCls}>Abbreviation</label>
+              <input
+                className={inputCls}
+                placeholder="e.g. MT"
+                maxLength={12}
+                value={newAbbr}
+                onChange={(e) => setNewAbbr(e.target.value.toUpperCase())}
+                onKeyDown={(e) => { if (e.key === "Enter") handleCreate(); }}
+              />
+            </div>
+            <div>
+              <label className={labelCls}>Language</label>
+              <select
+                className={inputCls}
+                value={newLang}
+                onChange={(e) => setNewLang(e.target.value)}
+              >
+                {LANGUAGES.map((l) => (
+                  <option key={l.code} value={l.code}>{l.label}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+          {error && <p className="text-xs text-red-500">{error}</p>}
+          <Button onClick={handleCreate} disabled={creating}>
+            {creating ? "Creating…" : "+ Create Translation"}
+          </Button>
+        </div>
       </div>
-    </div>
+    </PageShell>
   );
 }
 

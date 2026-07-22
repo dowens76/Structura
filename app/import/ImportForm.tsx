@@ -2,7 +2,9 @@
 
 import { startTransition, useActionState, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import HomeLink from "@/components/ui/HomeLink";
+import PageShell from "@/components/ui/PageShell";
+import SectionHeading from "@/components/ui/SectionHeading";
+import Button from "@/components/ui/Button";
 import { importTranslationAction, checkExistingVersesAction, importUsfmFileAction, checkUsfmConflictsAction } from "./actions";
 import type { BookConflict } from "./actions";
 import type { Book, Translation } from "@/lib/db/schema";
@@ -439,15 +441,7 @@ export default function ImportForm({ books, existingTranslations }: ImportFormPr
     }`;
 
   return (
-    <>
-      <header className="mb-8">
-        <HomeLink className="mb-4" />
-        <h1 className="text-3xl font-bold mt-2">{t("importPage.title")}</h1>
-        <p className="mt-2 text-sm text-stone-500 dark:text-stone-400">
-          {t("importPage.description")}
-        </p>
-      </header>
-
+    <PageShell title={t("importPage.title")} subtitle={t("importPage.description")}>
       {/* Tab switcher */}
       <div className="flex gap-1 border-b border-[var(--border)] mb-6">
         <button type="button" className={tabBtnClass(activeTab === "paste")} onClick={() => setActiveTab("paste")}>
@@ -462,9 +456,7 @@ export default function ImportForm({ books, existingTranslations }: ImportFormPr
       {activeTab === "paste" && (
         <form onSubmit={handlePasteSubmit} className="space-y-6">
           <div>
-            <h2 className="text-sm font-semibold text-stone-700 dark:text-stone-300 mb-3">
-              {t("importPage.translationHeading")}
-            </h2>
+            <SectionHeading size="label" className="mb-3">{t("importPage.translationHeading")}</SectionHeading>
             {existingTranslations.length > 0 && (
               <div className="mb-3">
                 <p className="text-xs text-stone-500 dark:text-stone-400 mb-2">{t("importPage.existingHint")}</p>
@@ -504,7 +496,7 @@ export default function ImportForm({ books, existingTranslations }: ImportFormPr
             </div>
           </div>
           <div>
-            <h2 className="text-sm font-semibold text-stone-700 dark:text-stone-300 mb-3">{t("importPage.locationHeading")}</h2>
+            <SectionHeading size="label" className="mb-3">{t("importPage.locationHeading")}</SectionHeading>
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium mb-1 text-stone-700 dark:text-stone-300" htmlFor="osisBook">
@@ -548,14 +540,15 @@ export default function ImportForm({ books, existingTranslations }: ImportFormPr
                 {t("importPage.replaceDesc", { abbr: confirmData.abbr, count: confirmData.existingCount, plural: confirmData.existingCount !== 1 ? "s" : "", book: confirmData.bookName, chapter: confirmData.chapter })}
               </p>
               <div className="flex gap-2">
-                <button type="button" onClick={() => setConfirmData(null)}
-                  className="px-4 py-1.5 rounded-lg text-sm font-medium border border-[var(--border)] bg-[var(--surface)] text-stone-700 dark:text-stone-300 hover:bg-stone-50 dark:hover:bg-stone-800 transition-colors">
+                <Button variant="secondary" onClick={() => setConfirmData(null)}>
                   {t("importPage.cancel")}
-                </button>
-                <button type="button" onClick={() => { const fd = confirmData.formData; setConfirmData(null); startTransition(() => formAction(fd)); }}
-                  className="px-4 py-1.5 rounded-lg text-sm font-semibold bg-red-600 text-white hover:bg-red-700 transition-colors">
+                </Button>
+                <Button
+                  variant="danger"
+                  onClick={() => { const fd = confirmData.formData; setConfirmData(null); startTransition(() => formAction(fd)); }}
+                >
                   {t("importPage.yesReplace")}
-                </button>
+                </Button>
               </div>
             </div>
           )}
@@ -569,10 +562,9 @@ export default function ImportForm({ books, existingTranslations }: ImportFormPr
               {t("importPage.importedVerses", { count: state.count, plural: state.count !== 1 ? "s" : "" })}
             </div>
           )}
-          <button type="submit" disabled={pending || checking || !!confirmData}
-            className="px-5 py-2.5 rounded-lg text-sm font-semibold bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-60 transition-colors">
+          <Button type="submit" disabled={pending || checking || !!confirmData}>
             {pending ? t("importPage.importing") : checking ? t("importPage.checking") : t("importPage.importChapter")}
-          </button>
+          </Button>
         </form>
       )}
 
@@ -581,7 +573,7 @@ export default function ImportForm({ books, existingTranslations }: ImportFormPr
         <div className="space-y-6">
           {/* Translation identity */}
           <div>
-            <h2 className="text-sm font-semibold text-stone-700 dark:text-stone-300 mb-3">Translation</h2>
+            <SectionHeading size="label" className="mb-3">Translation</SectionHeading>
             {existingTranslations.length > 0 && (
               <div className="mb-3">
                 <p className="text-xs text-stone-500 dark:text-stone-400 mb-2">Select an existing translation or enter a new one:</p>
@@ -853,34 +845,28 @@ export default function ImportForm({ books, existingTranslations }: ImportFormPr
                 )}
 
                 <div className="flex gap-2 pt-2 border-t border-amber-200 dark:border-amber-800 mt-1">
-                  <button
-                    type="button"
+                  <Button
+                    variant="secondary"
                     onClick={() => { setUsfmConflicts(null); setPendingImportType(null); }}
-                    className="px-4 py-1.5 rounded-lg text-sm font-medium border border-[var(--border)] bg-[var(--surface)] text-stone-700 dark:text-stone-300 hover:bg-stone-50 dark:hover:bg-stone-800 transition-colors"
                   >
                     Cancel
-                  </button>
-                  <button
-                    type="button" onClick={handleConflictConfirm}
-                    className="px-4 py-1.5 rounded-lg text-sm font-semibold bg-blue-600 text-white hover:bg-blue-700 transition-colors"
-                  >
+                  </Button>
+                  <Button onClick={handleConflictConfirm}>
                     {conflictChoice === "overwrite" ? "Overwrite & Import" :
                      conflictChoice === "skip" ? "Import New Chapters" : "Import Selected"}
-                  </button>
+                  </Button>
                 </div>
               </div>
             </div>
           )}
 
-          <button
-            type="button"
+          <Button
             disabled={
               folderImporting || usfmPending || checkingConflicts || !!usfmConflicts ||
               !usfmName.trim() || !usfmAbbr.trim() ||
               (importMode === "file" ? !parsedFile || !!fileError : folderPreviews.filter(f => f.parsed).length === 0)
             }
             onClick={() => importMode === "folder" ? handleFolderImport() : handleSingleFileImport()}
-            className="px-5 py-2.5 rounded-lg text-sm font-semibold bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-60 transition-colors"
           >
             {folderImporting
               ? `Importing… (${folderProgress?.done ?? 0} / ${folderProgress?.total ?? 0})`
@@ -891,9 +877,9 @@ export default function ImportForm({ books, existingTranslations }: ImportFormPr
                   : importMode === "folder"
                     ? `Import ${folderPreviews.filter(f => f.parsed).length} Book${folderPreviews.filter(f => f.parsed).length !== 1 ? "s" : ""}`
                     : "Import USFM File"}
-          </button>
+          </Button>
         </div>
       )}
-    </>
+    </PageShell>
   );
 }

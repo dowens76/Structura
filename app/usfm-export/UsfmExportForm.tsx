@@ -2,7 +2,9 @@
 
 import { useState, useMemo } from "react";
 import Link from "next/link";
-import HomeLink from "@/components/ui/HomeLink";
+import PageShell from "@/components/ui/PageShell";
+import SectionHeading from "@/components/ui/SectionHeading";
+import Button from "@/components/ui/Button";
 import JSZip from "jszip";
 import type { Book } from "@/lib/db/source-schema";
 import type { Translation } from "@/lib/db/user-schema";
@@ -89,15 +91,11 @@ export default function UsfmExportForm({ books, translations }: Props) {
 
   if (translations.length === 0) {
     return (
-      <div>
-        <div className="mb-8">
-          <HomeLink className="mb-4" />
-          <h1 className="text-xl font-semibold">Export USFM</h1>
-        </div>
+      <PageShell title="Export USFM">
         <p className="text-stone-500 dark:text-stone-400 text-sm">
           No translations found. <Link href="/import" className="underline">Import a translation</Link> first.
         </p>
-      </div>
+      </PageShell>
     );
   }
 
@@ -142,17 +140,10 @@ export default function UsfmExportForm({ books, translations }: Props) {
   }
 
   return (
-    <div>
-      <div className="mb-8">
-        <HomeLink className="mb-4" />
-        <h1 className="text-xl font-semibold">Export USFM</h1>
-      </div>
-
+    <PageShell title="Export USFM">
       {/* Translation selector */}
       <div className="mb-6">
-        <label className="block text-xs font-semibold uppercase tracking-wider text-stone-400 dark:text-stone-500 mb-2">
-          Translation
-        </label>
+        <SectionHeading size="label" className="mb-2">Translation</SectionHeading>
         <div className="flex flex-wrap gap-2">
           {translations.map((t) => (
             <button
@@ -176,9 +167,7 @@ export default function UsfmExportForm({ books, translations }: Props) {
       {/* Book selector */}
       <div className="mb-6">
         <div className="flex items-center justify-between mb-2">
-          <label className="text-xs font-semibold uppercase tracking-wider text-stone-400 dark:text-stone-500">
-            Books
-          </label>
+          <SectionHeading size="label">Books</SectionHeading>
           <button
             type="button"
             onClick={selectAll}
@@ -198,15 +187,10 @@ export default function UsfmExportForm({ books, translations }: Props) {
             ? "Select at least one book to export."
             : `${selectedBooks.size} book${selectedBooks.size !== 1 ? "s" : ""} · ${selectedTranslation?.abbreviation ?? ""}`}
         </p>
-        <button
-          type="button"
-          onClick={handleDownload}
-          disabled={noneSelected || !selectedTranslationId || downloading}
-          className="px-4 py-2 rounded text-sm font-medium bg-sky-600 hover:bg-sky-700 text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-        >
+        <Button onClick={handleDownload} disabled={noneSelected || !selectedTranslationId || downloading}>
           {downloading ? "Downloading…" : `Download ${selectedBooks.size > 1 ? `${selectedBooks.size} files` : "USFM"}`}
-        </button>
+        </Button>
       </div>
-    </div>
+    </PageShell>
   );
 }

@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import HomeLink from "@/components/ui/HomeLink";
+import PageShell from "@/components/ui/PageShell";
+import SectionHeading from "@/components/ui/SectionHeading";
 import { useTranslation } from "@/lib/i18n/LocaleContext";
 import { OSIS_BOOKS_OT, OSIS_BOOKS_NT, OSIS_BOOKS_LXX } from "@/lib/utils/osis";
 
@@ -526,11 +527,10 @@ export default function AccountPanel({ activeWorkspaceId: initialActiveId }: Pro
 
   if (loading) {
     return (
-      <div
-        className="max-w-2xl mx-auto px-6 py-10 text-sm"
-        style={mutedStyle}
-      >
-        {t("account.loading")}
+      <div className="min-h-screen" style={{ backgroundColor: "var(--background)" }}>
+        <div className="max-w-2xl mx-auto px-6 py-12 text-sm" style={mutedStyle}>
+          {t("account.loading")}
+        </div>
       </div>
     );
   }
@@ -538,18 +538,7 @@ export default function AccountPanel({ activeWorkspaceId: initialActiveId }: Pro
   const otherWorkspaces = workspaces.filter((w) => w.id !== activeWorkspaceId);
 
   return (
-    <div className="max-w-2xl mx-auto px-6 py-10">
-      {/* ── Header ─────────────────────────────────────────────────────────── */}
-      <header className="mb-8">
-        <HomeLink className="mb-4" />
-        <h1 className="text-3xl font-bold mt-2" style={fgStyle}>
-          {t("account.title")}
-        </h1>
-        <p className="mt-2 text-sm" style={mutedStyle}>
-          {t("account.description")}
-        </p>
-      </header>
-
+    <PageShell title={t("account.title")} subtitle={t("account.description")}>
       {/* Global error banner */}
       {error && (
         <div className="mb-4 rounded-lg border border-red-300 dark:border-red-700 bg-red-50 dark:bg-red-950 px-4 py-3 text-sm text-red-800 dark:text-red-200">
@@ -559,9 +548,7 @@ export default function AccountPanel({ activeWorkspaceId: initialActiveId }: Pro
 
       {/* ── Section 1: Your Account ─────────────────────────────────────────── */}
       <section className="rounded-xl p-6 mb-6" style={sectionStyle}>
-        <h2 className="text-base font-semibold mb-4" style={fgStyle}>
-          {t("account.yourAccount")}
-        </h2>
+        <SectionHeading className="mb-4">{t("account.yourAccount")}</SectionHeading>
 
         {!user ? (
           <p className="text-sm" style={mutedStyle}>
@@ -625,9 +612,7 @@ export default function AccountPanel({ activeWorkspaceId: initialActiveId }: Pro
 
       {/* ── Section 2: Workspaces ───────────────────────────────────────────── */}
       <section className="rounded-xl p-6 mb-6" style={sectionStyle}>
-        <h2 className="text-base font-semibold mb-4" style={fgStyle}>
-          {t("account.workspaces")}
-        </h2>
+        <SectionHeading className="mb-4">{t("account.workspaces")}</SectionHeading>
 
         <div className="space-y-2">
           {workspaces.map((ws) => {
@@ -808,9 +793,7 @@ export default function AccountPanel({ activeWorkspaceId: initialActiveId }: Pro
       {/* ── Section 3: Import from Another Workspace ────────────────────────── */}
       {workspaces.length >= 2 && (
         <section className="rounded-xl p-6 mb-6" style={sectionStyle}>
-          <h2 className="text-base font-semibold mb-1" style={fgStyle}>
-            {t("account.importTitle")}
-          </h2>
+          <SectionHeading className="mb-1">{t("account.importTitle")}</SectionHeading>
           <p className="text-sm mb-5" style={mutedStyle}>
             {t("account.importDesc")}
           </p>
@@ -1120,6 +1103,6 @@ export default function AccountPanel({ activeWorkspaceId: initialActiveId }: Pro
           </div>
         </section>
       )}
-    </div>
+    </PageShell>
   );
 }

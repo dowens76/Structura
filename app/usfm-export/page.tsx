@@ -13,14 +13,5 @@ export default async function UsfmExportPage() {
   ]);
   const allBooks = [...otBooks, ...ntBooks];
 
-  return (
-    <main
-      className="min-h-screen"
-      style={{ backgroundColor: "var(--background)", color: "var(--foreground)" }}
-    >
-      <div className="max-w-2xl mx-auto px-6 py-12">
-        <UsfmExportForm books={allBooks} translations={allTranslations} />
-      </div>
-    </main>
-  );
+  return <UsfmExportForm books={allBooks} translations={allTranslations} />;
 }

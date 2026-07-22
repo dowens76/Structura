@@ -1,7 +1,9 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import HomeLink from "@/components/ui/HomeLink";
+import PageShell from "@/components/ui/PageShell";
+import SectionHeading from "@/components/ui/SectionHeading";
+import Button from "@/components/ui/Button";
 import type { Book } from "@/lib/db/schema";
 import { POS_COLORS, POS_LABELS } from "@/lib/morphology/types";
 
@@ -159,25 +161,15 @@ export default function VocabularyListPanel({ otBooks, ntBooks, lxxBooks }: Voca
   }
 
   return (
-    <div className="space-y-8">
-      {/* Header */}
-      <div>
-        <HomeLink className="mb-4" />
-        <h1 className="text-2xl font-semibold mb-1" style={{ color: "var(--foreground)" }}>
-          Vocabulary List Creator
-        </h1>
-        <p className="text-sm" style={{ color: "var(--text-muted)" }}>
-          Pick a scope of books (and optionally a chapter range within one book), filter by how many
-          times each word occurs across the whole corpus, then export the resulting word list as a
-          CSV file or an Anki deck.
-        </p>
-      </div>
-
+    <PageShell
+      title="Vocabulary List Creator"
+      subtitle="Pick a scope of books (and optionally a chapter range within one book), filter by how many times each word occurs across the whole corpus, then export the resulting word list as a CSV file or an Anki deck."
+      maxWidth="max-w-4xl"
+    >
+      <div className="space-y-8">
       {/* Corpus tabs */}
       <section>
-        <h2 className="text-base font-semibold mb-2" style={{ color: "var(--foreground)" }}>
-          Corpus
-        </h2>
+        <SectionHeading className="mb-2">Corpus</SectionHeading>
         <div className="flex gap-2">
           {CORPUS_TABS.map((tab) => (
             <button
@@ -199,9 +191,7 @@ export default function VocabularyListPanel({ otBooks, ntBooks, lxxBooks }: Voca
       {/* Book picker */}
       <section>
         <div className="flex items-center gap-3 mb-2">
-          <h2 className="text-base font-semibold" style={{ color: "var(--foreground)" }}>
-            Books
-          </h2>
+          <SectionHeading>Books</SectionHeading>
           <button onClick={selectAllBooks} className="text-xs px-2 py-0.5 rounded transition-colors" style={{ color: "var(--text-muted)" }}>
             All
           </button>
@@ -232,9 +222,9 @@ export default function VocabularyListPanel({ otBooks, ntBooks, lxxBooks }: Voca
       {/* Chapter range (only when exactly one book is selected) */}
       {singleSelectedBook && (
         <section>
-          <h2 className="text-base font-semibold mb-2" style={{ color: "var(--foreground)" }}>
+          <SectionHeading className="mb-2">
             Chapter range <span className="font-normal text-xs" style={{ color: "var(--text-muted)" }}>(optional — {singleSelectedBook.name} has {singleSelectedBook.chapterCount} chapters)</span>
-          </h2>
+          </SectionHeading>
           <div className="flex items-center gap-2">
             <input
               type="number"
@@ -263,9 +253,7 @@ export default function VocabularyListPanel({ otBooks, ntBooks, lxxBooks }: Voca
 
       {/* Occurrence filter */}
       <section>
-        <h2 className="text-base font-semibold mb-2" style={{ color: "var(--foreground)" }}>
-          Corpus-wide occurrence count
-        </h2>
+        <SectionHeading className="mb-2">Corpus-wide occurrence count</SectionHeading>
         <div className="flex items-center gap-2">
           <span className="text-sm" style={{ color: "var(--text-muted)" }}>Min</span>
           <input
@@ -291,18 +279,9 @@ export default function VocabularyListPanel({ otBooks, ntBooks, lxxBooks }: Voca
 
       {/* Preview button */}
       <div className="flex items-center gap-4">
-        <button
-          onClick={handlePreview}
-          disabled={!canPreview || loadingPreview}
-          className="px-4 py-2 rounded font-medium text-sm transition-colors"
-          style={{
-            backgroundColor: canPreview && !loadingPreview ? "var(--accent)" : "var(--surface-muted)",
-            color: canPreview && !loadingPreview ? "white" : "var(--text-muted)",
-            cursor: canPreview && !loadingPreview ? "pointer" : "not-allowed",
-          }}
-        >
+        <Button onClick={handlePreview} disabled={!canPreview || loadingPreview}>
           {loadingPreview ? "Loading…" : "Preview"}
-        </button>
+        </Button>
         {previewError && <span className="text-sm text-red-500">{previewError}</span>}
       </div>
 
@@ -310,26 +289,24 @@ export default function VocabularyListPanel({ otBooks, ntBooks, lxxBooks }: Voca
       {preview && (
         <section>
           <div className="flex items-center justify-between mb-2">
-            <h2 className="text-base font-semibold" style={{ color: "var(--foreground)" }}>
-              Preview — {preview.length} word{preview.length !== 1 ? "s" : ""}
-            </h2>
+            <SectionHeading>Preview — {preview.length} word{preview.length !== 1 ? "s" : ""}</SectionHeading>
             <div className="flex gap-2">
-              <button
+              <Button
+                variant="secondary"
+                size="sm"
                 onClick={() => handleExport("csv")}
                 disabled={exporting || preview.length === 0}
-                className="text-xs px-3 py-1.5 rounded border font-medium transition-colors"
-                style={{ borderColor: "var(--border)", backgroundColor: "var(--surface)", color: "var(--foreground)" }}
               >
                 Export CSV
-              </button>
-              <button
+              </Button>
+              <Button
+                variant="secondary"
+                size="sm"
                 onClick={() => handleExport("apkg")}
                 disabled={exporting || preview.length === 0}
-                className="text-xs px-3 py-1.5 rounded border font-medium transition-colors"
-                style={{ borderColor: "var(--border)", backgroundColor: "var(--surface)", color: "var(--foreground)" }}
               >
                 Export Anki Deck
-              </button>
+              </Button>
             </div>
           </div>
 
@@ -388,6 +365,7 @@ export default function VocabularyListPanel({ otBooks, ntBooks, lxxBooks }: Voca
           )}
         </section>
       )}
-    </div>
+      </div>
+    </PageShell>
   );
 }

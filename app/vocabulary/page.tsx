@@ -19,11 +19,5 @@ export default async function VocabularyPage() {
     // DB not initialized yet
   }
 
-  return (
-    <main className="min-h-screen" style={{ backgroundColor: "var(--background)", color: "var(--foreground)" }}>
-      <div className="max-w-4xl mx-auto px-6 py-12">
-        <VocabularyListPanel otBooks={otBooks} ntBooks={ntBooks} lxxBooks={lxxBooks} />
-      </div>
-    </main>
-  );
+  return <VocabularyListPanel otBooks={otBooks} ntBooks={ntBooks} lxxBooks={lxxBooks} />;
 }

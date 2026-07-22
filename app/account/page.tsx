@@ -5,9 +5,5 @@ export const metadata = { title: "Account & Workspaces — Structura" };
 
 export default async function AccountPage() {
   const activeWorkspaceId = await getActiveWorkspaceId();
-  return (
-    <div className="min-h-screen" style={{ backgroundColor: "var(--background)" }}>
-      <AccountPanel activeWorkspaceId={activeWorkspaceId} />
-    </div>
-  );
+  return <AccountPanel activeWorkspaceId={activeWorkspaceId} />;
 }

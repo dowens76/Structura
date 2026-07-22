@@ -23,9 +23,5 @@ export default async function BookGroupingsPage() {
     // DB not initialized yet
   }
 
-  return (
-    <div className="max-w-2xl mx-auto px-6 py-10">
-      <BookGroupingsPanel otBooks={otBooks} ntBooks={ntBooks} lxxBooks={lxxBooks} />
-    </div>
-  );
+  return <BookGroupingsPanel otBooks={otBooks} ntBooks={ntBooks} lxxBooks={lxxBooks} />;
 }

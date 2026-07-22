@@ -2,7 +2,9 @@
 
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import HomeLink from "@/components/ui/HomeLink";
+import PageShell from "@/components/ui/PageShell";
+import SectionHeading from "@/components/ui/SectionHeading";
+import Button from "@/components/ui/Button";
 import AutoBackupPanel from "./AutoBackupPanel";
 import { useTranslation } from "@/lib/i18n/LocaleContext";
 
@@ -52,22 +54,11 @@ export default function BackupPanel() {
   const surface = { borderColor: "var(--border)", backgroundColor: "var(--surface)" } as React.CSSProperties;
 
   return (
-    <div className="space-y-6">
-      <header className="mb-8">
-        <HomeLink className="mb-4" />
-        <h1 className="text-3xl font-bold mt-2" style={{ color: "var(--foreground)" }}>
-          {t("backup.title")}
-        </h1>
-        <p className="mt-2 text-sm text-stone-500 dark:text-stone-400">
-          {t("backup.description")}
-        </p>
-      </header>
-
+    <PageShell title={t("backup.title")} subtitle={t("backup.description")}>
+      <div className="space-y-6">
       {/* ── Export ─────────────────────────────────────────────────────────── */}
       <section className="rounded-xl border p-6" style={surface}>
-        <h2 className="text-base font-semibold mb-1" style={{ color: "var(--foreground)" }}>
-          {t("backup.downloadTitle")}
-        </h2>
+        <SectionHeading className="mb-1">{t("backup.downloadTitle")}</SectionHeading>
         <p className="text-sm mb-4" style={{ color: "var(--text-muted)" }}>
           {t("backup.downloadDesc")}
         </p>
@@ -91,9 +82,7 @@ export default function BackupPanel() {
 
       {/* ── Restore ────────────────────────────────────────────────────────── */}
       <section className="rounded-xl border p-6" style={surface}>
-        <h2 className="text-base font-semibold mb-1" style={{ color: "var(--foreground)" }}>
-          {t("backup.restoreTitle")}
-        </h2>
+        <SectionHeading className="mb-1">{t("backup.restoreTitle")}</SectionHeading>
         <p className="text-sm mb-4" style={{ color: "var(--text-muted)" }}>
           {t("backup.restoreDesc")}
         </p>
@@ -115,14 +104,9 @@ export default function BackupPanel() {
             {t("backup.fileLabel")}
           </label>
           <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white transition-opacity hover:opacity-90"
-              style={{ backgroundColor: "var(--accent)" }}
-            >
+            <Button onClick={() => fileInputRef.current?.click()}>
               {t("backup.chooseFile")}
-            </button>
+            </Button>
             {selectedFile && (
               <span className="text-sm truncate max-w-xs" style={{ color: "var(--foreground)" }}>
                 {selectedFile.name}
@@ -160,14 +144,13 @@ export default function BackupPanel() {
           </label>
         )}
 
-        <button
+        <Button
+          variant="danger"
           onClick={handleRestore}
           disabled={!selectedFile || !confirmed || status.type === "loading"}
-          className="px-4 py-2 rounded-lg text-sm font-medium text-white transition-opacity disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-90"
-          style={{ backgroundColor: "#dc2626" }}
         >
           {status.type === "loading" ? t("backup.restoring") : t("backup.restore")}
-        </button>
+        </Button>
 
         {/* Success */}
         {status.type === "success" && (
@@ -188,6 +171,7 @@ export default function BackupPanel() {
       </section>
 
       <AutoBackupPanel />
-    </div>
+      </div>
+    </PageShell>
   );
 }

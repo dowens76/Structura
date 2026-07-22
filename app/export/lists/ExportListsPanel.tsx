@@ -2,7 +2,9 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import HomeLink from "@/components/ui/HomeLink";
+import PageShell from "@/components/ui/PageShell";
+import SectionHeading from "@/components/ui/SectionHeading";
+import Button from "@/components/ui/Button";
 
 interface TagGroup {
   name: string;
@@ -172,21 +174,18 @@ export default function ExportListsPanel() {
   const hasAny = data.wordTagGroups.length > 0 || data.characterGroups.length > 0;
 
   return (
-    <div className="space-y-8">
-      {/* Header */}
-      <div>
-        <HomeLink className="mb-4" />
-        <h1 className="text-2xl font-semibold mb-1" style={{ color: "var(--foreground)" }}>
-          Manage Lists
-        </h1>
-        <p className="text-sm" style={{ color: "var(--text-muted)" }}>
+    <PageShell
+      title="Manage Lists"
+      subtitle={
+        <>
           Export tagged words, concepts, or characters as CSV files, or open a word/concept tag&apos;s
           editor to classify each occurrence with custom columns. Each selected tag or character
           becomes a separate CSV file named <code className="font-mono text-xs">List-[name].csv</code> with
           columns for Scripture reference, source text, and any imported translations.
-        </p>
-      </div>
-
+        </>
+      }
+    >
+      <div className="space-y-8">
       {!hasAny && (
         <div
           className="rounded-lg border px-4 py-6 text-center text-sm"
@@ -201,9 +200,7 @@ export default function ExportListsPanel() {
       {data.wordTagGroups.length > 0 && (
         <section>
           <div className="flex items-center justify-between mb-2">
-            <h2 className="text-base font-semibold" style={{ color: "var(--foreground)" }}>
-              Word &amp; Concept Tags
-            </h2>
+            <SectionHeading>Word &amp; Concept Tags</SectionHeading>
             <div className="flex gap-2">
               <button
                 onClick={selectAllTags}
@@ -244,9 +241,7 @@ export default function ExportListsPanel() {
       {data.characterGroups.length > 0 && (
         <section>
           <div className="flex items-center justify-between mb-2">
-            <h2 className="text-base font-semibold" style={{ color: "var(--foreground)" }}>
-              Characters
-            </h2>
+            <SectionHeading>Characters</SectionHeading>
             <div className="flex gap-2">
               <button
                 onClick={selectAllChars}
@@ -286,9 +281,7 @@ export default function ExportListsPanel() {
       {hasAny && (
         <section>
           <div className="flex items-center gap-3 mb-2">
-            <h2 className="text-base font-semibold" style={{ color: "var(--foreground)" }}>
-              Book Filter
-            </h2>
+            <SectionHeading>Book Filter</SectionHeading>
             <button
               onClick={() => setSelectedBooks(new Set(data.books.map((b) => b.osisCode)))}
               className="text-xs px-2 py-0.5 rounded transition-colors"
@@ -311,9 +304,9 @@ export default function ExportListsPanel() {
                 onClick={() => toggleBook(b.osisCode)}
                 className="text-xs px-2 py-0.5 rounded border transition-colors"
                 style={{
-                  borderColor: selectedBooks.has(b.osisCode) ? "#059669" : "var(--border)",
-                  backgroundColor: selectedBooks.has(b.osisCode) ? "rgba(5,150,105,0.12)" : "var(--surface-muted)",
-                  color: selectedBooks.has(b.osisCode) ? "#059669" : "var(--text-muted)",
+                  borderColor: selectedBooks.has(b.osisCode) ? "var(--accent)" : "var(--border)",
+                  backgroundColor: selectedBooks.has(b.osisCode) ? "rgba(200,155,60,0.12)" : "var(--surface-muted)",
+                  color: selectedBooks.has(b.osisCode) ? "var(--accent)" : "var(--text-muted)",
                   fontWeight: selectedBooks.has(b.osisCode) ? 600 : 400,
                 }}
               >
@@ -335,22 +328,13 @@ export default function ExportListsPanel() {
       {/* Export button */}
       {hasAny && (
         <div className="flex items-center gap-4">
-          <button
-            onClick={handleExport}
-            disabled={exporting || totalSelected === 0}
-            className="px-4 py-2 rounded font-medium text-sm transition-colors"
-            style={{
-              backgroundColor: totalSelected > 0 && !exporting ? "#059669" : "var(--surface-muted)",
-              color: totalSelected > 0 && !exporting ? "white" : "var(--text-muted)",
-              cursor: totalSelected > 0 && !exporting ? "pointer" : "not-allowed",
-            }}
-          >
+          <Button onClick={handleExport} disabled={exporting || totalSelected === 0}>
             {exporting
               ? "Exporting…"
               : totalSelected === 0
               ? "Select items to export"
               : `Export ${totalSelected} CSV file${totalSelected > 1 ? "s" : ""}`}
-          </button>
+          </Button>
           {exportStatus && (
             <span className="text-sm" style={{ color: "var(--text-muted)" }}>
               {exportStatus}
@@ -358,7 +342,8 @@ export default function ExportListsPanel() {
           )}
         </div>
       )}
-    </div>
+      </div>
+    </PageShell>
   );
 }
 
@@ -389,8 +374,8 @@ function TagRow({
         <span
           className="flex-shrink-0 w-4 h-4 rounded border flex items-center justify-center"
           style={{
-            borderColor: checked ? "#059669" : "var(--border-muted)",
-            backgroundColor: checked ? "#059669" : "transparent",
+            borderColor: checked ? "var(--accent)" : "var(--border-muted)",
+            backgroundColor: checked ? "var(--accent)" : "transparent",
           }}
         >
           {checked && (

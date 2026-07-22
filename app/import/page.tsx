@@ -11,14 +11,5 @@ export default async function ImportPage() {
     getTranslations(workspaceId),
   ]);
 
-  return (
-    <main
-      className="min-h-screen"
-      style={{ backgroundColor: "var(--background)", color: "var(--foreground)" }}
-    >
-      <div className="max-w-2xl mx-auto px-6 py-12">
-        <ImportForm books={allBooks} existingTranslations={existingTranslations} />
-      </div>
-    </main>
-  );
+  return <ImportForm books={allBooks} existingTranslations={existingTranslations} />;
 }

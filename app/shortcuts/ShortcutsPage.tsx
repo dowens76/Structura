@@ -1,6 +1,6 @@
 "use client";
 
-import HomeLink from "@/components/ui/HomeLink";
+import PageShell from "@/components/ui/PageShell";
 
 // Detect Mac at runtime for display only — SSR-safe (defaults to showing both)
 function useIsMac() {
@@ -212,25 +212,18 @@ function ShortcutTable({ section }: { section: Section }) {
 
 export default function ShortcutsPage() {
   return (
-    <div className="min-h-screen" style={{ backgroundColor: "var(--background)" }}>
-      <div className="max-w-2xl mx-auto px-6 py-12">
-        <div className="mb-8 flex items-center gap-4">
-          <HomeLink />
-        </div>
-        <h1
-          className="text-2xl font-bold mb-2"
-          style={{ color: "var(--foreground)", fontFamily: "Georgia, 'Times New Roman', serif" }}
-        >
-          Keyboard Shortcuts
-        </h1>
-        <p className="text-sm mb-10" style={{ color: "var(--text-muted)" }}>
+    <PageShell
+      title="Keyboard Shortcuts"
+      subtitle={
+        <>
           Shortcuts use <kbd className="text-xs px-1 py-0.5 rounded border" style={{ borderColor: "var(--border)" }}>⌘</kbd> on Mac
           and <kbd className="text-xs px-1 py-0.5 rounded border" style={{ borderColor: "var(--border)" }}>Ctrl</kbd> on Windows / Linux.
-        </p>
-        {SECTIONS.map((s) => (
-          <ShortcutTable key={s.title} section={s} />
-        ))}
-      </div>
-    </div>
+        </>
+      }
+    >
+      {SECTIONS.map((s) => (
+        <ShortcutTable key={s.title} section={s} />
+      ))}
+    </PageShell>
   );
 }

@@ -5,7 +5,9 @@ import type { Book } from "@/lib/db/schema";
 import type { BookGrouping } from "@/lib/db/schema";
 import { OSIS_BOOK_NAMES } from "@/lib/utils/osis";
 import { useTranslation } from "@/lib/i18n/LocaleContext";
-import HomeLink from "@/components/ui/HomeLink";
+import PageShell from "@/components/ui/PageShell";
+import SectionHeading from "@/components/ui/SectionHeading";
+import Button from "@/components/ui/Button";
 
 // ── Annotation features that can be toggled per grouping ─────────────────────
 
@@ -106,7 +108,7 @@ function GroupingEditor({ otBooks, ntBooks, lxxBooks, initial, onSave, onCancel 
     return (
       <div className="mb-3">
         <div className="flex items-center gap-2 mb-1.5">
-          <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>{label}</span>
+          <SectionHeading size="label">{label}</SectionHeading>
           <button
             type="button"
             onClick={() => toggleAll(books)}
@@ -163,9 +165,7 @@ function GroupingEditor({ otBooks, ntBooks, lxxBooks, initial, onSave, onCancel 
 
       {/* Books */}
       <div className="space-y-1">
-        <div className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: "var(--text-muted)" }}>
-          {t("bookGroupings.booksIncluded")}
-        </div>
+        <SectionHeading size="label" className="mb-2">{t("bookGroupings.booksIncluded")}</SectionHeading>
         <div
           className="rounded border p-3 max-h-52 overflow-y-auto space-y-2"
           style={{ borderColor: "var(--border)", backgroundColor: "var(--surface)" }}
@@ -181,9 +181,7 @@ function GroupingEditor({ otBooks, ntBooks, lxxBooks, initial, onSave, onCancel 
 
       {/* Features */}
       <div className="space-y-1">
-        <div className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: "var(--text-muted)" }}>
-          {t("bookGroupings.features")}
-        </div>
+        <SectionHeading size="label" className="mb-2">{t("bookGroupings.features")}</SectionHeading>
         <div
           className="rounded border p-3 grid grid-cols-2 gap-x-4 gap-y-2"
           style={{ borderColor: "var(--border)", backgroundColor: "var(--surface)" }}
@@ -217,15 +215,9 @@ function GroupingEditor({ otBooks, ntBooks, lxxBooks, initial, onSave, onCancel 
         >
           {t("bookGroupings.cancel")}
         </button>
-        <button
-          type="button"
-          onClick={handleSave}
-          disabled={saving}
-          className="px-4 py-1.5 rounded text-sm font-medium transition-colors disabled:opacity-50"
-          style={{ backgroundColor: "var(--accent)", color: "#fff" }}
-        >
+        <Button onClick={handleSave} disabled={saving}>
           {saving ? t("bookGroupings.saving") : initial ? t("bookGroupings.saveChanges") : t("bookGroupings.createGrouping")}
-        </button>
+        </Button>
       </div>
     </div>
   );
@@ -286,14 +278,7 @@ export default function BookGroupingsPanel({ otBooks, ntBooks, lxxBooks }: Props
     : null;
 
   return (
-    <div className="space-y-6">
-      <div>
-        <HomeLink className="mb-4" />
-        <h1 className="text-2xl font-semibold mb-1" style={{ color: "var(--foreground)" }}>
-          {t("bookGroupings.titleList")}
-        </h1>
-      </div>
-
+    <PageShell title={t("bookGroupings.titleList")}>
       {editingId !== null ? (
         <div>
           <button
@@ -307,9 +292,9 @@ export default function BookGroupingsPanel({ otBooks, ntBooks, lxxBooks }: Props
             </svg>
             {t("bookGroupings.ariaBackToList")}
           </button>
-          <h2 className="text-base font-semibold mb-4" style={{ color: "var(--foreground)" }}>
+          <SectionHeading className="mb-4">
             {editingId === "new" ? t("bookGroupings.titleNew") : t("bookGroupings.titleEdit", { name: editingGrouping?.name ?? "" })}
-          </h2>
+          </SectionHeading>
           <GroupingEditor
             otBooks={otBooks}
             ntBooks={ntBooks}
@@ -328,14 +313,7 @@ export default function BookGroupingsPanel({ otBooks, ntBooks, lxxBooks }: Props
       ) : groupings.length === 0 ? (
         <div className="text-center py-8" style={{ color: "var(--text-muted)" }}>
           <p className="text-sm mb-4">{t("bookGroupings.noGroupings")}</p>
-          <button
-            type="button"
-            onClick={() => setEditingId("new")}
-            className="px-4 py-2 rounded text-sm font-medium transition-colors"
-            style={{ backgroundColor: "var(--accent)", color: "#fff" }}
-          >
-            {t("bookGroupings.createFirst")}
-          </button>
+          <Button onClick={() => setEditingId("new")}>{t("bookGroupings.createFirst")}</Button>
         </div>
       ) : (
         <div className="space-y-2">
@@ -397,6 +375,6 @@ export default function BookGroupingsPanel({ otBooks, ntBooks, lxxBooks }: Props
           </div>
         </div>
       )}
-    </div>
+    </PageShell>
   );
 }
