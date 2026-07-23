@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "@/lib/i18n/LocaleContext";
 import { fetchJsonRetry } from "@/lib/utils/fetchJsonRetry";
+import { openExternal } from "@/lib/utils/openExternal";
 
 interface VersionCheckResult {
   currentVersion: string;
@@ -34,7 +35,7 @@ export default function UpdateBanner() {
         <span>{t("home.updateAvailable", { version: info.latestVersion })}</span>
         <a
           href={info.releaseUrl}
-          target="_blank"
+          onClick={(e) => { e.preventDefault(); openExternal(info.releaseUrl); }}
           rel="noopener noreferrer"
           className="font-medium hover:underline"
           style={{ color: "var(--accent)" }}

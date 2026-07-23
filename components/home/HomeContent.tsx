@@ -13,6 +13,7 @@ import HomePassagesButton from "@/components/home/HomePassagesButton";
 import UpdateBanner from "@/components/home/UpdateBanner";
 import { MORPHGNT_BOOK_MAP, OSIS_BOOK_ORDER } from "@/lib/utils/osis";
 import AddressBar from "@/components/ui/AddressBar";
+import { openExternal } from "@/lib/utils/openExternal";
 
 // NT OSIS codes — used to pick the correct word-DB source for chapter links
 const NT_OSIS_CODES = new Set(Object.values(MORPHGNT_BOOK_MAP));
@@ -290,7 +291,7 @@ export default function HomeContent({ otBooks, ntBooks, lxxBooks, translationOnl
         <div className="mt-8 pt-6 border-t flex gap-4 text-xs" style={{ borderColor: "var(--border)" }}>
           <a
             href="https://dowens76.github.io/Structura"
-            target="_blank"
+            onClick={(e) => { e.preventDefault(); openExternal("https://dowens76.github.io/Structura"); }}
             rel="noopener noreferrer"
             style={{ color: "var(--accent)" }}
             className="hover:underline"
@@ -299,7 +300,7 @@ export default function HomeContent({ otBooks, ntBooks, lxxBooks, translationOnl
           </a>
           <a
             href="https://dowens76.github.io/Structura/privacy-policy.html"
-            target="_blank"
+            onClick={(e) => { e.preventDefault(); openExternal("https://dowens76.github.io/Structura/privacy-policy.html"); }}
             rel="noopener noreferrer"
             style={{ color: "var(--accent)" }}
             className="hover:underline"

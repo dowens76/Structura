@@ -48,6 +48,7 @@
   "dependencies": {
     "@fontsource/gentium-plus": "^5.2.7",
     "@tauri-apps/api": "^2.10.1",
+    "@tauri-apps/plugin-shell": "^2.3.5",
     "@tiptap/extension-highlight": "^3.20.4",
     "@tiptap/extension-placeholder": "^3.20.4",
     "@tiptap/extension-subscript": "^3.20.4",

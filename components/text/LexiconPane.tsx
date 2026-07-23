@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import type { LexiconEntry } from "@/lib/db/schema";
 import { getGreekLexicon, getHebrewLexicon } from "@/components/SettingsButton";
 import { parseLexiconOsisRef, splitStepBibleMultiRef } from "@/lib/utils/lexiconRef";
+import { openExternal, isTauriApp } from "@/lib/utils/openExternal";
 
 interface LexiconPaneProps {
   wordLemma?: string | null;    // Greek: look up by lemma (SBLGNT / LXX)
@@ -506,6 +507,17 @@ function EntryDisplay({
   onScriptureRefClick?: (osisRef: string, lexiconSource: string) => void;
 }) {
   function handleRefClick(e: React.MouseEvent<HTMLDivElement>) {
+    // External links (e.g. UBS's sahd-online.com cross-refs) are plain <a
+    // target="_blank"> in the source HTML, which the Tauri webview can't act
+    // on — hand those to the OS browser directly there. On the web, the
+    // anchor's own target="_blank" already does the right thing.
+    const anchor = (e.target as HTMLElement).closest<HTMLAnchorElement>("a[href^='http']");
+    if (anchor && isTauriApp()) {
+      e.preventDefault();
+      openExternal(anchor.href);
+      return;
+    }
+
     if (!onScriptureRefClick || !entry || entry === "loading") return;
     const target = (e.target as HTMLElement).closest<HTMLElement>("[data-scripture-ref]");
     const ref = target?.dataset.scriptureRef;

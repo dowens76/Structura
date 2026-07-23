@@ -2,6 +2,8 @@
 
 import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { isTauriApp } from "@/lib/utils/openExternal";
 import type { WordTag, BookGrouping } from "@/lib/db/schema";
 import type { LemmaSuggestion } from "@/app/api/search/lemma-suggest/route";
 import { RULE_PALETTE } from "@/lib/morphology/colorRules";
@@ -412,6 +414,7 @@ export default function WordTagPanel({
   onRequestWordClick,
   onCancelWordClick,
 }: WordTagPanelProps) {
+  const router = useRouter();
   const [showNew, setShowNew] = useState(false);
   const [newType, setNewType] = useState<TagType>("concept");
   const [newName, setNewName] = useState("");
@@ -659,12 +662,19 @@ export default function WordTagPanel({
                       onClick={(e) => { e.stopPropagation(); onToggleHighlight(t.id); }}
                       title={isHighlighted ? "Remove highlight" : "Highlight all occurrences"}>✦</span>
                   )}
-                  {/* manage list (opens the Word/Concept Editor in a new tab) */}
+                  {/* manage list (opens the Word/Concept Editor in a new tab — or,
+                      in the Tauri app where there's no tab to open, in place) */}
                   {isHovered && (
                     <Link
                       href={`/concepts/${encodeURIComponent(t.name)}`}
                       target="_blank"
-                      onClick={(e) => e.stopPropagation()}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (isTauriApp()) {
+                          e.preventDefault();
+                          router.push(`/concepts/${encodeURIComponent(t.name)}`);
+                        }
+                      }}
                       className="ml-0.5 text-stone-400 hover:text-blue-500 transition-colors leading-none"
                       title="Manage this list's occurrences">✎</Link>
                   )}

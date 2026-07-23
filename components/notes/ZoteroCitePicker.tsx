@@ -8,6 +8,7 @@ import {
 } from "@/lib/utils/zotero";
 import { useTranslation } from "@/lib/i18n/LocaleContext";
 import { fetchJsonRetry } from "@/lib/utils/fetchJsonRetry";
+import { openExternal } from "@/lib/utils/openExternal";
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
@@ -276,7 +277,7 @@ export default function ZoteroCitePicker({
             {t("zotero.setupDescPre")}{" "}
             <a
               href="https://www.zotero.org/settings/keys"
-              target="_blank"
+              onClick={(e) => { e.preventDefault(); openExternal("https://www.zotero.org/settings/keys"); }}
               rel="noopener noreferrer"
               className="underline"
               style={{ color: "var(--accent)" }}

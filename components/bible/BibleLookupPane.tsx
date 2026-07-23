@@ -6,6 +6,7 @@ import type { FetchBibleTranslation } from "@/app/api/fetchbible/route";
 
 import { langLabel, readBibleLookupLangs, writeBibleLookupLangs } from "@/lib/utils/bible-lookup-langs";
 import { fetchJsonRetry } from "@/lib/utils/fetchJsonRetry";
+import { openExternal } from "@/lib/utils/openExternal";
 
 const STORAGE_KEY = "structura:bibleLookup:translation";
 
@@ -535,7 +536,7 @@ export default function BibleLookupPane({ onClose }: Props) {
                 Used with permission. All rights reserved worldwide.{" "}
                 <a
                   href="https://creativecommons.org/licenses/by-sa/4.0/"
-                  target="_blank"
+                  onClick={(e) => { e.preventDefault(); openExternal("https://creativecommons.org/licenses/by-sa/4.0/"); }}
                   rel="noopener noreferrer"
                   style={{ color: "var(--accent)" }}
                 >
