@@ -531,48 +531,12 @@ function EntryDisplay({
 
   const sourceName =
     entry.source === "BDB"          ? "Brown-Driver-Briggs (Unabridged)" :
-    entry.source === "HebrewStrong" ? "Strong's Hebrew Dictionary (1894)" :
     entry.source === "Dodson"       ? "Dodson Greek Lexicon" :
     entry.source === "AbbottSmith"  ? "Abbott-Smith" :
     entry.source === "LSJ"          ? "Liddell-Scott-Jones (LSJ)" :
     entry.source === "UBSHebrew"    ? "UBS Dictionary of Biblical Hebrew" :
     entry.source === "UBSGreek"     ? "UBS Dictionary of the Greek NT" :
     (entry.source ?? "");
-
-  if (entry.source === "HebrewStrong" && entry.definition) {
-    return (
-      <div className="mt-3">
-        <div className="text-2xl leading-snug mb-1 lexicon-hebrew text-right" dir="rtl" lang="he">
-          {entry.lemma}
-        </div>
-        {(entry.transliteration || entry.pronunciation) && (
-          <div className="mb-2">
-            {entry.transliteration && (
-              <span className="text-sm text-stone-500 dark:text-stone-400 italic">
-                {entry.transliteration}
-              </span>
-            )}
-            {entry.pronunciation && (
-              <span className="ml-1 text-xs text-stone-400 dark:text-stone-600">
-                ({entry.pronunciation})
-              </span>
-            )}
-          </div>
-        )}
-        {entry.shortGloss && (
-          <p className="text-sm font-semibold text-stone-800 dark:text-stone-200 mb-2">
-            {entry.shortGloss}
-          </p>
-        )}
-        <div
-          className="strong-hebrew-entry"
-          // eslint-disable-next-line react/no-danger
-          dangerouslySetInnerHTML={{ __html: entry.definition }}
-        />
-        <p className="text-[10px] text-stone-300 dark:text-stone-700 mt-3">{sourceName}</p>
-      </div>
-    );
-  }
 
   if (entry.source === "AbbottSmith") {
     return (
@@ -778,7 +742,7 @@ export default function LexiconPane({ wordLemma, strongNumber, isHebrew, textSou
 
   // Letter-keyed prefix particles (e.g. "b", "c") only exist in BDB — no
   // Strong's-numbered lexicon has them — so force that source regardless of
-  // the user's HebrewStrong/BDB lexicon setting.
+  // the user's Hebrew lexicon setting.
   const isPrefixParticle = !!resolvedStrong && /^[a-z]$/i.test(resolvedStrong);
   const effectiveSource  = isPrefixParticle ? "BDB" : lexiconSource;
 

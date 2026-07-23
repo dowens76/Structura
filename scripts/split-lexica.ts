@@ -3,7 +3,6 @@
  *
  * Creates individual DB files from the combined lexica.db:
  *   bdb.db            ← source = "BDB"
- *   strongs-hebrew.db ← source = "HebrewStrong"
  *   dodson.db         ← source = "Dodson"
  *   abbott-smith.db   ← source = "AbbottSmith"
  *   lsj.db            ← source = "LSJ"
@@ -20,7 +19,6 @@ const DATA_DIR = path.join(process.cwd(), "data");
 const SOURCE_DB  = path.join(DATA_DIR, "lexica.db");
 const TARGET_DBS: Record<string, string> = {
   BDB:          path.join(DATA_DIR, "bdb.db"),
-  HebrewStrong: path.join(DATA_DIR, "strongs-hebrew.db"),
   Dodson:       path.join(DATA_DIR, "dodson.db"),
   AbbottSmith:  path.join(DATA_DIR, "abbott-smith.db"),
   LSJ:          path.join(DATA_DIR, "lsj.db"),

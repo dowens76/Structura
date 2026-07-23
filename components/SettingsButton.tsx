@@ -22,7 +22,7 @@ import FontPickerDialog, { type FontLanguage } from "@/components/FontPickerDial
 import { fetchJsonRetry } from "@/lib/utils/fetchJsonRetry";
 
 export type GreekLexicon  = "AbbottSmith" | "Dodson" | "UBSGreek";
-export type HebrewLexicon = "BDB" | "HebrewStrong" | "UBSHebrew";
+export type HebrewLexicon = "BDB" | "UBSHebrew";
 
 const GREEK_LEX_KEY  = "structura:greekLexicon";
 const HEBREW_LEX_KEY = "structura:hebrewLexicon";
@@ -435,7 +435,6 @@ export default function SettingsButton() {
               {(
                 [
                   ["BDB",          t("settings.bdb")],
-                  ["HebrewStrong", t("settings.strongHebrew")],
                   ["UBSHebrew",    t("settings.ubsHebrew")],
                 ] as [HebrewLexicon, string][]
               ).map(([value, label]) => (

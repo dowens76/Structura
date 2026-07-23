@@ -23,7 +23,6 @@ const USER_DB_PATH    = path.join(USER_DATA_DIR,  "user.db");
 // Per-lexicon DB paths (one file per lexicon source).
 const LEXICON_DB_PATHS: Record<string, string> = {
   BDB:          path.join(RESOURCES_DIR, "bdb.db"),
-  HebrewStrong: path.join(RESOURCES_DIR, "strongs-hebrew.db"),
   Dodson:       path.join(RESOURCES_DIR, "dodson.db"),
   AbbottSmith:  path.join(RESOURCES_DIR, "abbott-smith.db"),
   LSJ:          path.join(RESOURCES_DIR, "lsj.db"),
@@ -31,7 +30,7 @@ const LEXICON_DB_PATHS: Record<string, string> = {
   UBSGreek:     path.join(RESOURCES_DIR, "ubs-greek.db"),
 };
 
-export const HEBREW_LEXICON_SOURCES = ["BDB", "HebrewStrong", "UBSHebrew"] as const;
+export const HEBREW_LEXICON_SOURCES = ["BDB", "UBSHebrew"] as const;
 export const GREEK_LEXICON_SOURCES  = ["AbbottSmith", "Dodson", "LSJ", "UBSGreek"] as const;
 
 // ── Lookup maps ───────────────────────────────────────────────────────────────

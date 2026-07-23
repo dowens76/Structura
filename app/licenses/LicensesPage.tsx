@@ -33,7 +33,6 @@ export default function LicensesPage({ ultBooks, vcbBooks }: LicensesPageProps) 
         </SectionHeading>
         <div className="flex flex-col gap-1.5 text-sm" style={{ color: "var(--text-muted)" }}>
           <p>{t("home.footerLexBdb")}</p>
-          <p>{t("home.footerLexStrongs")}</p>
           <p>{t("home.footerLexUbsHebrew")}</p>
           <p>{t("home.footerLexDodson")}</p>
           <p>{t("home.footerLexAbbottSmith")}</p>

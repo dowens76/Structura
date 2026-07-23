@@ -53,10 +53,10 @@ async function fetchGlosses(
   const dbs = getLexiconDbsForLanguage(language);
   if (dbs.length === 0) return glossMap;
 
-  // Priority: BDB > HebrewStrong for Hebrew; AbbottSmith > Dodson for Greek.
+  // Priority: BDB for Hebrew; AbbottSmith > Dodson for Greek.
   const priority: Record<string, number> =
     language === "hebrew"
-      ? { BDB: 0, HebrewStrong: 1 }
+      ? { BDB: 0 }
       : { AbbottSmith: 0, Dodson: 1, LSJ: 2 };
 
   for (const { db, source } of dbs) {
@@ -151,8 +151,8 @@ export async function GET(request: NextRequest) {
       ? allRows.filter((r) => r.lemma && stripVowels(r.lemma).startsWith(q))
       : allRows;
 
-    // Deduplicate by strongNumber, preferring BDB then HebrewStrong
-    const priority: Record<string, number> = { BDB: 0, HebrewStrong: 1 };
+    // Deduplicate by strongNumber, preferring BDB
+    const priority: Record<string, number> = { BDB: 0 };
     const best = new Map<string, LexRow>();
     for (const row of filtered) {
       if (!row.strongNumber || !row.lemma) continue;
