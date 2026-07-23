@@ -27,10 +27,11 @@ const REQUIRED_DBS = [
   // Per-lexicon DBs — created by running individual import scripts or
   // by splitting the legacy combined DB:  npm run db:split:lexica
   "bdb.db",
-  "strongs-hebrew.db",
   "dodson.db",
   "abbott-smith.db",
   "lsj.db",
+  "ubs-hebrew.db",
+  "ubs-greek.db",
   "lxx.db",
 ];
 
@@ -48,7 +49,7 @@ for (const name of DBS) {
       console.log(`  ${name} ... skipped (not found)`);
       continue;
     }
-    const hint = ["bdb.db","strongs-hebrew.db","dodson.db","abbott-smith.db","lsj.db"].includes(name)
+    const hint = ["bdb.db","dodson.db","abbott-smith.db","lsj.db","ubs-hebrew.db","ubs-greek.db"].includes(name)
       ? " Run the import scripts (npm run import:lexicon) or split the legacy DB (npm run db:split:lexica)."
       : ["oshb.db","sblgnt.db"].includes(name)
         ? " Run: npm run import:oshb && npm run import:morphgnt && npm run generate:transliterations && npm run db:split-source"

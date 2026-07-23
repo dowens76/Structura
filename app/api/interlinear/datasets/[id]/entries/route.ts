@@ -3,6 +3,21 @@ import { userSqlite } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 
+// Deletes each value's color override once no entry in the dataset uses that
+// value anymore, so removing a group/word doesn't leave an unreachable
+// word_dataset_label_colors row behind.
+function pruneOrphanedLabelColors(datasetId: number, values: string[]) {
+  const stillUsed = userSqlite.prepare(
+    "SELECT 1 FROM word_dataset_entries WHERE dataset_id = ? AND value = ? LIMIT 1"
+  );
+  const prune = userSqlite.prepare(
+    "DELETE FROM word_dataset_label_colors WHERE dataset_id = ? AND value = ?"
+  );
+  for (const value of new Set(values)) {
+    if (!stillUsed.get(datasetId, value)) prune.run(datasetId, value);
+  }
+}
+
 // ── GET /api/interlinear/datasets/[id]/entries ────────────────────────────────
 // Returns entries for a dataset for a given chapter.
 // Query params: book, chapter, textSource
@@ -118,13 +133,31 @@ export async function DELETE(
 
   const { wordId, groupId } = body;
   if (groupId) {
-    userSqlite
-      .prepare("DELETE FROM word_dataset_entries WHERE dataset_id = ? AND group_id = ?")
-      .run(datasetId, groupId);
+    const tx = userSqlite.transaction(() => {
+      const values = userSqlite
+        .prepare("SELECT DISTINCT value FROM word_dataset_entries WHERE dataset_id = ? AND group_id = ?")
+        .all(datasetId, groupId) as { value: string }[];
+
+      userSqlite
+        .prepare("DELETE FROM word_dataset_entries WHERE dataset_id = ? AND group_id = ?")
+        .run(datasetId, groupId);
+
+      pruneOrphanedLabelColors(datasetId, values.map((v) => v.value));
+    });
+    tx();
   } else if (wordId) {
-    userSqlite
-      .prepare("DELETE FROM word_dataset_entries WHERE dataset_id = ? AND word_id = ?")
-      .run(datasetId, wordId);
+    const tx = userSqlite.transaction(() => {
+      const row = userSqlite
+        .prepare("SELECT value FROM word_dataset_entries WHERE dataset_id = ? AND word_id = ?")
+        .get(datasetId, wordId) as { value: string } | undefined;
+
+      userSqlite
+        .prepare("DELETE FROM word_dataset_entries WHERE dataset_id = ? AND word_id = ?")
+        .run(datasetId, wordId);
+
+      if (row) pruneOrphanedLabelColors(datasetId, [row.value]);
+    });
+    tx();
   } else {
     return NextResponse.json({ error: "Missing wordId or groupId." }, { status: 400 });
   }
