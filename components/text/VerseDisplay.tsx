@@ -435,7 +435,7 @@ function AnnotBadge({
   // Safety net: if the editor is closed by something other than the explicit
   // commit paths below (e.g. the annotation-editing toolbar toggle being
   // switched off while this badge is mid-edit), still persist any pending
-  // change instead of silently discarding it. A no-op cancel via the "Close"
+  // change instead of silently discarding it. A no-op cancel via the "Cancel"
   // button first resets every draft to match `annotation`, so this finds no
   // diff and stays a true cancel in that case.
   const wasEditingRef = useRef(isEditing);
@@ -445,6 +445,25 @@ function AnnotBadge({
       if (Object.keys(updates).length > 0) onUpdate?.(annotation.id, updates);
     }
     wasEditingRef.current = isEditing;
+  }, [isEditing]);
+
+  // Commit on outside click. This is a real DOM-containment check rather
+  // than a blur/relatedTarget one: WebKit (the engine behind the Tauri
+  // desktop app) doesn't reliably populate `relatedTarget` on blur, which
+  // used to make clicking inside a nested widget — e.g. opening the
+  // communicative-function dropdown — read as "focus left the editor" and
+  // save+close the whole dialog before the dropdown could open. Containment
+  // checking sidesteps that: the dropdown (and its "manage categories"
+  // modal) are still true DOM descendants of the container despite being
+  // visually position:fixed, so clicks inside them never count as "outside".
+  const editorContainerRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!isEditing) return;
+    const onDown = (e: MouseEvent) => {
+      if (!editorContainerRef.current?.contains(e.target as Node)) commitEdit();
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
   }, [isEditing]);
 
   const color = getAnnotationColor(annotation.annotType, annotation.label, annotation.color);
@@ -538,16 +557,10 @@ function AnnotBadge({
     ];
     return (
       <div
+        ref={editorContainerRef}
         className={[isEnd ? "rounded" : "rounded-t", "flex-1 overflow-hidden"].join(" ")}
         style={{ borderLeft: `3px solid ${editColor}`, backgroundColor: `${editColor}18` }}
         onClick={(e) => e.stopPropagation()}
-        onBlur={(e) => {
-          // Only commit when focus truly leaves this editor — not when it
-          // moves to a nested widget like the communicative-function dropdown
-          // or its "manage categories" modal (both rendered as DOM descendants
-          // of this container despite being visually position:fixed).
-          if (!e.currentTarget.contains(e.relatedTarget as Node)) commitEdit();
-        }}
       >
         {/* Header row */}
         <div className="flex items-center gap-1 px-1.5 pt-1 pb-0.5">
@@ -583,14 +596,24 @@ function AnnotBadge({
               {getCommFunctionLeafLabel(draftCommFunction, customCommFunctions)}
             </span>
           )}
-          <button
-            type="button"
-            onClick={() => { resetDrafts(); onSetEditing(false); }}
-            className="shrink-0 ml-auto text-stone-400 hover:text-stone-600 text-xs leading-none"
-            title="Close"
-          >
-            ✕
-          </button>
+          <div className="shrink-0 ml-auto flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={commitEdit}
+              className="text-indigo-500 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300 text-xs leading-none"
+              title="Save"
+            >
+              ✓
+            </button>
+            <button
+              type="button"
+              onClick={() => { resetDrafts(); onSetEditing(false); }}
+              className="text-stone-400 hover:text-stone-600 text-xs leading-none"
+              title="Cancel"
+            >
+              ✕
+            </button>
+          </div>
         </div>
 
         {/* Type tabs — switch between Plot, Theme, Desc */}
