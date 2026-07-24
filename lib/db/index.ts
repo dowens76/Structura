@@ -343,6 +343,16 @@ function _migrateUserDbInner(sqlite: Database.Database): void {
   const charCols = (sqlite.prepare("PRAGMA table_info(characters)").all() as { name: string }[]).map(r => r.name);
   if (!charCols.includes("sort_order"))
     try { sqlite.exec("ALTER TABLE characters ADD COLUMN sort_order INTEGER DEFAULT 0"); } catch { /* already exists */ }
+  if (!charCols.includes("corpus_grouping_id"))
+    try { sqlite.exec("ALTER TABLE characters ADD COLUMN corpus_grouping_id INTEGER"); } catch { /* already exists */ }
+  if (!charCols.includes("corpus_type"))
+    try { sqlite.exec("ALTER TABLE characters ADD COLUMN corpus_type TEXT NOT NULL DEFAULT 'book'"); } catch { /* already exists */ }
+  if (!charCols.includes("corpus_chapter"))
+    try { sqlite.exec("ALTER TABLE characters ADD COLUMN corpus_chapter INTEGER"); } catch { /* already exists */ }
+  if (!charCols.includes("corpus_passage_id"))
+    try { sqlite.exec("ALTER TABLE characters ADD COLUMN corpus_passage_id INTEGER"); } catch { /* already exists */ }
+  if (!charCols.includes("lemmas"))
+    try { sqlite.exec("ALTER TABLE characters ADD COLUMN lemmas TEXT"); } catch { /* already exists */ }
 
   const tagCols = (sqlite.prepare("PRAGMA table_info(word_tags)").all() as { name: string }[]).map(r => r.name);
   if (!tagCols.includes("sort_order"))
