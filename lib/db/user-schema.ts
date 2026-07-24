@@ -95,6 +95,19 @@ export const characters = sqliteTable(
     color:       text("color").notNull(),
     sortOrder:   integer("sort_order").default(0),
     createdAt:   text("created_at").$defaultFn(() => new Date().toISOString()),
+    /** FK to book_groupings.id — plain integer, same reasoning as wordTags.corpusGroupingId. */
+    corpusGroupingId: integer("corpus_grouping_id"),
+    /** Which kind of scope this character is limited to — see wordTags.corpusType
+     *  and resolveVisibleWordTags() for the equivalent on tags; characters use
+     *  the same "book" | "chapter" | "passage" | "grouping" scheme. */
+    corpusType:       text("corpus_type").notNull().default("book"),
+    /** Chapter number, only meaningful when corpusType = "chapter". */
+    corpusChapter:    integer("corpus_chapter"),
+    /** FK to passages.id — plain integer. Only meaningful when corpusType = "passage". */
+    corpusPassageId:  integer("corpus_passage_id"),
+    /** JSON-encoded string[] of lemmas whose occurrences are auto-linked to
+     *  this character via character_refs (see getWordRefsByLemmas). */
+    lemmas:           text("lemmas"),
   },
   (t) => [index("char_book_idx").on(t.book)]
 );

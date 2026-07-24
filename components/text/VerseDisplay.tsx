@@ -2712,7 +2712,9 @@ export default function VerseDisplay({
                         : editingFormatting
                         ? () => onSelectTranslationWord(tvWordId, abbr)
                         : editingRefs
-                        ? (e: React.MouseEvent) => onSelectTranslationWord(tvWordId, abbr, e.shiftKey)
+                        ? clusterPickingActive
+                          ? (e: React.MouseEvent) => onSelectWord(lxxWord, e.shiftKey)
+                          : (e: React.MouseEvent) => onSelectTranslationWord(tvWordId, abbr, e.shiftKey)
                         : editingWordTags
                         ? clusterPickingActive
                           ? (e: React.MouseEvent) => onSelectWord(lxxWord, e.shiftKey)

@@ -22,9 +22,7 @@ import {
   getTranslationVerses,
   getBookSceneBreaks,
   getBookChapterMaxVerses,
-  getGroupedBooksFor,
 } from "@/lib/db/queries";
-import { CONTIGUOUS_BOOK_PAIRS, CONTIGUOUS_BOOK_PREV } from "@/lib/utils/osis";
 import type { Translation, TranslationVerse, TranslationFootnote } from "@/lib/db/schema";
 import type { TextSource } from "@/lib/morphology/types";
 
@@ -127,24 +125,6 @@ export async function getScriptureLocusBuiltInTranslation(
   if (baseVerses.length === 0) return { baseVerses, translation: null };
   const translation = await getTranslationRecord();
   return { baseVerses, translation };
-}
-
-/**
- * Union of books sharing a character/word-tag pool with any book in `books`:
- * each book's hardcoded contiguous sibling (1Sam↔2Sam etc.) plus every book
- * sharing a user-defined Book Grouping with it.
- */
-export async function getCharTagBookPool(
-  books: string[],
-  workspaceId: number
-): Promise<string | string[]> {
-  const set = new Set<string>(books);
-  for (const b of books) {
-    const sibling = CONTIGUOUS_BOOK_PAIRS[b] ?? CONTIGUOUS_BOOK_PREV[b] ?? null;
-    if (sibling) set.add(sibling);
-    for (const g of await getGroupedBooksFor(b, workspaceId)) set.add(g);
-  }
-  return set.size === 1 ? books[0] : [...set];
 }
 
 /**

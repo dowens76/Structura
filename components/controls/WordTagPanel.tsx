@@ -326,7 +326,7 @@ export function CorpusSelector({
 
 // ── Lemma Picker Input ────────────────────────────────────────────────────────
 
-interface LemmaPickerInputProps {
+export interface LemmaPickerInputProps {
   color: string;
   lemmas: string[];
   pickingActive: boolean;
@@ -337,7 +337,7 @@ interface LemmaPickerInputProps {
   onCancelWordClick: () => void;
 }
 
-function LemmaPickerInput({ color, lemmas, pickingActive, externalDisplayLabels, onAdd, onRemove, onRequestWordClick, onCancelWordClick }: LemmaPickerInputProps) {
+export function LemmaPickerInput({ color, lemmas, pickingActive, externalDisplayLabels, onAdd, onRemove, onRequestWordClick, onCancelWordClick }: LemmaPickerInputProps) {
   const [inputVal, setInputVal] = useState("");
   const [suggestions, setSuggestions] = useState<LemmaSuggestion[]>([]);
   const [displayLabels, setDisplayLabels] = useState<Map<string, string>>(new Map());

@@ -1,39 +1,47 @@
 "use client";
 
 import { useState, useRef } from "react";
-import type { Character } from "@/lib/db/schema";
-import { RULE_PALETTE } from "@/lib/morphology/colorRules";
+import type { Character, BookGrouping } from "@/lib/db/schema";
+import {
+  TAG_PALETTE, ColorSwatches, CorpusSelector, LemmaPickerInput,
+  type CorpusAssignment, type CorpusPassageOption,
+} from "./WordTagPanel";
 
-// Extended palette: RULE_PALETTE + 8 darker/earthy tones
-const CHARACTER_PALETTE: string[] = [
-  ...RULE_PALETTE,
-  "#b91c1c", // dark red
-  "#c2410c", // dark orange
-  "#a16207", // dark yellow
-  "#166534", // dark green
-  "#0f766e", // dark teal
-  "#1d4ed8", // dark blue
-  "#6d28d9", // dark violet
-  "#be185d", // dark pink
-];
+const DEFAULT_CORPUS: CorpusAssignment = { mode: "book", groupingId: null, chapter: null, passageId: null };
 
 interface CharacterPanelProps {
   characters: Character[];
   activeCharacterId: number | null;
   mode: "refs" | "speech";
+  currentBook: string;
+  currentChapter?: number;
+  currentPassages?: CorpusPassageOption[];
+  bookGroupings: BookGrouping[];
+  clusterPickingActive: boolean;
   onSelectCharacter: (id: number) => void;
-  onCreateCharacter: (name: string, color: string) => void;
+  onCreateCharacter: (name: string, color: string, corpus: CorpusAssignment, lemmas: string[], corpusBooks: string[]) => void;
   onDeleteCharacter: (id: number) => void;
-  onUpdateCharacter: (id: number, name: string, color: string) => void;
+  onUpdateCharacter: (
+    id: number, name: string, color: string,
+    corpus: CorpusAssignment, lemmas: string[] | null, prevLemmas: string[] | null, corpusBooks: string[],
+  ) => void;
   onReorder: (ids: number[]) => void;
   highlightedCharIds: Set<number>;
   onToggleHighlight: (id: number) => void;
+  onCreateGrouping: (name: string, books: string[], features: string[]) => Promise<BookGrouping>;
+  onRequestWordClick: (onPicked: (lemma: string, displayLabel?: string) => void) => void;
+  onCancelWordClick: () => void;
 }
 
 export default function CharacterPanel({
   characters,
   activeCharacterId,
   mode,
+  currentBook,
+  currentChapter,
+  currentPassages,
+  bookGroupings,
+  clusterPickingActive,
   onSelectCharacter,
   onCreateCharacter,
   onDeleteCharacter,
@@ -41,41 +49,91 @@ export default function CharacterPanel({
   onReorder,
   highlightedCharIds,
   onToggleHighlight,
+  onCreateGrouping,
+  onRequestWordClick,
+  onCancelWordClick,
 }: CharacterPanelProps) {
   const [showNew, setShowNew] = useState(false);
   const [newName, setNewName] = useState("");
-  const [newColor, setNewColor] = useState(CHARACTER_PALETTE[0]);
+  const [newColor, setNewColor] = useState(TAG_PALETTE[0]);
+  const [newLemmas, setNewLemmas] = useState<string[]>([]);
+  const [newCorpus, setNewCorpus] = useState<CorpusAssignment>(DEFAULT_CORPUS);
   const [hoveredId, setHoveredId] = useState<number | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
   const [editingCharId, setEditingCharId] = useState<number | null>(null);
   const [editName, setEditName] = useState("");
-  const [editColor, setEditColor] = useState(CHARACTER_PALETTE[0]);
+  const [editColor, setEditColor] = useState(TAG_PALETTE[0]);
+  const [editCorpus, setEditCorpus] = useState<CorpusAssignment>(DEFAULT_CORPUS);
+  const [editLemmas, setEditLemmas] = useState<string[]>([]);
+  const editOriginalLemmasRef = useRef<string[]>([]);
   const [showReorder, setShowReorder] = useState(false);
   // Local drag-ordered list — initialised from props when menu opens
   const [reorderList, setReorderList] = useState<Character[]>([]);
   const dragIdx = useRef<number | null>(null);
 
+  function resolveCorpusBooks(corpus: CorpusAssignment): string[] {
+    if (corpus.mode === "grouping" && corpus.groupingId != null) {
+      const g = bookGroupings.find((g) => g.id === corpus.groupingId);
+      if (g) {
+        try { return JSON.parse(g.books) as string[]; } catch { return [currentBook]; }
+      }
+    }
+    return [currentBook];
+  }
+
   function handleStartEdit(c: Character) {
     setEditingCharId(c.id);
     setEditName(c.name);
     setEditColor(c.color);
+    setEditCorpus({
+      mode: (c.corpusType as CorpusAssignment["mode"] | undefined) ?? "book",
+      groupingId: c.corpusGroupingId ?? null,
+      chapter: c.corpusChapter ?? null,
+      passageId: c.corpusPassageId ?? null,
+    });
+    const parsed = c.lemmas ? (() => { try { return JSON.parse(c.lemmas!) as string[]; } catch { return []; } })() : [];
+    setEditLemmas(parsed);
+    editOriginalLemmasRef.current = parsed;
     setConfirmDeleteId(null);
   }
 
   function handleSaveEdit() {
     if (!editingCharId || !editName.trim()) return;
-    onUpdateCharacter(editingCharId, editName.trim(), editColor);
+    const corpusBooks = resolveCorpusBooks(editCorpus);
+    onUpdateCharacter(
+      editingCharId, editName.trim(), editColor, editCorpus,
+      editLemmas.length > 0 ? editLemmas : null, editOriginalLemmasRef.current, corpusBooks,
+    );
     setEditingCharId(null);
   }
 
   function handleCreate() {
     const trimmed = newName.trim();
     if (!trimmed) return;
-    onCreateCharacter(trimmed, newColor);
+    const corpusBooks = resolveCorpusBooks(newCorpus);
+    onCreateCharacter(trimmed, newColor, newCorpus, newLemmas, corpusBooks);
     setNewName("");
-    setNewColor(CHARACTER_PALETTE[0]);
+    setNewColor(TAG_PALETTE[0]);
+    setNewLemmas([]);
+    setNewCorpus(DEFAULT_CORPUS);
     setShowNew(false);
   }
+
+  async function handleCreateGroupingForNew(name: string, booksArr: string[]) {
+    const g = await onCreateGrouping(name, booksArr, ["characters"]);
+    setNewCorpus({ mode: "grouping", groupingId: g.id, chapter: null, passageId: null });
+  }
+
+  async function handleCreateGroupingForEdit(name: string, booksArr: string[]) {
+    const g = await onCreateGrouping(name, booksArr, ["characters"]);
+    setEditCorpus({ mode: "grouping", groupingId: g.id, chapter: null, passageId: null });
+  }
+
+  const corpusLabel = (c: Character) => {
+    if (!c.corpusGroupingId) return null;
+    const g = bookGroupings.find((g) => g.id === c.corpusGroupingId);
+    return g ? g.name : null;
+  };
 
   function openReorder() {
     setReorderList([...characters]);
@@ -145,63 +203,64 @@ export default function CharacterPanel({
           return (
             <div
               key={c.id}
-              className="flex items-center gap-2 px-3 py-1.5 rounded-lg border shrink-0"
-              style={{ borderColor: editColor, backgroundColor: "var(--surface-muted, var(--surface))" }}
+              className="flex flex-col gap-1.5 px-3 py-2 rounded-lg border shrink-0"
+              style={{ borderColor: editColor, backgroundColor: "var(--surface-muted, var(--surface))", minWidth: "20rem" }}
             >
-              <span
-                className="inline-block w-2.5 h-2.5 rounded-full shrink-0"
-                style={{ backgroundColor: editColor }}
-              />
-              <input
-                autoFocus
-                type="text"
-                value={editName}
-                onChange={(e) => setEditName(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") handleSaveEdit();
-                  if (e.key === "Escape") setEditingCharId(null);
-                }}
-                className="w-20 text-xs bg-transparent outline-none"
-                style={{ color: "var(--foreground)" }}
-              />
-              <div className="flex flex-wrap gap-1" style={{ maxWidth: "8rem" }}>
-                {CHARACTER_PALETTE.map((col) => (
-                  <button
-                    key={col}
-                    type="button"
-                    onClick={() => setEditColor(col)}
-                    className="w-3.5 h-3.5 rounded-full transition-transform hover:scale-110"
-                    style={{
-                      backgroundColor: col,
-                      outline: editColor === col ? `2px solid ${col}` : "none",
-                      outlineOffset: "1px",
-                    }}
-                  />
-                ))}
-                <input
-                  type="color"
-                  value={editColor}
-                  onChange={(e) => setEditColor(e.target.value)}
-                  className="w-3.5 h-3.5 rounded-full cursor-pointer border-0 p-0 bg-transparent"
-                  title="Custom color"
+              <div className="flex items-center gap-2">
+                <span
+                  className="inline-block w-2.5 h-2.5 rounded-full shrink-0"
+                  style={{ backgroundColor: editColor }}
                 />
+                <input
+                  autoFocus
+                  type="text"
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") handleSaveEdit();
+                    if (e.key === "Escape") setEditingCharId(null);
+                  }}
+                  className="w-24 text-xs bg-transparent outline-none"
+                  style={{ color: "var(--foreground)" }}
+                />
+                <ColorSwatches selected={editColor} onPick={setEditColor} />
               </div>
-              <button
-                type="button"
-                onClick={handleSaveEdit}
-                disabled={!editName.trim()}
-                className="text-xs font-semibold px-1.5 py-0.5 rounded bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 transition-colors"
-              >
-                Save
-              </button>
-              <button
-                type="button"
-                onClick={() => setEditingCharId(null)}
-                className="text-xs px-1 py-0.5 rounded hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors"
-                style={{ color: "var(--text-muted)" }}
-              >
-                Cancel
-              </button>
+
+              <CorpusSelector currentBook={currentBook} currentChapter={currentChapter} currentPassages={currentPassages}
+                bookGroupings={bookGroupings}
+                corpusMode={editCorpus.mode} corpusGroupingId={editCorpus.groupingId}
+                corpusChapter={editCorpus.chapter} corpusPassageId={editCorpus.passageId}
+                onSelect={setEditCorpus}
+                onCreateGrouping={handleCreateGroupingForEdit} />
+
+              <LemmaPickerInput
+                color={editColor}
+                lemmas={editLemmas}
+                pickingActive={clusterPickingActive}
+                onAdd={(lemma) => setEditLemmas((prev) => prev.includes(lemma) ? prev : [...prev, lemma])}
+                onRemove={(lemma) => setEditLemmas((prev) => prev.filter((x) => x !== lemma))}
+                onRequestWordClick={onRequestWordClick}
+                onCancelWordClick={onCancelWordClick}
+              />
+
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={handleSaveEdit}
+                  disabled={!editName.trim()}
+                  className="text-xs font-semibold px-1.5 py-0.5 rounded bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                >
+                  Save
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEditingCharId(null)}
+                  className="text-xs px-1 py-0.5 rounded hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors"
+                  style={{ color: "var(--text-muted)" }}
+                >
+                  Cancel
+                </button>
+              </div>
             </div>
           );
         }
@@ -255,6 +314,13 @@ export default function CharacterPanel({
                   style={{ backgroundColor: c.color }}
                 />
                 {c.name}
+                {/* corpus grouping badge */}
+                {corpusLabel(c) && (
+                  <span className="text-[8px] px-1 py-0.5 rounded-full leading-none opacity-60"
+                    style={{ backgroundColor: `${c.color}33`, color: c.color }}>
+                    {corpusLabel(c)}
+                  </span>
+                )}
                 {/* ✦ highlight toggle — always visible when on, hover-only when off */}
                 {(isHovered || isHighlighted) && (
                   <span
@@ -299,8 +365,8 @@ export default function CharacterPanel({
         </button>
       ) : (
         <div
-          className="flex items-center gap-2 px-3 py-1.5 rounded-lg border shrink-0"
-          style={{ borderColor: "var(--border)", backgroundColor: "var(--surface-muted, var(--surface))" }}
+          className="flex flex-col gap-2 px-3 py-2 rounded-lg border shrink-0"
+          style={{ borderColor: "var(--border)", backgroundColor: "var(--surface-muted, var(--surface))", minWidth: "20rem" }}
         >
           {/* Name input */}
           <input
@@ -310,58 +376,51 @@ export default function CharacterPanel({
             onChange={(e) => setNewName(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") handleCreate(); if (e.key === "Escape") setShowNew(false); }}
             placeholder="Name"
-            className="w-24 text-xs bg-transparent outline-none"
-            style={{ color: "var(--foreground)" }}
+            className="w-full text-xs bg-transparent outline-none border-b pb-0.5"
+            style={{ borderColor: "var(--border)", color: "var(--foreground)" }}
           />
 
-          {/* Color swatches */}
-          <div className="flex flex-wrap gap-1" style={{ maxWidth: "10rem" }}>
-            {CHARACTER_PALETTE.map((col) => (
-              <button
-                key={col}
-                type="button"
-                onClick={() => setNewColor(col)}
-                className="w-4 h-4 rounded-full transition-transform hover:scale-110"
-                style={{
-                  backgroundColor: col,
-                  outline: newColor === col ? `2px solid ${col}` : "none",
-                  outlineOffset: "1px",
-                }}
-                title={col}
-              />
-            ))}
-            {/* Custom color picker */}
-            <input
-              type="color"
-              value={newColor}
-              onChange={(e) => setNewColor(e.target.value)}
-              className="w-4 h-4 rounded-full cursor-pointer border-0 p-0 bg-transparent"
-              title="Custom color"
-            />
+          <LemmaPickerInput
+            color={newColor}
+            lemmas={newLemmas}
+            pickingActive={clusterPickingActive}
+            onAdd={(lemma) => setNewLemmas((prev) => prev.includes(lemma) ? prev : [...prev, lemma])}
+            onRemove={(lemma) => setNewLemmas((prev) => prev.filter((x) => x !== lemma))}
+            onRequestWordClick={onRequestWordClick}
+            onCancelWordClick={onCancelWordClick}
+          />
+
+          {/* Color + preview */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <ColorSwatches selected={newColor} onPick={setNewColor} />
+            <span className="inline-block w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: newColor }} />
           </div>
 
-          {/* Preview dot */}
-          <span
-            className="inline-block w-3 h-3 rounded-full shrink-0"
-            style={{ backgroundColor: newColor }}
-          />
+          <CorpusSelector currentBook={currentBook} currentChapter={currentChapter} currentPassages={currentPassages}
+            bookGroupings={bookGroupings}
+            corpusMode={newCorpus.mode} corpusGroupingId={newCorpus.groupingId}
+            corpusChapter={newCorpus.chapter} corpusPassageId={newCorpus.passageId}
+            onSelect={setNewCorpus}
+            onCreateGrouping={handleCreateGroupingForNew} />
 
-          <button
-            type="button"
-            onClick={handleCreate}
-            disabled={!newName.trim()}
-            className="text-xs font-semibold px-2 py-0.5 rounded bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 transition-colors"
-          >
-            Create
-          </button>
-          <button
-            type="button"
-            onClick={() => setShowNew(false)}
-            className="text-xs px-1.5 py-0.5 rounded hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors"
-            style={{ color: "var(--text-muted)" }}
-          >
-            Cancel
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleCreate}
+              disabled={!newName.trim()}
+              className="text-xs font-semibold px-2 py-0.5 rounded bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 transition-colors"
+            >
+              Create
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowNew(false)}
+              className="text-xs px-1.5 py-0.5 rounded hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors"
+              style={{ color: "var(--text-muted)" }}
+            >
+              Cancel
+            </button>
+          </div>
         </div>
       )}
 

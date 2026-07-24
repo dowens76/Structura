@@ -8,7 +8,6 @@ import {
   getBooksBySource,
   getBooksWithWords,
   getChapterMaxVerse,
-  getCharacters,
   getAvailableTranslationsForChapter,
   getUltVerses,
   getUltTranslation,
@@ -24,10 +23,10 @@ import {
   getScriptureLocusFootnotes,
   getScriptureLocusBuiltInTranslation,
   getScriptureLocusBookWideData,
-  getCharTagBookPool,
   type ChapterLocus,
 } from "@/lib/db/scriptureLocus";
 import { resolveVisibleWordTags } from "@/lib/db/wordTagVisibility";
+import { resolveVisibleCharacters } from "@/lib/db/characterVisibility";
 import { getActiveWorkspaceId } from "@/lib/workspace";
 import { OSIS_BOOK_NAMES, OSIS_REF_BOOK_NAMES } from "@/lib/utils/osis";
 import type { TextSource } from "@/lib/morphology/types";
@@ -106,14 +105,6 @@ export default async function PassagePage({ params, searchParams }: PageProps) {
     }
   }
 
-  // ── Books to query for characters / word-tags ─────────────────────────────
-  // Union: hardcoded contiguous-pair canonical books + user-defined grouping
-  // members for each book involved in this passage.
-  const charTagBooks = await getCharTagBookPool(
-    isCrossBook ? [osisBook, endOsisBook] : [osisBook],
-    workspaceId
-  );
-
   // ── Pre-fetch words and supporting data ────────────────────────────────────
   const [
     passageWords,
@@ -140,9 +131,13 @@ export default async function PassagePage({ params, searchParams }: PageProps) {
     passage.endChapter > 1
       ? getChapterMaxVerse(endOsisBook, passage.endChapter - 1, textSource)
       : Promise.resolve(0),
-    // Characters / word-tags: fetch from all grouped+paired books so they
-    // share the same pool (e.g. 1Sam+2Sam, or user-defined Pentateuch group).
-    getCharacters(charTagBooks, workspaceId),
+    // Characters / word-tags: resolved per each row's own corpus scope
+    // (book/chapter/passage/grouping) against the books+chapters this
+    // passage view actually spans.
+    resolveVisibleCharacters(
+      { books: isCrossBook ? [osisBook, endOsisBook] : [osisBook], chapters: chapterEntries, passageId: passage.id },
+      workspaceId
+    ),
     resolveVisibleWordTags(
       { books: isCrossBook ? [osisBook, endOsisBook] : [osisBook], chapters: chapterEntries, passageId: passage.id },
       workspaceId
@@ -158,8 +153,6 @@ export default async function PassagePage({ params, searchParams }: PageProps) {
     ),
     getScriptureLocusEditingData(chapterEntries, textSource, workspaceId),
   ]);
-
-  // (characters and wordTags already cover all canonical books via charTagBooks)
 
   const {
     initialParagraphBreakIds, initialCharacterRefs, initialSpeechSections,

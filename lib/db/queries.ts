@@ -949,11 +949,22 @@ export async function reorderCharacters(items: { id: number; sortOrder: number }
   }
 }
 
-export async function createCharacter(name: string, color: string, book: string, workspaceId: number): Promise<Character> {
-  const result = await userDb
-    .insert(characters)
-    .values({ name, color, book, workspaceId })
-    .returning();
+export async function createCharacter(
+  name: string,
+  color: string,
+  book: string,
+  workspaceId: number,
+  lemmas?: string[] | null,
+  corpus?: WordTagCorpusInput,
+): Promise<Character> {
+  const result = await userDb.insert(characters).values({
+    name, color, book, workspaceId,
+    corpusGroupingId: corpus?.corpusGroupingId ?? null,
+    corpusType: corpus?.corpusType ?? "book",
+    corpusChapter: corpus?.corpusChapter ?? null,
+    corpusPassageId: corpus?.corpusPassageId ?? null,
+    lemmas: lemmas?.length ? JSON.stringify(lemmas) : null,
+  }).returning();
   return result[0];
 }
 
@@ -961,10 +972,25 @@ export async function deleteCharacter(id: number): Promise<void> {
   await userDb.delete(characters).where(eq(characters.id, id));
 }
 
-export async function updateCharacter(id: number, name: string, color: string): Promise<Character> {
+export async function updateCharacter(
+  id: number,
+  name: string,
+  color: string,
+  lemmas?: string[] | null,
+  corpus?: WordTagCorpusInput,
+): Promise<Character> {
+  const setData: Record<string, unknown> = { name, color };
+  if (lemmas !== undefined) setData.lemmas = lemmas?.length ? JSON.stringify(lemmas) : null;
+  if (corpus) {
+    if (corpus.corpusType !== undefined) setData.corpusType = corpus.corpusType;
+    if (corpus.corpusGroupingId !== undefined) setData.corpusGroupingId = corpus.corpusGroupingId;
+    if (corpus.corpusChapter !== undefined) setData.corpusChapter = corpus.corpusChapter;
+    if (corpus.corpusPassageId !== undefined) setData.corpusPassageId = corpus.corpusPassageId;
+  }
   const result = await userDb
     .update(characters)
-    .set({ name, color })
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    .set(setData as any)
     .where(eq(characters.id, id))
     .returning();
   return result[0];
@@ -1011,6 +1037,52 @@ export async function removeCharacterRef(wordId: string, workspaceId: number): P
   await userDb.delete(characterRefs).where(
     and(eq(characterRefs.workspaceId, workspaceId), eq(characterRefs.wordId, wordId))
   );
+}
+
+/**
+ * Clears a character out of every ref that references it — deleting the row
+ * when it's the primary (character1Id) assignment, or just unsetting the
+ * secondary slot (character2Id) so the other character's assignment survives.
+ * Mirrors the character_refs FK's own onDelete rules (cascade / set null),
+ * so this is safe to call before a lemma-driven bulk re-link (see
+ * bulkInsertCharacterRefs) without disturbing unrelated manual assignments.
+ */
+export async function deleteCharacterRefsByCharacterId(characterId: number): Promise<void> {
+  await userDb.delete(characterRefs).where(eq(characterRefs.character1Id, characterId));
+  await userDb.update(characterRefs).set({ character2Id: null }).where(eq(characterRefs.character2Id, characterId));
+}
+
+/**
+ * Bulk-insert character refs (as the primary/character1Id assignment),
+ * skipping any word that already has a ref at all — this preserves existing
+ * manually-assigned characters (including any secondary character2Id).
+ * Returns the count of rows actually inserted.
+ */
+export async function bulkInsertCharacterRefs(
+  characterId: number,
+  refs: Array<{ wordId: string; book: string; chapter: number; textSource: string }>,
+  workspaceId: number
+): Promise<{ inserted: number }> {
+  if (refs.length === 0) return { inserted: 0 };
+
+  // SQLite has a limit of 999 bound parameters; each row uses 7 params.
+  const CHUNK = 140;
+  let inserted = 0;
+
+  for (let i = 0; i < refs.length; i += CHUNK) {
+    const chunk = refs.slice(i, i + CHUNK);
+    const result = await userDb
+      .insert(characterRefs)
+      .values(chunk.map((r) => ({
+        character1Id: characterId, character2Id: null, workspaceId,
+        wordId: r.wordId, book: r.book, chapter: r.chapter, textSource: r.textSource,
+      })))
+      .onConflictDoNothing()
+      .returning({ id: characterRefs.id });
+    inserted += result.length;
+  }
+
+  return { inserted };
 }
 
 // ── Speech Sections (chapter-scoped) ─────────────────────────────────────────
@@ -2148,32 +2220,6 @@ export async function deleteBookGrouping(id: number, workspaceId: number): Promi
     .where(and(eq(bookGroupings.id, id), eq(bookGroupings.workspaceId, workspaceId)));
 }
 
-/**
- * Returns all OSIS book codes that appear alongside `book` in any book grouping
- * for the given workspace (excluding `book` itself).  Used to build the shared
- * character/word-tag pool for books linked by a user-defined grouping.
- */
-export async function getGroupedBooksFor(book: string, workspaceId: number): Promise<string[]> {
-  let rows: { books: string }[];
-  try {
-    rows = await userDb
-      .select({ books: bookGroupings.books })
-      .from(bookGroupings)
-      .where(eq(bookGroupings.workspaceId, workspaceId));
-  } catch {
-    return [];
-  }
-
-  const result = new Set<string>();
-  for (const row of rows) {
-    let list: string[] = [];
-    try { list = JSON.parse(row.books) as string[]; } catch { continue; }
-    if (list.includes(book)) {
-      list.forEach(b => { if (b !== book) result.add(b); });
-    }
-  }
-  return [...result];
-}
 
 // ─── App Settings ──────────────────────────────────────────────────────────
 

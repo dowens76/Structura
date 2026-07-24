@@ -1954,7 +1954,7 @@ export default function ChapterDisplay({
       return;
     }
     if (editingRefs) {
-      if (activeCharId === null) return;
+      if (clusterLemmaCallback === null && activeCharId === null) return;
       handleToggleCharacterRef(word, shiftHeld);
       return;
     }
@@ -2484,6 +2484,18 @@ export default function ChapterDisplay({
 
   function handleToggleCharacterRef(word: Word, shiftHeld = false) {
     if (isPunctuationWord(word)) return;
+    // Cluster lemma pick mode: route click to callback without creating/toggling a ref
+    if (clusterLemmaCallback !== null) {
+      const canonicalLemma = word.language === "hebrew"
+        ? (word.strongNumber ?? word.lemma ?? word.surfaceText?.replace(/\//g, "") ?? "?")
+        : (word.lemma ?? word.surfaceText ?? "?");
+      const displayLabel = word.language === "hebrew"
+        ? ((hebrewLemmas as Record<string, string>)[word.strongNumber ?? ""] ?? word.lemma ?? word.surfaceText?.replace(/\//g, "") ?? "?")
+        : (word.lemma ?? word.surfaceText ?? "?");
+      clusterLemmaCallback(canonicalLemma, displayLabel !== canonicalLemma ? displayLabel : undefined);
+      return;
+    }
+    if (activeCharId === null) return;
     if (shiftHeld && refRangeStart !== null) {
       // Apply active character to all words in the range that don't already have it
       const posMap = new Map(words.map((w, i) => [w.wordId, i]));
@@ -3012,11 +3024,20 @@ export default function ChapterDisplay({
     }
   }
 
-  async function handleCreateCharacter(name: string, color: string) {
+  async function handleCreateCharacter(
+    name: string,
+    color: string,
+    corpus: import("@/components/controls/WordTagPanel").CorpusAssignment,
+    lemmas: string[],
+    corpusBooks: string[],
+  ) {
     // Optimistic: add placeholder
     const tempChar: Character = {
       id: -(Date.now()), book, name, color,
       createdAt: new Date().toISOString(), workspaceId: 0, sortOrder: null,
+      corpusGroupingId: corpus.groupingId, corpusType: corpus.mode,
+      corpusChapter: corpus.chapter, corpusPassageId: corpus.passageId,
+      lemmas: lemmas.length ? JSON.stringify(lemmas) : null,
     };
     setCharacters((prev) => [...prev, tempChar]);
     setActiveCharId(tempChar.id);
@@ -3025,11 +3046,33 @@ export default function ChapterDisplay({
       const res = await fetch("/api/characters", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, color, book }),
+        body: JSON.stringify({
+          name, color, book, lemmas, corpusBooks,
+          textSource, currentChapter: chapter,
+          corpusType: corpus.mode,
+          corpusGroupingId: corpus.groupingId,
+          corpusChapter: corpus.chapter,
+          corpusPassageId: corpus.passageId,
+        }),
       });
       const data = await res.json();
-      setCharacters((prev) => prev.map((c) => c.id === tempChar.id ? data.character : c));
-      setActiveCharId(data.character.id);
+      const realChar: Character = data.character;
+      setCharacters((prev) => prev.map((c) => c.id === tempChar.id ? realChar : c));
+      setActiveCharId(realChar.id);
+
+      // Apply chapter refs returned from the server (lemma-driven bulk links)
+      const chapterRefs = (data.chapterRefs ?? []) as Array<{ wordId: string; book: string; chapter: number; textSource: string }>;
+      if (chapterRefs.length > 0) {
+        setCharacterRefMap((prev) => {
+          const next = new Map(prev);
+          for (const r of chapterRefs) {
+            if (!next.has(r.wordId)) {
+              next.set(r.wordId, { id: -1, wordId: r.wordId, character1Id: realChar.id, character2Id: null, textSource: r.textSource, book: r.book, chapter: r.chapter, workspaceId: 0 });
+            }
+          }
+          return next;
+        });
+      }
     } catch {
       setCharacters((prev) => prev.filter((c) => c.id !== tempChar.id));
       setActiveCharId(characters[0]?.id ?? null);
@@ -3155,7 +3198,15 @@ export default function ChapterDisplay({
     }
   }
 
-  async function handleUpdateCharacter(id: number, name: string, color: string) {
+  async function handleUpdateCharacter(
+    id: number,
+    name: string,
+    color: string,
+    corpus: import("@/components/controls/WordTagPanel").CorpusAssignment,
+    lemmas: string[] | null,
+    prevLemmas: string[] | null,
+    corpusBooks: string[],
+  ) {
     const prev = characters.find((c) => c.id === id);
     if (prev) {
       const prevName = prev.name;
@@ -3174,13 +3225,44 @@ export default function ChapterDisplay({
         },
       });
     }
-    setCharacters((cs) => cs.map((c) => c.id === id ? { ...c, name, color } : c));
+    const lemmasJson = lemmas?.length ? JSON.stringify(lemmas) : null;
+    setCharacters((cs) => cs.map((c) => c.id === id ? {
+      ...c, name, color,
+      corpusGroupingId: corpus.groupingId,
+      corpusType: corpus.mode,
+      corpusChapter: corpus.chapter,
+      corpusPassageId: corpus.passageId,
+      lemmas: lemmasJson,
+    } : c));
     try {
-      await fetch(`/api/characters/${id}`, {
+      const res = await fetch(`/api/characters/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, color }),
+        body: JSON.stringify({
+          name, color, lemmas, prevLemmas, corpusBooks,
+          textSource, currentChapter: chapter, book,
+          corpusType: corpus.mode,
+          corpusGroupingId: corpus.groupingId,
+          corpusChapter: corpus.chapter,
+          corpusPassageId: corpus.passageId,
+        }),
       });
+      const data = await res.json();
+      const chapterRefs = (data.chapterRefs ?? []) as Array<{ wordId: string; book: string; chapter: number; textSource: string }>;
+      const lemmasChanged = JSON.stringify(lemmas ?? []) !== JSON.stringify(prevLemmas ?? []);
+      if (lemmasChanged) {
+        setCharacterRefMap((prevMap) => {
+          const next = new Map(prevMap);
+          for (const [wid, ref] of next) {
+            if (ref.character1Id === id) next.delete(wid);
+            else if (ref.character2Id === id) next.set(wid, { ...ref, character2Id: null });
+          }
+          for (const r of chapterRefs) {
+            next.set(r.wordId, { id: -1, wordId: r.wordId, character1Id: id, character2Id: null, textSource: r.textSource, book: r.book, chapter: r.chapter, workspaceId: 0 });
+          }
+          return next;
+        });
+      }
     } catch {
       if (prev) setCharacters((cs) => cs.map((c) => c.id === id ? prev : c));
     }
@@ -5386,6 +5468,11 @@ export default function ChapterDisplay({
             characters={characters}
             activeCharacterId={activeCharId}
             mode={editingRefs ? "refs" : "speech"}
+            currentBook={book}
+            currentChapter={chapter}
+            currentPassages={currentPassages}
+            bookGroupings={bookGroupings}
+            clusterPickingActive={clusterLemmaCallback !== null}
             onSelectCharacter={setActiveCharId}
             onCreateCharacter={handleCreateCharacter}
             onDeleteCharacter={handleDeleteCharacter}
@@ -5393,6 +5480,9 @@ export default function ChapterDisplay({
             onReorder={handleReorderCharacters}
             highlightedCharIds={highlightCharIds}
             onToggleHighlight={handleToggleHighlight}
+            onCreateGrouping={handleCreateBookGrouping}
+            onRequestWordClick={handleRequestWordClick}
+            onCancelWordClick={handleCancelWordClick}
           />
         )}
 
