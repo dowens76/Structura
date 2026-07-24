@@ -1,11 +1,15 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import PageShell from "@/components/ui/PageShell";
 import SectionHeading from "@/components/ui/SectionHeading";
 import Button from "@/components/ui/Button";
 import { OSIS_BOOK_ORDER } from "@/lib/utils/osis";
+import { isTauriApp } from "@/lib/utils/openExternal";
 import TagEditModal from "@/components/concepts/TagEditModal";
+import CharacterEditModal from "@/components/concepts/CharacterEditModal";
 
 interface TagGroup {
   name: string;
@@ -49,6 +53,7 @@ function matchesBookFilter(itemBooks: string[], selectedBooks: Set<string>): boo
 }
 
 export default function ExportListsPanel() {
+  const router = useRouter();
   const [data, setData] = useState<ListsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -64,6 +69,8 @@ export default function ExportListsPanel() {
 
   // Which tag's name/color/corpus editor modal is open, if any.
   const [editingTagName, setEditingTagName] = useState<string | null>(null);
+  // Which character's name/color/corpus editor modal is open, if any.
+  const [editingCharacterName, setEditingCharacterName] = useState<string | null>(null);
 
   const loadData = useCallback((isInitial = false) => {
     fetch("/api/export/tag-lists")
@@ -321,6 +328,12 @@ export default function ExportListsPanel() {
                 checked={selectedTags.has(tag.name)}
                 onToggle={() => toggleTag(tag.name)}
                 onEdit={() => setEditingTagName(tag.name)}
+                viewHref={`/concepts/${encodeURIComponent(tag.name)}`}
+                onViewClick={
+                  isTauriApp()
+                    ? (e) => { e.preventDefault(); router.push(`/concepts/${encodeURIComponent(tag.name)}`); }
+                    : undefined
+                }
               />
             ))}
           </div>
@@ -361,6 +374,7 @@ export default function ExportListsPanel() {
                 subtitle={`${char.books.join(", ")} · ${char.count} ref${char.count !== 1 ? "s" : ""}`}
                 checked={selectedChars.has(char.name)}
                 onToggle={() => toggleChar(char.name)}
+                onEdit={() => setEditingCharacterName(char.name)}
               />
             ))}
           </div>
@@ -401,6 +415,14 @@ export default function ExportListsPanel() {
           onSaved={() => loadData(false)}
         />
       )}
+
+      {editingCharacterName && (
+        <CharacterEditModal
+          characterName={editingCharacterName}
+          onClose={() => setEditingCharacterName(null)}
+          onSaved={() => loadData(false)}
+        />
+      )}
     </PageShell>
   );
 }
@@ -414,6 +436,8 @@ function TagRow({
   checked,
   onToggle,
   onEdit,
+  viewHref,
+  onViewClick,
 }: {
   name: string;
   color: string;
@@ -421,6 +445,10 @@ function TagRow({
   checked: boolean;
   onToggle: () => void;
   onEdit?: () => void;
+  /** When set, renders a "View occurrences" link to the Word/Concept Editor
+   *  (the verse-by-verse occurrence view) alongside the color/corpus editor. */
+  viewHref?: string;
+  onViewClick?: (e: React.MouseEvent) => void;
 }) {
   return (
     <div
@@ -454,6 +482,18 @@ function TagRow({
           <span className="ml-2 text-xs" style={{ color: "var(--text-muted)" }}>{subtitle}</span>
         </div>
       </label>
+      {viewHref && (
+        <Link
+          href={viewHref}
+          target="_blank"
+          onClick={onViewClick}
+          title={`View "${name}"'s occurrences — the verse-by-verse Word/Concept Editor`}
+          className="flex-shrink-0 text-xs px-1.5 py-0.5 rounded border transition-colors hover:bg-stone-100 dark:hover:bg-stone-700"
+          style={{ color: "var(--text-muted)", borderColor: "var(--border-muted)" }}
+        >
+          📄 Occurrences
+        </Link>
+      )}
       {onEdit && (
         <button
           type="button"

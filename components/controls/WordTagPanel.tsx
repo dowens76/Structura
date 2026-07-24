@@ -148,7 +148,7 @@ function NewGroupingForm({ currentBook, style, menuRef, onSave, onCancel }: NewG
   }
 
   return (
-    <div ref={menuRef} className="fixed z-50 rounded-lg border shadow-xl p-3 w-80"
+    <div ref={menuRef} className="fixed z-[10010] rounded-lg border shadow-xl p-3 w-80"
       style={{ borderColor: "var(--border)", backgroundColor: "var(--surface)", ...style }}>
       <div className="flex items-center justify-between mb-2">
         <span className="text-xs font-semibold" style={{ color: "var(--foreground)" }}>New Book Grouping</span>
@@ -238,6 +238,9 @@ export function CorpusSelector({
   // spec, setting overflow-x to anything but visible forces overflow-y to
   // "auto" too — clipping any dropdown that overflows the row vertically,
   // even ones nested many levels deep, no matter their own z-index.
+  // z-[10010]: this also renders inside standalone modals like TagEditModal
+  // (overlay at z-[10000]) — must stay above the highest modal z-index used
+  // anywhere in the app, not just the default z-50 dropdown layer.
   function toggleOpen() {
     if (!open && buttonRef.current) {
       const r = buttonRef.current.getBoundingClientRect();
@@ -258,7 +261,7 @@ export function CorpusSelector({
       </button>
 
       {open && !showNewForm && menuPos && createPortal(
-        <div ref={menuRef} className="fixed z-50 rounded-lg border shadow-lg py-1 min-w-[220px] max-h-72 overflow-y-auto"
+        <div ref={menuRef} className="fixed z-[10010] rounded-lg border shadow-lg py-1 min-w-[220px] max-h-72 overflow-y-auto"
           style={{ top: menuPos.top, left: menuPos.left, borderColor: "var(--border)", backgroundColor: "var(--surface)" }}>
           <button type="button" onClick={() => choose("book")}
             className="w-full text-left text-xs px-3 py-1.5 transition-colors hover:bg-stone-100 dark:hover:bg-stone-800 flex items-center gap-2"
