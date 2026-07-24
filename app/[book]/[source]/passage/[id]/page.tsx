@@ -9,7 +9,6 @@ import {
   getBooksWithWords,
   getChapterMaxVerse,
   getCharacters,
-  getWordTags,
   getAvailableTranslationsForChapter,
   getUltVerses,
   getUltTranslation,
@@ -28,6 +27,7 @@ import {
   getCharTagBookPool,
   type ChapterLocus,
 } from "@/lib/db/scriptureLocus";
+import { resolveVisibleWordTags } from "@/lib/db/wordTagVisibility";
 import { getActiveWorkspaceId } from "@/lib/workspace";
 import { OSIS_BOOK_NAMES, OSIS_REF_BOOK_NAMES } from "@/lib/utils/osis";
 import type { TextSource } from "@/lib/morphology/types";
@@ -143,7 +143,10 @@ export default async function PassagePage({ params, searchParams }: PageProps) {
     // Characters / word-tags: fetch from all grouped+paired books so they
     // share the same pool (e.g. 1Sam+2Sam, or user-defined Pentateuch group).
     getCharacters(charTagBooks, workspaceId),
-    getWordTags(charTagBooks, workspaceId),
+    resolveVisibleWordTags(
+      { books: isCrossBook ? [osisBook, endOsisBook] : [osisBook], chapters: chapterEntries, passageId: passage.id },
+      workspaceId
+    ),
     getScriptureLocusBookWideData(
       isCrossBook
         ? [

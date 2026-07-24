@@ -77,11 +77,16 @@ export async function GET(request: NextRequest) {
     }
     return {
       wordId: occ.wordId,
+      tagId: occ.tagId,
+      osisRef: occ.osisRef,
       book: occ.book,
       chapter: occ.chapter,
       verse: occ.verse,
+      textSource: occ.textSource,
       reference: occ.reference,
       sourceText: occ.sourceText,
+      sourceTokens: occ.sourceTokens,
+      sourceTextSource: occ.sourceTextSource,
       translationText: translationId != null ? (occ.translationTexts.get(translationId) ?? "") : "",
       values,
     };
@@ -93,6 +98,8 @@ export async function GET(request: NextRequest) {
       type: first.type,
       color: first.color,
       books: [...new Set(matchingTags.map((t) => t.book))],
+      highlighted: matchingTags.some((t) => t.highlighted),
+      tagIds,
     },
     translationOnly,
     translations: allTranslations.map((t) => ({ id: t.id, abbreviation: t.abbreviation, name: t.name })),

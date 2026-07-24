@@ -8,32 +8,70 @@ import type { WordTag, BookGrouping } from "@/lib/db/schema";
 import type { LemmaSuggestion } from "@/app/api/search/lemma-suggest/route";
 import { RULE_PALETTE } from "@/lib/morphology/colorRules";
 import { OSIS_BOOKS_OT, OSIS_BOOKS_NT, OSIS_BOOKS_LXX, OSIS_BOOK_NAMES } from "@/lib/utils/osis";
+import { formatVerseRange } from "@/lib/utils/sectionRanges";
 
 const HEBREW_FONT: React.CSSProperties = { fontFamily: '"Ezra SIL", "SBL Hebrew", serif' };
 function isHebrew(s: string): boolean { return /[א-ת]/.test(s); }
 function hebrewStyle(s: string): React.CSSProperties { return isHebrew(s) ? HEBREW_FONT : {}; }
 
-const TAG_PALETTE: string[] = [
+export const TAG_PALETTE: string[] = [
   ...RULE_PALETTE,
   "#b91c1c", "#c2410c", "#a16207", "#166534",
   "#0f766e", "#1d4ed8", "#6d28d9", "#be185d",
 ];
 
 type TagType = "concept" | "lemma";
-type CorpusMode = "book" | "grouping" | "new";
+export type CorpusMode = "book" | "chapter" | "passage" | "grouping" | "new";
+
+/** What a tag's corpus is actually set to — the fields beyond `mode` are only
+ *  meaningful for their matching mode (e.g. `chapter` only for mode:"chapter"). */
+export interface CorpusAssignment {
+  mode: "book" | "chapter" | "passage" | "grouping";
+  groupingId: number | null;
+  chapter: number | null;
+  passageId: number | null;
+}
+
+export interface CorpusPassageOption {
+  id: number;
+  label: string;
+  startChapter: number;
+  startVerse: number;
+  endChapter: number;
+  endVerse: number;
+}
+
+/** Palette + custom-color swatch row shared by every tag color picker. */
+export function ColorSwatches({ selected, onPick }: { selected: string; onPick: (c: string) => void }) {
+  return (
+    <div className="flex flex-wrap gap-1" style={{ maxWidth: "10rem" }}>
+      {TAG_PALETTE.map((col) => (
+        <button key={col} type="button" onClick={() => onPick(col)}
+          className="w-4 h-4 rounded-full transition-transform hover:scale-110"
+          style={{ backgroundColor: col, outline: selected === col ? `2px solid ${col}` : "none", outlineOffset: "1px" }} />
+      ))}
+      <input type="color" value={selected} onChange={(e) => onPick(e.target.value)}
+        className="w-4 h-4 rounded-full cursor-pointer border-0 p-0 bg-transparent" title="Custom color" />
+    </div>
+  );
+}
 
 interface WordTagPanelProps {
   tags: WordTag[];
   activeTagId: number | null;
   highlightedTagIds: Set<number>;
   currentBook: string;
+  currentChapter: number;
+  /** Passages whose range includes the current chapter, offered as a
+   *  "current passage" corpus option. */
+  currentPassages: CorpusPassageOption[];
   bookGroupings: BookGrouping[];
   clusterPickingActive: boolean;
   onSelectTag: (id: number) => void;
-  onCreateConceptTag: (name: string, color: string, corpusGroupingId: number | null) => void;
-  onCreateClusterTag: (name: string, lemmas: string[], color: string, corpusGroupingId: number | null, corpusBooks: string[]) => void;
+  onCreateConceptTag: (name: string, color: string, corpus: CorpusAssignment) => void;
+  onCreateClusterTag: (name: string, lemmas: string[], color: string, corpus: CorpusAssignment, corpusBooks: string[]) => void;
   onDeleteTag: (id: number) => void;
-  onUpdateTag: (id: number, name: string, color: string, corpusGroupingId?: number | null, lemmas?: string[] | null, prevLemmas?: string[] | null, corpusBooks?: string[]) => void;
+  onUpdateTag: (id: number, name: string, color: string, corpus?: CorpusAssignment, lemmas?: string[] | null, prevLemmas?: string[] | null, corpusBooks?: string[]) => void;
   onReorder: (ids: number[]) => void;
   onToggleHighlight: (id: number) => void;
   onCreateGrouping: (name: string, books: string[], features: string[]) => Promise<BookGrouping>;
@@ -136,16 +174,30 @@ function NewGroupingForm({ currentBook, onSave, onCancel }: NewGroupingFormProps
 
 // ── Corpus selector ───────────────────────────────────────────────────────────
 
-interface CorpusSelectorProps {
+export interface CorpusSelectorProps {
   currentBook: string;
+  /** Omit (or leave undefined) where there's no live chapter to anchor a
+   *  "current chapter" option to — e.g. Manage Lists, which has no chapter
+   *  context. When omitted, "Current chapter" and "Current passage" are
+   *  hidden rather than shown disabled, since there's nothing to pick. */
+  currentChapter?: number;
+  /** Passages whose range includes the current chapter — offered as "current
+   *  passage" options. Empty (or omitted) when none apply here. */
+  currentPassages?: CorpusPassageOption[];
   bookGroupings: BookGrouping[];
   corpusMode: CorpusMode;
   corpusGroupingId: number | null;
-  onSelect: (mode: CorpusMode, groupingId: number | null) => void;
+  corpusChapter: number | null;
+  corpusPassageId: number | null;
+  onSelect: (assignment: CorpusAssignment) => void;
   onCreateGrouping: (name: string, books: string[]) => Promise<void>;
 }
 
-function CorpusSelector({ currentBook, bookGroupings, corpusMode, corpusGroupingId, onSelect, onCreateGrouping }: CorpusSelectorProps) {
+export function CorpusSelector({
+  currentBook, currentChapter, currentPassages = [], bookGroupings,
+  corpusMode, corpusGroupingId, corpusChapter, corpusPassageId,
+  onSelect, onCreateGrouping,
+}: CorpusSelectorProps) {
   const [open, setOpen] = useState(false);
   const [showNewForm, setShowNewForm] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -160,7 +212,17 @@ function CorpusSelector({ currentBook, bookGroupings, corpusMode, corpusGrouping
   }, [open]);
 
   const selectedGrouping = corpusGroupingId != null ? bookGroupings.find((g) => g.id === corpusGroupingId) : null;
-  const label = corpusMode === "book" ? currentBook : (selectedGrouping?.name ?? "Grouping");
+  const selectedPassage = corpusPassageId != null ? currentPassages.find((p) => p.id === corpusPassageId) : null;
+  const label =
+    corpusMode === "book"    ? currentBook :
+    corpusMode === "chapter" ? `${currentBook} ${corpusChapter ?? currentChapter ?? "?"}` :
+    corpusMode === "passage" ? (selectedPassage?.label || "Passage") :
+    (selectedGrouping?.name ?? "Grouping");
+
+  function choose(mode: CorpusAssignment["mode"], overrides: Partial<CorpusAssignment> = {}) {
+    onSelect({ mode, groupingId: null, chapter: null, passageId: null, ...overrides });
+    setOpen(false);
+  }
 
   return (
     <div className="relative flex items-center gap-1 shrink-0" ref={ref}>
@@ -173,22 +235,41 @@ function CorpusSelector({ currentBook, bookGroupings, corpusMode, corpusGrouping
       </button>
 
       {open && !showNewForm && (
-        <div className="absolute top-full left-0 mt-1 z-50 rounded-lg border shadow-lg py-1 min-w-[160px]"
+        <div className="absolute top-full left-0 mt-1 z-50 rounded-lg border shadow-lg py-1 min-w-[220px] max-h-72 overflow-y-auto"
           style={{ borderColor: "var(--border)", backgroundColor: "var(--surface)" }}>
-          <button type="button" onClick={() => { onSelect("book", null); setOpen(false); }}
+          <button type="button" onClick={() => choose("book")}
             className="w-full text-left text-xs px-3 py-1.5 transition-colors hover:bg-stone-100 dark:hover:bg-stone-800 flex items-center gap-2"
             style={{ color: "var(--foreground)" }}>
-            {corpusMode === "book" && <span className="text-blue-500 text-xs">✓</span>}
-            {corpusMode !== "book" && <span className="w-3" />}
+            {corpusMode === "book" ? <span className="text-blue-500 text-xs">✓</span> : <span className="w-3" />}
             Current book ({currentBook})
           </button>
+
+          {currentChapter != null && (
+            <button type="button" onClick={() => choose("chapter", { chapter: currentChapter })}
+              className="w-full text-left text-xs px-3 py-1.5 transition-colors hover:bg-stone-100 dark:hover:bg-stone-800 flex items-center gap-2"
+              style={{ color: "var(--foreground)" }}>
+              {corpusMode === "chapter" ? <span className="text-blue-500 text-xs">✓</span> : <span className="w-3" />}
+              Current chapter ({currentBook} {currentChapter})
+            </button>
+          )}
+
+          {currentPassages.map((p) => (
+            <button key={p.id} type="button" onClick={() => choose("passage", { passageId: p.id })}
+              className="w-full text-left text-xs px-3 py-1.5 transition-colors hover:bg-stone-100 dark:hover:bg-stone-800 flex items-center gap-2"
+              style={{ color: "var(--foreground)" }}>
+              {corpusMode === "passage" && corpusPassageId === p.id ? <span className="text-blue-500 text-xs">✓</span> : <span className="w-3" />}
+              <span className="truncate">
+                {p.label || "Untitled passage"} {formatVerseRange(p.startChapter, p.startVerse, p.endChapter, p.endVerse, currentBook)}
+              </span>
+            </button>
+          ))}
 
           {bookGroupings.length > 0 && (
             <>
               <div className="my-1 border-t" style={{ borderColor: "var(--border)" }} />
               {bookGroupings.map((g) => (
                 <button key={g.id} type="button"
-                  onClick={() => { onSelect("grouping", g.id); setOpen(false); }}
+                  onClick={() => choose("grouping", { groupingId: g.id })}
                   className="w-full text-left text-xs px-3 py-1.5 transition-colors hover:bg-stone-100 dark:hover:bg-stone-800 flex items-center gap-2"
                   style={{ color: "var(--foreground)" }}>
                   {corpusMode === "grouping" && corpusGroupingId === g.id ? <span className="text-blue-500 text-xs">✓</span> : <span className="w-3" />}
@@ -396,11 +477,15 @@ function LemmaPickerInput({ color, lemmas, pickingActive, externalDisplayLabels,
 
 // ── Main panel ────────────────────────────────────────────────────────────────
 
+const DEFAULT_CORPUS: CorpusAssignment = { mode: "book", groupingId: null, chapter: null, passageId: null };
+
 export default function WordTagPanel({
   tags,
   activeTagId,
   highlightedTagIds,
   currentBook,
+  currentChapter,
+  currentPassages,
   bookGroupings,
   clusterPickingActive,
   onSelectTag,
@@ -422,16 +507,14 @@ export default function WordTagPanel({
   const [newColor, setNewColor] = useState(TAG_PALETTE[0]);
   const [newLemmas, setNewLemmas] = useState<string[]>([]);
   const [newLemmaDisplayLabels, setNewLemmaDisplayLabels] = useState<Map<string, string>>(new Map());
-  const [newCorpusMode, setNewCorpusMode] = useState<CorpusMode>("book");
-  const [newCorpusGroupingId, setNewCorpusGroupingId] = useState<number | null>(null);
+  const [newCorpus, setNewCorpus] = useState<CorpusAssignment>(DEFAULT_CORPUS);
 
   const [hoveredId, setHoveredId] = useState<number | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
   const [editingTagId, setEditingTagId] = useState<number | null>(null);
   const [editName, setEditName] = useState("");
   const [editColor, setEditColor] = useState(TAG_PALETTE[0]);
-  const [editCorpusMode, setEditCorpusMode] = useState<CorpusMode>("book");
-  const [editCorpusGroupingId, setEditCorpusGroupingId] = useState<number | null>(null);
+  const [editCorpus, setEditCorpus] = useState<CorpusAssignment>(DEFAULT_CORPUS);
   const [editLemmas, setEditLemmas] = useState<string[]>([]);
   const editOriginalLemmasRef = useRef<string[]>([]);
 
@@ -446,16 +529,19 @@ export default function WordTagPanel({
     setNewType("concept");
     setNewLemmas([]);
     setNewLemmaDisplayLabels(new Map());
-    setNewCorpusMode("book");
-    setNewCorpusGroupingId(null);
+    setNewCorpus(DEFAULT_CORPUS);
   }
 
   function handleStartEdit(t: WordTag) {
     setEditingTagId(t.id);
     setEditName(t.name);
     setEditColor(t.color);
-    setEditCorpusGroupingId(t.corpusGroupingId ?? null);
-    setEditCorpusMode(t.corpusGroupingId != null ? "grouping" : "book");
+    setEditCorpus({
+      mode: (t.corpusType as CorpusAssignment["mode"] | undefined) ?? "book",
+      groupingId: t.corpusGroupingId ?? null,
+      chapter: t.corpusChapter ?? null,
+      passageId: t.corpusPassageId ?? null,
+    });
     const parsed = t.lemmas ? (() => { try { return JSON.parse(t.lemmas) as string[]; } catch { return []; } })() : [];
     setEditLemmas(parsed);
     editOriginalLemmasRef.current = parsed;
@@ -464,35 +550,35 @@ export default function WordTagPanel({
 
   function handleSaveEdit() {
     if (!editingTagId || !editName.trim()) return;
-    const corpusId = editCorpusMode === "grouping" ? editCorpusGroupingId : null;
     const lemmasToSave = editLemmas.length > 0 ? editLemmas : null;
-    const corpusBooks = resolveCorpusBooks(editCorpusMode, editCorpusGroupingId);
-    onUpdateTag(editingTagId, editName.trim(), editColor, corpusId, lemmasToSave, editOriginalLemmasRef.current, corpusBooks);
+    const corpusBooks = resolveCorpusBooks(editCorpus);
+    onUpdateTag(editingTagId, editName.trim(), editColor, editCorpus, lemmasToSave, editOriginalLemmasRef.current, corpusBooks);
     setEditingTagId(null);
   }
 
-  function resolveCorpusBooks(mode: CorpusMode, groupingId: number | null): string[] {
-    if (mode === "book") return [currentBook];
-    if (mode === "grouping" && groupingId != null) {
-      const g = bookGroupings.find((g) => g.id === groupingId);
+  function resolveCorpusBooks(corpus: CorpusAssignment): string[] {
+    if (corpus.mode === "grouping" && corpus.groupingId != null) {
+      const g = bookGroupings.find((g) => g.id === corpus.groupingId);
       if (g) {
         try { return JSON.parse(g.books) as string[]; } catch { return [currentBook]; }
       }
     }
+    // "book" / "chapter" / "passage" all re-search just this book — a
+    // narrower re-search scope than the tag's own visibility isn't harmful,
+    // it just leaves any stray refs outside that scope simply unseen.
     return [currentBook];
   }
 
   function handleCreate() {
-    const corpusId = newCorpusMode === "grouping" ? newCorpusGroupingId : null;
-    const corpusBooks = resolveCorpusBooks(newCorpusMode, newCorpusGroupingId);
+    const corpusBooks = resolveCorpusBooks(newCorpus);
 
     if (newType === "concept") {
       if (!newName.trim()) return;
-      onCreateConceptTag(newName.trim(), newColor, corpusId);
+      onCreateConceptTag(newName.trim(), newColor, newCorpus);
     } else {
       // lemma
       if (!newName.trim() || newLemmas.length === 0) return;
-      onCreateClusterTag(newName.trim(), newLemmas, newColor, corpusId, corpusBooks);
+      onCreateClusterTag(newName.trim(), newLemmas, newColor, newCorpus, corpusBooks);
     }
     resetNew();
     setShowNew(false);
@@ -500,14 +586,12 @@ export default function WordTagPanel({
 
   async function handleCreateGroupingForNew(name: string, booksArr: string[]) {
     const g = await onCreateGrouping(name, booksArr, ["wordTags"]);
-    setNewCorpusMode("grouping");
-    setNewCorpusGroupingId(g.id);
+    setNewCorpus({ mode: "grouping", groupingId: g.id, chapter: null, passageId: null });
   }
 
   async function handleCreateGroupingForEdit(name: string, booksArr: string[]) {
     const g = await onCreateGrouping(name, booksArr, ["wordTags"]);
-    setEditCorpusMode("grouping");
-    setEditCorpusGroupingId(g.id);
+    setEditCorpus({ mode: "grouping", groupingId: g.id, chapter: null, passageId: null });
   }
 
   function openReorder() {
@@ -527,18 +611,6 @@ export default function WordTagPanel({
   }
   function handleDragEnd() { dragIdx.current = null; }
   function handleSaveReorder() { onReorder(reorderList.map((t) => t.id)); setShowReorder(false); }
-
-  const colorSwatches = (selected: string, onPick: (c: string) => void) => (
-    <div className="flex flex-wrap gap-1" style={{ maxWidth: "10rem" }}>
-      {TAG_PALETTE.map((col) => (
-        <button key={col} type="button" onClick={() => onPick(col)}
-          className="w-4 h-4 rounded-full transition-transform hover:scale-110"
-          style={{ backgroundColor: col, outline: selected === col ? `2px solid ${col}` : "none", outlineOffset: "1px" }} />
-      ))}
-      <input type="color" value={selected} onChange={(e) => onPick(e.target.value)}
-        className="w-4 h-4 rounded-full cursor-pointer border-0 p-0 bg-transparent" title="Custom color" />
-    </div>
-  );
 
   const typeBadge = (t: WordTag) => {
     if (t.type === "word" || t.type === "cluster") return "L";
@@ -586,13 +658,15 @@ export default function WordTagPanel({
                   <input autoFocus type="text" value={editName} onChange={(e) => setEditName(e.target.value)}
                     onKeyDown={(e) => { if (e.key === "Enter") handleSaveEdit(); if (e.key === "Escape") setEditingTagId(null); }}
                     className="w-24 text-xs bg-transparent outline-none" style={{ color: "var(--foreground)" }} />
-                  {colorSwatches(editColor, setEditColor)}
+                  <ColorSwatches selected={editColor} onPick={setEditColor} />
                 </div>
 
                 {/* Corpus selector for edit */}
-                <CorpusSelector currentBook={currentBook} bookGroupings={bookGroupings}
-                  corpusMode={editCorpusMode} corpusGroupingId={editCorpusGroupingId}
-                  onSelect={(mode, gid) => { setEditCorpusMode(mode); setEditCorpusGroupingId(gid); }}
+                <CorpusSelector currentBook={currentBook} currentChapter={currentChapter} currentPassages={currentPassages}
+                  bookGroupings={bookGroupings}
+                  corpusMode={editCorpus.mode} corpusGroupingId={editCorpus.groupingId}
+                  corpusChapter={editCorpus.chapter} corpusPassageId={editCorpus.passageId}
+                  onSelect={setEditCorpus}
                   onCreateGrouping={handleCreateGroupingForEdit} />
 
                 {/* Lemma editor for lemma-type tags */}
@@ -758,13 +832,15 @@ export default function WordTagPanel({
 
             {/* Color + Corpus row */}
             <div className="flex items-center gap-2 flex-wrap">
-              {colorSwatches(newColor, setNewColor)}
+              <ColorSwatches selected={newColor} onPick={setNewColor} />
               <span className="inline-block w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: newColor }} />
             </div>
 
-            <CorpusSelector currentBook={currentBook} bookGroupings={bookGroupings}
-              corpusMode={newCorpusMode} corpusGroupingId={newCorpusGroupingId}
-              onSelect={(mode, gid) => { setNewCorpusMode(mode); setNewCorpusGroupingId(gid); }}
+            <CorpusSelector currentBook={currentBook} currentChapter={currentChapter} currentPassages={currentPassages}
+              bookGroupings={bookGroupings}
+              corpusMode={newCorpus.mode} corpusGroupingId={newCorpus.groupingId}
+              corpusChapter={newCorpus.chapter} corpusPassageId={newCorpus.passageId}
+              onSelect={setNewCorpus}
               onCreateGrouping={handleCreateGroupingForNew} />
 
             {/* Action buttons */}

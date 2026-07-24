@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import Link from "next/link";
 import HomeLink from "@/components/ui/HomeLink";
+import { tokenizeTranslationText, decodeUsfmToken } from "@/lib/utils/translationTokens";
 
 const HEBREW_FONT: React.CSSProperties = { fontFamily: '"Ezra SIL", "SBL Hebrew", serif' };
 function isHebrew(s: string): boolean { return /[א-ת]/.test(s); }
@@ -29,13 +30,16 @@ function writeLocal<T>(key: string, value: T): void {
 interface ColumnOption { id: number; value: string; color: string | null; sortOrder: number }
 interface Column { id: number; tagName: string; name: string; type: "text" | "list"; sortOrder: number; options?: ColumnOption[] }
 interface OccurrenceValue { optionIds: number[]; text: string | null }
+interface SourceToken { text: string; wordId: string }
 interface Occurrence {
-  wordId: string; book: string; chapter: number; verse: number;
-  reference: string; sourceText: string; translationText: string;
+  wordId: string; tagId: number; osisRef: string; book: string; chapter: number; verse: number;
+  textSource: string;
+  reference: string; sourceText: string; sourceTokens: SourceToken[] | null; sourceTextSource: string | null;
+  translationText: string;
   values: Record<number, OccurrenceValue>;
 }
 interface TranslationInfo { id: number; abbreviation: string; name: string }
-interface TagInfo { name: string; type: string; color: string; books: string[] }
+interface TagInfo { name: string; type: string; color: string; books: string[]; highlighted: boolean; tagIds: number[] }
 interface OccurrencesData { tag: TagInfo; translationOnly: boolean; translations: TranslationInfo[]; columns: Column[]; occurrences: Occurrence[] }
 
 function typeBadge(type: string): string {
@@ -101,6 +105,43 @@ export default function ConceptEditorPanel({ tagName }: { tagName: string }) {
     await load(translationId);
   }
 
+  async function handleToggleHighlight() {
+    if (!data) return;
+    const next = !data.tag.highlighted;
+    setData({ ...data, tag: { ...data.tag, highlighted: next } });
+    try {
+      await Promise.all(data.tag.tagIds.map((id) =>
+        fetch(`/api/word-tags/${id}/highlight`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ highlighted: next }),
+        })
+      ));
+    } catch {
+      setData((prev) => prev ? { ...prev, tag: { ...prev.tag, highlighted: !next } } : prev);
+    }
+  }
+
+  /** Add or remove a single word from a tag — the same
+   *  `/api/word-tag-refs` upsert the chapter reading view's own tag-editing
+   *  mode uses, so a word added or removed here behaves identically there. */
+  async function handleToggleWord(opts: {
+    wordId: string; tagId: number; book: string; chapter: number; source: string; isMember: boolean;
+  }) {
+    await fetch("/api/word-tag-refs", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        wordId: opts.wordId,
+        tagId: opts.isMember ? null : opts.tagId,
+        book: opts.book,
+        chapter: opts.chapter,
+        source: opts.source,
+      }),
+    });
+    await refresh();
+  }
+
   async function handleAddColumn(name: string, type: "text" | "list") {
     await fetch("/api/word-tags/columns", {
       method: "POST",
@@ -135,44 +176,52 @@ export default function ConceptEditorPanel({ tagName }: { tagName: string }) {
     await refresh();
   }
 
-  async function handleToggleOption(columnId: number, wordId: string, optionId: number, currentlySelected: boolean) {
-    if (currentlySelected) {
-      await fetch(`/api/word-tags/columns/${columnId}/values`, {
-        method: "DELETE",
+  /** A multi-word phrase shares one Tags-column row, so every value edit
+   *  applies to all of the phrase's underlying words together — this sets
+   *  each wordId to the SAME target state (rather than naively toggling each
+   *  one from its own current state, which could leave them out of sync if
+   *  they'd ever been edited individually before). */
+  async function handleToggleOption(columnId: number, wordIds: string[], optionId: number, currentlySelected: boolean) {
+    const targetSelected = !currentlySelected;
+    await Promise.all(wordIds.map((wordId) => {
+      const occ = data?.occurrences.find((o) => o.wordId === wordId);
+      const hasOption = occ?.values[columnId]?.optionIds.includes(optionId) ?? false;
+      if (hasOption === targetSelected) return Promise.resolve();
+      return fetch(`/api/word-tags/columns/${columnId}/values`, {
+        method: targetSelected ? "PUT" : "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ wordId, optionId }),
       });
-    } else {
-      await fetch(`/api/word-tags/columns/${columnId}/values`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ wordId, optionId }),
-      });
-    }
+    }));
     await refresh();
   }
 
-  async function handleCreateOption(columnId: number, wordId: string, value: string) {
+  async function handleCreateOption(columnId: number, wordIds: string[], value: string) {
     const res = await fetch(`/api/word-tags/columns/${columnId}/options`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ value }),
     });
     const opt = await res.json();
-    await fetch(`/api/word-tags/columns/${columnId}/values`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ wordId, optionId: opt.id }),
-    });
+    await Promise.all(wordIds.map((wordId) =>
+      fetch(`/api/word-tags/columns/${columnId}/values`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ wordId, optionId: opt.id }),
+      })
+    ));
     await refresh();
   }
 
-  async function handleSetText(columnId: number, wordId: string, textValue: string) {
-    await fetch(`/api/word-tags/columns/${columnId}/values`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ wordId, textValue }),
-    });
+  async function handleSetText(columnId: number, wordIds: string[], textValue: string) {
+    await Promise.all(wordIds.map((wordId) =>
+      fetch(`/api/word-tags/columns/${columnId}/values`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ wordId, textValue }),
+      })
+    ));
+    await refresh();
   }
 
   if (loading) {
@@ -182,6 +231,12 @@ export default function ConceptEditorPanel({ tagName }: { tagName: string }) {
     return <div className="text-sm text-red-500">{error}</div>;
   }
   if (!data) return null;
+
+  const translationAbbr = data.translations.find((t) => t.id === translationId)?.abbreviation ?? null;
+  // "N occurrences" should count phrases, not individual tagged words — a
+  // contiguous run like "ὁ πιστεύων" is one occurrence, not two.
+  const occurrenceCount = groupOccurrencesByVerse(data.occurrences, translationAbbr)
+    .reduce((sum, g) => sum + g.phraseCount, 0);
 
   return (
     <div className="space-y-6">
@@ -208,7 +263,7 @@ export default function ConceptEditorPanel({ tagName }: { tagName: string }) {
             {typeBadge(data.tag.type)}
           </span>
           <span className="text-xs" style={{ color: "var(--text-muted)" }}>
-            {data.tag.books.join(", ")} · {data.occurrences.length} occurrence{data.occurrences.length !== 1 ? "s" : ""}
+            {data.tag.books.join(", ")} · {occurrenceCount} occurrence{occurrenceCount !== 1 ? "s" : ""}
           </span>
         </div>
       </div>
@@ -232,11 +287,20 @@ export default function ConceptEditorPanel({ tagName }: { tagName: string }) {
           <input type="checkbox" checked={!hideSourceText} onChange={toggleSourceText} />
           Show source text
         </label>
+        <label
+          className="flex items-center gap-1.5 text-xs cursor-pointer"
+          style={{ color: "var(--text-muted)" }}
+          title="Highlight this tag's occurrences when reading the chapter"
+        >
+          <input type="checkbox" checked={data.tag.highlighted} onChange={handleToggleHighlight} />
+          Highlight in reading view
+        </label>
       </div>
 
       <OccurrenceTable
         data={data}
         showSourceText={!hideSourceText}
+        translationAbbr={translationAbbr}
         onAddColumn={handleAddColumn}
         onRenameColumn={handleRenameColumn}
         onDeleteColumn={handleDeleteColumn}
@@ -244,6 +308,7 @@ export default function ConceptEditorPanel({ tagName }: { tagName: string }) {
         onToggleOption={handleToggleOption}
         onCreateOption={handleCreateOption}
         onSetText={handleSetText}
+        onToggleWord={handleToggleWord}
       />
     </div>
   );
@@ -254,17 +319,264 @@ export default function ConceptEditorPanel({ tagName }: { tagName: string }) {
 interface OccurrenceTableProps {
   data: OccurrencesData;
   showSourceText: boolean;
+  /** Abbreviation of the currently-selected translation, needed to build/parse
+   *  tv: ids when toggling a word in the Translation Text column. */
+  translationAbbr: string | null;
   onAddColumn: (name: string, type: "text" | "list") => Promise<void>;
   onRenameColumn: (columnId: number, name: string) => Promise<void>;
   onDeleteColumn: (columnId: number) => Promise<void>;
   onReorderColumns: (orderedIds: number[]) => Promise<void>;
-  onToggleOption: (columnId: number, wordId: string, optionId: number, currentlySelected: boolean) => Promise<void>;
-  onCreateOption: (columnId: number, wordId: string, value: string) => Promise<void>;
-  onSetText: (columnId: number, wordId: string, textValue: string) => Promise<void>;
+  onToggleOption: (columnId: number, wordIds: string[], optionId: number, currentlySelected: boolean) => Promise<void>;
+  onCreateOption: (columnId: number, wordIds: string[], value: string) => Promise<void>;
+  onSetText: (columnId: number, wordIds: string[], textValue: string) => Promise<void>;
+  onToggleWord: (opts: { wordId: string; tagId: number; book: string; chapter: number; source: string; isMember: boolean }) => Promise<void>;
+}
+
+/** One row's worth of occurrences: every tagged word that falls in the same
+ *  verse, so the verse itself only has to be shown once. */
+interface VerseGroup {
+  osisRef: string;
+  reference: string;
+  book: string;
+  chapter: number;
+  verse: number;
+  /** Every member necessarily shares one tag row (a verse belongs to one book,
+   *  and tag rows are keyed by book), so this is safe to use for new refs too. */
+  tagId: number;
+  sourceText: string;
+  sourceTokens: SourceToken[] | null;
+  sourceTextSource: string | null;
+  translationText: string;
+  members: Occurrence[];
+  /** wordId -> 1-based phrase number within this verse. A contiguous run of
+   *  tagged words with nothing but punctuation between them (e.g. "ὁ
+   *  πιστεύων") is one phrase and shares a number — see phraseCount below. */
+  phraseNumberByWordId: Map<string, number>;
+  /** Distinct phrases in this verse — what "N occurrences" should actually count. */
+  phraseCount: number;
+  /** Each phrase's own member occurrences, in phrase-number order — one Tags
+   *  column row per phrase, not per underlying word, since a multi-word
+   *  phrase's tag values apply to the whole phrase together. */
+  phrases: Occurrence[][];
+}
+
+/** True for a token that carries no letters or digits — i.e. it's punctuation
+ *  on its own, not a word. A standalone token like this never itself forces a
+ *  phrase break — only the specific marks in PHRASE_BREAK_CHARS do (checked
+ *  separately) — but any other stray symbol shouldn't block a phrase from
+ *  spanning across it either. */
+function isPunctuationOnlyToken(text: string): boolean {
+  return !/[\p{L}\p{N}]/u.test(text);
+}
+
+/** Marks that end a phrase wherever they appear, whether trailing the
+ *  previous tagged word or leading the next one — sentence/clause-final
+ *  punctuation and quotation marks. Deliberately narrower than "any
+ *  punctuation": a hyphen, maqqef, or raised interpunct-free comma-less list
+ *  shouldn't split a phrase, but ". , ; ? !" and quote marks should. Includes
+ *  the Greek-specific equivalents (·  for semicolon, ; for question mark). */
+const PHRASE_BREAK_CHARS = new Set([
+  ".", ",", ";", "?", "!",
+  "·", // Greek ano teleia — functions as a semicolon
+  ";", // Greek question mark (distinct codepoint from ";")
+  '"', "'", "‘", "’", "“", "”",
+]);
+
+function endsWithPhraseBreak(text: string): boolean {
+  const t = text.trim();
+  return t.length > 0 && PHRASE_BREAK_CHARS.has(t.slice(-1));
+}
+function startsWithPhraseBreak(text: string): boolean {
+  const t = text.trim();
+  return t.length > 0 && PHRASE_BREAK_CHARS.has(t.slice(0, 1));
+}
+
+/** Merges a position-sorted bucket of same-space occurrences into phrases.
+ *  Two tagged words join the same phrase only when they're contiguous (the
+ *  very next position, or with only non-breaking punctuation-only tokens
+ *  between) AND neither the trailing edge of the earlier word nor the
+ *  leading edge of the later one carries a phrase-break mark — a comma,
+ *  period, etc. always ends the phrase there even when the next tagged word
+ *  is immediately adjacent. */
+function mergeIntoPhrases(
+  bucket: { occ: Occurrence; pos: number }[],
+  tokenTextAt: (pos: number) => string | null | undefined
+): Occurrence[][] {
+  const sorted = [...bucket].sort((a, b) => a.pos - b.pos);
+  const phrases: { occs: Occurrence[]; lastPos: number }[] = [];
+  for (const { occ, pos } of sorted) {
+    const cur = phrases[phrases.length - 1];
+    if (cur) {
+      const lastText = tokenTextAt(cur.lastPos);
+      const nextText = tokenTextAt(pos);
+      const hardBreak =
+        (lastText != null && endsWithPhraseBreak(lastText)) ||
+        (nextText != null && startsWithPhraseBreak(nextText));
+
+      let contiguous = false;
+      if (!hardBreak) {
+        if (pos === cur.lastPos + 1) {
+          contiguous = true;
+        } else if (pos > cur.lastPos + 1) {
+          contiguous = true;
+          for (let p = cur.lastPos + 1; p < pos; p++) {
+            const text = tokenTextAt(p);
+            if (
+              text == null || !isPunctuationOnlyToken(text) ||
+              endsWithPhraseBreak(text) || startsWithPhraseBreak(text)
+            ) { contiguous = false; break; }
+          }
+        }
+      }
+      if (contiguous) {
+        cur.occs.push(occ);
+        cur.lastPos = pos;
+        continue;
+      }
+    }
+    phrases.push({ occs: [occ], lastPos: pos });
+  }
+  return phrases.map((p) => p.occs);
+}
+
+/** Groups occurrences that share a verse, preserving the backend's canonical
+ *  (book/chapter/verse) ordering, and within each verse further groups
+ *  contiguous same-tag words into phrases (see mergeIntoPhrases) so e.g. "ὁ
+ *  πιστεύων" counts and numbers as one occurrence rather than two.
+ *  `translationAbbr` is needed to resolve tv:-prefixed members' own token
+ *  position and check for punctuation between them; a tv: member tagged
+ *  under some other translation than the one currently displayed can only
+ *  be checked for strict (gap-of-one) adjacency, since that translation's
+ *  text isn't loaded here. */
+function groupOccurrencesByVerse(occurrences: Occurrence[], translationAbbr: string | null): VerseGroup[] {
+  const groups: Omit<VerseGroup, "phraseNumberByWordId" | "phraseCount" | "phrases">[] = [];
+  const indexByRef = new Map<string, number>();
+  for (const occ of occurrences) {
+    let idx = indexByRef.get(occ.osisRef);
+    if (idx === undefined) {
+      idx = groups.length;
+      indexByRef.set(occ.osisRef, idx);
+      groups.push({
+        osisRef: occ.osisRef,
+        reference: occ.reference,
+        book: occ.book,
+        chapter: occ.chapter,
+        verse: occ.verse,
+        tagId: occ.tagId,
+        sourceText: occ.sourceText,
+        sourceTokens: occ.sourceTokens,
+        sourceTextSource: occ.sourceTextSource,
+        translationText: occ.translationText,
+        members: [],
+      });
+    }
+    groups[idx].members.push(occ);
+  }
+
+  return groups.map((group) => {
+    const sourceBucket: { occ: Occurrence; pos: number }[] = [];
+    const tvBuckets = new Map<string, { occ: Occurrence; pos: number }[]>();
+    const unresolved: Occurrence[] = [];
+
+    for (const occ of group.members) {
+      if (occ.wordId.startsWith("tv:")) {
+        const parts = occ.wordId.split(":");
+        const abbr = parts[1] ?? "";
+        const posStr = parts[2]?.split(".").pop();
+        const pos = posStr != null ? parseInt(posStr, 10) : NaN;
+        if (isNaN(pos)) { unresolved.push(occ); continue; }
+        const arr = tvBuckets.get(abbr) ?? [];
+        arr.push({ occ, pos });
+        tvBuckets.set(abbr, arr);
+      } else if (group.sourceTokens) {
+        const pos = group.sourceTokens.findIndex((t) => t.wordId === occ.wordId);
+        if (pos === -1) { unresolved.push(occ); continue; }
+        sourceBucket.push({ occ, pos });
+      } else {
+        unresolved.push(occ);
+      }
+    }
+
+    const translationTokens = translationAbbr
+      ? tokenizeTranslationText(group.translationText).map((t) => decodeUsfmToken(t).display)
+      : null;
+
+    const sourcePhrases = mergeIntoPhrases(sourceBucket, (p) => group.sourceTokens?.[p]?.text);
+    const tvPhrases = [...tvBuckets.entries()].flatMap(([abbr, bucket]) =>
+      mergeIntoPhrases(bucket, (p) => (abbr === translationAbbr ? translationTokens?.[p] : null))
+    );
+    const allPhrases = [...sourcePhrases, ...tvPhrases, ...unresolved.map((o) => [o])];
+
+    const phraseNumberByWordId = new Map<string, number>();
+    const orderedMembers: Occurrence[] = [];
+    allPhrases.forEach((phraseOccs, i) => {
+      for (const occ of phraseOccs) {
+        phraseNumberByWordId.set(occ.wordId, i + 1);
+        orderedMembers.push(occ);
+      }
+    });
+
+    return { ...group, members: orderedMembers, phraseNumberByWordId, phraseCount: allPhrases.length, phrases: allPhrases };
+  });
+}
+
+/** Small colored badge used to tie a highlighted word in the source text back
+ *  to its own row of column values, when a verse has more than one occurrence. */
+function OccurrenceBadge({ n, color }: { n: number; color: string }) {
+  return (
+    <span
+      className="inline-flex items-center justify-center shrink-0 rounded-full text-[9px] font-bold text-white leading-none"
+      style={{ backgroundColor: color, width: "14px", height: "14px" }}
+    >
+      {n}
+    </span>
+  );
+}
+
+/** Renders a verse's word tokens with this tag's occurrences highlighted, and
+ *  every token clickable — clicking a highlighted word removes it from the
+ *  tag, clicking any other word adds it. Shared by the Source Text and
+ *  Translation Text columns; the caller supplies each token's own wordId. */
+function ClickableTokens({ tokens, phraseNumberByWordId, showBadges, color, onToggle, hebrew }: {
+  tokens: { key: string; text: string; wordId: string }[];
+  phraseNumberByWordId: Map<string, number>;
+  /** Whether to show phrase-number badges at all — false when the whole verse
+   *  is just one phrase, so numbering it would be noise. */
+  showBadges: boolean;
+  color: string;
+  onToggle: (wordId: string, isMember: boolean) => void;
+  hebrew?: boolean;
+}) {
+  return (
+    <span>
+      {tokens.map((tok, i) => {
+        const n = phraseNumberByWordId.get(tok.wordId);
+        const isMember = n != null;
+        return (
+          <span key={tok.key}>
+            {i > 0 && " "}
+            <span
+              role="button"
+              title={isMember ? "Remove from this list" : "Add to this list"}
+              onClick={() => onToggle(tok.wordId, isMember)}
+              className={[
+                "rounded px-0.5 inline-flex items-center gap-0.5 cursor-pointer transition-colors",
+                isMember ? "" : "hover:bg-stone-200 dark:hover:bg-stone-700",
+              ].join(" ")}
+              style={isMember ? { backgroundColor: `${color}2a` } : undefined}
+            >
+              {isMember && showBadges && <OccurrenceBadge n={n} color={color} />}
+              <span style={hebrew ? HEBREW_FONT : undefined}>{tok.text}</span>
+            </span>
+          </span>
+        );
+      })}
+    </span>
+  );
 }
 
 function OccurrenceTable({
-  data, showSourceText, onAddColumn, onRenameColumn, onDeleteColumn, onReorderColumns, onToggleOption, onCreateOption, onSetText,
+  data, showSourceText, translationAbbr, onAddColumn, onRenameColumn, onDeleteColumn, onReorderColumns, onToggleOption, onCreateOption, onSetText, onToggleWord,
 }: OccurrenceTableProps) {
   const [showAddColumn, setShowAddColumn] = useState(false);
   const dragIdx = useRef<number | null>(null);
@@ -273,6 +585,8 @@ function OccurrenceTable({
   const columns = dragOrder
     ? dragOrder.map((id) => data.columns.find((c) => c.id === id)!).filter(Boolean)
     : data.columns;
+
+  const verseGroups = groupOccurrencesByVerse(data.occurrences, translationAbbr);
 
   function handleDragStart(idx: number) {
     dragIdx.current = idx;
@@ -333,34 +647,83 @@ function OccurrenceTable({
           </tr>
         </thead>
         <tbody>
-          {data.occurrences.map((occ) => (
-            <tr key={occ.wordId} className="border-t" style={{ borderColor: "var(--border)" }}>
-              <td className="px-3 py-2 whitespace-nowrap align-top" style={{ color: "var(--foreground)" }}>{occ.reference}</td>
-              {showSourceText && (
-                <td className="px-3 py-2 align-top" style={hebrewStyle(occ.sourceText)}>{occ.sourceText}</td>
-              )}
-              <td className="px-3 py-2 align-top" style={{ color: "var(--text-muted)" }}>{occ.translationText}</td>
-              {columns.map((col) => (
-                <td key={col.id} className="px-3 py-2 align-top" style={{ minWidth: "10rem" }}>
-                  {col.type === "list" ? (
-                    <ListCell
-                      column={col}
-                      value={occ.values[col.id] ?? { optionIds: [], text: null }}
-                      onToggleOption={(optionId, selected) => onToggleOption(col.id, occ.wordId, optionId, selected)}
-                      onCreateOption={(value) => onCreateOption(col.id, occ.wordId, value)}
+          {verseGroups.map((group) => {
+            const showBadges = group.phraseCount > 1;
+            return (
+              <tr key={group.osisRef} className="border-t" style={{ borderColor: "var(--border)" }}>
+                <td className="px-3 py-2 whitespace-nowrap align-top" style={{ color: "var(--foreground)" }}>{group.reference}</td>
+                {showSourceText && (
+                  <td className="px-3 py-2 align-top" style={hebrewStyle(group.sourceText)}>
+                    {group.sourceTokens ? (
+                      <ClickableTokens
+                        tokens={group.sourceTokens.map((t) => ({ key: t.wordId, text: t.text, wordId: t.wordId }))}
+                        phraseNumberByWordId={group.phraseNumberByWordId}
+                        showBadges={showBadges}
+                        color={data.tag.color}
+                        hebrew={isHebrew(group.sourceText)}
+                        onToggle={(wordId, isMember) => onToggleWord({
+                          wordId, tagId: group.tagId, book: group.book, chapter: group.chapter,
+                          source: group.sourceTextSource ?? group.members[0].textSource, isMember,
+                        })}
+                      />
+                    ) : (
+                      group.sourceText
+                    )}
+                  </td>
+                )}
+                <td className="px-3 py-2 align-top" style={{ color: "var(--text-muted)" }}>
+                  {translationAbbr && group.translationText ? (
+                    <ClickableTokens
+                      tokens={tokenizeTranslationText(group.translationText).map((tok, wi) => ({
+                        key: `${wi}`,
+                        text: decodeUsfmToken(tok).display,
+                        wordId: `tv:${translationAbbr}:${group.book}.${group.chapter}.${group.verse}.${wi}`,
+                      }))}
+                      phraseNumberByWordId={group.phraseNumberByWordId}
+                      showBadges={showBadges}
+                      color={data.tag.color}
+                      onToggle={(wordId, isMember) => onToggleWord({
+                        wordId, tagId: group.tagId, book: group.book, chapter: group.chapter,
+                        source: translationAbbr, isMember,
+                      })}
                     />
                   ) : (
-                    <TextCell
-                      initialValue={occ.values[col.id]?.text ?? ""}
-                      onSave={(text) => onSetText(col.id, occ.wordId, text)}
-                    />
+                    group.translationText
                   )}
                 </td>
-              ))}
-              <td />
-            </tr>
-          ))}
-          {data.occurrences.length === 0 && (
+                {columns.map((col) => (
+                  <td key={col.id} className="px-3 py-2 align-top" style={{ minWidth: "10rem" }}>
+                    <div className="flex flex-col gap-1.5">
+                      {group.phrases.map((phraseOccs, i) => {
+                        const rep = phraseOccs[0];
+                        const wordIds = phraseOccs.map((o) => o.wordId);
+                        return (
+                          <div key={rep.wordId} className="flex items-start gap-1.5">
+                            {showBadges && <OccurrenceBadge n={i + 1} color={data.tag.color} />}
+                            {col.type === "list" ? (
+                              <ListCell
+                                column={col}
+                                value={rep.values[col.id] ?? { optionIds: [], text: null }}
+                                onToggleOption={(optionId, selected) => onToggleOption(col.id, wordIds, optionId, selected)}
+                                onCreateOption={(value) => onCreateOption(col.id, wordIds, value)}
+                              />
+                            ) : (
+                              <TextCell
+                                initialValue={rep.values[col.id]?.text ?? ""}
+                                onSave={(text) => onSetText(col.id, wordIds, text)}
+                              />
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </td>
+                ))}
+                <td />
+              </tr>
+            );
+          })}
+          {verseGroups.length === 0 && (
             <tr>
               <td colSpan={(showSourceText ? 3 : 2) + columns.length + 1} className="px-3 py-6 text-center" style={{ color: "var(--text-muted)" }}>
                 No occurrences found for this list.

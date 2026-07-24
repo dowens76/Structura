@@ -17,10 +17,13 @@ function resolveSourceKind(book: string, textSource: string): "lxx" | "sblgnt" |
   return "oshb";
 }
 
-export interface RawOccurrenceRef { wordId: string; book: string; chapter: number; textSource: string }
+export interface RawOccurrenceRef { wordId: string; book: string; chapter: number; textSource: string; tagId?: number }
 
 export interface ResolvedOccurrence {
   wordId: string;
+  /** Which word_tags row this occurrence belongs to. Undefined for refs that
+   *  don't carry one (e.g. the CSV export's character-ref path). */
+  tagId?: number;
   book: string;
   chapter: number;
   verse: number;
@@ -28,6 +31,16 @@ export interface ResolvedOccurrence {
   osisRef: string;
   reference: string;
   sourceText: string;
+  /** The verse's own word tokens in reading order, each carrying its wordId
+   *  so the editor can tell which token this occurrence (and any other
+   *  occurrence sharing the verse) actually lands on. Null when the verse's
+   *  tokens couldn't be resolved (e.g. a translation-only tag ref with no
+   *  matching source-language row). */
+  sourceTokens: { text: string; wordId: string }[] | null;
+  /** The textSource ("OSHB"/"SBLGNT"/"STEPBIBLE_LXX") backing sourceTokens —
+   *  needed to tag a brand-new source word with the right textSource. Null
+   *  under the same conditions as sourceTokens. */
+  sourceTextSource: string | null;
   /** translationId -> resolved text. Only populated for the requested translationIds
    *  (or every imported translation, if none were requested). */
   translationTexts: Map<number, string>;
@@ -50,6 +63,7 @@ export async function resolveWordTagOccurrences(
   const refs: RawOccurrenceRef[] = await userDb.select({
     wordId: wordTagRefs.wordId, book: wordTagRefs.book,
     chapter: wordTagRefs.chapter, textSource: wordTagRefs.textSource,
+    tagId: wordTagRefs.tagId,
   }).from(wordTagRefs).where(and(...refConditions));
 
   return resolveOccurrenceRefs(refs, rest);
@@ -72,8 +86,9 @@ export async function resolveOccurrenceRefs(
 
   // ── Resolve verse number for each ref ─────────────────────────────────────
 
-  interface VerseRef { wordId: string; book: string; chapter: number; verse: number; textSource: string; osisRef: string }
+  interface VerseRef { wordId: string; tagId?: number; book: string; chapter: number; verse: number; textSource: string; osisRef: string }
 
+  const tagIdByWordId = new Map(refs.map((r) => [r.wordId, r.tagId]));
   const verseRefs: VerseRef[] = [];
   const lxxWordIds: string[] = [];
   const oshbLookupRefs: RawOccurrenceRef[] = [];
@@ -91,7 +106,7 @@ export async function resolveOccurrenceRefs(
       if (dotParts.length > 2) {
         const verse = parseInt(dotParts[2], 10);
         if (!isNaN(verse)) {
-          verseRefs.push({ wordId: ref.wordId, book: ref.book, chapter: ref.chapter, verse, textSource: ref.textSource, osisRef: `${ref.book}.${ref.chapter}.${verse}` });
+          verseRefs.push({ wordId: ref.wordId, tagId: ref.tagId, book: ref.book, chapter: ref.chapter, verse, textSource: ref.textSource, osisRef: `${ref.book}.${ref.chapter}.${verse}` });
         }
       }
     } else {
@@ -124,7 +139,7 @@ export async function resolveOccurrenceRefs(
         for (const r of rows) {
           const osisBook = bookOsisMap.get(r.bookId);
           if (osisBook) {
-            verseRefs.push({ wordId: r.wordId, book: osisBook, chapter: r.chapter, verse: r.verse, textSource: "STEPBIBLE_LXX", osisRef: `${osisBook}.${r.chapter}.${r.verse}` });
+            verseRefs.push({ wordId: r.wordId, tagId: tagIdByWordId.get(r.wordId), book: osisBook, chapter: r.chapter, verse: r.verse, textSource: "STEPBIBLE_LXX", osisRef: `${osisBook}.${r.chapter}.${r.verse}` });
           }
         }
       }
@@ -146,7 +161,7 @@ export async function resolveOccurrenceRefs(
       for (const r of rows) {
         const orig = refsByWordId.get(r.wordId);
         if (orig) {
-          verseRefs.push({ wordId: r.wordId, book: orig.book, chapter: r.chapter, verse: r.verse, textSource: orig.textSource, osisRef: `${orig.book}.${r.chapter}.${r.verse}` });
+          verseRefs.push({ wordId: r.wordId, tagId: orig.tagId, book: orig.book, chapter: r.chapter, verse: r.verse, textSource: orig.textSource, osisRef: `${orig.book}.${r.chapter}.${r.verse}` });
         }
       }
     }
@@ -180,6 +195,19 @@ export async function resolveOccurrenceRefs(
   // ── Build verse surface text ───────────────────────────────────────────────
 
   const verseTextMap = new Map<string, string>();
+  // Per-verse word tokens (in reading order) with each token's own wordId, so
+  // the editor can highlight exactly which token(s) a tag's occurrences land
+  // on — needed to collapse same-verse occurrences into a single row without
+  // losing the ability to show where in the verse each one is.
+  const verseTokensMap = new Map<string, { text: string; wordId: string }[]>();
+  // The actual source-DB textSource ("OSHB"/"SBLGNT"/"STEPBIBLE_LXX") backing
+  // each verse's tokens — needed so the editor can tag a *new* source word
+  // (one with no existing ref yet) with the right textSource, even when every
+  // existing occurrence in that verse happens to be a tv:-prefixed one.
+  const verseSourceMap = new Map<string, string>();
+  const KIND_TO_TEXT_SOURCE: Record<"lxx" | "sblgnt" | "oshb", string> = {
+    lxx: "STEPBIBLE_LXX", sblgnt: "SBLGNT", oshb: "OSHB",
+  };
   const chapterKeys = new Map<string, { book: string; chapter: number; textSource: string }>();
   for (const ref of uniqueRefs) {
     const key = `${ref.textSource}::${ref.book}::${ref.chapter}`;
@@ -187,7 +215,7 @@ export async function resolveOccurrenceRefs(
   }
 
   for (const { book, chapter, textSource } of chapterKeys.values()) {
-    let chapterWordRows: { verse: number; surfaceText: string; positionInVerse: number }[] = [];
+    let chapterWordRows: { verse: number; surfaceText: string; positionInVerse: number; wordId: string }[] = [];
 
     const kind = resolveSourceKind(book, textSource);
     const db = kind === "lxx" ? getLxxDb() : kind === "sblgnt" ? getSblgntDb() : getOshbDb();
@@ -195,22 +223,25 @@ export async function resolveOccurrenceRefs(
       const bookRows = await db.select({ id: books.id }).from(books).where(eq(books.osisCode, book));
       if (bookRows.length > 0) {
         chapterWordRows = await db
-          .select({ verse: words.verse, surfaceText: words.surfaceText, positionInVerse: words.positionInVerse })
+          .select({ verse: words.verse, surfaceText: words.surfaceText, positionInVerse: words.positionInVerse, wordId: words.wordId })
           .from(words)
           .where(and(eq(words.bookId, bookRows[0].id), eq(words.chapter, chapter)))
           .orderBy(asc(words.verse), asc(words.positionInVerse));
       }
     }
 
-    const verseWordMap = new Map<number, string[]>();
+    const verseWordMap = new Map<number, { text: string; wordId: string }[]>();
     for (const w of chapterWordRows) {
       const text = w.surfaceText.replace(/\//g, "");
       const arr = verseWordMap.get(w.verse) ?? [];
-      arr.push(text);
+      arr.push({ text, wordId: w.wordId });
       verseWordMap.set(w.verse, arr);
     }
-    for (const [verse, wordTexts] of verseWordMap) {
-      verseTextMap.set(`${book}.${chapter}.${verse}`, wordTexts.join(" "));
+    for (const [verse, tokens] of verseWordMap) {
+      const key = `${book}.${chapter}.${verse}`;
+      verseTextMap.set(key, tokens.map((t) => t.text).join(" "));
+      verseTokensMap.set(key, tokens);
+      verseSourceMap.set(key, KIND_TO_TEXT_SOURCE[kind]);
     }
   }
 
@@ -278,6 +309,7 @@ export async function resolveOccurrenceRefs(
     }
     return {
       wordId: ref.wordId,
+      tagId: ref.tagId,
       book: ref.book,
       chapter: ref.chapter,
       verse: ref.verse,
@@ -285,6 +317,8 @@ export async function resolveOccurrenceRefs(
       osisRef: ref.osisRef,
       reference: `${bookDisplayName} ${ref.chapter}:${ref.verse}`,
       sourceText: verseTextMap.get(ref.osisRef) ?? "",
+      sourceTokens: verseTokensMap.get(ref.osisRef) ?? null,
+      sourceTextSource: verseSourceMap.get(ref.osisRef) ?? null,
       translationTexts,
     };
   });

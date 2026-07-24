@@ -35,7 +35,8 @@ import { useWordArrows } from "@/lib/hooks/useWordArrows";
 import { useAnnotationRange } from "@/lib/hooks/useAnnotationRange";
 import { useRstRelations } from "@/lib/hooks/useRstRelations";
 import hebrewLemmas from "@/lib/data/hebrew-lemmas.json";
-import { computeSectionRanges } from "@/lib/utils/sectionRanges";
+import { computeSectionRanges, formatVerseRange } from "@/lib/utils/sectionRanges";
+import { chapterFallsInPassage } from "@/lib/utils/passageRange";
 import { chapterKey } from "@/lib/utils/chapterKey";
 import { generateOutline } from "@/lib/utils/outlineExport";
 import { useTranslation } from "@/lib/i18n/LocaleContext";
@@ -408,7 +409,13 @@ export default function ChapterDisplay({
   const [activeWordTagId, setActiveWordTagId] = useState<number | null>(
     initialWordTags[0]?.id ?? null
   );
-  const [highlightWordTagIds, setHighlightWordTagIds] = useState<Set<number>>(new Set());
+  // Derived from wordTags' own persisted `highlighted` flag — not separate
+  // state — so toggling it here or in the Word/Concept Editor stays in sync
+  // and survives navigating to a different chapter.
+  const highlightWordTagIds = useMemo(
+    () => new Set(wordTags.filter((t) => t.highlighted).map((t) => t.id)),
+    [wordTags]
+  );
   // When true, the next source-word click creates a "word"-type tag using its lemma
   // When set, the next source-word click adds its canonical lemma to a cluster being built
   const [clusterLemmaCallback, setClusterLemmaCallback] = useState<((lemma: string, displayLabel?: string) => void) | null>(null);
@@ -443,7 +450,12 @@ export default function ChapterDisplay({
    *  Injects the new tag into local state and clears temp highlights. */
   const handleSearchSaved = useCallback((tagId: number, name: string, color: string, wordRefs: { wordId: string; book: string; chapter: number; textSource: string }[]) => {
     // Add the new corpus-wide tag to local state
-    const newTag: WordTag = { id: tagId, workspaceId: 1, book: "*", name, color, type: "search", createdAt: new Date().toISOString(), sortOrder: null, corpusGroupingId: null, lemmas: null };
+    const newTag: WordTag = {
+      id: tagId, workspaceId: 1, book: "*", name, color, type: "search",
+      createdAt: new Date().toISOString(), sortOrder: null,
+      corpusGroupingId: null, corpusType: "book", corpusChapter: null, corpusPassageId: null,
+      lemmas: null, highlighted: false,
+    };
     setWordTags((prev) => [...prev, newTag]);
 
     // Add refs for the current chapter to the local wordTagRefMap
@@ -1160,6 +1172,31 @@ export default function ChapterDisplay({
       .then((d: { groupings?: import("@/lib/db/schema").BookGrouping[] }) => setBookGroupings(d.groupings ?? []))
       .catch(() => {});
   }, []);
+
+  // ── Load passages overlapping the current chapter (for "current passage"
+  //    corpus option in word tag panel) ──────────────────────────────────
+  const [currentPassages, setCurrentPassages] = useState<import("@/components/controls/WordTagPanel").CorpusPassageOption[]>([]);
+  useEffect(() => {
+    const predecessorBook = CONTIGUOUS_BOOK_PREV[book] ?? null;
+    const params = new URLSearchParams({ book, source: textSource });
+    if (predecessorBook) params.set("book2", predecessorBook);
+    fetch(`/api/passages?${params.toString()}`)
+      .then((r) => r.json())
+      .then((d: { passages?: import("@/lib/db/schema").Passage[] }) => {
+        const list = (d.passages ?? []).filter((p) => chapterFallsInPassage(p, book, chapter));
+        setCurrentPassages(
+          list.map((p) => ({
+            id: p.id,
+            label: p.label && p.label.trim() ? p.label : formatVerseRange(p.startChapter, p.startVerse, p.endChapter, p.endVerse, p.book),
+            startChapter: p.startChapter,
+            startVerse: p.startVerse,
+            endChapter: p.endChapter,
+            endVerse: p.endVerse,
+          }))
+        );
+      })
+      .catch(() => {});
+  }, [book, chapter, textSource]);
 
   // Fetch custom RST types on mount
   useEffect(() => {
@@ -2587,12 +2624,16 @@ export default function ChapterDisplay({
     color: string,
     firstWordId?: string,
     firstWordSource?: string,
-    corpusGroupingId?: number | null,
+    corpus?: import("@/components/controls/WordTagPanel").CorpusAssignment,
   ) {
     const tempTag: WordTag = {
       id: -(Date.now()), book, name, color, type,
       createdAt: new Date().toISOString(), workspaceId: 0, sortOrder: null,
-      corpusGroupingId: corpusGroupingId ?? null, lemmas: null,
+      corpusGroupingId: corpus?.groupingId ?? null,
+      corpusType: corpus?.mode ?? "book",
+      corpusChapter: corpus?.chapter ?? null,
+      corpusPassageId: corpus?.passageId ?? null,
+      lemmas: null, highlighted: false,
     };
     setWordTags((prev) => [...prev, tempTag]);
     setActiveWordTagId(tempTag.id);
@@ -2601,7 +2642,13 @@ export default function ChapterDisplay({
       const res = await fetch("/api/word-tags", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, color, type, book, corpusGroupingId: corpusGroupingId ?? null }),
+        body: JSON.stringify({
+          name, color, type, book,
+          corpusType: corpus?.mode ?? "book",
+          corpusGroupingId: corpus?.groupingId ?? null,
+          corpusChapter: corpus?.chapter ?? null,
+          corpusPassageId: corpus?.passageId ?? null,
+        }),
       });
       const data = await res.json();
       const realTag: WordTag = data.tag;
@@ -2632,14 +2679,16 @@ export default function ChapterDisplay({
     name: string,
     lemmas: string[],
     color: string,
-    corpusGroupingId: number | null,
+    corpus: import("@/components/controls/WordTagPanel").CorpusAssignment,
     corpusBooks: string[],
     type: "cluster" | "word" = "cluster",
   ) {
     const tempTag: WordTag = {
       id: -(Date.now()), book, name, color, type,
       createdAt: new Date().toISOString(), workspaceId: 0, sortOrder: null,
-      corpusGroupingId: corpusGroupingId ?? null, lemmas: JSON.stringify(lemmas),
+      corpusGroupingId: corpus.groupingId, corpusType: corpus.mode,
+      corpusChapter: corpus.chapter, corpusPassageId: corpus.passageId,
+      lemmas: JSON.stringify(lemmas), highlighted: false,
     };
     setWordTags((prev) => [...prev, tempTag]);
     setActiveWordTagId(tempTag.id);
@@ -2650,7 +2699,11 @@ export default function ChapterDisplay({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name, color, book, lemmas, corpusBooks,
-          textSource, corpusGroupingId, currentChapter: chapter, type,
+          textSource, currentChapter: chapter, type,
+          corpusType: corpus.mode,
+          corpusGroupingId: corpus.groupingId,
+          corpusChapter: corpus.chapter,
+          corpusPassageId: corpus.passageId,
         }),
       });
       const data = await res.json();
@@ -2677,8 +2730,8 @@ export default function ChapterDisplay({
     }
   }
 
-  function handleCreateConceptTag(name: string, color: string, corpusGroupingId: number | null) {
-    return handleCreateTag("concept", name, color, undefined, undefined, corpusGroupingId);
+  function handleCreateConceptTag(name: string, color: string, corpus: import("@/components/controls/WordTagPanel").CorpusAssignment) {
+    return handleCreateTag("concept", name, color, undefined, undefined, corpus);
   }
 
   function handleRequestWordClick(cb: (lemma: string, displayLabel?: string) => void) {
@@ -2710,12 +2763,15 @@ export default function ChapterDisplay({
     }
   }
 
-  async function handleUpdateWordTag(id: number, name: string, color: string, corpusGroupingId?: number | null, lemmas?: string[] | null, prevLemmas?: string[] | null, corpusBooks?: string[]) {
+  async function handleUpdateWordTag(id: number, name: string, color: string, corpus?: import("@/components/controls/WordTagPanel").CorpusAssignment, lemmas?: string[] | null, prevLemmas?: string[] | null, corpusBooks?: string[]) {
     const prev = wordTags.find((t) => t.id === id);
     const lemmasJson = lemmas?.length ? JSON.stringify(lemmas) : null;
     setWordTags((ts) => ts.map((t) => t.id === id ? {
       ...t, name, color,
-      corpusGroupingId: corpusGroupingId !== undefined ? corpusGroupingId : t.corpusGroupingId,
+      corpusGroupingId: corpus ? corpus.groupingId : t.corpusGroupingId,
+      corpusType: corpus ? corpus.mode : t.corpusType,
+      corpusChapter: corpus ? corpus.chapter : t.corpusChapter,
+      corpusPassageId: corpus ? corpus.passageId : t.corpusPassageId,
       lemmas: lemmas !== undefined ? lemmasJson : t.lemmas,
     } : t));
     try {
@@ -2723,7 +2779,11 @@ export default function ChapterDisplay({
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          name, color, corpusGroupingId, lemmas, prevLemmas,
+          name, color, lemmas, prevLemmas,
+          corpusType: corpus?.mode,
+          corpusGroupingId: corpus?.groupingId,
+          corpusChapter: corpus?.chapter,
+          corpusPassageId: corpus?.passageId,
           corpusBooks, textSource, currentChapter: chapter, book,
         }),
       });
@@ -2775,13 +2835,21 @@ export default function ChapterDisplay({
     return grouping;
   }
 
-  function handleToggleWordTagHighlight(id: number) {
-    setHighlightWordTagIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
+  async function handleToggleWordTagHighlight(id: number) {
+    const tag = wordTags.find((t) => t.id === id);
+    if (!tag) return;
+    const nextHighlighted = !tag.highlighted;
+    setWordTags((prev) => prev.map((t) => t.id === id ? { ...t, highlighted: nextHighlighted } : t));
+    try {
+      await fetch(`/api/word-tags/${id}/highlight`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ highlighted: nextHighlighted }),
+      });
+    } catch {
+      // Revert on failure so the UI doesn't claim a persisted state that isn't.
+      setWordTags((prev) => prev.map((t) => t.id === id ? { ...t, highlighted: !nextHighlighted } : t));
+    }
   }
 
   async function handleReassignSpeechSection(sectionId: number, newCharId: number) {
@@ -5342,6 +5410,8 @@ export default function ChapterDisplay({
             activeTagId={activeWordTagId}
             highlightedTagIds={highlightWordTagIds}
             currentBook={book}
+            currentChapter={chapter}
+            currentPassages={currentPassages}
             bookGroupings={bookGroupings}
             clusterPickingActive={clusterLemmaCallback !== null}
             onSelectTag={(id) => { setActiveWordTagId(id); }}

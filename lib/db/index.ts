@@ -351,6 +351,17 @@ function _migrateUserDbInner(sqlite: Database.Database): void {
     try { sqlite.exec("ALTER TABLE word_tags ADD COLUMN corpus_grouping_id INTEGER"); } catch { /* already exists */ }
   if (!tagCols.includes("lemmas"))
     try { sqlite.exec("ALTER TABLE word_tags ADD COLUMN lemmas TEXT"); } catch { /* already exists */ }
+  if (!tagCols.includes("highlighted"))
+    try { sqlite.exec("ALTER TABLE word_tags ADD COLUMN highlighted INTEGER NOT NULL DEFAULT 0"); } catch { /* already exists */ }
+  if (!tagCols.includes("corpus_type")) {
+    try { sqlite.exec("ALTER TABLE word_tags ADD COLUMN corpus_type TEXT NOT NULL DEFAULT 'book'"); } catch { /* already exists */ }
+    // Backfill: any tag that already had a grouping set was implicitly "grouping"-scoped.
+    try { sqlite.exec("UPDATE word_tags SET corpus_type = 'grouping' WHERE corpus_grouping_id IS NOT NULL"); } catch { /* already exists */ }
+  }
+  if (!tagCols.includes("corpus_chapter"))
+    try { sqlite.exec("ALTER TABLE word_tags ADD COLUMN corpus_chapter INTEGER"); } catch { /* already exists */ }
+  if (!tagCols.includes("corpus_passage_id"))
+    try { sqlite.exec("ALTER TABLE word_tags ADD COLUMN corpus_passage_id INTEGER"); } catch { /* already exists */ }
 
   const rstCols = (sqlite.prepare("PRAGMA table_info(rst_relations)").all() as { name: string }[]).map(r => r.name);
   if (!rstCols.includes("intersect_point"))

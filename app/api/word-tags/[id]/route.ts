@@ -22,14 +22,19 @@ export async function PATCH(
     textSource?: string;
     currentChapter?: number;
     book?: string;
+    corpusType?: string;
+    corpusChapter?: number | null;
+    corpusPassageId?: number | null;
   };
   try { body = await request.json(); } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
-  const { name, color, corpusGroupingId, lemmas, prevLemmas, corpusBooks, textSource, currentChapter, book } = body;
+  const { name, color, corpusGroupingId, lemmas, prevLemmas, corpusBooks, textSource, currentChapter, book, corpusType, corpusChapter, corpusPassageId } = body;
   if (!name || !color) return NextResponse.json({ error: "Missing name or color" }, { status: 400 });
 
-  const tag = await updateWordTag(numId, name, color, corpusGroupingId, lemmas);
+  const tag = await updateWordTag(numId, name, color, corpusGroupingId, lemmas, {
+    corpusType, corpusGroupingId, corpusChapter, corpusPassageId,
+  });
 
   // Re-run lemma search when lemmas changed on a cluster/word tag
   const lemmasChanged = lemmas !== undefined && JSON.stringify(lemmas ?? []) !== JSON.stringify(prevLemmas ?? []);

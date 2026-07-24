@@ -3,12 +3,13 @@ import Link from "next/link";
 import Image from "next/image";
 import {
   getChapterWords, getChapterWordsRange, getBook, getBooksBySource, getBooksWithWords,
-  getMaxChapterForSource, getTranslations, getCharacters, getWordTags,
+  getMaxChapterForSource, getTranslations, getCharacters,
   getChapterRstRelations,
   getUltVerses, getUltTranslation, getVcbVerses, getVcbTranslation,
   getWorkspaceById,
   getLxxVerseTexts, getLxxVerseWords, getLxxTranslation,
 } from "@/lib/db/queries";
+import { resolveVisibleWordTags } from "@/lib/db/wordTagVisibility";
 import {
   getScriptureLocusEditingData,
   getScriptureLocusUserTranslationVerses,
@@ -142,7 +143,7 @@ export default async function ChapterPage({ params, searchParams }: PageProps) {
     initialLineAnnotations: [], initialTextCriticalMarks: [],
   };
   let initialCharacters: Awaited<ReturnType<typeof getCharacters>> = [];
-  let initialWordTags: Awaited<ReturnType<typeof getWordTags>> = [];
+  let initialWordTags: Awaited<ReturnType<typeof resolveVisibleWordTags>> = [];
   let initialTvRstRelations: Awaited<ReturnType<typeof getChapterRstRelations>> = [];
   let bookWideData: Awaited<ReturnType<typeof getScriptureLocusBookWideData>> = { bookSceneBreaks: [], bookMaxVerses: new Map() };
   let translationVerseData: Record<number, TranslationVerse[]> = {};
@@ -173,7 +174,7 @@ export default async function ChapterPage({ params, searchParams }: PageProps) {
 
     [initialCharacters, initialWordTags, initialTvRstRelations] = await Promise.all([
       getCharacters(pairBooks, workspaceId),
-      getWordTags(pairBooks, workspaceId),
+      resolveVisibleWordTags({ books: [osisBook], chapters: [{ book: osisBook, chapter }] }, workspaceId),
       getChapterRstRelations(osisBook, chapter, `tv:${textSource}`, workspaceId),
     ]);
 

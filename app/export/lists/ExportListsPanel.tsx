@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import Link from "next/link";
+import { useCallback, useEffect, useState } from "react";
 import PageShell from "@/components/ui/PageShell";
 import SectionHeading from "@/components/ui/SectionHeading";
 import Button from "@/components/ui/Button";
+import { OSIS_BOOK_ORDER } from "@/lib/utils/osis";
+import TagEditModal from "@/components/concepts/TagEditModal";
 
 interface TagGroup {
   name: string;
@@ -41,6 +42,12 @@ interface ListsData {
   books: BookInfo[];
 }
 
+/** A tag/character is in scope when its corpus overlaps the selected books —
+ *  e.g. selecting Gen shows only items whose corpus includes Genesis. */
+function matchesBookFilter(itemBooks: string[], selectedBooks: Set<string>): boolean {
+  return itemBooks.some((b) => selectedBooks.has(b));
+}
+
 export default function ExportListsPanel() {
   const [data, setData] = useState<ListsData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -55,17 +62,24 @@ export default function ExportListsPanel() {
   const [exporting, setExporting] = useState(false);
   const [exportStatus, setExportStatus] = useState<string | null>(null);
 
-  useEffect(() => {
+  // Which tag's name/color/corpus editor modal is open, if any.
+  const [editingTagName, setEditingTagName] = useState<string | null>(null);
+
+  const loadData = useCallback((isInitial = false) => {
     fetch("/api/export/tag-lists")
       .then((r) => r.json())
       .then((d: ListsData) => {
         setData(d);
-        // Default: all books selected
-        setSelectedBooks(new Set(d.books.map((b) => b.osisCode)));
+        if (isInitial) {
+          // Default: all books selected
+          setSelectedBooks(new Set(d.books.map((b) => b.osisCode)));
+        }
       })
       .catch(() => setError("Failed to load data"))
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => { loadData(true); }, [loadData]);
 
   function toggleTag(name: string) {
     setSelectedTags((prev) => {
@@ -91,16 +105,36 @@ export default function ExportListsPanel() {
     });
   }
 
+  // "Select all" / "Clear" act on whatever the book filter currently shows,
+  // not the whole workspace — so they stay consistent with what's on screen.
   function selectAllTags() {
     if (!data) return;
-    setSelectedTags(new Set(data.wordTagGroups.map((t) => t.name)));
+    const visible = data.wordTagGroups.filter((t) => matchesBookFilter(t.books, selectedBooks));
+    setSelectedTags((prev) => new Set([...prev, ...visible.map((t) => t.name)]));
   }
-  function clearTags() { setSelectedTags(new Set()); }
+  function clearTags() {
+    if (!data) return;
+    const visible = data.wordTagGroups.filter((t) => matchesBookFilter(t.books, selectedBooks));
+    setSelectedTags((prev) => {
+      const next = new Set(prev);
+      for (const t of visible) next.delete(t.name);
+      return next;
+    });
+  }
   function selectAllChars() {
     if (!data) return;
-    setSelectedChars(new Set(data.characterGroups.map((c) => c.name)));
+    const visible = data.characterGroups.filter((c) => matchesBookFilter(c.books, selectedBooks));
+    setSelectedChars((prev) => new Set([...prev, ...visible.map((c) => c.name)]));
   }
-  function clearChars() { setSelectedChars(new Set()); }
+  function clearChars() {
+    if (!data) return;
+    const visible = data.characterGroups.filter((c) => matchesBookFilter(c.books, selectedBooks));
+    setSelectedChars((prev) => {
+      const next = new Set(prev);
+      for (const c of visible) next.delete(c.name);
+      return next;
+    });
+  }
 
   async function handleExport() {
     if (!data) return;
@@ -173,13 +207,20 @@ export default function ExportListsPanel() {
 
   const hasAny = data.wordTagGroups.length > 0 || data.characterGroups.length > 0;
 
+  const sortedBooks = [...data.books].sort((a, b) =>
+    (OSIS_BOOK_ORDER[a.osisCode] ?? 1000 + a.bookNumber) - (OSIS_BOOK_ORDER[b.osisCode] ?? 1000 + b.bookNumber)
+  );
+  const visibleTags = data.wordTagGroups.filter((t) => matchesBookFilter(t.books, selectedBooks));
+  const visibleChars = data.characterGroups.filter((c) => matchesBookFilter(c.books, selectedBooks));
+  const hasAnyVisible = visibleTags.length > 0 || visibleChars.length > 0;
+
   return (
     <PageShell
       title="Manage Lists"
       subtitle={
         <>
-          Export tagged words, concepts, or characters as CSV files, or open a word/concept tag&apos;s
-          editor to classify each occurrence with custom columns. Each selected tag or character
+          Export tagged words, concepts, or characters as CSV files, or edit a word/concept tag&apos;s
+          name, color, and corpus. Each selected tag or character
           becomes a separate CSV file named <code className="font-mono text-xs">List-[name].csv</code> with
           columns for Scripture reference, source text, and any imported translations.
         </>
@@ -196,8 +237,57 @@ export default function ExportListsPanel() {
         </div>
       )}
 
+      {/* Book filter — narrows which Word/Concept Tags and Characters show below */}
+      {hasAny && (
+        <section>
+          <div className="flex items-center gap-3 mb-2">
+            <SectionHeading>Book Filter</SectionHeading>
+            <button
+              onClick={() => setSelectedBooks(new Set(data.books.map((b) => b.osisCode)))}
+              className="text-xs px-2 py-0.5 rounded transition-colors"
+              style={{ color: "var(--text-muted)" }}
+            >
+              All
+            </button>
+            <button
+              onClick={() => setSelectedBooks(new Set())}
+              className="text-xs px-2 py-0.5 rounded transition-colors"
+              style={{ color: "var(--text-muted)" }}
+            >
+              None
+            </button>
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {sortedBooks.map((b) => (
+              <button
+                key={b.osisCode}
+                onClick={() => toggleBook(b.osisCode)}
+                className="text-xs px-2 py-0.5 rounded border transition-colors"
+                style={{
+                  borderColor: selectedBooks.has(b.osisCode) ? "var(--accent)" : "var(--border)",
+                  backgroundColor: selectedBooks.has(b.osisCode) ? "rgba(200,155,60,0.12)" : "var(--surface-muted)",
+                  color: selectedBooks.has(b.osisCode) ? "var(--accent)" : "var(--text-muted)",
+                  fontWeight: selectedBooks.has(b.osisCode) ? 600 : 400,
+                }}
+              >
+                {b.osisCode}
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {hasAny && !hasAnyVisible && (
+        <div
+          className="rounded-lg border px-4 py-6 text-center text-sm"
+          style={{ borderColor: "var(--border)", color: "var(--text-muted)" }}
+        >
+          No word tags or characters match the selected books.
+        </div>
+      )}
+
       {/* Word / Concept Tags */}
-      {data.wordTagGroups.length > 0 && (
+      {visibleTags.length > 0 && (
         <section>
           <div className="flex items-center justify-between mb-2">
             <SectionHeading>Word &amp; Concept Tags</SectionHeading>
@@ -222,7 +312,7 @@ export default function ExportListsPanel() {
             className="rounded-lg border divide-y overflow-hidden"
             style={{ borderColor: "var(--border)" }}
           >
-            {data.wordTagGroups.map((tag) => (
+            {visibleTags.map((tag) => (
               <TagRow
                 key={tag.name}
                 name={tag.name}
@@ -230,7 +320,7 @@ export default function ExportListsPanel() {
                 subtitle={`${tag.type} · ${tag.books.join(", ")} · ${tag.count} ref${tag.count !== 1 ? "s" : ""}`}
                 checked={selectedTags.has(tag.name)}
                 onToggle={() => toggleTag(tag.name)}
-                editHref={`/concepts/${encodeURIComponent(tag.name)}`}
+                onEdit={() => setEditingTagName(tag.name)}
               />
             ))}
           </div>
@@ -238,7 +328,7 @@ export default function ExportListsPanel() {
       )}
 
       {/* Characters */}
-      {data.characterGroups.length > 0 && (
+      {visibleChars.length > 0 && (
         <section>
           <div className="flex items-center justify-between mb-2">
             <SectionHeading>Characters</SectionHeading>
@@ -263,7 +353,7 @@ export default function ExportListsPanel() {
             className="rounded-lg border divide-y overflow-hidden"
             style={{ borderColor: "var(--border)" }}
           >
-            {data.characterGroups.map((char) => (
+            {visibleChars.map((char) => (
               <TagRow
                 key={char.name}
                 name={char.name}
@@ -272,46 +362,6 @@ export default function ExportListsPanel() {
                 checked={selectedChars.has(char.name)}
                 onToggle={() => toggleChar(char.name)}
               />
-            ))}
-          </div>
-        </section>
-      )}
-
-      {/* Book filter */}
-      {hasAny && (
-        <section>
-          <div className="flex items-center gap-3 mb-2">
-            <SectionHeading>Book Filter</SectionHeading>
-            <button
-              onClick={() => setSelectedBooks(new Set(data.books.map((b) => b.osisCode)))}
-              className="text-xs px-2 py-0.5 rounded transition-colors"
-              style={{ color: "var(--text-muted)" }}
-            >
-              All
-            </button>
-            <button
-              onClick={() => setSelectedBooks(new Set())}
-              className="text-xs px-2 py-0.5 rounded transition-colors"
-              style={{ color: "var(--text-muted)" }}
-            >
-              None
-            </button>
-          </div>
-          <div className="flex flex-wrap gap-1.5">
-            {data.books.map((b) => (
-              <button
-                key={b.osisCode}
-                onClick={() => toggleBook(b.osisCode)}
-                className="text-xs px-2 py-0.5 rounded border transition-colors"
-                style={{
-                  borderColor: selectedBooks.has(b.osisCode) ? "var(--accent)" : "var(--border)",
-                  backgroundColor: selectedBooks.has(b.osisCode) ? "rgba(200,155,60,0.12)" : "var(--surface-muted)",
-                  color: selectedBooks.has(b.osisCode) ? "var(--accent)" : "var(--text-muted)",
-                  fontWeight: selectedBooks.has(b.osisCode) ? 600 : 400,
-                }}
-              >
-                {b.osisCode}
-              </button>
             ))}
           </div>
         </section>
@@ -343,6 +393,14 @@ export default function ExportListsPanel() {
         </div>
       )}
       </div>
+
+      {editingTagName && (
+        <TagEditModal
+          tagName={editingTagName}
+          onClose={() => setEditingTagName(null)}
+          onSaved={() => loadData(false)}
+        />
+      )}
     </PageShell>
   );
 }
@@ -355,14 +413,14 @@ function TagRow({
   subtitle,
   checked,
   onToggle,
-  editHref,
+  onEdit,
 }: {
   name: string;
   color: string;
   subtitle: string;
   checked: boolean;
   onToggle: () => void;
-  editHref?: string;
+  onEdit?: () => void;
 }) {
   return (
     <div
@@ -396,15 +454,16 @@ function TagRow({
           <span className="ml-2 text-xs" style={{ color: "var(--text-muted)" }}>{subtitle}</span>
         </div>
       </label>
-      {editHref && (
-        <Link
-          href={editHref}
-          title={`Edit occurrences of "${name}"`}
+      {onEdit && (
+        <button
+          type="button"
+          onClick={onEdit}
+          title={`Edit "${name}" — name, color, corpus`}
           className="flex-shrink-0 text-xs px-1.5 py-0.5 rounded border transition-colors hover:bg-stone-100 dark:hover:bg-stone-700"
           style={{ color: "var(--text-muted)", borderColor: "var(--border-muted)" }}
         >
           ✎ Edit
-        </Link>
+        </button>
       )}
     </div>
   );

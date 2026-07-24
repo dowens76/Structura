@@ -148,8 +148,22 @@ export const wordTags = sqliteTable(
     createdAt:         text("created_at").$defaultFn(() => new Date().toISOString()),
     /** FK to book_groupings.id — plain integer to avoid circular reference in Drizzle */
     corpusGroupingId:  integer("corpus_grouping_id"),
+    /** Which kind of scope this tag is limited to: "book" (the `book` column,
+     *  plus its contiguous pair sibling e.g. 1Sam/2Sam), "chapter"
+     *  (book + corpusChapter), "passage" (corpusPassageId), or "grouping"
+     *  (corpusGroupingId). Determines which chapter/passage views the tag
+     *  shows up in — see resolveWordTagVisibility(). */
+    corpusType:        text("corpus_type").notNull().default("book"),
+    /** Chapter number, only meaningful when corpusType = "chapter". */
+    corpusChapter:     integer("corpus_chapter"),
+    /** FK to passages.id — plain integer, same reasoning as corpusGroupingId.
+     *  Only meaningful when corpusType = "passage". */
+    corpusPassageId:   integer("corpus_passage_id"),
     /** JSON-encoded string[] of lemmas for "cluster" type tags */
     lemmas:            text("lemmas"),
+    /** Whether this tag's occurrences should be pre-highlighted when opening
+     *  a chapter in the reading view. */
+    highlighted:       integer("highlighted", { mode: "boolean" }).notNull().default(false),
   },
   (t) => [index("wt_book_idx").on(t.book)]
 );

@@ -1229,6 +1229,13 @@ export async function reorderWordTags(items: { id: number; sortOrder: number }[]
   }
 }
 
+export interface WordTagCorpusInput {
+  corpusType?: string;
+  corpusGroupingId?: number | null;
+  corpusChapter?: number | null;
+  corpusPassageId?: number | null;
+}
+
 export async function createWordTag(
   name: string,
   color: string,
@@ -1237,10 +1244,14 @@ export async function createWordTag(
   workspaceId: number,
   corpusGroupingId?: number | null,
   lemmas?: string[] | null,
+  corpus?: WordTagCorpusInput,
 ): Promise<WordTag> {
   const result = await userDb.insert(wordTags).values({
     name, color, type, book, workspaceId,
-    corpusGroupingId: corpusGroupingId ?? null,
+    corpusGroupingId: corpus?.corpusGroupingId ?? corpusGroupingId ?? null,
+    corpusType: corpus?.corpusType ?? "book",
+    corpusChapter: corpus?.corpusChapter ?? null,
+    corpusPassageId: corpus?.corpusPassageId ?? null,
     lemmas: lemmas?.length ? JSON.stringify(lemmas) : null,
   }).returning();
   return result[0];
@@ -1252,10 +1263,17 @@ export async function updateWordTag(
   color: string,
   corpusGroupingId?: number | null,
   lemmas?: string[] | null,
+  corpus?: WordTagCorpusInput,
 ): Promise<WordTag> {
   const setData: Record<string, unknown> = { name, color };
   if (corpusGroupingId !== undefined) setData.corpusGroupingId = corpusGroupingId;
   if (lemmas !== undefined) setData.lemmas = lemmas?.length ? JSON.stringify(lemmas) : null;
+  if (corpus) {
+    if (corpus.corpusType !== undefined) setData.corpusType = corpus.corpusType;
+    if (corpus.corpusGroupingId !== undefined) setData.corpusGroupingId = corpus.corpusGroupingId;
+    if (corpus.corpusChapter !== undefined) setData.corpusChapter = corpus.corpusChapter;
+    if (corpus.corpusPassageId !== undefined) setData.corpusPassageId = corpus.corpusPassageId;
+  }
   const result = await userDb
     .update(wordTags)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1267,6 +1285,15 @@ export async function updateWordTag(
 
 export async function deleteWordTag(id: number): Promise<void> {
   await userDb.delete(wordTags).where(eq(wordTags.id, id));
+}
+
+export async function setWordTagHighlighted(id: number, highlighted: boolean): Promise<WordTag> {
+  const result = await userDb
+    .update(wordTags)
+    .set({ highlighted })
+    .where(eq(wordTags.id, id))
+    .returning();
+  return result[0];
 }
 
 // ── Word Tag Refs (chapter-scoped) ────────────────────────────────────────────

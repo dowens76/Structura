@@ -21,19 +21,24 @@ export async function POST(request: NextRequest) {
     corpusGroupingId?: number | null;
     currentChapter?: number;
     type?: string;
+    corpusType?: string;
+    corpusChapter?: number | null;
+    corpusPassageId?: number | null;
   };
   try { body = await request.json(); } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const { name, color, book, lemmas, corpusBooks, textSource, corpusGroupingId, currentChapter } = body;
+  const { name, color, book, lemmas, corpusBooks, textSource, corpusGroupingId, currentChapter, corpusType, corpusChapter, corpusPassageId } = body;
   const tagType = body.type === "word" ? "word" : "cluster";
   if (!name || !color || !book || !lemmas?.length || !corpusBooks?.length || !textSource) {
     return NextResponse.json({ error: "Missing fields" }, { status: 400 });
   }
 
   const canonicalBook = canonicalPairBook(book);
-  const tag = await createWordTag(name, color, tagType, canonicalBook, workspaceId, corpusGroupingId, lemmas);
+  const tag = await createWordTag(name, color, tagType, canonicalBook, workspaceId, corpusGroupingId, lemmas, {
+    corpusType, corpusGroupingId, corpusChapter, corpusPassageId,
+  });
 
   const allRefs = await getWordRefsByLemmas(lemmas, corpusBooks, textSource);
   const { inserted } = await bulkInsertWordTagRefs(tag.id, allRefs, workspaceId);

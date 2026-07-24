@@ -7,6 +7,7 @@ import type { DisplayMode, GrammarFilterState, TranslationTextEntry, Interlinear
 import type { ColorRule } from "@/lib/morphology/colorRules";
 import { PLOT_ELEMENTS, ANNOTATION_PALETTE, getPlotElement, getAnnotationColor } from "@/lib/utils/annotations";
 import { resolvedDatasetColor } from "@/lib/utils/datasetColors";
+import { encodeUsfmTokens, decodeUsfmToken, tokenizeTranslationText } from "@/lib/utils/translationTokens";
 
 /** Width of the hanging-indent space (px). RST lines are drawn inside this space. */
 const HANG_PX = 32;
@@ -2398,43 +2399,6 @@ export default function VerseDisplay({
   // translation content — and the speech-box background spans all three cells.
 
   type TvSeg = { startIdx: number; tokens: string[] };
-
-  // Encode USFM inline markers as per-token prefixes so word-level annotations work.
-  // e.g. "\\nd the LORD\\nd*" → "ND:the ND:LORD"
-  function encodeUsfmTokens(raw: string): string {
-    let s = raw;
-    // \bd and \it must be encoded BEFORE block markers (\nd, \add, \wj) so their
-    // spaces are consumed first; otherwise \nd splits content on the space inside \bd.
-    // Close tags first so \\bd\s* won't partially match \\bd*.
-    s = s.replace(/\\bd\*/g,  "").replace(/\\bd\s*/g,  "");
-    s = s.replace(/\\it\*/g,  "").replace(/\\it\s*/g,  "");
-    s = s.replace(/\\nd\s+([\s\S]*?)\\nd\*/g, (_: string, content: string) =>
-      content.split(/\s+/).filter(Boolean).map((w: string) => `ND:${w}`).join(" ")
-    );
-    s = s.replace(/\\add\s+([\s\S]*?)\\add\*/g, (_: string, content: string) =>
-      content.split(/\s+/).filter(Boolean).map((w: string) => `ADD:${w}`).join(" ")
-    );
-    s = s.replace(/\\wj\s+([\s\S]*?)\\wj\*/g, (_: string, content: string) =>
-      content.split(/\s+/).filter(Boolean).map((w: string) => `WJ:${w}`).join(" ")
-    );
-    // Attach \fn \fn* to the preceding word so the superscript survives tokenisation.
-    // "know \fn \fn* wisdom" → "know«fn» wisdom"
-    // Trailing space is always appended so the next word stays a separate token
-    // even when the original had no space after \fn* (e.g. DCO-BT imports).
-    s = s.replace(/(\S+)\s+\\fn\s+\\fn\*/g, "$1«fn» ");
-    s = s.replace(/\\fn\s+\\fn\*/g, "«fn» "); // fallback: fn at start with no preceding word
-    s = s.replace(/\\[a-z]+\d*\*?\s*/g, "");
-    return s;
-  }
-
-  function decodeUsfmToken(token: string): { display: string; marker: "nd" | "add" | "wj" | "fn" | null } {
-    if (token.startsWith("ND:"))  return { display: token.slice(3),  marker: "nd"  };
-    if (token.startsWith("ADD:")) return { display: token.slice(4), marker: "add" };
-    if (token.startsWith("WJ:"))  return { display: token.slice(3),  marker: "wj"  };
-    if (token.endsWith("«fn»"))   return { display: token.slice(0, -4), marker: "fn" };
-    return { display: token, marker: null };
-  }
-
   // Render a token string that may contain  (bold-start) /  (bold-end) /
   //  (italic-start) /  (italic-end) private-use chars into an array of
   // React nodes with per-segment bold/italic <span>s and plain strings elsewhere.
@@ -2461,11 +2425,7 @@ export default function VerseDisplay({
   const allTvSegs = translationTexts.map(({ abbr, text, translationId, words: tvWords }) => {
     const encoded = encodeUsfmTokens(text);
     const embeddedFnCount = (encoded.match(/«fn»/g) ?? []).length;
-    // Split on whitespace first, then split each token after any mid-word em-dash
-    // so "bread\u2014purifying" → ["bread\u2014", "purifying"] rather than one joined token.
-    const tokens = encoded.split(/\s+/).filter(Boolean).flatMap(t =>
-      t.split(/(?<=\u2014)(?=.)/)
-    );
+    const tokens = tokenizeTranslationText(text);
     const segs: TvSeg[] = [];
     let cur: string[] = [];
     let curStart = 0;
