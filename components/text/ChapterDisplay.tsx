@@ -5695,6 +5695,7 @@ export default function ChapterDisplay({
                 wordTagRefMap={wordTagRefMap}
                 wordTagMap={wordTagMap}
                 editingWordTags={editingWordTags}
+                clusterPickingActive={clusterLemmaCallback !== null}
                 highlightWordTagIds={highlightWordTagIds}
                 searchHits={searchHits}
                 findHits={findHitSet}

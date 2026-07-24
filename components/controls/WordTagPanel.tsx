@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { isTauriApp } from "@/lib/utils/openExternal";
@@ -83,11 +84,13 @@ interface WordTagPanelProps {
 
 interface NewGroupingFormProps {
   currentBook: string;
+  style?: React.CSSProperties;
+  menuRef?: React.RefObject<HTMLDivElement | null>;
   onSave: (name: string, books: string[]) => Promise<void>;
   onCancel: () => void;
 }
 
-function NewGroupingForm({ currentBook, onSave, onCancel }: NewGroupingFormProps) {
+function NewGroupingForm({ currentBook, style, menuRef, onSave, onCancel }: NewGroupingFormProps) {
   const [name, setName] = useState("");
   const [selectedBooks, setSelectedBooks] = useState<Set<string>>(new Set([currentBook]));
   const [saving, setSaving] = useState(false);
@@ -145,8 +148,8 @@ function NewGroupingForm({ currentBook, onSave, onCancel }: NewGroupingFormProps
   }
 
   return (
-    <div className="absolute top-full left-0 mt-1 z-50 rounded-lg border shadow-xl p-3 w-80"
-      style={{ borderColor: "var(--border)", backgroundColor: "var(--surface)" }}>
+    <div ref={menuRef} className="fixed z-50 rounded-lg border shadow-xl p-3 w-80"
+      style={{ borderColor: "var(--border)", backgroundColor: "var(--surface)", ...style }}>
       <div className="flex items-center justify-between mb-2">
         <span className="text-xs font-semibold" style={{ color: "var(--foreground)" }}>New Book Grouping</span>
         <button type="button" onClick={onCancel} className="text-xs opacity-50 hover:opacity-100 leading-none" style={{ color: "var(--foreground)" }}>×</button>
@@ -200,12 +203,18 @@ export function CorpusSelector({
 }: CorpusSelectorProps) {
   const [open, setOpen] = useState(false);
   const [showNewForm, setShowNewForm] = useState(false);
+  const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null);
   const ref = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!open) return;
     function onClickOutside(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      const target = e.target as Node;
+      if (ref.current?.contains(target)) return;
+      if (menuRef.current?.contains(target)) return;
+      setOpen(false);
     }
     document.addEventListener("mousedown", onClickOutside);
     return () => document.removeEventListener("mousedown", onClickOutside);
@@ -224,19 +233,33 @@ export function CorpusSelector({
     setOpen(false);
   }
 
+  // Rendered in a portal (not `absolute` inside this row) because the tag
+  // bar scrolls horizontally (`overflow-x-auto`), and per the CSS overflow
+  // spec, setting overflow-x to anything but visible forces overflow-y to
+  // "auto" too — clipping any dropdown that overflows the row vertically,
+  // even ones nested many levels deep, no matter their own z-index.
+  function toggleOpen() {
+    if (!open && buttonRef.current) {
+      const r = buttonRef.current.getBoundingClientRect();
+      setMenuPos({ top: r.bottom + 4, left: r.left });
+    }
+    setOpen((v) => !v);
+    setShowNewForm(false);
+  }
+
   return (
     <div className="relative flex items-center gap-1 shrink-0" ref={ref}>
       <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>Corpus:</span>
-      <button type="button" onClick={() => { setOpen((v) => !v); setShowNewForm(false); }}
+      <button ref={buttonRef} type="button" onClick={toggleOpen}
         className="text-[10px] px-1.5 py-0.5 rounded border flex items-center gap-0.5 transition-colors hover:border-blue-400"
         style={{ borderColor: "var(--border)", color: "var(--foreground)" }}>
         {label}
         <span style={{ color: "var(--text-muted)" }}>▾</span>
       </button>
 
-      {open && !showNewForm && (
-        <div className="absolute top-full left-0 mt-1 z-50 rounded-lg border shadow-lg py-1 min-w-[220px] max-h-72 overflow-y-auto"
-          style={{ borderColor: "var(--border)", backgroundColor: "var(--surface)" }}>
+      {open && !showNewForm && menuPos && createPortal(
+        <div ref={menuRef} className="fixed z-50 rounded-lg border shadow-lg py-1 min-w-[220px] max-h-72 overflow-y-auto"
+          style={{ top: menuPos.top, left: menuPos.left, borderColor: "var(--border)", backgroundColor: "var(--surface)" }}>
           <button type="button" onClick={() => choose("book")}
             className="w-full text-left text-xs px-3 py-1.5 transition-colors hover:bg-stone-100 dark:hover:bg-stone-800 flex items-center gap-2"
             style={{ color: "var(--foreground)" }}>
@@ -285,13 +308,17 @@ export function CorpusSelector({
             style={{ color: "var(--accent)" }}>
             + New grouping…
           </button>
-        </div>
+        </div>,
+        document.body
       )}
 
-      {showNewForm && (
+      {showNewForm && menuPos && createPortal(
         <NewGroupingForm currentBook={currentBook}
+          menuRef={menuRef}
+          style={{ top: menuPos.top, left: menuPos.left }}
           onSave={async (name, booksArr) => { await onCreateGrouping(name, booksArr); setShowNewForm(false); }}
-          onCancel={() => setShowNewForm(false)} />
+          onCancel={() => setShowNewForm(false)} />,
+        document.body
       )}
     </div>
   );

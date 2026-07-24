@@ -162,6 +162,9 @@ interface VerseDisplayProps {
   wordTagMap: Map<number, WordTag>;
   editingWordTags: boolean;
   highlightWordTagIds: Set<number>;
+  // True while a lemma-tag editor is armed to receive a word click (see WordTagPanel's
+  // "↑ Text" picker). Word clicks should fill the lemma instead of applying the active tag.
+  clusterPickingActive?: boolean;
   // Temporary search hit highlighting (word IDs in the current chapter)
   searchHits?: Set<string>;
   // Find-in-page highlighting
@@ -1222,6 +1225,7 @@ export default function VerseDisplay({
   wordTagRefMap,
   wordTagMap,
   editingWordTags,
+  clusterPickingActive = false,
   highlightWordTagIds,
   searchHits,
   findHits,
@@ -2710,7 +2714,9 @@ export default function VerseDisplay({
                         : editingRefs
                         ? (e: React.MouseEvent) => onSelectTranslationWord(tvWordId, abbr, e.shiftKey)
                         : editingWordTags
-                        ? (e: React.MouseEvent) => onSelectTranslationWord(tvWordId, abbr, e.shiftKey)
+                        ? clusterPickingActive
+                          ? (e: React.MouseEvent) => onSelectWord(lxxWord, e.shiftKey)
+                          : (e: React.MouseEvent) => onSelectTranslationWord(tvWordId, abbr, e.shiftKey)
                         : editingScenes && firstWordId
                         ? (e: React.MouseEvent) => { e.stopPropagation(); if (!(sceneBreakMap.get(firstWordId)?.length)) onToggleSceneBreak?.(firstWordId, 1, verseNum); }
                         // Default (non-editing) mode: select the word so its morphology
