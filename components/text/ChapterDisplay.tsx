@@ -1176,6 +1176,11 @@ export default function ChapterDisplay({
   // ── Load passages overlapping the current chapter (for "current passage"
   //    corpus option in word tag panel) ──────────────────────────────────
   const [currentPassages, setCurrentPassages] = useState<import("@/components/controls/WordTagPanel").CorpusPassageOption[]>([]);
+  // Full verse-range bounds for every passage in this book, keyed by id — used
+  // to precisely clip a "passage"-scoped tag's visibility to its actual
+  // start/end verse (chapterFallsInPassage alone would treat a boundary
+  // chapter as fully in-scope even past the passage's end verse).
+  const [passageBoundsById, setPassageBoundsById] = useState<Map<number, import("@/lib/utils/passageRange").PassageVerseRange>>(new Map());
   useEffect(() => {
     const predecessorBook = CONTIGUOUS_BOOK_PREV[book] ?? null;
     const params = new URLSearchParams({ book, source: textSource });
@@ -1183,7 +1188,12 @@ export default function ChapterDisplay({
     fetch(`/api/passages?${params.toString()}`)
       .then((r) => r.json())
       .then((d: { passages?: import("@/lib/db/schema").Passage[] }) => {
-        const list = (d.passages ?? []).filter((p) => chapterFallsInPassage(p, book, chapter));
+        const all = d.passages ?? [];
+        setPassageBoundsById(new Map(all.map((p) => [p.id, {
+          book: p.book, startChapter: p.startChapter, startVerse: p.startVerse,
+          endBook: p.endBook, endChapter: p.endChapter, endVerse: p.endVerse,
+        }])));
+        const list = all.filter((p) => chapterFallsInPassage(p, book, chapter));
         setCurrentPassages(
           list.map((p) => ({
             id: p.id,
@@ -5784,6 +5794,7 @@ export default function ChapterDisplay({
                 onReassignSpeechSection={handleReassignSpeechSection}
                 wordTagRefMap={wordTagRefMap}
                 wordTagMap={wordTagMap}
+                passageBoundsById={passageBoundsById}
                 editingWordTags={editingWordTags}
                 clusterPickingActive={clusterLemmaCallback !== null}
                 highlightWordTagIds={highlightWordTagIds}

@@ -8,6 +8,7 @@ import type { ColorRule } from "@/lib/morphology/colorRules";
 import { PLOT_ELEMENTS, ANNOTATION_PALETTE, getPlotElement, getAnnotationColor } from "@/lib/utils/annotations";
 import { resolvedDatasetColor } from "@/lib/utils/datasetColors";
 import { encodeUsfmTokens, decodeUsfmToken, tokenizeTranslationText } from "@/lib/utils/translationTokens";
+import { wordFallsInPassageRange } from "@/lib/utils/passageRange";
 
 /** Width of the hanging-indent space (px). RST lines are drawn inside this space. */
 const HANG_PX = 32;
@@ -160,6 +161,9 @@ interface VerseDisplayProps {
   // Word / concept tag highlighting
   wordTagRefMap: Map<string, WordTagRef>;
   wordTagMap: Map<number, WordTag>;
+  // Verse-range bounds (by passage id) for clipping "passage"-scoped tags to
+  // their actual start/end verse — see resolveTag() below.
+  passageBoundsById?: Map<number, import("@/lib/utils/passageRange").PassageVerseRange>;
   editingWordTags: boolean;
   highlightWordTagIds: Set<number>;
   // True while a lemma-tag editor is armed to receive a word click (see WordTagPanel's
@@ -1224,6 +1228,7 @@ export default function VerseDisplay({
   onReassignSpeechSection,
   wordTagRefMap,
   wordTagMap,
+  passageBoundsById,
   editingWordTags,
   clusterPickingActive = false,
   highlightWordTagIds,
@@ -1990,12 +1995,39 @@ export default function VerseDisplay({
     return (word.surfaceText ?? "").replace(/\//g, "").endsWith(MAQQEF);
   }
 
+  // Resolves a word-tag-ref's tag, but treats a "passage"-scoped tag as absent
+  // once this verse (book/chapter/verseNum are constant for this whole
+  // VerseDisplay render) falls outside the passage's actual start/end verse —
+  // chapterFallsInPassage alone only clips at chapter granularity, so e.g. a
+  // tag scoped to "Gen 1:1–2:3" would otherwise stay visible through all of
+  // chapter 2 rather than just verse 3.
+  function resolveTag(tagId: number): WordTag | null {
+    const wt = wordTagMap.get(tagId) ?? null;
+    if (!wt) return null;
+    if (wt.corpusType === "passage" && wt.corpusPassageId != null) {
+      const bounds = passageBoundsById?.get(wt.corpusPassageId);
+      if (bounds && !wordFallsInPassageRange(bounds, book, chapter, verseNum)) return null;
+    }
+    return wt;
+  }
+
+  // Same clipping as resolveTag(), for "passage"-scoped characters.
+  function resolveCharacter(characterId: number): Character | null {
+    const c = characterMap.get(characterId) ?? null;
+    if (!c) return null;
+    if (c.corpusType === "passage" && c.corpusPassageId != null) {
+      const bounds = passageBoundsById?.get(c.corpusPassageId);
+      if (bounds && !wordFallsInPassageRange(bounds, book, chapter, verseNum)) return null;
+    }
+    return c;
+  }
+
   function computeWordGroups(words: Word[]): WordGroup[] {
     const groups: WordGroup[] = [];
     for (const word of words) {
       const cr  = characterRefMap.get(word.wordId) ?? null;
       const wtr = wordTagRefMap.get(word.wordId)   ?? null;
-      const wt  = wtr ? (wordTagMap.get(wtr.tagId) ?? null) : null;
+      const wt  = wtr ? resolveTag(wtr.tagId) : null;
       const crKey  = cr  ? `${cr.character1Id}:${cr.character2Id ?? ""}` : "";
       const last   = groups[groups.length - 1];
       const lastCrKey = last?.charRef
@@ -2023,8 +2055,9 @@ export default function VerseDisplay({
 
       const isCharHighlighted =
         charRef != null &&
-        (highlightCharIds.has(charRef.character1Id) ||
+        ((resolveCharacter(charRef.character1Id) != null && highlightCharIds.has(charRef.character1Id)) ||
           (charRef.character2Id != null &&
+            resolveCharacter(charRef.character2Id) != null &&
             highlightCharIds.has(charRef.character2Id)));
 
       const isTagHighlighted =
@@ -2049,8 +2082,8 @@ export default function VerseDisplay({
       // wrapper, so the background fills the inter-word gap).
 
       // Build underline style for inter-word spaces when a character tag is active.
-      const char1 = charRef ? characterMap.get(charRef.character1Id) : null;
-      const char2 = charRef?.character2Id != null ? characterMap.get(charRef.character2Id) : null;
+      const char1 = charRef ? resolveCharacter(charRef.character1Id) : null;
+      const char2 = charRef?.character2Id != null ? resolveCharacter(charRef.character2Id) : null;
       const spaceUnderlineStyle: React.CSSProperties | undefined = char1 && char2 ? {
         backgroundImage: `repeating-linear-gradient(to right, ${char1.color} 0px, ${char1.color} 4px, ${char2.color} 4px, ${char2.color} 8px)`,
         backgroundSize: "100% 2px",
@@ -2601,8 +2634,8 @@ export default function VerseDisplay({
 
                       // ── Character ref underline (uses tv: word ID) ───────────
                       const ref = characterRefMap.get(tvWordId);
-                      const char1 = ref ? characterMap.get(ref.character1Id) : null;
-                      const char2 = ref?.character2Id != null ? characterMap.get(ref.character2Id) : null;
+                      const char1 = ref ? resolveCharacter(ref.character1Id) : null;
+                      const char2 = ref?.character2Id != null ? resolveCharacter(ref.character2Id) : null;
                       const underlineStyle: React.CSSProperties = char1 && char2 ? {
                         backgroundImage: `repeating-linear-gradient(to right, ${char1.color} 0px, ${char1.color} 4px, ${char2.color} 4px, ${char2.color} 8px)`,
                         backgroundSize: "100% 2px",
@@ -2619,7 +2652,7 @@ export default function VerseDisplay({
 
                       // ── Word/concept tag highlight (uses tv: word ID) ─────────
                       const tvTagRef = wordTagRefMap.get(tvWordId);
-                      const tvTag = tvTagRef ? wordTagMap.get(tvTagRef.tagId) : null;
+                      const tvTag = tvTagRef ? resolveTag(tvTagRef.tagId) : null;
                       const isTvTagHighlighted = !!tvTag && highlightWordTagIds.has(tvTag.id);
                       const isTokenHighlighted = findHits?.has(tvWordId) ?? false;
 
@@ -2642,11 +2675,11 @@ export default function VerseDisplay({
                         (ref.character2Id ?? null) === (prevRef.character2Id ?? null);
 
                       const nextTagRef  = nextTvWordId ? wordTagRefMap.get(nextTvWordId) : null;
-                      const nextTag = nextTagRef ? wordTagMap.get(nextTagRef.tagId) : null;
+                      const nextTag = nextTagRef ? resolveTag(nextTagRef.tagId) : null;
                       const sameTagAsNext = tvTag != null && nextTag != null && tvTag.id === nextTag.id;
 
                       const prevTagRef  = prevTvWordId ? wordTagRefMap.get(prevTvWordId) : null;
-                      const prevTag = prevTagRef ? wordTagMap.get(prevTagRef.tagId) : null;
+                      const prevTag = prevTagRef ? resolveTag(prevTagRef.tagId) : null;
                       const sameTagAsPrev = tvTag != null && prevTag != null && tvTag.id === prevTag.id;
 
                       // ── Formatting (bold / italic) (uses tv: word ID) ─────────
@@ -2787,9 +2820,9 @@ export default function VerseDisplay({
                       const globalWi = tvSeg.startIdx + localWi;
                       const wordId = `tv:${abbr}:${book}.${chapter}.${verseNum}.${globalWi}`;
                       const ref = characterRefMap.get(wordId);
-                      const char1 = ref ? characterMap.get(ref.character1Id) : null;
+                      const char1 = ref ? resolveCharacter(ref.character1Id) : null;
                       const char2 = ref?.character2Id != null
-                        ? characterMap.get(ref.character2Id)
+                        ? resolveCharacter(ref.character2Id)
                         : null;
 
                       const underlineStyle: React.CSSProperties = char1 && char2 ? {
@@ -2818,21 +2851,21 @@ export default function VerseDisplay({
                         (ref.character2Id ?? null) === (nextRef.character2Id ?? null);
 
                       const isTokenHighlighted = highlightCharIds.size > 0 && ref != null && (
-                        highlightCharIds.has(ref.character1Id) ||
-                        (ref.character2Id != null && highlightCharIds.has(ref.character2Id))
+                        (resolveCharacter(ref.character1Id) != null && highlightCharIds.has(ref.character1Id)) ||
+                        (ref.character2Id != null && resolveCharacter(ref.character2Id) != null && highlightCharIds.has(ref.character2Id))
                       );
 
                       const tvTagRef = wordTagRefMap.get(wordId);
-                      const tvTag = tvTagRef ? wordTagMap.get(tvTagRef.tagId) : null;
+                      const tvTag = tvTagRef ? resolveTag(tvTagRef.tagId) : null;
                       const isTvTagHighlighted = !!tvTag && highlightWordTagIds.has(tvTag.id);
 
                       // Word tag continuity
                       const nextTagRef = wordTagRefMap.get(nextWordId);
-                      const nextTag = nextTagRef ? wordTagMap.get(nextTagRef.tagId) : null;
+                      const nextTag = nextTagRef ? resolveTag(nextTagRef.tagId) : null;
                       const sameTagAsNext = tvTag != null && nextTag != null && tvTag.id === nextTag.id;
 
                       const prevTagRef = wordTagRefMap.get(prevWordId);
-                      const prevTag = prevTagRef ? wordTagMap.get(prevTagRef.tagId) : null;
+                      const prevTag = prevTagRef ? resolveTag(prevTagRef.tagId) : null;
                       const sameTagAsPrev = tvTag != null && prevTag != null && tvTag.id === prevTag.id;
 
                       // Find-in-page highlight takes top priority
