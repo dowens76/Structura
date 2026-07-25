@@ -622,7 +622,6 @@ function _migrateUserDbInner(sqlite: Database.Database): void {
     );
     CREATE UNIQUE INDEX IF NOT EXISTS wde_ds_word_idx ON word_dataset_entries(dataset_id, word_id);
     CREATE INDEX IF NOT EXISTS wde_ds_book_ch_idx ON word_dataset_entries(dataset_id, book, chapter, text_source);
-    CREATE INDEX IF NOT EXISTS wde_ds_group_idx ON word_dataset_entries(dataset_id, group_id);
 
     CREATE TABLE IF NOT EXISTS word_dataset_label_colors (
       id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -691,8 +690,13 @@ function _migrateUserDbInner(sqlite: Database.Database): void {
   const wdeCols = (sqlite.prepare("PRAGMA table_info(word_dataset_entries)").all() as { name: string }[]).map(r => r.name);
   if (!wdeCols.includes("group_id")) {
     try { sqlite.exec("ALTER TABLE word_dataset_entries ADD COLUMN group_id TEXT"); } catch { /* already exists */ }
-    try { sqlite.exec("CREATE INDEX IF NOT EXISTS wde_ds_group_idx ON word_dataset_entries(dataset_id, group_id)"); } catch { /* already exists */ }
   }
+  // Runs unconditionally (own try/catch, same as conlbl_ws_group_idx below) —
+  // must never sit in the same unguarded exec() block as the CREATE TABLE
+  // above: on a pre-existing table from before group_id existed, CREATE TABLE
+  // IF NOT EXISTS is a no-op and an inline index on group_id there would
+  // throw "no such column: group_id" before the ALTER above ever runs.
+  try { sqlite.exec("CREATE INDEX IF NOT EXISTS wde_ds_group_idx ON word_dataset_entries(dataset_id, group_id)"); } catch { /* already exists */ }
 
   // Seed VCB translation record if vcb.db is present but the translations row is missing
   if (fs.existsSync(VCB_DB_PATH)) {
