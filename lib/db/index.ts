@@ -6,6 +6,34 @@ import * as lexicaSchema from "./lexica-schema";
 import path from "path";
 import fs from "fs";
 
+// ── Retry-on-lock DB open ────────────────────────────────────────────────────
+//
+// Windows enforces mandatory file locking, so a file that was just written
+// (e.g. user.db copied from its template on first run) can briefly still be
+// held by antivirus/indexer scanning when better-sqlite3 tries to open it,
+// producing EBUSY/EPERM. macOS/Linux don't hit this because their locking is
+// advisory. A handful of short retries lets that window pass instead of
+// crashing every route that imports this module.
+function openDbWithRetry(
+  dbPath: string,
+  options: Database.Options,
+  attempts = 5,
+  delayMs = 150,
+): Database.Database {
+  let lastErr: unknown;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return new Database(dbPath, options);
+    } catch (e) {
+      lastErr = e;
+      if (i < attempts - 1) {
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, delayMs);
+      }
+    }
+  }
+  throw lastErr;
+}
+
 const RESOURCES_DIR = process.env.STRUCTURA_RESOURCES_DIR
   ?? path.join(process.cwd(), "data");
 const USER_DATA_DIR = process.env.STRUCTURA_USER_DATA_DIR
@@ -74,7 +102,13 @@ const EMPTY_LOOKUP_MAPS: LookupMaps = {
 
 function loadLookupMaps(dbPath: string): LookupMaps {
   if (!fs.existsSync(dbPath)) return EMPTY_LOOKUP_MAPS;
-  const sqlite = new Database(dbPath, { readonly: true });
+  let sqlite: Database.Database;
+  try {
+    sqlite = openDbWithRetry(dbPath, { readonly: true });
+  } catch (e) {
+    console.error(`[db] Failed to open ${dbPath}:`, e);
+    return EMPTY_LOOKUP_MAPS;
+  }
   try {
     function loadTable(table: string): { byId: LookupById; byValue: LookupByValue } {
       const rows = sqlite.prepare(`SELECT id, value FROM ${table}`).all() as { id: number; value: string }[];
@@ -156,7 +190,7 @@ const _lexiconDbCache = dbCache.lexiconDbCache ?? (dbCache.lexiconDbCache = new 
 export function getOshbDb(): ReturnType<typeof drizzle<typeof sourceSchema>> {
   if (!dbCache.oshbDb) {
     const dbPath = fs.existsSync(OSHB_DB_PATH) ? OSHB_DB_PATH : SOURCE_DB_PATH;
-    const sqlite = new Database(dbPath, { readonly: true });
+    const sqlite = openDbWithRetry(dbPath, { readonly: true });
     sqlite.pragma("foreign_keys = ON");
     dbCache.oshbDb = drizzle(sqlite, { schema: sourceSchema });
   }
@@ -167,7 +201,7 @@ export function getOshbDb(): ReturnType<typeof drizzle<typeof sourceSchema>> {
 export function getSblgntDb(): ReturnType<typeof drizzle<typeof sourceSchema>> {
   if (!dbCache.sblgntDb) {
     const dbPath = fs.existsSync(SBLGNT_DB_PATH) ? SBLGNT_DB_PATH : SOURCE_DB_PATH;
-    const sqlite = new Database(dbPath, { readonly: true });
+    const sqlite = openDbWithRetry(dbPath, { readonly: true });
     sqlite.pragma("foreign_keys = ON");
     dbCache.sblgntDb = drizzle(sqlite, { schema: sourceSchema });
   }
@@ -185,7 +219,7 @@ export function getSourceDb() {
   if (!dbCache.sourceDb) {
     // Prefer the split oshb.db; fall back to the legacy combined source.db.
     const dbPath = fs.existsSync(OSHB_DB_PATH) ? OSHB_DB_PATH : SOURCE_DB_PATH;
-    const sqlite = new Database(dbPath, { readonly: true });
+    const sqlite = openDbWithRetry(dbPath, { readonly: true });
     sqlite.pragma("foreign_keys = ON");
     dbCache.sourceDb = drizzle(sqlite, { schema: sourceSchema });
   }
@@ -195,7 +229,7 @@ export function getSourceDb() {
 export function getLexicaDb() {
   if (!dbCache.lexicaDb) {
     if (!fs.existsSync(LEXICA_DB_PATH)) return null;
-    const sqlite = new Database(LEXICA_DB_PATH, { readonly: true });
+    const sqlite = openDbWithRetry(LEXICA_DB_PATH, { readonly: true });
     dbCache.lexicaDb = drizzle(sqlite, { schema: lexicaSchema });
   }
   return dbCache.lexicaDb;
@@ -262,7 +296,7 @@ export function getLexiconDbsForLanguage(
 export function getLxxDb(): ReturnType<typeof drizzle<typeof sourceSchema>> | null {
   if (dbCache.lxxDb) return dbCache.lxxDb;
   if (!fs.existsSync(LXX_DB_PATH)) return null;
-  const sqlite = new Database(LXX_DB_PATH, { readonly: true });
+  const sqlite = openDbWithRetry(LXX_DB_PATH, { readonly: true });
   sqlite.pragma("foreign_keys = ON");
   dbCache.lxxSqlite = sqlite;
   dbCache.lxxDb = drizzle(sqlite, { schema: sourceSchema });
@@ -695,7 +729,7 @@ function _migrateUserDbInner(sqlite: Database.Database): void {
 
 export function getUserDb() {
   if (!dbCache.userDb) {
-    const sqlite = new Database(USER_DB_PATH);
+    const sqlite = openDbWithRetry(USER_DB_PATH, {});
     sqlite.pragma("busy_timeout = 5000");
     sqlite.pragma("journal_mode = WAL");
     sqlite.pragma("synchronous = NORMAL");
@@ -717,7 +751,7 @@ export function getUserSqlite(): Database.Database {
 export function getUltSqlite(): Database.Database | null {
   if (dbCache.ultSqlite) return dbCache.ultSqlite;
   if (!fs.existsSync(ULT_DB_PATH)) return null;
-  dbCache.ultSqlite = new Database(ULT_DB_PATH, { readonly: true });
+  dbCache.ultSqlite = openDbWithRetry(ULT_DB_PATH, { readonly: true });
   return dbCache.ultSqlite;
 }
 
@@ -725,7 +759,7 @@ export function getUltSqlite(): Database.Database | null {
 export function getVcbSqlite(): Database.Database | null {
   if (dbCache.vcbSqlite) return dbCache.vcbSqlite;
   if (!fs.existsSync(VCB_DB_PATH)) return null;
-  dbCache.vcbSqlite = new Database(VCB_DB_PATH, { readonly: true });
+  dbCache.vcbSqlite = openDbWithRetry(VCB_DB_PATH, { readonly: true });
   return dbCache.vcbSqlite;
 }
 
