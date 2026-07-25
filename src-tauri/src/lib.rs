@@ -1,6 +1,7 @@
 use std::net::TcpListener;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
+use tauri::menu::{Menu, MenuItem, Submenu};
 use tauri::{AppHandle, Manager};
 use tauri_plugin_shell::ShellExt;
 use tauri_plugin_shell::process::CommandChild;
@@ -492,7 +493,39 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
+        .on_menu_event(|app, event| {
+            if event.id() == "open_log_folder" {
+                match app.path().app_log_dir() {
+                    Ok(dir) => {
+                        let _ = std::fs::create_dir_all(&dir);
+                        if let Err(e) = app.shell().open(dir.to_string_lossy().to_string(), None) {
+                            log::error!("Failed to open log folder: {e}");
+                        }
+                    }
+                    Err(e) => log::error!("Failed to resolve log folder: {e}"),
+                }
+            }
+        })
         .setup(|app| {
+            // Native "Help" menu with an "Open Log Folder" item, so the log
+            // file is reachable even when the webview shows nothing but a
+            // bare server error (e.g. the Node process fails before Next.js
+            // renders any React content). Native window menus render
+            // independently of whatever the webview is displaying.
+            {
+                let handle = app.handle();
+                let open_logs = MenuItem::with_id(
+                    handle,
+                    "open_log_folder",
+                    "Open Log Folder",
+                    true,
+                    None::<&str>,
+                )?;
+                let help_menu = Submenu::with_items(handle, "Help", true, &[&open_logs])?;
+                let menu = Menu::with_items(handle, &[&help_menu])?;
+                app.set_menu(menu)?;
+            }
+
             // Ensure user.db exists (first-run copy from template)
             if let Err(e) = ensure_user_db(app.handle()) {
                 log::error!("ensure_user_db failed: {e}");
