@@ -576,6 +576,7 @@ function AnnotBadge({
             <span
               className="shrink-0 text-[10px] font-bold px-1 py-0.5 rounded text-white leading-none"
               style={{ backgroundColor: editColor }}
+              title={getPlotElement(draftPlotLabel)?.fullName}
             >
               {draftPlotLabel}
             </span>
@@ -805,6 +806,7 @@ function AnnotBadge({
               <span
                 className={`shrink-0 ${badgeTextCls} font-bold px-1 py-0.5 rounded text-white leading-none`}
                 style={{ backgroundColor: color }}
+                title={annotation.annotType === "plot" ? getPlotElement(annotation.label)?.fullName : undefined}
               >
                 {getCommFunctionLeafLabel(annotation.label, customCommFunctions)}{thematicSubscript != null ? toSubscript(thematicSubscript) : ""}
               </span>

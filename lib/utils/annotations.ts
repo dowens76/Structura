@@ -11,12 +11,18 @@ export const ANNOTATION_PALETTE = [
 
 // Plot element definitions — predefined labels, full names, and colors.
 export const PLOT_ELEMENTS = [
-  { label: "Info", fullName: "Background Information", color: "#D4A017" },
-  { label: "IS",   fullName: "Initial Situation",      color: "#22C55E" },
-  { label: "Con",  fullName: "Conflict",               color: "#EF4444" },
-  { label: "TA",   fullName: "Transforming Action",    color: "#F97316" },
-  { label: "Res",  fullName: "Resolution",             color: "#3B82F6" },
-  { label: "FS",   fullName: "Final Situation",        color: "#22C55E" },
+  { label: "BackInfo",  fullName: "Background Information", color: "#D4A017" },
+  { label: "Foreshadow",  fullName: "Foreshadowing",          color: "#8B5CF6" },
+  { label: "Flashback", fullName: "Flashback",              color: "#6B7280" },
+  { label: "InitialSit",    fullName: "Initial Situation",      color: "#22C55E" },
+  { label: "IncitingInc",   fullName: "Inciting Incident",      color: "#84CC16" },
+  { label: "Confict",   fullName: "Conflict",               color: "#EF4444" },
+  { label: "RisingTen",    fullName: "Rising Tension",         color: "#F59E0B" },
+  { label: "TransAct",    fullName: "Transforming Action",    color: "#F97316" },
+  { label: "Resolution",   fullName: "Climax/Resolution",      color: "#3B82F6" },
+  { label: "Denoument",   fullName: "Denouement",             color: "#06B6D4" },
+  { label: "FinalSit",    fullName: "Final Situation",        color: "#22C55E" },
+  { label: "Epilogue",   fullName: "Epilogue",               color: "#78716C" },
 ] as const;
 
 export type PlotLabel = (typeof PLOT_ELEMENTS)[number]["label"];
