@@ -79,8 +79,12 @@ run("npm run build:next", "Building Next.js");
 // 6. Rebuild better-sqlite3 for the bundle TARGET arch.
 //    This must happen AFTER the build scripts above (which need the host-arch
 //    native module) and BEFORE tauri build (which bundles it into the app).
+//    TAURI_BUILD_TARGET is only set by CI's cross-compile matrix; a plain
+//    local `npm run tauri:build` doesn't set it, so fall back to the host
+//    arch instead of silently defaulting to x64 (which produced an
+//    unloadable arm64-host/x64-module bundle on Apple Silicon).
 const target = process.env.TAURI_BUILD_TARGET;
-const npmArch = target?.startsWith("aarch64") ? "arm64" : "x64";
+const npmArch = target ? (target.startsWith("aarch64") ? "arm64" : "x64") : hostArch;
 rebuildSqlite(npmArch, `Rebuilding better-sqlite3 for ${npmArch}`);
 
 // 7. Sync the rebuilt better-sqlite3 native module into the server bundle.
