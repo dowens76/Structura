@@ -1,7 +1,9 @@
 use std::net::TcpListener;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
-use tauri::menu::{Menu, MenuItem, Submenu};
+#[cfg(not(target_os = "macos"))]
+use tauri::menu::PredefinedMenuItem;
+use tauri::menu::{Menu, MenuItem, HELP_SUBMENU_ID};
 use tauri::{AppHandle, Manager};
 use tauri_plugin_shell::ShellExt;
 use tauri_plugin_shell::process::CommandChild;
@@ -498,8 +500,37 @@ pub fn run() {
                 match app.path().app_log_dir() {
                     Ok(dir) => {
                         let _ = std::fs::create_dir_all(&dir);
-                        if let Err(e) = app.shell().open(dir.to_string_lossy().to_string(), None) {
-                            log::error!("Failed to open log folder: {e}");
+
+                        // On macOS, app_log_dir() resolves to
+                        // ~/Library/Logs/com.structura.app — and because that
+                        // directory name ends in ".app", Finder/LaunchServices
+                        // treat it as an application bundle rather than a
+                        // plain folder. Plain `open <dir>` then tries to
+                        // *launch* it as an app and fails with "the
+                        // application cannot be opened because its
+                        // executable is missing" instead of showing it in
+                        // Finder. Revealing the log file inside it with
+                        // `open -R` sidesteps that: it selects the file in a
+                        // normal Finder window without trying to launch
+                        // anything.
+                        #[cfg(target_os = "macos")]
+                        {
+                            let log_file = dir.join(format!("{}.log", app.package_info().name));
+                            let target = if log_file.exists() { log_file } else { dir };
+                            if let Err(e) = app
+                                .shell()
+                                .command("open")
+                                .args(["-R", &target.to_string_lossy()])
+                                .spawn()
+                            {
+                                log::error!("Failed to reveal log folder: {e}");
+                            }
+                        }
+                        #[cfg(not(target_os = "macos"))]
+                        {
+                            if let Err(e) = app.shell().open(dir.to_string_lossy().to_string(), None) {
+                                log::error!("Failed to open log folder: {e}");
+                            }
                         }
                     }
                     Err(e) => log::error!("Failed to resolve log folder: {e}"),
@@ -507,22 +538,33 @@ pub fn run() {
             }
         })
         .setup(|app| {
-            // Native "Help" menu with an "Open Log Folder" item, so the log
-            // file is reachable even when the webview shows nothing but a
-            // bare server error (e.g. the Node process fails before Next.js
+            // Start from Tauri's default menu (app/File/Edit/View/Window/Help,
+            // with "About Structura" in the app-name submenu on macOS) and add
+            // an "Open Log Folder" item to its Help submenu, so the log file
+            // is reachable even when the webview shows nothing but a bare
+            // server error (e.g. the Node process fails before Next.js
             // renders any React content). Native window menus render
             // independently of whatever the webview is displaying.
+            //
+            // A previous version of this code replaced the whole menu bar
+            // with a bare "Help" submenu, which on macOS also wiped out the
+            // app-name submenu — taking "About Structura" (and with it the
+            // only place to check the app's version number) along with it.
             {
                 let handle = app.handle();
-                let open_logs = MenuItem::with_id(
-                    handle,
-                    "open_log_folder",
-                    "Open Log Folder",
-                    true,
-                    None::<&str>,
-                )?;
-                let help_menu = Submenu::with_items(handle, "Help", true, &[&open_logs])?;
-                let menu = Menu::with_items(handle, &[&help_menu])?;
+                let menu = Menu::default(handle)?;
+                if let Some(help_menu) = menu.get(HELP_SUBMENU_ID).and_then(|i| i.as_submenu().cloned()) {
+                    let open_logs = MenuItem::with_id(
+                        handle,
+                        "open_log_folder",
+                        "Open Log Folder",
+                        true,
+                        None::<&str>,
+                    )?;
+                    #[cfg(not(target_os = "macos"))]
+                    help_menu.append(&PredefinedMenuItem::separator(handle)?)?;
+                    help_menu.append(&open_logs)?;
+                }
                 app.set_menu(menu)?;
             }
 
