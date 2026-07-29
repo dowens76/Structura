@@ -1,0 +1,11 @@
+[
+  {
+    "slug": "ps18-2sam22-song-of-deliverance",
+    "title": "David's Song of Deliverance",
+    "corpus": "psalms",
+    "columns": [
+      { "book": "Ps",   "textSource": "OSHB", "columnLabel": "Psalm 18",   "startChapter": 18, "startVerse": 1, "endChapter": 18, "endVerse": 99 },
+      { "book": "2Sam", "textSource": "OSHB", "columnLabel": "2 Samuel 22", "startChapter": 22, "startVerse": 1, "endChapter": 22, "endVerse": 99 }
+    ]
+  }
+]

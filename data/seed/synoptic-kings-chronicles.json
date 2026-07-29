@@ -1,0 +1,227 @@
+[
+  {
+    "slug": "kc-death-of-saul",
+    "title": "The Death of Saul",
+    "corpus": "historical",
+    "columns": [
+      { "book": "1Sam", "textSource": "OSHB", "columnLabel": "1 Samuel", "startChapter": 31, "startVerse": 1, "endChapter": 31, "endVerse": 13 },
+      { "book": "1Chr", "textSource": "OSHB", "columnLabel": "1 Chronicles", "startChapter": 10, "startVerse": 1, "endChapter": 10, "endVerse": 14 }
+    ]
+  },
+  {
+    "slug": "kc-david-anointed-king",
+    "title": "David Anointed King over All Israel",
+    "corpus": "historical",
+    "columns": [
+      { "book": "2Sam", "textSource": "OSHB", "columnLabel": "2 Samuel", "startChapter": 5, "startVerse": 1, "endChapter": 5, "endVerse": 5 },
+      { "book": "1Chr", "textSource": "OSHB", "columnLabel": "1 Chronicles", "startChapter": 11, "startVerse": 1, "endChapter": 11, "endVerse": 3 }
+    ]
+  },
+  {
+    "slug": "kc-david-captures-jerusalem",
+    "title": "David Captures Jerusalem",
+    "corpus": "historical",
+    "columns": [
+      { "book": "2Sam", "textSource": "OSHB", "columnLabel": "2 Samuel", "startChapter": 5, "startVerse": 6, "endChapter": 5, "endVerse": 10 },
+      { "book": "1Chr", "textSource": "OSHB", "columnLabel": "1 Chronicles", "startChapter": 11, "startVerse": 4, "endChapter": 11, "endVerse": 9 }
+    ]
+  },
+  {
+    "slug": "kc-davids-mighty-men",
+    "title": "David's Mighty Men",
+    "corpus": "historical",
+    "columns": [
+      { "book": "2Sam", "textSource": "OSHB", "columnLabel": "2 Samuel", "startChapter": 23, "startVerse": 8, "endChapter": 23, "endVerse": 39 },
+      { "book": "1Chr", "textSource": "OSHB", "columnLabel": "1 Chronicles", "startChapter": 11, "startVerse": 10, "endChapter": 11, "endVerse": 47 }
+    ]
+  },
+  {
+    "slug": "kc-ark-and-uzzah",
+    "title": "The Ark and Uzzah",
+    "corpus": "historical",
+    "columns": [
+      { "book": "2Sam", "textSource": "OSHB", "columnLabel": "2 Samuel", "startChapter": 6, "startVerse": 1, "endChapter": 6, "endVerse": 11 },
+      { "book": "1Chr", "textSource": "OSHB", "columnLabel": "1 Chronicles", "startChapter": 13, "startVerse": 1, "endChapter": 13, "endVerse": 14 }
+    ]
+  },
+  {
+    "slug": "kc-ark-brought-to-jerusalem",
+    "title": "The Ark Brought to Jerusalem",
+    "corpus": "historical",
+    "columns": [
+      { "book": "2Sam", "textSource": "OSHB", "columnLabel": "2 Samuel", "startChapter": 6, "startVerse": 12, "endChapter": 6, "endVerse": 23 },
+      { "book": "1Chr", "textSource": "OSHB", "columnLabel": "1 Chronicles", "startChapter": 15, "startVerse": 1, "endChapter": 16, "endVerse": 99 }
+    ]
+  },
+  {
+    "slug": "kc-davidic-covenant",
+    "title": "The Davidic Covenant",
+    "corpus": "historical",
+    "columns": [
+      { "book": "2Sam", "textSource": "OSHB", "columnLabel": "2 Samuel", "startChapter": 7, "startVerse": 1, "endChapter": 7, "endVerse": 29 },
+      { "book": "1Chr", "textSource": "OSHB", "columnLabel": "1 Chronicles", "startChapter": 17, "startVerse": 1, "endChapter": 17, "endVerse": 27 }
+    ]
+  },
+  {
+    "slug": "kc-davids-victories",
+    "title": "David's Victories",
+    "corpus": "historical",
+    "columns": [
+      { "book": "2Sam", "textSource": "OSHB", "columnLabel": "2 Samuel", "startChapter": 8, "startVerse": 1, "endChapter": 8, "endVerse": 18 },
+      { "book": "1Chr", "textSource": "OSHB", "columnLabel": "1 Chronicles", "startChapter": 18, "startVerse": 1, "endChapter": 18, "endVerse": 17 }
+    ]
+  },
+  {
+    "slug": "kc-war-with-ammon-and-aram",
+    "title": "War with Ammon and Aram",
+    "corpus": "historical",
+    "columns": [
+      { "book": "2Sam", "textSource": "OSHB", "columnLabel": "2 Samuel", "startChapter": 10, "startVerse": 1, "endChapter": 10, "endVerse": 19 },
+      { "book": "1Chr", "textSource": "OSHB", "columnLabel": "1 Chronicles", "startChapter": 19, "startVerse": 1, "endChapter": 19, "endVerse": 19 }
+    ]
+  },
+  {
+    "slug": "kc-davids-census-and-repentance",
+    "title": "David's Census and Repentance",
+    "corpus": "historical",
+    "columns": [
+      { "book": "2Sam", "textSource": "OSHB", "columnLabel": "2 Samuel", "startChapter": 24, "startVerse": 10, "endChapter": 24, "endVerse": 17 },
+      { "book": "1Chr", "textSource": "OSHB", "columnLabel": "1 Chronicles", "startChapter": 21, "startVerse": 7, "endChapter": 21, "endVerse": 17 }
+    ]
+  },
+  {
+    "slug": "kc-solomons-wisdom",
+    "title": "Solomon's Wisdom",
+    "corpus": "historical",
+    "columns": [
+      { "book": "1Kgs", "textSource": "OSHB", "columnLabel": "1 Kings", "startChapter": 3, "startVerse": 4, "endChapter": 3, "endVerse": 15 },
+      { "book": "2Chr", "textSource": "OSHB", "columnLabel": "2 Chronicles", "startChapter": 1, "startVerse": 2, "endChapter": 1, "endVerse": 13 }
+    ]
+  },
+  {
+    "slug": "kc-preparations-for-temple",
+    "title": "Preparations for the Temple",
+    "corpus": "historical",
+    "columns": [
+      { "book": "1Kgs", "textSource": "OSHB", "columnLabel": "1 Kings", "startChapter": 5, "startVerse": 1, "endChapter": 5, "endVerse": 99 },
+      { "book": "2Chr", "textSource": "OSHB", "columnLabel": "2 Chronicles", "startChapter": 2, "startVerse": 1, "endChapter": 2, "endVerse": 99 }
+    ]
+  },
+  {
+    "slug": "kc-building-the-temple",
+    "title": "Building the Temple",
+    "corpus": "historical",
+    "columns": [
+      { "book": "1Kgs", "textSource": "OSHB", "columnLabel": "1 Kings", "startChapter": 6, "startVerse": 1, "endChapter": 6, "endVerse": 99 },
+      { "book": "2Chr", "textSource": "OSHB", "columnLabel": "2 Chronicles", "startChapter": 3, "startVerse": 1, "endChapter": 3, "endVerse": 14 }
+    ]
+  },
+  {
+    "slug": "kc-dedication-of-temple",
+    "title": "Dedication of the Temple",
+    "corpus": "historical",
+    "columns": [
+      { "book": "1Kgs", "textSource": "OSHB", "columnLabel": "1 Kings", "startChapter": 8, "startVerse": 1, "endChapter": 8, "endVerse": 99 },
+      { "book": "2Chr", "textSource": "OSHB", "columnLabel": "2 Chronicles", "startChapter": 5, "startVerse": 2, "endChapter": 7, "endVerse": 10 }
+    ]
+  },
+  {
+    "slug": "kc-queen-of-sheba",
+    "title": "The Queen of Sheba",
+    "corpus": "historical",
+    "columns": [
+      { "book": "1Kgs", "textSource": "OSHB", "columnLabel": "1 Kings", "startChapter": 10, "startVerse": 1, "endChapter": 10, "endVerse": 13 },
+      { "book": "2Chr", "textSource": "OSHB", "columnLabel": "2 Chronicles", "startChapter": 9, "startVerse": 1, "endChapter": 9, "endVerse": 12 }
+    ]
+  },
+  {
+    "slug": "kc-division-of-the-kingdom",
+    "title": "Division of the Kingdom",
+    "corpus": "historical",
+    "columns": [
+      { "book": "1Kgs", "textSource": "OSHB", "columnLabel": "1 Kings", "startChapter": 12, "startVerse": 1, "endChapter": 12, "endVerse": 19 },
+      { "book": "2Chr", "textSource": "OSHB", "columnLabel": "2 Chronicles", "startChapter": 10, "startVerse": 1, "endChapter": 10, "endVerse": 19 }
+    ]
+  },
+  {
+    "slug": "kc-battle-of-ramoth-gilead",
+    "title": "Ahab, Jehoshaphat, and the Battle of Ramoth-Gilead",
+    "corpus": "historical",
+    "columns": [
+      { "book": "1Kgs", "textSource": "OSHB", "columnLabel": "1 Kings", "startChapter": 22, "startVerse": 1, "endChapter": 22, "endVerse": 40 },
+      { "book": "2Chr", "textSource": "OSHB", "columnLabel": "2 Chronicles", "startChapter": 18, "startVerse": 1, "endChapter": 18, "endVerse": 34 }
+    ]
+  },
+  {
+    "slug": "kc-joash-made-king",
+    "title": "Joash Made King",
+    "corpus": "historical",
+    "columns": [
+      { "book": "2Kgs", "textSource": "OSHB", "columnLabel": "2 Kings", "startChapter": 11, "startVerse": 4, "endChapter": 11, "endVerse": 20 },
+      { "book": "2Chr", "textSource": "OSHB", "columnLabel": "2 Chronicles", "startChapter": 23, "startVerse": 1, "endChapter": 23, "endVerse": 21 }
+    ]
+  },
+  {
+    "slug": "kc-joash-repairs-temple",
+    "title": "Joash Repairs the Temple",
+    "corpus": "historical",
+    "columns": [
+      { "book": "2Kgs", "textSource": "OSHB", "columnLabel": "2 Kings", "startChapter": 12, "startVerse": 6, "endChapter": 12, "endVerse": 16 },
+      { "book": "2Chr", "textSource": "OSHB", "columnLabel": "2 Chronicles", "startChapter": 24, "startVerse": 4, "endChapter": 24, "endVerse": 14 }
+    ]
+  },
+  {
+    "slug": "kc-hezekiahs-reign-begins",
+    "title": "Hezekiah's Reign Begins",
+    "corpus": "historical",
+    "columns": [
+      { "book": "2Kgs", "textSource": "OSHB", "columnLabel": "2 Kings", "startChapter": 18, "startVerse": 1, "endChapter": 18, "endVerse": 3 },
+      { "book": "2Chr", "textSource": "OSHB", "columnLabel": "2 Chronicles", "startChapter": 29, "startVerse": 1, "endChapter": 29, "endVerse": 2 }
+    ]
+  },
+  {
+    "slug": "kc-sennacheribs-invasion",
+    "title": "Sennacherib's Invasion",
+    "corpus": "historical",
+    "columns": [
+      { "book": "2Kgs", "textSource": "OSHB", "columnLabel": "2 Kings", "startChapter": 18, "startVerse": 13, "endChapter": 19, "endVerse": 37 },
+      { "book": "2Chr", "textSource": "OSHB", "columnLabel": "2 Chronicles", "startChapter": 32, "startVerse": 1, "endChapter": 32, "endVerse": 21 }
+    ]
+  },
+  {
+    "slug": "kc-manassehs-idolatry",
+    "title": "Manasseh's Idolatry",
+    "corpus": "historical",
+    "columns": [
+      { "book": "2Kgs", "textSource": "OSHB", "columnLabel": "2 Kings", "startChapter": 21, "startVerse": 1, "endChapter": 21, "endVerse": 16 },
+      { "book": "2Chr", "textSource": "OSHB", "columnLabel": "2 Chronicles", "startChapter": 33, "startVerse": 1, "endChapter": 33, "endVerse": 9 }
+    ]
+  },
+  {
+    "slug": "kc-book-of-the-law-found",
+    "title": "Finding the Book of the Law",
+    "corpus": "historical",
+    "columns": [
+      { "book": "2Kgs", "textSource": "OSHB", "columnLabel": "2 Kings", "startChapter": 22, "startVerse": 3, "endChapter": 22, "endVerse": 20 },
+      { "book": "2Chr", "textSource": "OSHB", "columnLabel": "2 Chronicles", "startChapter": 34, "startVerse": 8, "endChapter": 34, "endVerse": 28 }
+    ]
+  },
+  {
+    "slug": "kc-death-of-josiah",
+    "title": "The Death of Josiah",
+    "corpus": "historical",
+    "columns": [
+      { "book": "2Kgs", "textSource": "OSHB", "columnLabel": "2 Kings", "startChapter": 23, "startVerse": 28, "endChapter": 23, "endVerse": 30 },
+      { "book": "2Chr", "textSource": "OSHB", "columnLabel": "2 Chronicles", "startChapter": 35, "startVerse": 20, "endChapter": 35, "endVerse": 27 }
+    ]
+  },
+  {
+    "slug": "kc-fall-of-jerusalem",
+    "title": "The Fall of Jerusalem",
+    "corpus": "historical",
+    "columns": [
+      { "book": "2Kgs", "textSource": "OSHB", "columnLabel": "2 Kings", "startChapter": 25, "startVerse": 8, "endChapter": 25, "endVerse": 21 },
+      { "book": "2Chr", "textSource": "OSHB", "columnLabel": "2 Chronicles", "startChapter": 36, "startVerse": 18, "endChapter": 36, "endVerse": 21 }
+    ]
+  }
+]

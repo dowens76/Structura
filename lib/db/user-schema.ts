@@ -244,6 +244,28 @@ export const sceneBreaks = sqliteTable(
   ]
 );
 
+export const synopticSets = sqliteTable(
+  "synoptic_sets",
+  {
+    id:          integer("id").primaryKey({ autoIncrement: true }),
+    workspaceId: integer("workspace_id").notNull().default(1)
+                   .references(() => workspaces.id, { onDelete: "cascade" }),
+    title:       text("title").notNull(),
+    /** "gospels" | "historical" | "psalms" | "custom" — grouping tag for the /synoptic index. */
+    corpus:      text("corpus").notNull().default("custom"),
+    /** "seed" | "custom" — seed rows are never overwritten by re-running the importer. */
+    source:      text("source").notNull().default("custom"),
+    /** Stable key used by scripts/import-synoptic-sets.ts for idempotent upsert. Null for custom sets. */
+    slug:        text("slug"),
+    sortOrder:   integer("sort_order").notNull().default(0),
+    createdAt:   text("created_at").$defaultFn(() => new Date().toISOString()),
+  },
+  (t) => [
+    index("ss_ws_idx").on(t.workspaceId),
+    uniqueIndex("ss_ws_slug_idx").on(t.workspaceId, t.slug),
+  ]
+);
+
 export const passages = sqliteTable(
   "passages",
   {
@@ -260,8 +282,18 @@ export const passages = sqliteTable(
     endBook:      text("end_book"),
     endChapter:   integer("end_chapter").notNull(),
     endVerse:     integer("end_verse").notNull(),
+    /** Set when this passage row is one column of a synoptic set rather than
+     *  a standalone user passage — see synopticSets and getSynopticSet(). */
+    synopticSetId: integer("synoptic_set_id").references(() => synopticSets.id, { onDelete: "cascade" }),
+    /** 0-based position of this column within its synoptic set. */
+    columnIndex:   integer("column_index"),
+    /** Display label for this column (e.g. "Matthew", "Chronicles"). */
+    columnLabel:   text("column_label"),
   },
-  (t) => [index("passages_book_src_idx").on(t.book, t.textSource)]
+  (t) => [
+    index("passages_book_src_idx").on(t.book, t.textSource),
+    index("passages_synoptic_set_idx").on(t.synopticSetId),
+  ]
 );
 
 
@@ -333,6 +365,36 @@ export const lineAnnotations = sqliteTable(
   (t) => [index("la_book_ch_src_idx").on(t.book, t.chapter, t.textSource)]
 );
 
+/**
+ * Word-level "Synoptic comparison" marks — unlike lineAnnotations (which snap
+ * to whole paragraph segments and render as a margin badge), these are an
+ * arbitrary contiguous word range (start/end can fall mid-sentence) rendered
+ * as an inline background tint directly on the words themselves. See the
+ * "Compare" toolbar toggle in ChapterDisplay.tsx and useSynopticCategories.
+ */
+export const synopticWordMarks = sqliteTable(
+  "synoptic_word_marks",
+  {
+    id:          integer("id").primaryKey({ autoIncrement: true }),
+    workspaceId: integer("workspace_id").notNull().default(1)
+                   .references(() => workspaces.id, { onDelete: "cascade" }),
+    /** References synopticCategoryTypes.key (loosely — not a DB-enforced FK,
+     *  same pattern as lineAnnotations storing a category/label key). */
+    categoryKey: text("category_key").notNull(),
+    /** Copied from the category at creation time so the mark still renders
+     *  its color even if the category is later deleted (same pattern as
+     *  "theme" line annotations copying a palette color). */
+    color:       text("color").notNull(),
+    startWordId: text("start_word_id").notNull(),
+    endWordId:   text("end_word_id").notNull(),
+    textSource:  text("text_source").notNull(),
+    book:        text("book").notNull(),
+    chapter:     integer("chapter").notNull(),
+    createdAt:   text("created_at").$defaultFn(() => new Date().toISOString()),
+  },
+  (t) => [index("swm_book_ch_src_idx").on(t.book, t.chapter, t.textSource)]
+);
+
 export const rstCustomTypes = sqliteTable(
   "rst_custom_types",
   {
@@ -361,6 +423,20 @@ export const commFunctionCustomTypes = sqliteTable(
     sortOrder:   integer("sort_order").notNull().default(0),
   },
   (t) => [uniqueIndex("cfct_ws_key_idx").on(t.workspaceId, t.key)]
+);
+
+export const synopticCategoryTypes = sqliteTable(
+  "synoptic_category_types",
+  {
+    id:          integer("id").primaryKey({ autoIncrement: true }),
+    workspaceId: integer("workspace_id").notNull().default(1)
+                   .references(() => workspaces.id, { onDelete: "cascade" }),
+    key:         text("key").notNull(),
+    label:       text("label").notNull(),
+    color:       text("color").notNull(),
+    sortOrder:   integer("sort_order").notNull().default(0),
+  },
+  (t) => [uniqueIndex("sct_ws_key_idx").on(t.workspaceId, t.key)]
 );
 
 export const notes = sqliteTable(
@@ -779,6 +855,7 @@ export type RstRelation = typeof rstRelations.$inferSelect;
 export type WordArrow = typeof wordArrows.$inferSelect;
 export type WordFormatting = typeof wordFormatting.$inferSelect;
 export type LineAnnotation = typeof lineAnnotations.$inferSelect;
+export type SynopticWordMark = typeof synopticWordMarks.$inferSelect;
 export type Note = typeof notes.$inferSelect;
 export type RstCustomType = typeof rstCustomTypes.$inferSelect;
 export type AutoBackupSettings = typeof autoBackupSettings.$inferSelect;
@@ -796,3 +873,5 @@ export type TextCriticalMark = typeof textCriticalMarks.$inferSelect;
 export type IntertextualLink = typeof intertextualLinks.$inferSelect;
 export type NewIntertextualLink = typeof intertextualLinks.$inferInsert;
 export type Bookmark = typeof bookmarks.$inferSelect;
+export type SynopticSet = typeof synopticSets.$inferSelect;
+export type SynopticCategoryType = typeof synopticCategoryTypes.$inferSelect;

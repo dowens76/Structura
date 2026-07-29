@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { userDb } from "@/lib/db";
-import { users, workspaces } from "@/lib/db/user-schema";
+import { users, workspaces, synopticCategoryTypes } from "@/lib/db/user-schema";
 import { asc, eq } from "drizzle-orm";
 
 export const dynamic = "force-dynamic";
@@ -53,6 +53,14 @@ export async function POST(request: NextRequest) {
     .insert(workspaces)
     .values({ userId, name: name.trim() })
     .returning();
+
+  // Seed the 3 default synoptic-comparison categories for this new workspace
+  // (existing workspaces are backfilled once by _migrateUserDbInner in lib/db/index.ts).
+  await userDb.insert(synopticCategoryTypes).values([
+    { workspaceId: workspace.id, key: "shared-all",    label: "Shared Across All",     color: "#16a34a", sortOrder: 0 },
+    { workspaceId: workspace.id, key: "shared-some",   label: "Shared By Some",        color: "#d97706", sortOrder: 1 },
+    { workspaceId: workspace.id, key: "unique-column", label: "Unique to This Column", color: "#dc2626", sortOrder: 2 },
+  ]);
 
   return NextResponse.json({ workspace }, { status: 201 });
 }

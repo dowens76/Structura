@@ -3,7 +3,9 @@
 import { useMemo, useState, useEffect, useRef, useCallback, useTransition } from "react";
 import { getMtToKjvInstructions, getKjvVerseLabel } from "@/lib/versification/mt-kjv-mapping";
 import { useRouter, useSearchParams } from "next/navigation";
-import type { Word, Character, CharacterRef, SpeechSection, WordTag, WordTagRef, RstRelation, WordArrow, LineAnnotation, Passage } from "@/lib/db/schema";
+import type { Word, Character, CharacterRef, SpeechSection, WordTag, WordTagRef, RstRelation, WordArrow, LineAnnotation, Passage, SynopticWordMark } from "@/lib/db/schema";
+import { useSynopticCategories } from "@/lib/hooks/useSynopticCategories";
+import SynopticCategoryManager from "@/components/synoptic/SynopticCategoryManager";
 import type { Translation, TranslationVerse, TranslationFootnote } from "@/lib/db/schema";
 import type { DisplayMode, GrammarFilterState, TranslationTextEntry, InterlinearSubMode } from "@/lib/morphology/types";
 import VerseDisplay from "./VerseDisplay";
@@ -149,6 +151,46 @@ interface ChapterDisplayProps {
   hideToolbar?: boolean;
   /** Verse to scroll to on initial load (driven by the ?v= URL param). */
   initialVerse?: number;
+  /** When false, this instance's global keydown shortcut handler (undo/redo,
+   *  arrow-key verse nav, book/chapter nav, etc.) is a no-op. Defaults to true
+   *  (single-instance behavior, unchanged). SynopticView sets this to false on
+   *  every column except the one the user last focused/clicked, so multiple
+   *  ChapterDisplay instances mounted side by side don't all react to the same
+   *  keypress at once. */
+  active?: boolean;
+  /** When true, the F8/Ctrl+F8 (chapter), F9/Ctrl+F9 (book), and Ctrl+Arrow
+   *  (verse) keyboard shortcuts become no-ops instead of calling
+   *  router.push/replace. Defaults to false (single-instance behavior,
+   *  unchanged) — every other shortcut (undo/redo, find, etc.) is unaffected.
+   *  SynopticView sets this to true on every column: those shortcuts navigate
+   *  the whole browser tab to a plain chapter URL, which would silently
+   *  abandon the multi-column comparison the user is looking at. A synoptic
+   *  column's scope is a fixed pericope anyway, not a book to page through. */
+  navigationDisabled?: boolean;
+  /** localStorage key the toolbar-visibility customization is persisted under.
+   *  Defaults to the app-wide "structura:toolbarVisibility" key. SynopticView
+   *  passes a distinct key so a user's Synoptic View toolbar customization
+   *  doesn't overwrite (or get overwritten by) their normal chapter/passage
+   *  view customization — the two contexts want different defaults (see
+   *  `defaultToolbarVisibility`) and shouldn't fight over one shared key. */
+  toolbarVisibilityStorageKey?: string;
+  /** Toolbar-visibility state used before any customization has been saved
+   *  under `toolbarVisibilityStorageKey`, and used by the customizer panel's
+   *  "Reset" button. Defaults to DEFAULT_TOOLBAR_VIS (everything on). */
+  defaultToolbarVisibility?: ToolbarVisibility;
+  /** Hands the actual scrolling DOM element up to the parent on mount (and
+   *  `null` on unmount) — SynopticView uses this to proportionally sync
+   *  scroll position across every column so scrolling one pane scrolls the
+   *  others. No-op for every other call site. */
+  onScrollContainerRef?: (el: HTMLDivElement | null) => void;
+  /** When true, the Notes, Search, Bible Lookup, Intertextual Links, and Word
+   *  Analysis side panels are fully disabled — their toolbar buttons don't
+   *  render (regardless of toolbarVis) and the panels themselves never
+   *  render even if their open-state is somehow already true. Used by
+   *  SynopticView, where a side panel opening inside one narrow column
+   *  wouldn't make sense. Defaults to false (single-instance behavior,
+   *  unchanged). */
+  disableSidePanels?: boolean;
 }
 
 const DEFAULT_FILTER: GrammarFilterState = {
@@ -225,6 +267,12 @@ export default function ChapterDisplay({
   initialPresentationMode = false,
   hideToolbar = false,
   initialVerse,
+  active = true,
+  navigationDisabled = false,
+  toolbarVisibilityStorageKey = "structura:toolbarVisibility",
+  defaultToolbarVisibility = DEFAULT_TOOLBAR_VIS,
+  onScrollContainerRef,
+  disableSidePanels = false,
 }: ChapterDisplayProps) {
   const { t, locale, refBookName } = useTranslation();
   const router = useRouter();
@@ -425,6 +473,121 @@ export default function ChapterDisplay({
     [wordTags]
   );
 
+  // ── Synoptic word-level comparison marking ──────────────────────────────────
+  // Unlike line annotations (paragraph-segment granularity), this marks an
+  // arbitrary contiguous word range — start/end can fall mid-sentence — and
+  // renders as an inline background tint directly on the words (see
+  // WordToken's synopticMarkColor prop), not a margin badge.
+  const { categories: synopticCategories } = useSynopticCategories();
+  const [editingWordCompare, setEditingWordCompare] = useState(false);
+  const [wordCompareCategoryKey, setWordCompareCategoryKey] = useState<string | null>(null);
+  const [wordCompareRangeStart, setWordCompareRangeStart] = useState<string | null>(null);
+  const [synopticWordMarks, setSynopticWordMarks] = useState<SynopticWordMark[]>([]);
+  const [showSynopticCategoryManager, setShowSynopticCategoryManager] = useState(false);
+
+  // Default the active category once the (async-fetched) list loads.
+  useEffect(() => {
+    if (!wordCompareCategoryKey && synopticCategories.length > 0) {
+      setWordCompareCategoryKey(synopticCategories[0].key);
+    }
+  }, [wordCompareCategoryKey, synopticCategories]);
+
+  // Client-fetched (not part of the server-rendered initial props) since this
+  // is a new, self-contained feature — refetches whenever the chapter/source
+  // being displayed changes.
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`/api/synoptic-word-marks?book=${encodeURIComponent(book)}&chapter=${chapter}&source=${textSource}`)
+      .then((r) => (r.ok ? r.json() : { marks: [] }))
+      .then((d: { marks?: SynopticWordMark[] }) => { if (!cancelled) setSynopticWordMarks(d.marks ?? []); })
+      .catch(() => { if (!cancelled) setSynopticWordMarks([]); });
+    return () => { cancelled = true; };
+  }, [book, chapter, textSource]);
+
+  /** Global (chapter-wide) word order index — used to order an arbitrary
+   *  word-compare range regardless of which word was clicked first. */
+  const wordIndexMap = useMemo(
+    () => new Map(words.map((w, i) => [w.wordId, i])),
+    [words]
+  );
+
+  async function handleToggleWordCompareMark(word: Word) {
+    if (!wordCompareCategoryKey) return;
+
+    // Clicking a word that's already covered by a mark (with no pending range
+    // start) removes that mark — same "click to toggle" simplicity as scene
+    // breaks/paragraph breaks.
+    if (!wordCompareRangeStart) {
+      const covering = synopticWordMarks.find((m) => {
+        const lo = wordIndexMap.get(m.startWordId);
+        const hi = wordIndexMap.get(m.endWordId);
+        const pos = wordIndexMap.get(word.wordId);
+        if (lo === undefined || hi === undefined || pos === undefined) return false;
+        return pos >= Math.min(lo, hi) && pos <= Math.max(lo, hi);
+      });
+      if (covering) {
+        setSynopticWordMarks((prev) => prev.filter((m) => m.id !== covering.id));
+        fetch("/api/synoptic-word-marks", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: covering.id }),
+        }).catch(() => {});
+        return;
+      }
+      setWordCompareRangeStart(word.wordId);
+      return;
+    }
+
+    // Second click — order the two endpoints by their position in the chapter.
+    const startPos = wordIndexMap.get(wordCompareRangeStart) ?? 0;
+    const endPos = wordIndexMap.get(word.wordId) ?? 0;
+    const [startWordId, endWordId] = startPos <= endPos
+      ? [wordCompareRangeStart, word.wordId]
+      : [word.wordId, wordCompareRangeStart];
+    const category = synopticCategories.find((c) => c.key === wordCompareCategoryKey);
+    const color = category?.color ?? "#6b7280";
+    setWordCompareRangeStart(null);
+
+    const tempId = -Date.now();
+    setSynopticWordMarks((prev) => [
+      ...prev,
+      { id: tempId, workspaceId: 1, categoryKey: wordCompareCategoryKey, color, startWordId, endWordId, textSource, book, chapter, createdAt: null },
+    ]);
+    try {
+      const res = await fetch("/api/synoptic-word-marks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ categoryKey: wordCompareCategoryKey, color, startWordId, endWordId, book, chapter, source: textSource }),
+      });
+      if (res.ok) {
+        const { mark } = await res.json();
+        setSynopticWordMarks((prev) => prev.map((m) => (m.id === tempId ? mark : m)));
+      } else {
+        setSynopticWordMarks((prev) => prev.filter((m) => m.id !== tempId));
+      }
+    } catch {
+      setSynopticWordMarks((prev) => prev.filter((m) => m.id !== tempId));
+    }
+  }
+
+  /** Per-word inline highlight color for the Synoptic word-compare marks,
+   *  keyed by wordId — a range covers every word between its start/end
+   *  (inclusive) by chapter-wide position, not just the two endpoints. */
+  const synopticWordMarkColorMap = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const mark of synopticWordMarks) {
+      const lo = wordIndexMap.get(mark.startWordId);
+      const hi = wordIndexMap.get(mark.endWordId);
+      if (lo === undefined || hi === undefined) continue;
+      const [from, to] = lo <= hi ? [lo, hi] : [hi, lo];
+      for (let i = from; i <= to; i++) {
+        const w = words[i];
+        if (w) map.set(w.wordId, mark.color);
+      }
+    }
+    return map;
+  }, [synopticWordMarks, wordIndexMap, words]);
+
   // ── Search hit highlighting ──────────────────────────────────────────────────
   /** Called by SearchPane whenever results change. Filters to words in this chapter. */
   const toggleNotesSync = useCallback(() => {
@@ -598,7 +761,7 @@ export default function ChapterDisplay({
   const [addressBarOpen, setAddressBarOpen] = useState(false);
 
   // ── Toolbar visibility (customizer) ───────────────────────────────────────
-  const [toolbarVis, setToolbarVis] = useState<ToolbarVisibility>(DEFAULT_TOOLBAR_VIS);
+  const [toolbarVis, setToolbarVis] = useState<ToolbarVisibility>(defaultToolbarVisibility);
   const [showToolbarCustomizer, setShowToolbarCustomizer] = useState(false);
   const gearBtnRef = useRef<HTMLButtonElement>(null);
   function setToolbarItemVis(key: keyof ToolbarVisibility, val: boolean) {
@@ -784,6 +947,15 @@ export default function ChapterDisplay({
   // extend in any direction without being cut off by overflow-y: auto.
   const outerRef = useRef<HTMLDivElement>(null);
 
+  // Hands the actual scrolling element (textContainerRef's node) up to the
+  // parent once mounted — SynopticView uses this to proportionally sync
+  // scroll position across columns. No-op for every other call site.
+  useEffect(() => {
+    onScrollContainerRef?.(textContainerRef.current);
+    return () => onScrollContainerRef?.(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Maps every word in the chapter to the first word of its paragraph.
   // Used by VerseDisplay to look up indent levels for paragraph continuations.
   // Verse boundaries always reset the paragraph start so that indent levels from
@@ -892,6 +1064,15 @@ export default function ChapterDisplay({
   const textSourceRef = useRef(textSource);
   const bookMaxVersesRef = useRef(bookMaxVerses);
   const sortedBooksRef = useRef(sortedBooks);
+  // Gates the global keydown listener below — see `active` prop doc comment.
+  // A ref (not a dependency) so SynopticView can move focus between mounted
+  // columns without tearing down/re-registering the listener each time.
+  const activeRef = useRef(active);
+  useEffect(() => { activeRef.current = active; }, [active]);
+  // Gates only the router.push/replace navigation shortcuts (F8/F9/Ctrl+Arrow)
+  // — see `navigationDisabled` prop doc comment.
+  const navigationDisabledRef = useRef(navigationDisabled);
+  useEffect(() => { navigationDisabledRef.current = navigationDisabled; }, [navigationDisabled]);
   const wordPositionMap = useMemo(
     () => new Map(words.map((w) => [w.wordId, w.positionInVerse])),
     [words]
@@ -911,6 +1092,7 @@ export default function ChapterDisplay({
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
+      if (!activeRef.current) return;
       if ((e.metaKey || e.ctrlKey) && e.key === "z" && !e.shiftKey) {
         e.preventDefault();
         const stack = undoStackRef.current;
@@ -972,7 +1154,7 @@ export default function ChapterDisplay({
         document.activeElement instanceof HTMLInputElement;
       // F8 — next chapter; Ctrl/Cmd+F8 — previous chapter
       if (e.key === "F8" && !e.altKey) {
-        if (inTextInput) return;
+        if (inTextInput || navigationDisabledRef.current) return;
         e.preventDefault();
         const bk = bookRef.current;
         const ch = chapterRef.current;
@@ -988,7 +1170,7 @@ export default function ChapterDisplay({
       }
       // F9 — next book; Ctrl/Cmd+F9 — previous book
       if (e.key === "F9" && !e.altKey) {
-        if (inTextInput) return;
+        if (inTextInput || navigationDisabledRef.current) return;
         e.preventDefault();
         const bk = bookRef.current;
         const src = textSourceRef.current;
@@ -1009,7 +1191,7 @@ export default function ChapterDisplay({
           document.activeElement instanceof HTMLTextAreaElement &&
           (document.activeElement as HTMLTextAreaElement).dataset.translationTextarea === "true";
         // Allow when in a translation textarea; block for all other inputs
-        if (inTextInput && !inTranslationTextarea) return;
+        if ((inTextInput && !inTranslationTextarea) || navigationDisabledRef.current) return;
         e.preventDefault();
         const bk = bookRef.current;
         const ch = chapterRef.current;
@@ -1109,7 +1291,7 @@ export default function ChapterDisplay({
     setLineHeightMultiplier(readLocal<number>("structura:lineHeightMultiplier", 1.0));
     // In translation-only mode always hide source text; otherwise restore stored pref.
     setHideSourceText(translationOnly || readLocal<boolean>("structura:hideSourceText", false));
-    setToolbarVis({ ...DEFAULT_TOOLBAR_VIS, ...readLocal<Partial<ToolbarVisibility>>("structura:toolbarVisibility", {}) });
+    setToolbarVis({ ...defaultToolbarVisibility, ...readLocal<Partial<ToolbarVisibility>>(toolbarVisibilityStorageKey, {}) });
     setNotesOpen(readLocal<boolean>("structura:notesOpen", false));
     setSearchOpen(readLocal<boolean>("structura:searchOpen", false));
     setOutlineOpen(readLocal<boolean>("structura:outlineOpen", false));
@@ -1135,7 +1317,7 @@ export default function ChapterDisplay({
   useEffect(() => { writeLocal("structura:useLinguisticTerms", useLinguisticTerms); }, [useLinguisticTerms]);
   useEffect(() => { writeLocal("structura:hideSourceText", hideSourceText); }, [hideSourceText]);
   // structura:rstLinked is now persisted inside useRstRelations hook.
-  useEffect(() => { writeLocal("structura:toolbarVisibility", toolbarVis); }, [toolbarVis]);
+  useEffect(() => { writeLocal(toolbarVisibilityStorageKey, toolbarVis); }, [toolbarVis, toolbarVisibilityStorageKey]);
   useEffect(() => { writeLocal("structura:notesOpen", notesOpen); }, [notesOpen]);
   useEffect(() => { writeLocal("structura:searchOpen", searchOpen); }, [searchOpen]);
   useEffect(() => { writeLocal("structura:outlineOpen", outlineOpen); }, [outlineOpen]);
@@ -1923,6 +2105,10 @@ export default function ChapterDisplay({
   }
 
   function handleSelectWord(word: Word, shiftHeld = false) {
+    if (editingWordCompare) {
+      handleToggleWordCompareMark(word);
+      return;
+    }
     if (editingWordTags) {
       handleToggleWordTagRef(word, shiftHeld);
       return;
@@ -4271,6 +4457,7 @@ export default function ChapterDisplay({
     annotations: [],
     refs:        ["annotations", "indents", "rst"],
     wordTags:    ["indents", "rst"],
+    wordCompare: [],
   };
   function deactivateIncompatible(mode: string) {
     const keep = new Set([mode, ...(COMPAT[mode] ?? [])]);
@@ -4286,6 +4473,7 @@ export default function ChapterDisplay({
     if (!keep.has("bold"))        setEditingBold(false);
     if (!keep.has("italic"))      setEditingItalic(false);
     if (!keep.has("footnotes"))   { setEditingFootnotes(false); setFnAnchorMoveId(null); }
+    if (!keep.has("wordCompare")) { setEditingWordCompare(false); setWordCompareRangeStart(null); }
   }
 
   // ── Passage range control logic (only meaningful when isPassageMode) ─────
@@ -4705,7 +4893,7 @@ export default function ChapterDisplay({
                 </button>
               )}
 
-              <div className="h-5 border-l border-[var(--border)]" />
+              <div className="toolbar-spacer h-5 border-l border-[var(--border)]" />
 
               {/* Scene / episode break mode */}
               {toolbarVis.scenes && <button
@@ -4980,7 +5168,7 @@ export default function ChapterDisplay({
                 </svg>
               </button>}
 
-              <div className="h-5 border-l border-[var(--border)]" />
+              <div className="toolbar-spacer h-5 border-l border-[var(--border)]" />
 
               {/* Bold formatting mode */}
               {toolbarVis.bold && <button
@@ -5021,60 +5209,64 @@ export default function ChapterDisplay({
               </button>}
 
               {/* Text Critical markup mode */}
-              <button
-                onClick={() => setEditingTc((v) => !v)}
-                data-tip={editingTc ? "Exit text-critical mode" : "Text critical markup (MT/LXX)"}
-                className={[
-                  "px-3 py-1.5 rounded text-[13px] font-bold transition-colors",
-                  editingTc
-                    ? "bg-indigo-600 text-white"
-                    : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
-                ].join(" ")}
-              >
-                TC
-              </button>
-              {editingTc && (
+              {toolbarVis.tc && (
                 <>
                   <button
-                    onClick={() => setActiveTcMark("lxx_unique")}
-                    data-tip="LXX Unique (green)"
+                    onClick={() => setEditingTc((v) => !v)}
+                    data-tip={editingTc ? "Exit text-critical mode" : "Text critical markup (MT/LXX)"}
                     className={[
-                      "w-7 h-7 rounded transition-colors border-2",
-                      activeTcMark === "lxx_unique"
-                        ? "border-green-600 bg-green-600"
-                        : "border-green-600 bg-transparent hover:bg-green-100 dark:hover:bg-green-900",
+                      "px-3 py-1.5 rounded text-[13px] font-bold transition-colors",
+                      editingTc
+                        ? "bg-indigo-600 text-white"
+                        : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
                     ].join(" ")}
-                    style={{ color: "#16a34a" }}
-                    title="LXX Unique (green)"
                   >
-                    <span className="sr-only">LXX Unique</span>
+                    TC
                   </button>
-                  <button
-                    onClick={() => setActiveTcMark("mt_unique")}
-                    data-tip="MT Unique (red)"
-                    className={[
-                      "w-7 h-7 rounded transition-colors border-2",
-                      activeTcMark === "mt_unique"
-                        ? "border-red-600 bg-red-600"
-                        : "border-red-600 bg-transparent hover:bg-red-100 dark:hover:bg-red-900",
-                    ].join(" ")}
-                    title="MT Unique (red)"
-                  >
-                    <span className="sr-only">MT Unique</span>
-                  </button>
-                  <button
-                    onClick={() => setActiveTcMark("same_different")}
-                    data-tip="Same meaning, different form (yellow)"
-                    className={[
-                      "w-7 h-7 rounded transition-colors border-2",
-                      activeTcMark === "same_different"
-                        ? "border-yellow-500 bg-yellow-500"
-                        : "border-yellow-500 bg-transparent hover:bg-yellow-100 dark:hover:bg-yellow-900",
-                    ].join(" ")}
-                    title="Same meaning, different form (yellow)"
-                  >
-                    <span className="sr-only">Same Meaning</span>
-                  </button>
+                  {editingTc && (
+                    <>
+                      <button
+                        onClick={() => setActiveTcMark("lxx_unique")}
+                        data-tip="LXX Unique (green)"
+                        className={[
+                          "w-7 h-7 rounded transition-colors border-2",
+                          activeTcMark === "lxx_unique"
+                            ? "border-green-600 bg-green-600"
+                            : "border-green-600 bg-transparent hover:bg-green-100 dark:hover:bg-green-900",
+                        ].join(" ")}
+                        style={{ color: "#16a34a" }}
+                        title="LXX Unique (green)"
+                      >
+                        <span className="sr-only">LXX Unique</span>
+                      </button>
+                      <button
+                        onClick={() => setActiveTcMark("mt_unique")}
+                        data-tip="MT Unique (red)"
+                        className={[
+                          "w-7 h-7 rounded transition-colors border-2",
+                          activeTcMark === "mt_unique"
+                            ? "border-red-600 bg-red-600"
+                            : "border-red-600 bg-transparent hover:bg-red-100 dark:hover:bg-red-900",
+                        ].join(" ")}
+                        title="MT Unique (red)"
+                      >
+                        <span className="sr-only">MT Unique</span>
+                      </button>
+                      <button
+                        onClick={() => setActiveTcMark("same_different")}
+                        data-tip="Same meaning, different form (yellow)"
+                        className={[
+                          "w-7 h-7 rounded transition-colors border-2",
+                          activeTcMark === "same_different"
+                            ? "border-yellow-500 bg-yellow-500"
+                            : "border-yellow-500 bg-transparent hover:bg-yellow-100 dark:hover:bg-yellow-900",
+                        ].join(" ")}
+                        title="Same meaning, different form (yellow)"
+                      >
+                        <span className="sr-only">Same Meaning</span>
+                      </button>
+                    </>
+                  )}
                 </>
               )}
 
@@ -5137,7 +5329,24 @@ export default function ChapterDisplay({
                 🏷
               </button>}
 
-              <div className="h-5 border-l border-[var(--border)]" />
+              {/* Synoptic word-level comparison marking */}
+              {toolbarVis.wordCompare && <button
+                onClick={() => {
+                  if (!editingWordCompare) deactivateIncompatible("wordCompare");
+                  setEditingWordCompare((v) => !v);
+                }}
+                data-tip={editingWordCompare ? "Turn off Compare mode" : "Compare: mark word-level differences"}
+                className={[
+                  "px-3 py-1.5 rounded text-[13px] font-medium transition-colors",
+                  editingWordCompare
+                    ? "bg-emerald-600 text-white"
+                    : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
+                ].join(" ")}
+              >
+                🆚
+              </button>}
+
+              <div className="toolbar-spacer h-5 border-l border-[var(--border)]" />
 
               {/* Undo button */}
               {undoStack.length > 0 && (
@@ -5166,10 +5375,10 @@ export default function ChapterDisplay({
                 🗑
               </button>}
 
-              <div className="h-5 border-l border-[var(--border)]" />
+              <div className="toolbar-spacer h-5 border-l border-[var(--border)]" />
 
               {/* Notes panel toggle */}
-              {toolbarVis.notes && <button
+              {toolbarVis.notes && !disableSidePanels && <button
                 onClick={() => setNotesOpen((v) => !v)}
                 data-tip={notesOpen ? t("toolbar.titleNotesOn") : t("toolbar.titleNotesOff")}
                 className={[
@@ -5183,7 +5392,7 @@ export default function ChapterDisplay({
               </button>}
 
               {/* Search panel toggle */}
-              {toolbarVis.search && <button
+              {toolbarVis.search && !disableSidePanels && <button
                 onClick={() => setSearchOpen((v) => !v)}
                 data-tip={searchOpen ? "Close Search" : "Search corpus"}
                 className={[
@@ -5197,7 +5406,7 @@ export default function ChapterDisplay({
               </button>}
 
               {/* Bible lookup panel toggle */}
-              {toolbarVis.bible && <button
+              {toolbarVis.bible && !disableSidePanels && <button
                 onClick={() => setBibleOpen((v) => !v)}
                 data-tip={bibleOpen ? "Close Bible Lookup" : "Bible Lookup"}
                 className={[
@@ -5211,7 +5420,7 @@ export default function ChapterDisplay({
               </button>}
 
               {/* Intertextual links panel toggle */}
-              {toolbarVis.intertextual && <button
+              {toolbarVis.intertextual && !disableSidePanels && <button
                 onClick={() => setIntertextualOpen((v) => !v)}
                 data-tip={intertextualOpen ? "Close Intertextual Links" : "Intertextual Links"}
                 className={[
@@ -5234,7 +5443,7 @@ export default function ChapterDisplay({
                 </svg>
               </button>}
 
-              <div className="h-5 border-l border-[var(--border)]" />
+              <div className="toolbar-spacer h-5 border-l border-[var(--border)]" />
 
               {/* Translation picker + source visibility toggle + translation edit */}
               {toolbarVis.translations && allAvailableTranslations.length > 0 && (
@@ -5467,6 +5676,7 @@ export default function ChapterDisplay({
                 onChange={setToolbarItemVis}
                 onClose={() => setShowToolbarCustomizer(false)}
                 anchorRef={gearBtnRef}
+                defaultVisibility={defaultToolbarVisibility}
               />
             )}
           </div>
@@ -5525,6 +5735,44 @@ export default function ChapterDisplay({
             onRequestWordClick={handleRequestWordClick}
             onCancelWordClick={handleCancelWordClick}
           />
+        )}
+
+        {/* Synoptic word-compare category bar */}
+        {editingWordCompare && (
+          <div
+            className="flex items-center gap-2 px-6 py-1.5 border-b flex-wrap"
+            style={{ borderColor: "var(--border)", backgroundColor: "var(--surface)" }}
+          >
+            <span className="text-[11px] shrink-0" style={{ color: "var(--text-muted)" }}>Compare:</span>
+            <div className="flex flex-wrap gap-1">
+              {synopticCategories.map((cat) => (
+                <button
+                  key={cat.key}
+                  type="button"
+                  onClick={() => setWordCompareCategoryKey(cat.key)}
+                  className="px-2 py-0.5 rounded text-[11px] text-white font-semibold transition-opacity"
+                  style={{ backgroundColor: cat.color, opacity: wordCompareCategoryKey === cat.key ? 1 : 0.4 }}
+                >
+                  {cat.label}
+                </button>
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowSynopticCategoryManager(true)}
+              className="text-[10px] ml-auto text-indigo-500 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 transition-colors"
+            >
+              Manage categories
+            </button>
+          </div>
+        )}
+        {editingWordCompare && wordCompareRangeStart && (
+          <div className="px-6 py-1 text-xs bg-emerald-50 dark:bg-emerald-950 border-b border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300">
+            Click the end word to complete the range (or the same word for a single-word mark).
+          </div>
+        )}
+        {showSynopticCategoryManager && (
+          <SynopticCategoryManager onClose={() => setShowSynopticCategoryManager(false)} />
         )}
 
         {/* RST relation hint */}
@@ -5778,6 +6026,9 @@ export default function ChapterDisplay({
                 characterRefMap={characterRefMap}
                 characterMap={characterMap}
                 wordSpeechMap={wordSpeechMap}
+                synopticWordMarkColorMap={synopticWordMarkColorMap}
+                editingWordCompare={editingWordCompare}
+                wordCompareRangeStartWordId={wordCompareRangeStart}
                 prevVerseLastWordId={prevWords[prevWords.length - 1]?.wordId ?? null}
                 nextVerseFirstWordId={nextWords[0]?.wordId ?? null}
                 editingRefs={editingRefs}
@@ -6048,7 +6299,7 @@ export default function ChapterDisplay({
       )}
 
       {/* Notes pane */}
-      {notesOpen && (
+      {notesOpen && !disableSidePanels && (
         <ResizablePane storageKey="pane-notes-width" defaultWidth={320} minWidth={200} maxWidth={700}>
           <PassageNotesPane
             passageId={passageState?.id}
@@ -6069,7 +6320,7 @@ export default function ChapterDisplay({
       )}
 
       {/* Search pane */}
-      {searchOpen && (
+      {searchOpen && !disableSidePanels && (
         <ResizablePane storageKey="pane-search-width" defaultWidth={340} minWidth={260} maxWidth={800}>
           <SearchPane
             book={book}
@@ -6083,7 +6334,7 @@ export default function ChapterDisplay({
       )}
 
       {/* Bible lookup pane */}
-      {bibleOpen && (
+      {bibleOpen && !disableSidePanels && (
         <ResizablePane storageKey="pane-bible-width" defaultWidth={320} minWidth={240} maxWidth={600}>
           <BibleLookupPane onClose={() => setBibleOpen(false)} />
         </ResizablePane>
@@ -6103,7 +6354,7 @@ export default function ChapterDisplay({
       )}
 
       {/* Intertextual links pane */}
-      {intertextualOpen && (
+      {intertextualOpen && !disableSidePanels && (
         <ResizablePane storageKey="pane-intertextual-width" defaultWidth={340} minWidth={260} maxWidth={700}>
           <IntertextualPanel
             book={book}
@@ -6163,7 +6414,7 @@ export default function ChapterDisplay({
       )}
 
       {/* Morphology panel — flex sibling so it pushes content left instead of overlaying */}
-      {panelOpen && (
+      {panelOpen && !disableSidePanels && (
           <ResizablePane storageKey="pane-morphology-width" defaultWidth={288} minWidth={200} maxWidth={700}>
             <div className="flex flex-col h-full bg-[var(--background)] border-l border-[var(--border)] shadow-[-4px_0_16px_rgba(0,0,0,0.1)]">
               <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border)] shrink-0">

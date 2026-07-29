@@ -1,12 +1,12 @@
-import { eq, and, asc, inArray, or, gte, lte, gt, lt, sql, max, like } from "drizzle-orm";
+import { eq, and, asc, inArray, or, gte, lte, gt, lt, sql, max, like, isNull } from "drizzle-orm";
 import { sourceDb, userDb, sourceLookups, lxxLookups, getLxxDb, getLxxSqlite, getUltSqlite, getVcbSqlite, getUserSqlite, getOshbDb, getSblgntDb, getDbAndLookups, getLexiconDbsForLanguage } from "./index";
 import { getMtToKjvInstructions } from "@/lib/versification/mt-kjv-mapping";
 import type { LookupMaps } from "./index";
 import { books, words } from "./source-schema";
 import { lexiconEntries } from "./lexica-schema";
 import type { Word, WordRow } from "./source-schema";
-import { translations, translationVerses, paragraphBreaks, paragraphHeadings, characters, characterRefs, speechSections, wordTags, wordTagRefs, lineIndents, sceneBreaks, passages, rstRelations, wordArrows, wordFormatting, lineAnnotations, bookGroupings, appSettings, translationFootnotes, translationVersions, workspaces, users, textCriticalMarks, notes, intertextualLinks } from "./user-schema";
-import type { Book, Translation, TranslationVerse, Character, CharacterRef, SpeechSection, WordTag, WordTagRef, Passage, RstRelation, WordArrow, LineAnnotation, BookGrouping, TranslationFootnote, TranslationVersion, IntertextualLink } from "./schema";
+import { translations, translationVerses, paragraphBreaks, paragraphHeadings, characters, characterRefs, speechSections, wordTags, wordTagRefs, lineIndents, sceneBreaks, passages, rstRelations, wordArrows, wordFormatting, lineAnnotations, bookGroupings, appSettings, translationFootnotes, translationVersions, workspaces, users, textCriticalMarks, notes, intertextualLinks, synopticSets, synopticWordMarks } from "./user-schema";
+import type { Book, Translation, TranslationVerse, Character, CharacterRef, SpeechSection, WordTag, WordTagRef, Passage, RstRelation, WordArrow, LineAnnotation, BookGrouping, TranslationFootnote, TranslationVersion, IntertextualLink, SynopticSet, SynopticWordMark } from "./schema";
 import type { TextSource, Testament } from "@/lib/morphology/types";
 
 // ── Decode helpers ────────────────────────────────────────────────────────────
@@ -1559,7 +1559,13 @@ export async function getLabeledPassages(workspaceId: number): Promise<Passage[]
   return userDb
     .select()
     .from(passages)
-    .where(and(eq(passages.workspaceId, workspaceId), sql`trim(${passages.label}) != ''`))
+    .where(and(
+      eq(passages.workspaceId, workspaceId),
+      sql`trim(${passages.label}) != ''`,
+      // Synoptic-set columns carry a non-empty label too but belong on the
+      // /synoptic index, not the general "My Passages" list — see synopticSets.
+      isNull(passages.synopticSetId)
+    ))
     .orderBy(asc(passages.book), asc(passages.startChapter), asc(passages.startVerse));
 }
 
@@ -1709,6 +1715,139 @@ export async function getPassageWords(
     ...startRows.map((r) => decodeWord(r, maps)),
     ...endRows.map((r) => decodeWord(r, maps)),
   ];
+}
+
+// ── Synoptic Sets ─────────────────────────────────────────────────────────────
+
+export interface SynopticSetWithColumns extends SynopticSet {
+  columns: Passage[];
+}
+
+export interface SynopticSetColumnInput {
+  book: string;
+  textSource: string;
+  columnLabel: string;
+  startChapter: number;
+  startVerse: number;
+  endBook?: string | null;
+  endChapter: number;
+  endVerse: number;
+}
+
+export async function getSynopticSets(workspaceId: number): Promise<SynopticSetWithColumns[]> {
+  const sets = await userDb
+    .select()
+    .from(synopticSets)
+    .where(eq(synopticSets.workspaceId, workspaceId))
+    .orderBy(asc(synopticSets.corpus), asc(synopticSets.sortOrder), asc(synopticSets.id));
+
+  if (sets.length === 0) return [];
+
+  const setIds = sets.map((s) => s.id);
+  const allColumns = await userDb
+    .select()
+    .from(passages)
+    .where(and(eq(passages.workspaceId, workspaceId), inArray(passages.synopticSetId, setIds)))
+    .orderBy(asc(passages.columnIndex));
+
+  const columnsBySetId = new Map<number, Passage[]>();
+  for (const col of allColumns) {
+    if (col.synopticSetId == null) continue;
+    if (!columnsBySetId.has(col.synopticSetId)) columnsBySetId.set(col.synopticSetId, []);
+    columnsBySetId.get(col.synopticSetId)!.push(col);
+  }
+
+  return sets.map((s) => ({ ...s, columns: columnsBySetId.get(s.id) ?? [] }));
+}
+
+export async function getSynopticSet(id: number, workspaceId: number): Promise<SynopticSetWithColumns | undefined> {
+  const results = await userDb
+    .select()
+    .from(synopticSets)
+    .where(and(eq(synopticSets.id, id), eq(synopticSets.workspaceId, workspaceId)))
+    .limit(1);
+  const set = results[0];
+  if (!set) return undefined;
+
+  const columns = await userDb
+    .select()
+    .from(passages)
+    .where(eq(passages.synopticSetId, id))
+    .orderBy(asc(passages.columnIndex));
+
+  return { ...set, columns };
+}
+
+async function insertSynopticSetColumns(
+  setId: number,
+  columns: SynopticSetColumnInput[],
+  workspaceId: number
+): Promise<Passage[]> {
+  if (columns.length === 0) return [];
+  const rows = columns.map((col, index) => ({
+    book: col.book,
+    textSource: col.textSource,
+    label: col.columnLabel,
+    startChapter: col.startChapter,
+    startVerse: col.startVerse,
+    endBook: col.endBook && col.endBook !== col.book ? col.endBook : null,
+    endChapter: col.endChapter,
+    endVerse: col.endVerse,
+    workspaceId,
+    synopticSetId: setId,
+    columnIndex: index,
+    columnLabel: col.columnLabel,
+  }));
+  return userDb.insert(passages).values(rows).returning();
+}
+
+export async function createSynopticSet(
+  title: string,
+  corpus: string,
+  source: string,
+  slug: string | null,
+  columns: SynopticSetColumnInput[],
+  workspaceId: number
+): Promise<SynopticSetWithColumns> {
+  const [set] = await userDb
+    .insert(synopticSets)
+    .values({ title, corpus, source, slug, workspaceId })
+    .returning();
+
+  const insertedColumns = await insertSynopticSetColumns(set.id, columns, workspaceId);
+  return { ...set, columns: insertedColumns };
+}
+
+/**
+ * Replace every column of a synoptic set in one shot — simplest correct way to
+ * handle add/remove/reorder/rebook of columns without a diffing algorithm.
+ * Underlying editing data (line annotations, paragraph breaks, etc.) lives on
+ * book/chapter/textSource, independent of the passages row, so it's untouched.
+ */
+export async function replaceSynopticSetColumns(
+  setId: number,
+  columns: SynopticSetColumnInput[],
+  workspaceId: number
+): Promise<Passage[]> {
+  await userDb.delete(passages).where(and(eq(passages.synopticSetId, setId), eq(passages.workspaceId, workspaceId)));
+  return insertSynopticSetColumns(setId, columns, workspaceId);
+}
+
+export async function updateSynopticSetMeta(
+  id: number,
+  updates: Partial<Pick<SynopticSet, "title" | "corpus" | "sortOrder">>,
+  workspaceId: number
+): Promise<SynopticSet> {
+  const [row] = await userDb
+    .update(synopticSets)
+    .set(updates)
+    .where(and(eq(synopticSets.id, id), eq(synopticSets.workspaceId, workspaceId)))
+    .returning();
+  return row;
+}
+
+export async function deleteSynopticSet(id: number, workspaceId: number): Promise<void> {
+  await userDb.delete(synopticSets).where(and(eq(synopticSets.id, id), eq(synopticSets.workspaceId, workspaceId)));
 }
 
 // ── RST Relations ─────────────────────────────────────────────────────────────
@@ -1982,6 +2121,61 @@ export async function updateLineAnnotation(
 /** Delete an annotation by id. */
 export async function deleteLineAnnotation(id: number): Promise<void> {
   await userDb.delete(lineAnnotations).where(eq(lineAnnotations.id, id));
+}
+
+// ── Synoptic Word Marks (word-level comparison marking) ──────────────────────
+
+export async function getChapterSynopticWordMarks(
+  book: string,
+  chapter: number,
+  textSource: string,
+  workspaceId: number
+): Promise<SynopticWordMark[]> {
+  return userDb
+    .select()
+    .from(synopticWordMarks)
+    .where(
+      and(
+        eq(synopticWordMarks.workspaceId, workspaceId),
+        eq(synopticWordMarks.book, book),
+        eq(synopticWordMarks.chapter, chapter),
+        eq(synopticWordMarks.textSource, textSource)
+      )
+    )
+    .orderBy(asc(synopticWordMarks.createdAt));
+}
+
+export async function createSynopticWordMark(
+  categoryKey: string,
+  color: string,
+  startWordId: string,
+  endWordId: string,
+  textSource: string,
+  book: string,
+  chapter: number,
+  workspaceId: number
+): Promise<SynopticWordMark> {
+  const [row] = await userDb
+    .insert(synopticWordMarks)
+    .values({ categoryKey, color, startWordId, endWordId, textSource, book, chapter, workspaceId })
+    .returning();
+  return row;
+}
+
+export async function updateSynopticWordMark(
+  id: number,
+  updates: Partial<Pick<SynopticWordMark, "categoryKey" | "color">>
+): Promise<SynopticWordMark> {
+  const [row] = await userDb
+    .update(synopticWordMarks)
+    .set(updates)
+    .where(eq(synopticWordMarks.id, id))
+    .returning();
+  return row;
+}
+
+export async function deleteSynopticWordMark(id: number): Promise<void> {
+  await userDb.delete(synopticWordMarks).where(eq(synopticWordMarks.id, id));
 }
 
 // ── ULT (UnfoldingWord Literal Text) ─────────────────────────────────────────

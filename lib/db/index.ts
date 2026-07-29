@@ -432,6 +432,74 @@ function _migrateUserDbInner(sqlite: Database.Database): void {
     try { sqlite.exec("ALTER TABLE passages ADD COLUMN end_book TEXT"); } catch { /* already exists */ }
 
   sqlite.exec(`
+    CREATE TABLE IF NOT EXISTS synoptic_sets (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      workspace_id INTEGER NOT NULL DEFAULT 1 REFERENCES workspaces(id) ON DELETE CASCADE,
+      title        TEXT    NOT NULL,
+      corpus       TEXT    NOT NULL DEFAULT 'custom',
+      source       TEXT    NOT NULL DEFAULT 'custom',
+      slug         TEXT,
+      sort_order   INTEGER NOT NULL DEFAULT 0,
+      created_at   TEXT
+    );
+    CREATE INDEX IF NOT EXISTS ss_ws_idx ON synoptic_sets(workspace_id);
+    CREATE UNIQUE INDEX IF NOT EXISTS ss_ws_slug_idx ON synoptic_sets(workspace_id, slug);
+
+    CREATE TABLE IF NOT EXISTS synoptic_category_types (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      workspace_id INTEGER NOT NULL DEFAULT 1 REFERENCES workspaces(id) ON DELETE CASCADE,
+      key          TEXT    NOT NULL,
+      label        TEXT    NOT NULL,
+      color        TEXT    NOT NULL,
+      sort_order   INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS sct_ws_key_idx ON synoptic_category_types(workspace_id, key);
+
+    CREATE TABLE IF NOT EXISTS synoptic_word_marks (
+      id            INTEGER PRIMARY KEY AUTOINCREMENT,
+      workspace_id  INTEGER NOT NULL DEFAULT 1 REFERENCES workspaces(id) ON DELETE CASCADE,
+      category_key  TEXT    NOT NULL,
+      color         TEXT    NOT NULL,
+      start_word_id TEXT    NOT NULL,
+      end_word_id   TEXT    NOT NULL,
+      text_source   TEXT    NOT NULL,
+      book          TEXT    NOT NULL,
+      chapter       INTEGER NOT NULL,
+      created_at    TEXT
+    );
+    CREATE INDEX IF NOT EXISTS swm_book_ch_src_idx ON synoptic_word_marks(book, chapter, text_source);
+  `);
+
+  if (!passageCols.includes("synoptic_set_id"))
+    try { sqlite.exec("ALTER TABLE passages ADD COLUMN synoptic_set_id INTEGER REFERENCES synoptic_sets(id) ON DELETE CASCADE"); } catch { /* already exists */ }
+  if (!passageCols.includes("column_index"))
+    try { sqlite.exec("ALTER TABLE passages ADD COLUMN column_index INTEGER"); } catch { /* already exists */ }
+  if (!passageCols.includes("column_label"))
+    try { sqlite.exec("ALTER TABLE passages ADD COLUMN column_label TEXT"); } catch { /* already exists */ }
+  try { sqlite.exec("CREATE INDEX IF NOT EXISTS passages_synoptic_set_idx ON passages(synoptic_set_id)"); } catch { /* already exists */ }
+
+  // Seed the 3 default synoptic-comparison categories for every workspace that
+  // doesn't have any yet (new workspaces get this via the /api/workspaces POST
+  // handler instead — this only backfills workspaces that already existed
+  // before this feature shipped).
+  const DEFAULT_SYNOPTIC_CATEGORIES = [
+    { key: "shared-all",     label: "Shared Across All",        color: "#16a34a", sortOrder: 0 },
+    { key: "shared-some",    label: "Shared By Some",           color: "#d97706", sortOrder: 1 },
+    { key: "unique-column",  label: "Unique to This Column",    color: "#dc2626", sortOrder: 2 },
+  ] as const;
+  const workspaceIds = (sqlite.prepare("SELECT id FROM workspaces").all() as { id: number }[]).map(r => r.id);
+  const insertCategory = sqlite.prepare(
+    "INSERT OR IGNORE INTO synoptic_category_types (workspace_id, key, label, color, sort_order) VALUES (?, ?, ?, ?, ?)"
+  );
+  for (const workspaceId of workspaceIds) {
+    const hasAny = sqlite.prepare("SELECT id FROM synoptic_category_types WHERE workspace_id = ? LIMIT 1").get(workspaceId);
+    if (hasAny) continue;
+    for (const c of DEFAULT_SYNOPTIC_CATEGORIES) {
+      insertCategory.run(workspaceId, c.key, c.label, c.color, c.sortOrder);
+    }
+  }
+
+  sqlite.exec(`
     CREATE TABLE IF NOT EXISTS auto_backup_settings (
       id               INTEGER PRIMARY KEY,
       enabled          INTEGER NOT NULL DEFAULT 0,

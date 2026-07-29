@@ -373,3 +373,16 @@ body {
   color: var(--text-muted);
   font-style: italic;
 }
+
+/* Chapter toolbar (ChapterDisplay.tsx): individual buttons come and go based
+ * on toolbarVis / Hebrew-only / mode conditions, so a divider that made sense
+ * between two visible groups can end up sitting right next to another divider
+ * once everything between them is hidden. Structural (not visual) sibling
+ * matching means this also collapses chains of 3+ consecutive dividers, since
+ * a divider hidden by this rule still counts as ".toolbar-spacer" for the
+ * next one's "+" match. */
+.toolbar-spacer + .toolbar-spacer,
+.toolbar-spacer:first-child,
+.toolbar-spacer:last-child {
+  display: none;
+}

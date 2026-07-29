@@ -266,6 +266,13 @@ export default function HomeContent({ otBooks, ntBooks, lxxBooks, translationOnl
           <div className="flex flex-wrap gap-2 mt-2">
             <BookmarkButton variant="bordered" />
             <HomePassagesButton />
+            <Link
+              href="/synoptic"
+              className="text-xs px-3 py-1.5 rounded border font-medium transition-colors"
+              style={{ borderColor: "var(--border)", backgroundColor: "var(--surface)", color: "var(--foreground)" }}
+            >
+              Synoptic View
+            </Link>
           </div>
         </header>
 

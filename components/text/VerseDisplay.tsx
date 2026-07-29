@@ -140,6 +140,11 @@ interface VerseDisplayProps {
   characterRefMap: Map<string, CharacterRef>;
   characterMap: Map<number, Character>;
   wordSpeechMap: Map<string, SpeechSection[]>;
+  // Synoptic word-level comparison marking — arbitrary word-range background
+  // tint, independent of paragraph segments (see ChapterDisplay.tsx).
+  synopticWordMarkColorMap?: Map<string, string>;
+  editingWordCompare?: boolean;
+  wordCompareRangeStartWordId?: string | null;
   prevVerseLastWordId: string | null;
   nextVerseFirstWordId: string | null;
   editingRefs: boolean;
@@ -1214,6 +1219,9 @@ export default function VerseDisplay({
   characterRefMap,
   characterMap,
   wordSpeechMap,
+  synopticWordMarkColorMap,
+  editingWordCompare = false,
+  wordCompareRangeStartWordId = null,
   prevVerseLastWordId,
   nextVerseFirstWordId,
   editingRefs,
@@ -2164,8 +2172,10 @@ export default function VerseDisplay({
               characterMap={characterMap}
               editingRefs={editingRefs}
               editingSpeech={editingSpeech}
-              isRangeStart={word.wordId === speechRangeStartWordId || word.wordId === tagRangeStartWordId}
+              isRangeStart={word.wordId === speechRangeStartWordId || word.wordId === tagRangeStartWordId || word.wordId === wordCompareRangeStartWordId}
               highlightCharIds={highlightCharIds}
+              synopticMarkColor={synopticWordMarkColorMap?.get(word.wordId) ?? null}
+              editingWordCompare={editingWordCompare}
               wordTagRef={groupWtr}
               wordTagMap={wordTagMap}
               editingWordTags={editingWordTags}

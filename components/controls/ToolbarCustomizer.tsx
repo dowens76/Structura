@@ -25,6 +25,8 @@ export interface ToolbarVisibility {
   bible: boolean;
   intertextual: boolean;
   translations: boolean;
+  wordCompare: boolean;
+  tc: boolean;
 }
 
 export const DEFAULT_TOOLBAR_VIS: ToolbarVisibility = {
@@ -33,6 +35,24 @@ export const DEFAULT_TOOLBAR_VIS: ToolbarVisibility = {
   rst: true, arrows: true, bold: true, italic: true,
   refs: true, speech: true, wordTags: true, clear: true,
   notes: true, search: true, bible: true, intertextual: true, translations: true,
+  wordCompare: true, tc: true,
+};
+
+/**
+ * Default toolbar visibility for a Synoptic View column — only Tooltips and
+ * the "🆚 Compare" word-level marking tool (see the `editingWordCompare` state
+ * in ChapterDisplay.tsx) stay on. Text size isn't gated by ToolbarVisibility
+ * at all (always shown), so it needs no entry here. Everything else — including
+ * Text Critical (TC) markup — defaults off to keep narrow side-by-side columns
+ * uncluttered — the user can still re-enable any of it via the customizer.
+ */
+export const SYNOPTIC_DEFAULT_TOOLBAR_VIS: ToolbarVisibility = {
+  tooltips: true, qatal: false, atnach: false, scenes: false, outline: false,
+  annotations: false, atnachInsert: false, paragraphs: false, indents: false,
+  rst: false, arrows: false, bold: false, italic: false,
+  refs: false, speech: false, wordTags: false, clear: false,
+  notes: false, search: false, bible: false, intertextual: false, translations: false,
+  wordCompare: true, tc: false,
 };
 
 interface Props {
@@ -40,6 +60,10 @@ interface Props {
   onChange: (key: keyof ToolbarVisibility, val: boolean) => void;
   onClose: () => void;
   anchorRef?: RefObject<HTMLButtonElement | null>;
+  /** Used by the "Reset" button — defaults to DEFAULT_TOOLBAR_VIS (everything
+   *  on). Pass SYNOPTIC_DEFAULT_TOOLBAR_VIS so Reset restores the Synoptic
+   *  View's own minimal default instead of turning everything on. */
+  defaultVisibility?: ToolbarVisibility;
 }
 
 const SECTIONS: { label: string; items: { key: keyof ToolbarVisibility; label: string; hebrew?: true }[] }[] = [
@@ -62,6 +86,7 @@ const SECTIONS: { label: string; items: { key: keyof ToolbarVisibility; label: s
       { key: "rst",         label: "↳ Clause Relationships" },
       { key: "annotations", label: "≡ Clause/Paragraph labels" },
       { key: "arrows",      label: "↷ Arrows" },
+      { key: "tc",          label: "TC Text Critical markup" },
     ],
   },
   {
@@ -69,6 +94,12 @@ const SECTIONS: { label: string; items: { key: keyof ToolbarVisibility; label: s
     items: [
       { key: "bold",   label: "B Bold" },
       { key: "italic", label: "I Italic" },
+    ],
+  },
+  {
+    label: "Comparison",
+    items: [
+      { key: "wordCompare", label: "🆚 Compare (word-level)" },
     ],
   },
   {
@@ -97,7 +128,7 @@ const SECTIONS: { label: string; items: { key: keyof ToolbarVisibility; label: s
   },
 ];
 
-export default function ToolbarCustomizer({ visibility, onChange, onClose, anchorRef }: Props) {
+export default function ToolbarCustomizer({ visibility, onChange, onClose, anchorRef, defaultVisibility = DEFAULT_TOOLBAR_VIS }: Props) {
   const panelRef = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState<{ top?: number; bottom?: number; right: number; maxHeight: number } | null>(null);
 
@@ -158,11 +189,11 @@ export default function ToolbarCustomizer({ visibility, onChange, onClose, ancho
         </span>
         <button
           onClick={() => {
-            const key = Object.keys(DEFAULT_TOOLBAR_VIS) as (keyof ToolbarVisibility)[];
-            key.forEach(k => onChange(k, true));
+            const keys = Object.keys(DEFAULT_TOOLBAR_VIS) as (keyof ToolbarVisibility)[];
+            keys.forEach(k => onChange(k, defaultVisibility[k]));
           }}
           className="text-[11px] text-stone-400 hover:text-stone-600 dark:hover:text-stone-200 transition-colors"
-          title="Show all buttons"
+          title="Restore defaults"
         >
           Reset
         </button>

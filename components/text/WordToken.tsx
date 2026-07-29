@@ -25,6 +25,10 @@ interface WordTokenProps {
   editingSpeech: boolean;
   isRangeStart: boolean;
   highlightCharIds: Set<number>;
+  // Synoptic word-level comparison marking — inline background tint,
+  // independent of paragraph segments (see ChapterDisplay.tsx).
+  synopticMarkColor?: string | null;
+  editingWordCompare?: boolean;
   // Word / concept tag highlighting
   wordTagRef?: WordTagRef | null;
   wordTagMap?: Map<number, WordTag>;
@@ -442,6 +446,8 @@ export default function WordToken({
   editingSpeech,
   isRangeStart,
   highlightCharIds,
+  synopticMarkColor,
+  editingWordCompare,
   wordTagRef,
   wordTagMap,
   editingWordTags,
@@ -533,7 +539,13 @@ export default function WordToken({
     textDecorationThickness: "2.5px",
   } : {};
 
-  const style: React.CSSProperties = { ...colorStyle, ...underlineStyle, ...formattingStyle, ...tcStyle };
+  // ── Synoptic word-level comparison mark ─────────────────────────────────────
+  const synopticMarkStyle: React.CSSProperties = synopticMarkColor ? {
+    backgroundColor: `${synopticMarkColor}33`,
+    borderRadius: "3px",
+  } : {};
+
+  const style: React.CSSProperties = { ...colorStyle, ...underlineStyle, ...formattingStyle, ...tcStyle, ...synopticMarkStyle };
 
   const isInterlinear = displayMode === "interlinear";
 
@@ -545,7 +557,7 @@ export default function WordToken({
     setHovering(true);
   }
 
-  const isEditing = editingParagraphs || editingRefs || editingSpeech || !!editingWordTags || !!editingFormatting;
+  const isEditing = editingParagraphs || editingRefs || editingSpeech || !!editingWordTags || !!editingFormatting || !!editingWordCompare;
 
   const baseClasses = [
     "relative transition-all duration-100",
@@ -556,6 +568,8 @@ export default function WordToken({
         ? "cursor-crosshair hover:bg-amber-50 dark:hover:bg-amber-950/40"
       : editingWordTags
         ? "cursor-crosshair hover:bg-yellow-100 dark:hover:bg-yellow-900/40"
+      : editingWordCompare
+        ? "cursor-crosshair hover:bg-emerald-100 dark:hover:bg-emerald-900/40"
       : (editingRefs || editingSpeech)
         ? [
             "cursor-crosshair hover:bg-violet-100 dark:hover:bg-violet-900/40",
@@ -602,7 +616,11 @@ export default function WordToken({
         <span
           ref={wordRef}
           className={baseClasses}
-          style={wordHighlightBg ? { ...underlineStyle, backgroundColor: wordHighlightBg, borderRadius: "3px" } : underlineStyle}
+          style={{
+            ...underlineStyle,
+            ...synopticMarkStyle,
+            ...(wordHighlightBg ? { backgroundColor: wordHighlightBg, borderRadius: "3px" } : {}),
+          }}
           data-word-id={word.wordId}
           onClick={(e) => onSelect(word, e.shiftKey)}
           onMouseEnter={handleMouseEnter}

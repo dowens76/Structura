@@ -37,6 +37,7 @@
     "db:rebuild": "tsx scripts/rebuild-source-db.ts",
     "import:ult": "tsx scripts/import-ult.ts",
     "import:vcb": "tsx scripts/import-vcb.ts",
+    "import:synoptic": "tsx scripts/import-synoptic-sets.ts",
     "build:next": "next build --webpack && node scripts/copy-standalone.mjs",
     "build:template": "tsx scripts/create-user-db-template.ts",
     "build:node-binary": "node scripts/download-node-binary.mjs",
