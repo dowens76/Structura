@@ -8,15 +8,17 @@ import { DATASET_GROUP_SWATCHES } from "@/lib/utils/datasetColors";
 interface Dataset {
   id: number;
   name: string;
+  direction: "ltr" | "rtl";
 }
 
 interface InterlinearSubModePickerProps {
   subMode: InterlinearSubMode;
   onChange: (mode: InterlinearSubMode) => void;
   datasets: Dataset[];
-  onCreateDataset: (name: string) => Promise<Dataset | null>;
+  onCreateDataset: (name: string, direction: "ltr" | "rtl") => Promise<Dataset | null>;
   onDeleteDataset: (id: number) => void;
   onRenameDataset: (id: number, name: string) => void;
+  onSetDatasetDirection: (id: number, direction: "ltr" | "rtl") => void;
   onUploadDataset: (id: number) => void;
   // Copy transliteration
   minVerse?: number;
@@ -59,6 +61,7 @@ export default function InterlinearSubModePicker({
   onCreateDataset,
   onDeleteDataset,
   onRenameDataset,
+  onSetDatasetDirection,
   onUploadDataset,
   minVerse = 1,
   maxVerse = 1,
@@ -78,6 +81,7 @@ export default function InterlinearSubModePicker({
   const [dsMenuOpen,   setDsMenuOpen]   = useState(false);
   const [creating,     setCreating]     = useState(false);
   const [newName,      setNewName]      = useState("");
+  const [newDirection, setNewDirection] = useState<"ltr" | "rtl">("ltr");
   const [renamingId,   setRenamingId]   = useState<number | null>(null);
   const [renameVal,    setRenameVal]    = useState("");
   const [copyOpen,     setCopyOpen]     = useState(false);
@@ -109,10 +113,11 @@ export default function InterlinearSubModePicker({
   async function handleCreate() {
     const name = newName.trim();
     if (!name) return;
-    const ds = await onCreateDataset(name);
+    const ds = await onCreateDataset(name, newDirection);
     if (ds) {
       onChange({ type: "dataset", id: ds.id, name: ds.name });
       setNewName("");
+      setNewDirection("ltr");
       setCreating(false);
     }
   }
@@ -227,6 +232,12 @@ export default function InterlinearSubModePicker({
                 {renamingId !== ds.id && (
                   <span className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
                     <button
+                      title={ds.direction === "rtl" ? "Right-to-left — click for left-to-right" : "Left-to-right — click for right-to-left"}
+                      className="text-[9px] font-semibold px-1 py-0.5 rounded hover:bg-stone-100 dark:hover:bg-stone-700 w-7 text-center"
+                      style={{ color: "var(--text-muted)" }}
+                      onClick={() => onSetDatasetDirection(ds.id, ds.direction === "rtl" ? "ltr" : "rtl")}
+                    >{ds.direction === "rtl" ? "RTL" : "LTR"}</button>
+                    <button
                       title="Upload entries from file"
                       className="text-[10px] px-1 py-0.5 rounded hover:bg-stone-100 dark:hover:bg-stone-700"
                       style={{ color: "var(--text-muted)" }}
@@ -250,24 +261,48 @@ export default function InterlinearSubModePicker({
 
             <div className="border-t mt-1 pt-1" style={{ borderColor: "var(--border)" }}>
               {creating ? (
-                <div className="flex items-center gap-1 px-2 py-1">
-                  <input
-                    ref={createInputRef}
-                    autoFocus
-                    value={newName}
-                    onChange={(e) => setNewName(e.target.value)}
-                    placeholder="Dataset name"
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") handleCreate();
-                      if (e.key === "Escape") { setCreating(false); setNewName(""); }
-                    }}
-                    className="flex-1 rounded border px-1.5 py-0.5 text-xs outline-none"
-                    style={{ borderColor: "var(--border)", backgroundColor: "var(--surface)", color: "var(--foreground)" }}
-                  />
-                  <button
-                    onClick={handleCreate}
-                    className="text-xs px-2 py-0.5 rounded bg-blue-600 text-white"
-                  >Add</button>
+                <div className="flex flex-col gap-1.5 px-2 py-1">
+                  <div className="flex items-center gap-1">
+                    <input
+                      ref={createInputRef}
+                      autoFocus
+                      value={newName}
+                      onChange={(e) => setNewName(e.target.value)}
+                      placeholder="Dataset name"
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") handleCreate();
+                        if (e.key === "Escape") { setCreating(false); setNewName(""); setNewDirection("ltr"); }
+                      }}
+                      className="flex-1 rounded border px-1.5 py-0.5 text-xs outline-none"
+                      style={{ borderColor: "var(--border)", backgroundColor: "var(--surface)", color: "var(--foreground)" }}
+                    />
+                    <button
+                      onClick={handleCreate}
+                      className="text-xs px-2 py-0.5 rounded bg-blue-600 text-white"
+                    >Add</button>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>Direction:</span>
+                    <div className="flex gap-1">
+                      {(["ltr", "rtl"] as const).map((d) => (
+                        <button
+                          key={d}
+                          type="button"
+                          onClick={() => setNewDirection(d)}
+                          title={d === "ltr" ? "Left-to-right (e.g. English glosses)" : "Right-to-left (e.g. Hebrew/Arabic values)"}
+                          className={[
+                            "text-[10px] px-1.5 py-0.5 rounded border transition-colors",
+                            newDirection === d
+                              ? "bg-blue-600 border-blue-600 text-white"
+                              : "border-stone-200 dark:border-stone-700 hover:bg-stone-100 dark:hover:bg-stone-700",
+                          ].join(" ")}
+                          style={{ color: newDirection === d ? undefined : "var(--foreground)" }}
+                        >
+                          {d === "ltr" ? "LTR" : "RTL"}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 </div>
               ) : (
                 <button

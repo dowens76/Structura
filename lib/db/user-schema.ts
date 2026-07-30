@@ -511,6 +511,11 @@ export const wordDatasets = sqliteTable(
     workspaceId: integer("workspace_id").notNull().default(1)
                    .references(() => workspaces.id, { onDelete: "cascade" }),
     name:        text("name").notNull(),
+    // Text direction for this dataset's values — "ltr" (default) or "rtl".
+    // Interlinear labels/entry inputs inherit the source word's RTL Hebrew
+    // context unless this is set explicitly, so datasets of e.g. English
+    // glosses need to opt out of that inherited direction.
+    direction:   text("direction").notNull().default("ltr"),
     createdAt:   text("created_at").$defaultFn(() => new Date().toISOString()),
   },
   (t) => [index("wds_ws_idx").on(t.workspaceId)]

@@ -43,6 +43,9 @@ interface WordTokenProps {
   interlinearSubMode?: InterlinearSubMode;
   constituentLabel?: string | null;
   datasetValue?: string | null;
+  // Text direction for the active dataset's label/input — explicit so it
+  // doesn't silently inherit dir="rtl" from a Hebrew source-text ancestor.
+  datasetDirection?: "ltr" | "rtl";
   transliterationFormat?: string | null;
   onSaveConstituentLabel?: (wordId: string, label: string | null) => void;
   onSaveDatasetEntry?: (wordId: string, value: string | null) => void;
@@ -120,6 +123,7 @@ interface InterlinearLabelProps {
   subMode: InterlinearSubMode;
   constituentLabel: string | null;
   datasetValue: string | null;
+  datasetDirection?: "ltr" | "rtl";
   transliterationFormat: string | null;
   onSaveConstituentLabel?: (wordId: string, label: string | null) => void;
   onSaveDatasetEntry?: (wordId: string, value: string | null) => void;
@@ -137,6 +141,7 @@ function InterlinearLabel({
   subMode,
   constituentLabel,
   datasetValue,
+  datasetDirection = "ltr",
   transliterationFormat,
   onSaveConstituentLabel,
   onSaveDatasetEntry,
@@ -177,7 +182,8 @@ function InterlinearLabel({
   }
 
   const isTransliteration = subMode === "transliteration";
-  const isEditable = subMode === "constituent" || isTransliteration || (typeof subMode === "object" && subMode.type === "dataset");
+  const isDatasetMode = typeof subMode === "object" && subMode.type === "dataset";
+  const isEditable = subMode === "constituent" || isTransliteration || isDatasetMode;
   const isLemmaSearchable = subMode === "lemma" && !!onLemmaClick;
 
   function applyTranslitFormat(command: "bold" | "italic") {
@@ -271,6 +277,7 @@ function InterlinearLabel({
             ? { ...labelStyle, backgroundColor: "rgba(37, 99, 235, 0.35)", outline: "1px solid rgba(37, 99, 235, 0.6)" }
             : labelStyle
         }
+        dir={isDatasetMode ? datasetDirection : undefined}
         onClick={handleLabelClick}
         title={
           isLemmaSearchable
@@ -395,6 +402,7 @@ function InterlinearLabel({
           <input
             ref={inputRef}
             autoFocus
+            dir={datasetDirection}
             value={draftValue}
             onChange={(e) => setDraftValue(e.target.value)}
             onKeyDown={(e) => {
@@ -458,6 +466,7 @@ export default function WordToken({
   interlinearSubMode = "lemma",
   constituentLabel,
   datasetValue,
+  datasetDirection = "ltr",
   transliterationFormat,
   onSaveConstituentLabel,
   onSaveDatasetEntry,
@@ -635,6 +644,7 @@ export default function WordToken({
           subMode={interlinearSubMode}
           constituentLabel={constituentLabel ?? null}
           datasetValue={datasetValue ?? null}
+          datasetDirection={datasetDirection}
           transliterationFormat={transliterationFormat ?? null}
           onSaveConstituentLabel={onSaveConstituentLabel}
           onSaveDatasetEntry={onSaveDatasetEntry}

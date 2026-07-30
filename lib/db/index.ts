@@ -755,6 +755,7 @@ function _migrateUserDbInner(sqlite: Database.Database): void {
       id           INTEGER PRIMARY KEY AUTOINCREMENT,
       workspace_id INTEGER NOT NULL DEFAULT 1 REFERENCES workspaces(id) ON DELETE CASCADE,
       name         TEXT    NOT NULL,
+      direction    TEXT    NOT NULL DEFAULT 'ltr',
       created_at   TEXT
     );
     CREATE INDEX IF NOT EXISTS wds_ws_idx ON word_datasets(workspace_id);
@@ -835,6 +836,11 @@ function _migrateUserDbInner(sqlite: Database.Database): void {
     CREATE INDEX IF NOT EXISTS wtcv_col_word_idx ON word_tag_column_values(column_id, word_id);
     CREATE UNIQUE INDEX IF NOT EXISTS wtcv_col_word_option_idx ON word_tag_column_values(column_id, word_id, option_id);
   `);
+
+  const wdsCols = (sqlite.prepare("PRAGMA table_info(word_datasets)").all() as { name: string }[]).map(r => r.name);
+  if (!wdsCols.includes("direction")) {
+    try { sqlite.exec("ALTER TABLE word_datasets ADD COLUMN direction TEXT NOT NULL DEFAULT 'ltr'"); } catch { /* already exists */ }
+  }
 
   const wdeCols = (sqlite.prepare("PRAGMA table_info(word_dataset_entries)").all() as { name: string }[]).map(r => r.name);
   if (!wdeCols.includes("group_id")) {

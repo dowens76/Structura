@@ -328,7 +328,7 @@ export default function ChapterDisplay({
   const [constituentLabelMap, setConstituentLabelMap] = useState<Map<string, string>>(new Map());
   // Manual word groupings within constituent labeling: wordId -> shared groupId.
   const [constituentGroupMap, setConstituentGroupMap] = useState<Map<string, string>>(new Map());
-  const [datasets, setDatasets] = useState<{ id: number; name: string }[]>([]);
+  const [datasets, setDatasets] = useState<{ id: number; name: string; direction: "ltr" | "rtl" }[]>([]);
   const [datasetEntryMap, setDatasetEntryMap] = useState<Map<string, string>>(new Map());
   // Manual word groupings within a dataset: wordId -> shared groupId.
   const [datasetGroupMap, setDatasetGroupMap] = useState<Map<string, string>>(new Map());
@@ -1357,7 +1357,7 @@ export default function ChapterDisplay({
   useEffect(() => {
     fetch("/api/interlinear/datasets?workspaceId=1")
       .then((r) => r.json())
-      .then((rows: { id: number; name: string }[]) => setDatasets(rows))
+      .then((rows: { id: number; name: string; direction: "ltr" | "rtl" }[]) => setDatasets(rows))
       .catch(() => {});
   }, []);
 
@@ -1554,6 +1554,11 @@ export default function ChapterDisplay({
   const activeDatasetId = typeof interlinearSubMode === "object" && interlinearSubMode.type === "dataset"
     ? interlinearSubMode.id
     : null;
+  // Explicit text direction for the active dataset's labels/inputs — these
+  // sit inside Hebrew source-text spans (dir="rtl") and would otherwise
+  // silently inherit that direction, so it must be set explicitly rather
+  // than left to inherit.
+  const activeDatasetDirection = datasets.find((d) => d.id === activeDatasetId)?.direction ?? "ltr";
   const isConstituentMode = interlinearSubMode === "constituent";
   const groupingContextKey = isConstituentMode ? "constituent" : activeDatasetId != null ? `dataset:${activeDatasetId}` : "none";
 
@@ -3880,19 +3885,30 @@ export default function ChapterDisplay({
     } catch { /* ignore */ }
   }
 
-  async function handleCreateDataset(name: string): Promise<{ id: number; name: string } | null> {
+  async function handleCreateDataset(name: string, direction: "ltr" | "rtl" = "ltr"): Promise<{ id: number; name: string; direction: "ltr" | "rtl" } | null> {
     try {
       const res  = await fetch("/api/interlinear/datasets", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ workspaceId: 1, name }),
+        body: JSON.stringify({ workspaceId: 1, name, direction }),
       });
-      const ds   = await res.json() as { id: number; name: string };
+      const ds   = await res.json() as { id: number; name: string; direction: "ltr" | "rtl" };
       setDatasets((prev) => [...prev, ds]);
       return ds;
     } catch {
       return null;
     }
+  }
+
+  async function handleSetDatasetDirection(id: number, direction: "ltr" | "rtl") {
+    setDatasets((prev) => prev.map((d) => d.id === id ? { ...d, direction } : d));
+    try {
+      await fetch(`/api/interlinear/datasets/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ direction }),
+      });
+    } catch { /* ignore */ }
   }
 
   async function handleDeleteDataset(id: number) {
@@ -4827,6 +4843,7 @@ export default function ChapterDisplay({
                   onCreateDataset={handleCreateDataset}
                   onDeleteDataset={handleDeleteDataset}
                   onRenameDataset={handleRenameDataset}
+                  onSetDatasetDirection={handleSetDatasetDirection}
                   onUploadDataset={(id) => {
                     setUploadDatasetId(id);
                     // Trigger hidden file input
@@ -6084,6 +6101,7 @@ export default function ChapterDisplay({
                 constituentLabelMap={constituentLabelMap}
                 constituentGroupMap={constituentGroupMap}
                 datasetEntryMap={datasetEntryMap}
+                datasetDirection={activeDatasetDirection}
                 transliterationFormatMap={transliterationFormatMap}
                 onSaveConstituentLabel={handleSaveConstituentLabel}
                 onSaveDatasetEntry={handleSaveDatasetEntry}

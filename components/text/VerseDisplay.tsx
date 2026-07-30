@@ -205,6 +205,9 @@ interface VerseDisplayProps {
   constituentLabelMap?: Map<string, string>;
   constituentGroupMap?: Map<string, string>;
   datasetEntryMap?: Map<string, string>;
+  // Text direction for the active dataset's labels/inputs — explicit so it
+  // doesn't silently inherit dir="rtl" from a Hebrew source-text ancestor.
+  datasetDirection?: "ltr" | "rtl";
   transliterationFormatMap?: Map<string, string>;
   onSaveConstituentLabel?: (wordId: string, label: string | null) => void;
   onSaveDatasetEntry?: (wordId: string, value: string | null) => void;
@@ -1268,6 +1271,7 @@ export default function VerseDisplay({
   constituentLabelMap = new Map<string, string>(),
   constituentGroupMap = new Map<string, string>(),
   datasetEntryMap = new Map<string, string>(),
+  datasetDirection = "ltr",
   transliterationFormatMap = new Map<string, string>(),
   onSaveConstituentLabel,
   onSaveDatasetEntry,
@@ -2193,6 +2197,7 @@ export default function VerseDisplay({
               interlinearSubMode={interlinearSubMode}
               constituentLabel={constituentLabelMap.get(word.wordId)}
               datasetValue={datasetEntryMap.get(word.wordId)}
+              datasetDirection={datasetDirection}
               suppressDatasetValueDisplay={!!savedGroupId}
               transliterationFormat={transliterationFormatMap.get(word.wordId)}
               onSaveConstituentLabel={onSaveConstituentLabel}
