@@ -66,6 +66,8 @@ const LANGUAGES: { code: string; label: string }[] = [
   { code: "pa", label: "Punjabi" },
   { code: "ro", label: "Romanian" },
   { code: "ru", label: "Russian" },
+  { code: "grc-sbl", label: "SBL Greek Transliteration" },
+  { code: "hbo-sbl", label: "SBL Hebrew Transliteration" },
   { code: "sr", label: "Serbian" },
   { code: "si", label: "Sinhala" },
   { code: "sk", label: "Slovak" },
