@@ -323,9 +323,23 @@ fn spawn_server(app: &AppHandle, port: u16) -> Result<CommandChild, String> {
         resource_dir.join("databases")
     };
 
+    // The built-in Synoptic View seed JSON is bundled at resources/seed
+    // (a sibling of resources/databases — see tauri.conf.json's resources
+    // map), NOT inside databases_dir. Debug mode mirrors this: the project's
+    // data/seed directory sits alongside data/ itself.
+    let seed_dir = if cfg!(debug_assertions) {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .map(|p| p.join("data").join("seed"))
+            .unwrap_or_else(|| resource_dir.join("seed"))
+    } else {
+        resource_dir.join("seed")
+    };
+
     log::info!("Spawning Next.js server on port {port}");
     log::info!("  server_dir:    {}", server_dir.display());
     log::info!("  databases_dir: {}", databases_dir.display());
+    log::info!("  seed_dir:      {}", seed_dir.display());
     log::info!("  app_data_dir:  {}", app_data_dir.display());
 
     let sidecar = app
@@ -338,6 +352,7 @@ fn spawn_server(app: &AppHandle, port: u16) -> Result<CommandChild, String> {
         .env("HOSTNAME", "127.0.0.1")
         .env("NODE_ENV", "production")
         .env("STRUCTURA_RESOURCES_DIR", databases_dir.to_string_lossy().to_string())
+        .env("STRUCTURA_SEED_DIR", seed_dir.to_string_lossy().to_string())
         .env("STRUCTURA_USER_DATA_DIR", app_data_dir.to_string_lossy().to_string())
         // Disable Next.js telemetry — prevents writes to ~/.next/telemetry on startup.
         .env("NEXT_TELEMETRY_DISABLED", "1")

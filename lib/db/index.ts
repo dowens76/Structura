@@ -38,6 +38,11 @@ const RESOURCES_DIR = process.env.STRUCTURA_RESOURCES_DIR
   ?? path.join(process.cwd(), "data");
 const USER_DATA_DIR = process.env.STRUCTURA_USER_DATA_DIR
   ?? path.join(process.cwd(), "data");
+// Bundled as a sibling of RESOURCES_DIR in the packaged app (resources/seed
+// vs. resources/databases — see tauri.conf.json + src-tauri/src/lib.rs's
+// spawn_server), so it can't be derived from RESOURCES_DIR itself.
+const SEED_DIR = process.env.STRUCTURA_SEED_DIR
+  ?? path.join(RESOURCES_DIR, "seed");
 
 const SOURCE_DB_PATH  = path.join(RESOURCES_DIR, "source.db");  // legacy — superseded by oshb.db/sblgnt.db
 const OSHB_DB_PATH    = path.join(RESOURCES_DIR, "oshb.db");
@@ -508,9 +513,10 @@ function _migrateUserDbInner(sqlite: Database.Database): void {
   // which meant a fresh install (including the packaged Tauri app's
   // per-user database, created empty from a template on first launch) never
   // got the built-in sets. Running it here, on every startup, fixes that for
-  // both dev and packaged installs. RESOURCES_DIR resolves to data/seed in
-  // dev and to the bundled resources/seed in the packaged app (see
-  // scripts/copy-databases.mjs and tauri.conf.json's resources map).
+  // both dev and packaged installs. SEED_DIR resolves to data/seed in dev
+  // and to the bundled resources/seed in the packaged app (see
+  // scripts/copy-databases.mjs, tauri.conf.json's resources map, and
+  // src-tauri/src/lib.rs's spawn_server, which sets STRUCTURA_SEED_DIR).
   interface SynopticSeedColumn {
     book: string;
     textSource: string;
@@ -535,7 +541,7 @@ function _migrateUserDbInner(sqlite: Database.Database): void {
   const synopticSeedSets: SynopticSeedSet[] = [];
   for (const file of SYNOPTIC_SEED_FILES) {
     try {
-      const raw = fs.readFileSync(path.join(RESOURCES_DIR, "seed", file), "utf-8");
+      const raw = fs.readFileSync(path.join(SEED_DIR, file), "utf-8");
       synopticSeedSets.push(...(JSON.parse(raw) as SynopticSeedSet[]));
     } catch {
       // Seed file not bundled/present — app still works fine with zero built-in sets.

@@ -1,0 +1,376 @@
+[
+  {
+    "slug": "gospel-john-baptist-preaching",
+    "title": "John the Baptist",
+    "corpus": "gospels",
+    "columns": [
+      { "book": "Matt", "textSource": "SBLGNT", "columnLabel": "Matthew", "startChapter": 3, "startVerse": 1, "endChapter": 3, "endVerse": 6 },
+      { "book": "Mark", "textSource": "SBLGNT", "columnLabel": "Mark",    "startChapter": 1, "startVerse": 2, "endChapter": 1, "endVerse": 6 },
+      { "book": "Luke", "textSource": "SBLGNT", "columnLabel": "Luke",   "startChapter": 3, "startVerse": 1, "endChapter": 3, "endVerse": 6 },
+      { "book": "John", "textSource": "SBLGNT", "columnLabel": "John",   "startChapter": 1, "startVerse": 19, "endChapter": 1, "endVerse": 23 }
+    ]
+  },
+  {
+    "slug": "gospel-baptism-of-jesus",
+    "title": "Baptism of Jesus",
+    "corpus": "gospels",
+    "columns": [
+      { "book": "Matt", "textSource": "SBLGNT", "columnLabel": "Matthew", "startChapter": 3, "startVerse": 13, "endChapter": 3, "endVerse": 17 },
+      { "book": "Mark", "textSource": "SBLGNT", "columnLabel": "Mark",    "startChapter": 1, "startVerse": 9, "endChapter": 1, "endVerse": 11 },
+      { "book": "Luke", "textSource": "SBLGNT", "columnLabel": "Luke",   "startChapter": 3, "startVerse": 21, "endChapter": 3, "endVerse": 22 },
+      { "book": "John", "textSource": "SBLGNT", "columnLabel": "John",   "startChapter": 1, "startVerse": 29, "endChapter": 1, "endVerse": 34 }
+    ]
+  },
+  {
+    "slug": "gospel-temptation",
+    "title": "The Temptation of Jesus",
+    "corpus": "gospels",
+    "columns": [
+      { "book": "Matt", "textSource": "SBLGNT", "columnLabel": "Matthew", "startChapter": 4, "startVerse": 1, "endChapter": 4, "endVerse": 11 },
+      { "book": "Mark", "textSource": "SBLGNT", "columnLabel": "Mark",    "startChapter": 1, "startVerse": 12, "endChapter": 1, "endVerse": 13 },
+      { "book": "Luke", "textSource": "SBLGNT", "columnLabel": "Luke",   "startChapter": 4, "startVerse": 1, "endChapter": 4, "endVerse": 13 }
+    ]
+  },
+  {
+    "slug": "gospel-cleansing-of-temple",
+    "title": "Cleansing of the Temple",
+    "corpus": "gospels",
+    "columns": [
+      { "book": "Matt", "textSource": "SBLGNT", "columnLabel": "Matthew", "startChapter": 21, "startVerse": 12, "endChapter": 21, "endVerse": 13 },
+      { "book": "Mark", "textSource": "SBLGNT", "columnLabel": "Mark",    "startChapter": 11, "startVerse": 15, "endChapter": 11, "endVerse": 17 },
+      { "book": "Luke", "textSource": "SBLGNT", "columnLabel": "Luke",   "startChapter": 19, "startVerse": 45, "endChapter": 19, "endVerse": 46 },
+      { "book": "John", "textSource": "SBLGNT", "columnLabel": "John",   "startChapter": 2, "startVerse": 14, "endChapter": 2, "endVerse": 22 }
+    ]
+  },
+  {
+    "slug": "gospel-cleansing-of-leper",
+    "title": "Cleansing of a Leper",
+    "corpus": "gospels",
+    "columns": [
+      { "book": "Matt", "textSource": "SBLGNT", "columnLabel": "Matthew", "startChapter": 8, "startVerse": 1, "endChapter": 8, "endVerse": 4 },
+      { "book": "Mark", "textSource": "SBLGNT", "columnLabel": "Mark",    "startChapter": 1, "startVerse": 40, "endChapter": 1, "endVerse": 45 },
+      { "book": "Luke", "textSource": "SBLGNT", "columnLabel": "Luke",   "startChapter": 5, "startVerse": 12, "endChapter": 5, "endVerse": 16 }
+    ]
+  },
+  {
+    "slug": "gospel-healing-of-paralytic",
+    "title": "Healing of the Paralytic",
+    "corpus": "gospels",
+    "columns": [
+      { "book": "Matt", "textSource": "SBLGNT", "columnLabel": "Matthew", "startChapter": 9, "startVerse": 1, "endChapter": 9, "endVerse": 8 },
+      { "book": "Mark", "textSource": "SBLGNT", "columnLabel": "Mark",    "startChapter": 2, "startVerse": 1, "endChapter": 2, "endVerse": 12 },
+      { "book": "Luke", "textSource": "SBLGNT", "columnLabel": "Luke",   "startChapter": 5, "startVerse": 17, "endChapter": 5, "endVerse": 26 }
+    ]
+  },
+  {
+    "slug": "gospel-call-of-levi",
+    "title": "Call of Levi (Matthew)",
+    "corpus": "gospels",
+    "columns": [
+      { "book": "Matt", "textSource": "SBLGNT", "columnLabel": "Matthew", "startChapter": 9, "startVerse": 9, "endChapter": 9, "endVerse": 13 },
+      { "book": "Mark", "textSource": "SBLGNT", "columnLabel": "Mark",    "startChapter": 2, "startVerse": 13, "endChapter": 2, "endVerse": 17 },
+      { "book": "Luke", "textSource": "SBLGNT", "columnLabel": "Luke",   "startChapter": 5, "startVerse": 27, "endChapter": 5, "endVerse": 32 }
+    ]
+  },
+  {
+    "slug": "gospel-question-about-fasting",
+    "title": "Question about Fasting",
+    "corpus": "gospels",
+    "columns": [
+      { "book": "Matt", "textSource": "SBLGNT", "columnLabel": "Matthew", "startChapter": 9, "startVerse": 14, "endChapter": 9, "endVerse": 17 },
+      { "book": "Mark", "textSource": "SBLGNT", "columnLabel": "Mark",    "startChapter": 2, "startVerse": 18, "endChapter": 2, "endVerse": 22 },
+      { "book": "Luke", "textSource": "SBLGNT", "columnLabel": "Luke",   "startChapter": 5, "startVerse": 33, "endChapter": 5, "endVerse": 39 }
+    ]
+  },
+  {
+    "slug": "gospel-plucking-grain-on-sabbath",
+    "title": "Plucking Grain on the Sabbath",
+    "corpus": "gospels",
+    "columns": [
+      { "book": "Matt", "textSource": "SBLGNT", "columnLabel": "Matthew", "startChapter": 12, "startVerse": 1, "endChapter": 12, "endVerse": 8 },
+      { "book": "Mark", "textSource": "SBLGNT", "columnLabel": "Mark",    "startChapter": 2, "startVerse": 23, "endChapter": 2, "endVerse": 28 },
+      { "book": "Luke", "textSource": "SBLGNT", "columnLabel": "Luke",   "startChapter": 6, "startVerse": 1, "endChapter": 6, "endVerse": 5 }
+    ]
+  },
+  {
+    "slug": "gospel-man-with-withered-hand",
+    "title": "The Man with a Withered Hand",
+    "corpus": "gospels",
+    "columns": [
+      { "book": "Matt", "textSource": "SBLGNT", "columnLabel": "Matthew", "startChapter": 12, "startVerse": 9, "endChapter": 12, "endVerse": 14 },
+      { "book": "Mark", "textSource": "SBLGNT", "columnLabel": "Mark",    "startChapter": 3, "startVerse": 1, "endChapter": 3, "endVerse": 6 },
+      { "book": "Luke", "textSource": "SBLGNT", "columnLabel": "Luke",   "startChapter": 6, "startVerse": 6, "endChapter": 6, "endVerse": 11 }
+    ]
+  },
+  {
+    "slug": "gospel-choosing-of-twelve",
+    "title": "Choosing of the Twelve Apostles",
+    "corpus": "gospels",
+    "columns": [
+      { "book": "Matt", "textSource": "SBLGNT", "columnLabel": "Matthew", "startChapter": 10, "startVerse": 1, "endChapter": 10, "endVerse": 4 },
+      { "book": "Mark", "textSource": "SBLGNT", "columnLabel": "Mark",    "startChapter": 3, "startVerse": 13, "endChapter": 3, "endVerse": 19 },
+      { "book": "Luke", "textSource": "SBLGNT", "columnLabel": "Luke",   "startChapter": 6, "startVerse": 12, "endChapter": 6, "endVerse": 16 }
+    ]
+  },
+  {
+    "slug": "gospel-beatitudes",
+    "title": "The Beatitudes",
+    "corpus": "gospels",
+    "columns": [
+      { "book": "Matt", "textSource": "SBLGNT", "columnLabel": "Matthew", "startChapter": 5, "startVerse": 3, "endChapter": 5, "endVerse": 12 },
+      { "book": "Luke", "textSource": "SBLGNT", "columnLabel": "Luke",   "startChapter": 6, "startVerse": 20, "endChapter": 6, "endVerse": 23 }
+    ]
+  },
+  {
+    "slug": "gospel-stilling-the-storm",
+    "title": "Stilling of the Storm",
+    "corpus": "gospels",
+    "columns": [
+      { "book": "Matt", "textSource": "SBLGNT", "columnLabel": "Matthew", "startChapter": 8, "startVerse": 23, "endChapter": 8, "endVerse": 27 },
+      { "book": "Mark", "textSource": "SBLGNT", "columnLabel": "Mark",    "startChapter": 4, "startVerse": 35, "endChapter": 4, "endVerse": 41 },
+      { "book": "Luke", "textSource": "SBLGNT", "columnLabel": "Luke",   "startChapter": 8, "startVerse": 22, "endChapter": 8, "endVerse": 25 }
+    ]
+  },
+  {
+    "slug": "gospel-gerasene-demoniac",
+    "title": "The Gerasene Demoniac",
+    "corpus": "gospels",
+    "columns": [
+      { "book": "Matt", "textSource": "SBLGNT", "columnLabel": "Matthew", "startChapter": 8, "startVerse": 28, "endChapter": 8, "endVerse": 34 },
+      { "book": "Mark", "textSource": "SBLGNT", "columnLabel": "Mark",    "startChapter": 5, "startVerse": 1, "endChapter": 5, "endVerse": 20 },
+      { "book": "Luke", "textSource": "SBLGNT", "columnLabel": "Luke",   "startChapter": 8, "startVerse": 26, "endChapter": 8, "endVerse": 39 }
+    ]
+  },
+  {
+    "slug": "gospel-jairus-daughter",
+    "title": "Jairus' Daughter and the Woman with a Hemorrhage",
+    "corpus": "gospels",
+    "columns": [
+      { "book": "Matt", "textSource": "SBLGNT", "columnLabel": "Matthew", "startChapter": 9, "startVerse": 18, "endChapter": 9, "endVerse": 26 },
+      { "book": "Mark", "textSource": "SBLGNT", "columnLabel": "Mark",    "startChapter": 5, "startVerse": 21, "endChapter": 5, "endVerse": 43 },
+      { "book": "Luke", "textSource": "SBLGNT", "columnLabel": "Luke",   "startChapter": 8, "startVerse": 40, "endChapter": 8, "endVerse": 56 }
+    ]
+  },
+  {
+    "slug": "gospel-parable-of-the-sower",
+    "title": "Parable of the Sower",
+    "corpus": "gospels",
+    "columns": [
+      { "book": "Matt", "textSource": "SBLGNT", "columnLabel": "Matthew", "startChapter": 13, "startVerse": 1, "endChapter": 13, "endVerse": 9 },
+      { "book": "Mark", "textSource": "SBLGNT", "columnLabel": "Mark",    "startChapter": 4, "startVerse": 1, "endChapter": 4, "endVerse": 9 },
+      { "book": "Luke", "textSource": "SBLGNT", "columnLabel": "Luke",   "startChapter": 8, "startVerse": 4, "endChapter": 8, "endVerse": 8 }
+    ]
+  },
+  {
+    "slug": "gospel-parable-of-the-mustard-seed",
+    "title": "Parable of the Mustard Seed",
+    "corpus": "gospels",
+    "columns": [
+      { "book": "Matt", "textSource": "SBLGNT", "columnLabel": "Matthew", "startChapter": 13, "startVerse": 31, "endChapter": 13, "endVerse": 32 },
+      { "book": "Mark", "textSource": "SBLGNT", "columnLabel": "Mark",    "startChapter": 4, "startVerse": 30, "endChapter": 4, "endVerse": 32 },
+      { "book": "Luke", "textSource": "SBLGNT", "columnLabel": "Luke",   "startChapter": 13, "startVerse": 18, "endChapter": 13, "endVerse": 19 }
+    ]
+  },
+  {
+    "slug": "gospel-feeding-5000",
+    "title": "The Feeding of the Five Thousand",
+    "corpus": "gospels",
+    "columns": [
+      { "book": "Matt", "textSource": "SBLGNT", "columnLabel": "Matthew", "startChapter": 14, "startVerse": 13, "endChapter": 14, "endVerse": 21 },
+      { "book": "Mark", "textSource": "SBLGNT", "columnLabel": "Mark",    "startChapter": 6, "startVerse": 32, "endChapter": 6, "endVerse": 44 },
+      { "book": "Luke", "textSource": "SBLGNT", "columnLabel": "Luke",   "startChapter": 9, "startVerse": 10, "endChapter": 9, "endVerse": 17 },
+      { "book": "John", "textSource": "SBLGNT", "columnLabel": "John",   "startChapter": 6, "startVerse": 1, "endChapter": 6, "endVerse": 15 }
+    ]
+  },
+  {
+    "slug": "gospel-walking-on-water",
+    "title": "Walking on the Water",
+    "corpus": "gospels",
+    "columns": [
+      { "book": "Matt", "textSource": "SBLGNT", "columnLabel": "Matthew", "startChapter": 14, "startVerse": 22, "endChapter": 14, "endVerse": 33 },
+      { "book": "Mark", "textSource": "SBLGNT", "columnLabel": "Mark",    "startChapter": 6, "startVerse": 45, "endChapter": 6, "endVerse": 52 },
+      { "book": "John", "textSource": "SBLGNT", "columnLabel": "John",   "startChapter": 6, "startVerse": 16, "endChapter": 6, "endVerse": 21 }
+    ]
+  },
+  {
+    "slug": "gospel-peters-confession",
+    "title": "Peter's Confession at Caesarea Philippi",
+    "corpus": "gospels",
+    "columns": [
+      { "book": "Matt", "textSource": "SBLGNT", "columnLabel": "Matthew", "startChapter": 16, "startVerse": 13, "endChapter": 16, "endVerse": 20 },
+      { "book": "Mark", "textSource": "SBLGNT", "columnLabel": "Mark",    "startChapter": 8, "startVerse": 27, "endChapter": 8, "endVerse": 30 },
+      { "book": "Luke", "textSource": "SBLGNT", "columnLabel": "Luke",   "startChapter": 9, "startVerse": 18, "endChapter": 9, "endVerse": 21 },
+      { "book": "John", "textSource": "SBLGNT", "columnLabel": "John",   "startChapter": 6, "startVerse": 67, "endChapter": 6, "endVerse": 71 }
+    ]
+  },
+  {
+    "slug": "gospel-transfiguration",
+    "title": "The Transfiguration",
+    "corpus": "gospels",
+    "columns": [
+      { "book": "Matt", "textSource": "SBLGNT", "columnLabel": "Matthew", "startChapter": 17, "startVerse": 1, "endChapter": 17, "endVerse": 9 },
+      { "book": "Mark", "textSource": "SBLGNT", "columnLabel": "Mark",    "startChapter": 9, "startVerse": 2, "endChapter": 9, "endVerse": 10 },
+      { "book": "Luke", "textSource": "SBLGNT", "columnLabel": "Luke",   "startChapter": 9, "startVerse": 28, "endChapter": 9, "endVerse": 36 }
+    ]
+  },
+  {
+    "slug": "gospel-blesses-children",
+    "title": "Jesus Blesses the Children",
+    "corpus": "gospels",
+    "columns": [
+      { "book": "Matt", "textSource": "SBLGNT", "columnLabel": "Matthew", "startChapter": 19, "startVerse": 13, "endChapter": 19, "endVerse": 15 },
+      { "book": "Mark", "textSource": "SBLGNT", "columnLabel": "Mark",    "startChapter": 10, "startVerse": 13, "endChapter": 10, "endVerse": 16 },
+      { "book": "Luke", "textSource": "SBLGNT", "columnLabel": "Luke",   "startChapter": 18, "startVerse": 15, "endChapter": 18, "endVerse": 17 }
+    ]
+  },
+  {
+    "slug": "gospel-rich-young-man",
+    "title": "The Rich Young Man",
+    "corpus": "gospels",
+    "columns": [
+      { "book": "Matt", "textSource": "SBLGNT", "columnLabel": "Matthew", "startChapter": 19, "startVerse": 16, "endChapter": 19, "endVerse": 22 },
+      { "book": "Mark", "textSource": "SBLGNT", "columnLabel": "Mark",    "startChapter": 10, "startVerse": 17, "endChapter": 10, "endVerse": 22 },
+      { "book": "Luke", "textSource": "SBLGNT", "columnLabel": "Luke",   "startChapter": 18, "startVerse": 18, "endChapter": 18, "endVerse": 23 }
+    ]
+  },
+  {
+    "slug": "gospel-blind-bartimaeus",
+    "title": "Healing of Blind Bartimaeus",
+    "corpus": "gospels",
+    "columns": [
+      { "book": "Matt", "textSource": "SBLGNT", "columnLabel": "Matthew", "startChapter": 20, "startVerse": 29, "endChapter": 20, "endVerse": 34 },
+      { "book": "Mark", "textSource": "SBLGNT", "columnLabel": "Mark",    "startChapter": 10, "startVerse": 46, "endChapter": 10, "endVerse": 52 },
+      { "book": "Luke", "textSource": "SBLGNT", "columnLabel": "Luke",   "startChapter": 18, "startVerse": 35, "endChapter": 18, "endVerse": 43 }
+    ]
+  },
+  {
+    "slug": "gospel-anointing-at-bethany",
+    "title": "The Anointing at Bethany",
+    "corpus": "gospels",
+    "columns": [
+      { "book": "Matt", "textSource": "SBLGNT", "columnLabel": "Matthew", "startChapter": 26, "startVerse": 6, "endChapter": 26, "endVerse": 13 },
+      { "book": "Mark", "textSource": "SBLGNT", "columnLabel": "Mark",    "startChapter": 14, "startVerse": 3, "endChapter": 14, "endVerse": 9 },
+      { "book": "Luke", "textSource": "SBLGNT", "columnLabel": "Luke",   "startChapter": 7, "startVerse": 36, "endChapter": 7, "endVerse": 50 },
+      { "book": "John", "textSource": "SBLGNT", "columnLabel": "John",   "startChapter": 12, "startVerse": 1, "endChapter": 12, "endVerse": 8 }
+    ]
+  },
+  {
+    "slug": "gospel-last-supper",
+    "title": "The Last Supper",
+    "corpus": "gospels",
+    "columns": [
+      { "book": "Matt", "textSource": "SBLGNT", "columnLabel": "Matthew", "startChapter": 26, "startVerse": 26, "endChapter": 26, "endVerse": 29 },
+      { "book": "Mark", "textSource": "SBLGNT", "columnLabel": "Mark",    "startChapter": 14, "startVerse": 22, "endChapter": 14, "endVerse": 25 },
+      { "book": "Luke", "textSource": "SBLGNT", "columnLabel": "Luke",   "startChapter": 22, "startVerse": 15, "endChapter": 22, "endVerse": 20 }
+    ]
+  },
+  {
+    "slug": "gospel-peters-denial-predicted",
+    "title": "Peter's Denial Predicted",
+    "corpus": "gospels",
+    "columns": [
+      { "book": "Matt", "textSource": "SBLGNT", "columnLabel": "Matthew", "startChapter": 26, "startVerse": 30, "endChapter": 26, "endVerse": 35 },
+      { "book": "Mark", "textSource": "SBLGNT", "columnLabel": "Mark",    "startChapter": 14, "startVerse": 26, "endChapter": 14, "endVerse": 31 },
+      { "book": "Luke", "textSource": "SBLGNT", "columnLabel": "Luke",   "startChapter": 22, "startVerse": 31, "endChapter": 22, "endVerse": 34 },
+      { "book": "John", "textSource": "SBLGNT", "columnLabel": "John",   "startChapter": 13, "startVerse": 36, "endChapter": 13, "endVerse": 38 }
+    ]
+  },
+  {
+    "slug": "gospel-gethsemane",
+    "title": "Gethsemane",
+    "corpus": "gospels",
+    "columns": [
+      { "book": "Matt", "textSource": "SBLGNT", "columnLabel": "Matthew", "startChapter": 26, "startVerse": 36, "endChapter": 26, "endVerse": 46 },
+      { "book": "Mark", "textSource": "SBLGNT", "columnLabel": "Mark",    "startChapter": 14, "startVerse": 32, "endChapter": 14, "endVerse": 42 },
+      { "book": "Luke", "textSource": "SBLGNT", "columnLabel": "Luke",   "startChapter": 22, "startVerse": 39, "endChapter": 22, "endVerse": 46 }
+    ]
+  },
+  {
+    "slug": "gospel-arrest",
+    "title": "The Arrest of Jesus",
+    "corpus": "gospels",
+    "columns": [
+      { "book": "Matt", "textSource": "SBLGNT", "columnLabel": "Matthew", "startChapter": 26, "startVerse": 47, "endChapter": 26, "endVerse": 56 },
+      { "book": "Mark", "textSource": "SBLGNT", "columnLabel": "Mark",    "startChapter": 14, "startVerse": 43, "endChapter": 14, "endVerse": 52 },
+      { "book": "Luke", "textSource": "SBLGNT", "columnLabel": "Luke",   "startChapter": 22, "startVerse": 47, "endChapter": 22, "endVerse": 53 },
+      { "book": "John", "textSource": "SBLGNT", "columnLabel": "John",   "startChapter": 18, "startVerse": 2, "endChapter": 18, "endVerse": 12 }
+    ]
+  },
+  {
+    "slug": "gospel-before-sanhedrin",
+    "title": "Jesus Before the Sanhedrin",
+    "corpus": "gospels",
+    "columns": [
+      { "book": "Matt", "textSource": "SBLGNT", "columnLabel": "Matthew", "startChapter": 26, "startVerse": 57, "endChapter": 26, "endVerse": 68 },
+      { "book": "Mark", "textSource": "SBLGNT", "columnLabel": "Mark",    "startChapter": 14, "startVerse": 53, "endChapter": 14, "endVerse": 65 },
+      { "book": "Luke", "textSource": "SBLGNT", "columnLabel": "Luke",   "startChapter": 22, "startVerse": 54, "endChapter": 22, "endVerse": 71 },
+      { "book": "John", "textSource": "SBLGNT", "columnLabel": "John",   "startChapter": 18, "startVerse": 13, "endChapter": 18, "endVerse": 24 }
+    ]
+  },
+  {
+    "slug": "gospel-peters-denial",
+    "title": "Peter's Denial",
+    "corpus": "gospels",
+    "columns": [
+      { "book": "Matt", "textSource": "SBLGNT", "columnLabel": "Matthew", "startChapter": 26, "startVerse": 69, "endChapter": 26, "endVerse": 75 },
+      { "book": "Mark", "textSource": "SBLGNT", "columnLabel": "Mark",    "startChapter": 14, "startVerse": 66, "endChapter": 14, "endVerse": 72 },
+      { "book": "Luke", "textSource": "SBLGNT", "columnLabel": "Luke",   "startChapter": 22, "startVerse": 56, "endChapter": 22, "endVerse": 62 },
+      { "book": "John", "textSource": "SBLGNT", "columnLabel": "John",   "startChapter": 18, "startVerse": 25, "endChapter": 18, "endVerse": 27 }
+    ]
+  },
+  {
+    "slug": "gospel-trial-before-pilate",
+    "title": "Trial Before Pilate",
+    "corpus": "gospels",
+    "columns": [
+      { "book": "Matt", "textSource": "SBLGNT", "columnLabel": "Matthew", "startChapter": 27, "startVerse": 11, "endChapter": 27, "endVerse": 14 },
+      { "book": "Mark", "textSource": "SBLGNT", "columnLabel": "Mark",    "startChapter": 15, "startVerse": 2, "endChapter": 15, "endVerse": 5 },
+      { "book": "Luke", "textSource": "SBLGNT", "columnLabel": "Luke",   "startChapter": 23, "startVerse": 2, "endChapter": 23, "endVerse": 5 },
+      { "book": "John", "textSource": "SBLGNT", "columnLabel": "John",   "startChapter": 18, "startVerse": 29, "endChapter": 18, "endVerse": 38 }
+    ]
+  },
+  {
+    "slug": "gospel-crucifixion",
+    "title": "The Crucifixion",
+    "corpus": "gospels",
+    "columns": [
+      { "book": "Matt", "textSource": "SBLGNT", "columnLabel": "Matthew", "startChapter": 27, "startVerse": 33, "endChapter": 27, "endVerse": 37 },
+      { "book": "Mark", "textSource": "SBLGNT", "columnLabel": "Mark",    "startChapter": 15, "startVerse": 22, "endChapter": 15, "endVerse": 26 },
+      { "book": "Luke", "textSource": "SBLGNT", "columnLabel": "Luke",   "startChapter": 23, "startVerse": 33, "endChapter": 23, "endVerse": 34 },
+      { "book": "John", "textSource": "SBLGNT", "columnLabel": "John",   "startChapter": 19, "startVerse": 17, "endChapter": 19, "endVerse": 27 }
+    ]
+  },
+  {
+    "slug": "gospel-death-of-jesus",
+    "title": "The Death of Jesus",
+    "corpus": "gospels",
+    "columns": [
+      { "book": "Matt", "textSource": "SBLGNT", "columnLabel": "Matthew", "startChapter": 27, "startVerse": 45, "endChapter": 27, "endVerse": 54 },
+      { "book": "Mark", "textSource": "SBLGNT", "columnLabel": "Mark",    "startChapter": 15, "startVerse": 33, "endChapter": 15, "endVerse": 39 },
+      { "book": "Luke", "textSource": "SBLGNT", "columnLabel": "Luke",   "startChapter": 23, "startVerse": 44, "endChapter": 23, "endVerse": 48 },
+      { "book": "John", "textSource": "SBLGNT", "columnLabel": "John",   "startChapter": 19, "startVerse": 28, "endChapter": 19, "endVerse": 30 }
+    ]
+  },
+  {
+    "slug": "gospel-burial",
+    "title": "The Burial of Jesus",
+    "corpus": "gospels",
+    "columns": [
+      { "book": "Matt", "textSource": "SBLGNT", "columnLabel": "Matthew", "startChapter": 27, "startVerse": 57, "endChapter": 27, "endVerse": 61 },
+      { "book": "Mark", "textSource": "SBLGNT", "columnLabel": "Mark",    "startChapter": 15, "startVerse": 42, "endChapter": 15, "endVerse": 47 },
+      { "book": "Luke", "textSource": "SBLGNT", "columnLabel": "Luke",   "startChapter": 23, "startVerse": 50, "endChapter": 23, "endVerse": 56 },
+      { "book": "John", "textSource": "SBLGNT", "columnLabel": "John",   "startChapter": 19, "startVerse": 38, "endChapter": 19, "endVerse": 42 }
+    ]
+  },
+  {
+    "slug": "gospel-women-at-tomb",
+    "title": "The Women at the Tomb",
+    "corpus": "gospels",
+    "columns": [
+      { "book": "Matt", "textSource": "SBLGNT", "columnLabel": "Matthew", "startChapter": 28, "startVerse": 1, "endChapter": 28, "endVerse": 8 },
+      { "book": "Mark", "textSource": "SBLGNT", "columnLabel": "Mark",    "startChapter": 16, "startVerse": 1, "endChapter": 16, "endVerse": 8 },
+      { "book": "Luke", "textSource": "SBLGNT", "columnLabel": "Luke",   "startChapter": 24, "startVerse": 1, "endChapter": 24, "endVerse": 12 },
+      { "book": "John", "textSource": "SBLGNT", "columnLabel": "John",   "startChapter": 20, "startVerse": 1, "endChapter": 20, "endVerse": 13 }
+    ]
+  }
+]
