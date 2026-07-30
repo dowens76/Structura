@@ -931,11 +931,20 @@ export default function ChapterDisplay({
     }
 
     return data;
-  // Only recalculate when book/chapter/translation IDs change (navigation); not on every keystroke.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [book, chapter, ultTranslation?.id, vcbTranslation?.id, lxxTranslation?.id]);
+  // Recalculates on navigation (book/chapter/translation IDs) and whenever the
+  // server hands down fresh translationVerseData (e.g. router.refresh() after
+  // importing a translation) — not on every keystroke, since local edits live
+  // in localTranslationVerseData below and don't touch this prop.
+  }, [book, chapter, ultTranslation?.id, vcbTranslation?.id, lxxTranslation?.id, translationVerseData]);
 
   const [localTranslationVerseData, setLocalTranslationVerseData] = useState(initialTranslationVerseData);
+  // Re-seed local state whenever the server-derived data changes — otherwise a
+  // newly imported translation's verses never appear until the chapter is
+  // unmounted and remounted (e.g. by navigating away and back), since useState's
+  // initial value is only applied on mount.
+  useEffect(() => {
+    setLocalTranslationVerseData(initialTranslationVerseData);
+  }, [initialTranslationVerseData]);
   const [editingTranslation, setEditingTranslation] = useState(false);
   const [editingTranslationSource, setEditingTranslationSource] = useState(false);
   const [copiedTranslation, setCopiedTranslation] = useState(false);
