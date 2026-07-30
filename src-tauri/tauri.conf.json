@@ -47,7 +47,8 @@
       "resources/databases/lxx.db": "databases/lxx.db",
       "resources/databases/ult.db": "databases/ult.db",
       "resources/databases/vcb.db": "databases/vcb.db",
-      "resources/user.db.template": "user.db.template"
+      "resources/user.db.template": "user.db.template",
+      "resources/seed": "seed"
     },
     "externalBin": [
       "binaries/node"

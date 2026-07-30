@@ -499,6 +499,81 @@ function _migrateUserDbInner(sqlite: Database.Database): void {
     }
   }
 
+  // Seed the built-in Gospel-harmony / parallel-passage sets (John the
+  // Baptist, Cleansing of the Temple, etc.) for every workspace that doesn't
+  // already have them. Idempotent by (workspace_id, slug) — a set already
+  // present is never touched again, so a user's own edits to a seeded set's
+  // scope always survive a later launch. This used to only happen via a
+  // one-off `npm run import:synoptic` script run against the dev database,
+  // which meant a fresh install (including the packaged Tauri app's
+  // per-user database, created empty from a template on first launch) never
+  // got the built-in sets. Running it here, on every startup, fixes that for
+  // both dev and packaged installs. RESOURCES_DIR resolves to data/seed in
+  // dev and to the bundled resources/seed in the packaged app (see
+  // scripts/copy-databases.mjs and tauri.conf.json's resources map).
+  interface SynopticSeedColumn {
+    book: string;
+    textSource: string;
+    columnLabel: string;
+    startChapter: number;
+    startVerse: number;
+    endChapter: number;
+    endVerse: number;
+    endBook?: string | null;
+  }
+  interface SynopticSeedSet {
+    slug: string;
+    title: string;
+    corpus: string;
+    columns: SynopticSeedColumn[];
+  }
+  const SYNOPTIC_SEED_FILES = [
+    "synoptic-gospels.json",
+    "synoptic-kings-chronicles.json",
+    "synoptic-psalms.json",
+  ];
+  const synopticSeedSets: SynopticSeedSet[] = [];
+  for (const file of SYNOPTIC_SEED_FILES) {
+    try {
+      const raw = fs.readFileSync(path.join(RESOURCES_DIR, "seed", file), "utf-8");
+      synopticSeedSets.push(...(JSON.parse(raw) as SynopticSeedSet[]));
+    } catch {
+      // Seed file not bundled/present — app still works fine with zero built-in sets.
+    }
+  }
+  if (synopticSeedSets.length > 0) {
+    const findExistingSet = sqlite.prepare(
+      "SELECT id FROM synoptic_sets WHERE workspace_id = ? AND slug = ?"
+    );
+    const insertSet = sqlite.prepare(
+      `INSERT INTO synoptic_sets (workspace_id, title, corpus, source, slug, sort_order, created_at)
+       VALUES (?, ?, ?, 'seed', ?, ?, ?)`
+    );
+    const insertColumn = sqlite.prepare(
+      `INSERT INTO passages
+         (workspace_id, book, text_source, label, start_chapter, start_verse, end_book, end_chapter, end_verse,
+          synoptic_set_id, column_index, column_label)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    );
+    const nowIso = new Date().toISOString();
+    for (const workspaceId of workspaceIds) {
+      synopticSeedSets.forEach((set, sortOrder) => {
+        if (findExistingSet.get(workspaceId, set.slug)) return;
+        const result = insertSet.run(workspaceId, set.title, set.corpus, set.slug, sortOrder, nowIso);
+        const setId = result.lastInsertRowid as number;
+        set.columns.forEach((col, columnIndex) => {
+          insertColumn.run(
+            workspaceId, col.book, col.textSource, col.columnLabel,
+            col.startChapter, col.startVerse,
+            col.endBook && col.endBook !== col.book ? col.endBook : null,
+            col.endChapter, col.endVerse,
+            setId, columnIndex, col.columnLabel
+          );
+        });
+      });
+    }
+  }
+
   sqlite.exec(`
     CREATE TABLE IF NOT EXISTS auto_backup_settings (
       id               INTEGER PRIMARY KEY,
