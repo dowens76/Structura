@@ -145,6 +145,12 @@ interface VerseDisplayProps {
   synopticWordMarkColorMap?: Map<string, string>;
   editingWordCompare?: boolean;
   wordCompareRangeStartWordId?: string | null;
+  /** When true, the verse-number label column narrows from 5rem to a tight
+   *  ~3ch (enough for a 2-3 digit verse number plus a 1-2 character gap
+   *  before the text) — used by SynopticView, where every pixel of a narrow
+   *  column matters. Defaults to false (unchanged in the regular chapter/
+   *  passage view). */
+  compactVerseLabels?: boolean;
   prevVerseLastWordId: string | null;
   nextVerseFirstWordId: string | null;
   editingRefs: boolean;
@@ -1222,6 +1228,7 @@ export default function VerseDisplay({
   synopticWordMarkColorMap,
   editingWordCompare = false,
   wordCompareRangeStartWordId = null,
+  compactVerseLabels = false,
   prevVerseLastWordId,
   nextVerseFirstWordId,
   editingRefs,
@@ -2341,9 +2348,12 @@ export default function VerseDisplay({
           const labelPaddingTop = isHebrew
             ? "var(--source-half-leading, calc(0.75 * var(--hebrew-font-size, 1.375rem)))"
             : "var(--source-half-leading, calc(0.625 * var(--greek-font-size, 1.25rem)))";
+          // ~3 characters (fits a 2-3 digit verse number) plus a 1-2 character
+          // gap before the text — vs. the spacious 5rem default reading-view gutter.
+          const verseLabelMinWidth = compactVerseLabels ? "3ch" : "5rem";
 
           const segLabelEl = editingIndents ? (
-            <div className="flex items-start gap-0.5" data-seg-label={seg[0].wordId} style={{ minWidth: "5rem" }}>
+            <div className="flex items-start gap-0.5" data-seg-label={seg[0].wordId} style={{ minWidth: verseLabelMinWidth }}>
               <button
                 type="button"
                 onClick={(e) => { e.stopPropagation(); onSetSegmentIndent(paraStartId, Math.max(0, indentLevel - 1)); }}
@@ -2372,7 +2382,7 @@ export default function VerseDisplay({
               ].join(" ")}
               data-seg-label={seg[0].wordId}
               data-osis-ref={`${book}.${chapter}.${verseNum}`}
-              style={{ minWidth: "5rem", textAlign: isHebrew ? "right" : "left", paddingTop: labelPaddingTop }}
+              style={{ minWidth: verseLabelMinWidth, textAlign: isHebrew ? "right" : "left", paddingTop: labelPaddingTop }}
               onClick={si === 0 && onVerseClick ? () => onVerseClick(verseNum) : undefined}
               title={si === 0 && onVerseClick ? "Scroll notes to this verse" : undefined}
             >
@@ -2390,7 +2400,9 @@ export default function VerseDisplay({
                 // so inline-flex interlinear chips on the first line are never displaced.
                 paddingLeft:  !isHebrew && indentLevel > 0 ? `${indentLevel * 2}rem` : undefined,
                 paddingRight: isHebrew  && indentLevel > 0 ? `${indentLevel * 2}rem` : undefined,
-                textIndent:   `${HANG_PX}px hanging` as React.CSSProperties["textIndent"],
+                // Synoptic View's narrow compact gutter has no room to spare
+                // for a hanging indent, so wrapped lines start flush left there.
+                textIndent:   compactVerseLabels ? undefined : (`${HANG_PX}px hanging` as React.CSSProperties["textIndent"]),
               }}
             >
               {renderRuns(runs)}
@@ -2406,11 +2418,12 @@ export default function VerseDisplay({
           );
 
           // Grid styles for the innermost box div (or the plain div when no layers).
-          // Always keep at least 1rem between the verse-label column and the text so
-          // Hebrew text (where rstSourcePad stays 0) doesn't press flush against the label.
+          // Keep at least 1rem between the verse-label column and the text so Hebrew
+          // text (where rstSourcePad stays 0) doesn't press flush against the label —
+          // except in Synoptic View's compact gutter, which only needs a sliver.
           const gridStyle: React.CSSProperties = {
             gridTemplateColumns: "auto 1fr",
-            columnGap: rstSourcePad || "1rem",
+            columnGap: rstSourcePad || (compactVerseLabels ? "0.25rem" : "1rem"),
           };
           const gridClass = `grid items-start${editingSpeech ? " cursor-crosshair" : ""}${editingAnnotations ? " cursor-pointer" : ""}${si > 0 && !suppressSeparator ? " mt-1" : ""}`;
 
@@ -2822,7 +2835,7 @@ export default function VerseDisplay({
                     fontSize: "var(--translation-font-size, 0.875rem)",
                     lineHeight: "var(--translation-line-height, var(--source-row-height, 1.625))",
                     paddingLeft: tvIndentLevel > 0 ? `${tvIndentLevel * 2}rem` : undefined,
-                    textIndent: `${HANG_PX}px hanging` as React.CSSProperties["textIndent"],
+                    textIndent: compactVerseLabels ? undefined : (`${HANG_PX}px hanging` as React.CSSProperties["textIndent"]),
                   }}
                   onClick={editingScenes && firstWordId ? (e) => { e.stopPropagation(); if (!(sceneBreakMap.get(firstWordId)?.length)) onToggleSceneBreak?.(firstWordId, 1, verseNum); } : undefined}
                   title={editingScenes ? "Click to add a section heading above this verse" : undefined}
@@ -3087,6 +3100,7 @@ export default function VerseDisplay({
         const labelPaddingTop = isHebrew
           ? "var(--source-half-leading, calc(0.75 * var(--hebrew-font-size, 1.375rem)))"
           : "var(--source-half-leading, calc(0.625 * var(--greek-font-size, 1.25rem)))";
+        const verseLabelMinWidth = compactVerseLabels ? "3ch" : "5rem";
 
         // Push the translation column's first line down so it visually aligns
         // with the verse-number label (which sits at labelPaddingTop).
@@ -3116,7 +3130,7 @@ export default function VerseDisplay({
                 style={{
                   paddingLeft:  !isHebrew && indentLevel > 0 ? `${indentLevel * 2}rem` : undefined,
                   paddingRight: isHebrew  && indentLevel > 0 ? `${indentLevel * 2}rem` : undefined,
-                  textIndent:   `${HANG_PX}px hanging` as React.CSSProperties["textIndent"],
+                  textIndent:   compactVerseLabels ? undefined : (`${HANG_PX}px hanging` as React.CSSProperties["textIndent"]),
                   marginRight:  isHebrew && rstSourcePad ? rstSourcePad : undefined,
                 }}
               >
@@ -3186,7 +3200,7 @@ export default function VerseDisplay({
                   className="text-stone-400 dark:text-stone-600 text-sm font-mono select-none"
                   data-seg-label={seg[0].wordId}
                   data-osis-ref={`${book}.${chapter}.${verseNum}`}
-                  style={{ minWidth: "5rem", textAlign: "center", paddingTop: labelPaddingTop }}
+                  style={{ minWidth: verseLabelMinWidth, textAlign: "center", paddingTop: labelPaddingTop }}
                 >
                   {paraLabels[si]}
                   {si === 0 && translationTexts.length > 0 && (() => {

@@ -191,6 +191,11 @@ interface ChapterDisplayProps {
    *  wouldn't make sense. Defaults to false (single-instance behavior,
    *  unchanged). */
   disableSidePanels?: boolean;
+  /** When true, narrows the verse-number label gutter from 5rem to ~3ch (a
+   *  2-3 digit verse number plus a 1-2 character gap) — used by SynopticView,
+   *  where every pixel of a narrow column matters. Defaults to false
+   *  (unchanged in the regular chapter/passage view). */
+  compactVerseLabels?: boolean;
 }
 
 const DEFAULT_FILTER: GrammarFilterState = {
@@ -273,6 +278,7 @@ export default function ChapterDisplay({
   defaultToolbarVisibility = DEFAULT_TOOLBAR_VIS,
   onScrollContainerRef,
   disableSidePanels = false,
+  compactVerseLabels = false,
 }: ChapterDisplayProps) {
   const { t, locale, refBookName } = useTranslation();
   const router = useRouter();
@@ -4701,6 +4707,7 @@ export default function ChapterDisplay({
         {/* Scrollable text container — both overlays live INSIDE so they scroll
             with the content and use stable scroll-canvas coordinates. */}
         <div
+          data-chapter-scroll-container
           className="flex-1 overflow-y-auto relative flex flex-col min-h-0"
           ref={textContainerRef}
         >
@@ -4736,7 +4743,7 @@ export default function ChapterDisplay({
         {!presentationMode && (passageHeaderNode ?? headingSlot)}
 
         {/* Sticky control area: toolbar + all editing panels/hints */}
-        {!hideToolbar && <div className="sticky top-0 z-20 shrink-0 flex flex-col" style={{ backgroundColor: "var(--background)" }}>
+        {!hideToolbar && <div data-chapter-toolbar-area className="sticky top-0 z-20 shrink-0 flex flex-col" style={{ backgroundColor: "var(--background)" }}>
 
         {/* Toolbar */}
         {tbTooltip && (
@@ -5966,8 +5973,10 @@ export default function ChapterDisplay({
           className={`py-6 flex-1 ${hasActiveTranslations ? "" : "max-w-3xl mx-auto w-full"}`}
           onClick={editingRst && (rstSegA || rstSegAGroupId) ? () => { setRstSegA(null); setRstSegAGroupId(null); setRstSegB(null); setShowRstPicker(false); } : undefined}
           style={{
-            paddingLeft:  "1.5rem",
-            paddingRight: "1.5rem",
+            // Synoptic View's narrow columns need every bit of width for
+            // text, so its verse-number gutter sits much closer to the edge.
+            paddingLeft:  compactVerseLabels ? "0.5rem" : "1.5rem",
+            paddingRight: compactVerseLabels ? "0.5rem" : "1.5rem",
             "--hebrew-font-size": `${hebrewFontSize * (presentationMode ? 2 : 1)}rem`,
             "--greek-font-size": `${greekFontSize * (presentationMode ? 2 : 1)}rem`,
             "--translation-font-size": `${translationFontSize * (presentationMode ? 3 : 1)}rem`,
@@ -6029,6 +6038,7 @@ export default function ChapterDisplay({
                 synopticWordMarkColorMap={synopticWordMarkColorMap}
                 editingWordCompare={editingWordCompare}
                 wordCompareRangeStartWordId={wordCompareRangeStart}
+                compactVerseLabels={compactVerseLabels}
                 prevVerseLastWordId={prevWords[prevWords.length - 1]?.wordId ?? null}
                 nextVerseFirstWordId={nextWords[0]?.wordId ?? null}
                 editingRefs={editingRefs}

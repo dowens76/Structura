@@ -11,6 +11,7 @@ import {
   getLxxVerseTexts,
   getLxxTranslation,
   getWorkspaceById,
+  getAuthorName,
 } from "@/lib/db/queries";
 import {
   getScriptureLocusEditingData,
@@ -156,6 +157,7 @@ export default async function SynopticDetailPage({ params }: PageProps) {
   const workspaceId = await getActiveWorkspaceId();
   const workspace = await getWorkspaceById(workspaceId).catch(() => null);
   const translationOnly = workspace?.translationOnly ?? false;
+  const authorName = await getAuthorName(workspaceId).catch(() => null);
 
   const set = await getSynopticSet(id, workspaceId);
   if (!set || set.columns.length === 0) notFound();
@@ -169,7 +171,7 @@ export default async function SynopticDetailPage({ params }: PageProps) {
 
   return (
     <div className="flex flex-col h-screen" style={{ backgroundColor: "var(--background)" }}>
-      <SynopticDetailNav set={set} workspaceId={workspaceId} />
+      <SynopticDetailNav set={set} workspaceId={workspaceId} authorName={authorName} />
       <div className="flex-1 min-h-0">
         <SynopticView columns={columns} />
       </div>

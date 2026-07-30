@@ -18,7 +18,7 @@ export interface SynopticColumn {
     ChapterDisplayOwnProps,
     "active" | "headingSlot" | "navigationDisabled" |
     "toolbarVisibilityStorageKey" | "defaultToolbarVisibility" | "onScrollContainerRef" |
-    "disableSidePanels"
+    "disableSidePanels" | "compactVerseLabels"
   >;
 }
 
@@ -86,6 +86,7 @@ export default function SynopticView({ columns }: { columns: SynopticColumn[] })
 
   return (
     <div
+      data-synoptic-grid
       className="h-full min-h-0 grid"
       style={{ gridTemplateColumns: `repeat(${columns.length}, minmax(0, 1fr))` }}
     >
@@ -107,6 +108,7 @@ export default function SynopticView({ columns }: { columns: SynopticColumn[] })
               defaultToolbarVisibility={SYNOPTIC_DEFAULT_TOOLBAR_VIS}
               onScrollContainerRef={(el) => registerContainer(i, el)}
               disableSidePanels
+              compactVerseLabels
               headingSlot={<ColumnHeading label={col.label} refText={col.refText} active={isActive} />}
             />
           </div>

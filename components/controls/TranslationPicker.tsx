@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import type { Translation } from "@/lib/db/schema";
 
 const LANGUAGES = [
@@ -35,8 +36,16 @@ export default function TranslationPicker({
   currentBook,
 }: TranslationPickerProps) {
   const [open, setOpen] = useState(false);
-  const [alignLeft, setAlignLeft] = useState(false);
+  // Wraps just the trigger button — the dropdown panel itself is portaled to
+  // document.body (see below) so a narrow Synoptic View column can't clip it.
   const containerRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const [panelStyle, setPanelStyle] = useState<React.CSSProperties>({
+    position: "fixed",
+    top: 0,
+    left: 0,
+    visibility: "hidden", // hidden until positioned relative to the button
+  });
 
   // Local language state — seeded from props, updated optimistically
   const [languages, setLanguages] = useState<Map<number, string | null>>(
@@ -48,18 +57,63 @@ export default function TranslationPicker({
     setLanguages(new Map(availableTranslations.map((t) => [t.id, t.language ?? null])));
   }, [availableTranslations]);
 
-  // Flip alignment when there isn't enough space to the left of the button
+  // Position the portaled panel against the trigger button, clamped to the
+  // viewport — not the button's own (possibly very narrow, in Synoptic View)
+  // containing column — so the full menu is always reachable regardless of
+  // column width. Re-measured on open, after the panel's first real paint
+  // (its own width/height aren't known before that), and on resize/scroll.
   useEffect(() => {
-    if (!open || !containerRef.current) return;
-    const rect = containerRef.current.getBoundingClientRect();
-    setAlignLeft(rect.left < 320);
+    if (!open) return;
+    function reposition() {
+      if (!containerRef.current) return;
+      const btnRect = containerRef.current.getBoundingClientRect();
+      const panelEl = panelRef.current;
+      const panelWidth = panelEl?.offsetWidth ?? 320;
+      const panelHeight = panelEl?.offsetHeight ?? 0;
+      const PADDING = 8;
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
+
+      // Prefer right-aligning the panel's right edge to the button's right
+      // edge; fall back to left-aligning to the button; then clamp fully
+      // inside the viewport either way.
+      let left = btnRect.right - panelWidth;
+      if (left < PADDING) left = btnRect.left;
+      left = Math.max(PADDING, Math.min(left, vw - PADDING - panelWidth));
+
+      let top = btnRect.bottom + 4;
+      const spaceBelow = vh - PADDING - top;
+      if (panelHeight > spaceBelow && btnRect.top - panelHeight - 4 > PADDING) {
+        top = btnRect.top - panelHeight - 4; // flip above when that fits better
+      }
+      top = Math.max(PADDING, Math.min(top, vh - PADDING - panelHeight));
+
+      setPanelStyle({ position: "fixed", top, left, visibility: "visible", zIndex: 10000 });
+    }
+    reposition();
+    // The panel hasn't painted yet on the very first call (offsetWidth/Height
+    // are still 0), so measure again once it has.
+    const raf = requestAnimationFrame(reposition);
+    window.addEventListener("resize", reposition);
+    window.addEventListener("scroll", reposition, true);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener("resize", reposition);
+      window.removeEventListener("scroll", reposition, true);
+    };
   }, [open]);
 
-  // Close on outside click or Escape
+  // Close on outside click or Escape — must check both the trigger button
+  // and the portaled panel, since the panel is no longer a DOM descendant
+  // of containerRef once it's rendered into document.body.
   useEffect(() => {
     if (!open) return;
     function onDown(e: MouseEvent) {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+      const target = e.target as Node;
+      if (
+        containerRef.current && !containerRef.current.contains(target) &&
+        panelRef.current && !panelRef.current.contains(target)
+      ) {
         setOpen(false);
       }
     }
@@ -136,11 +190,15 @@ export default function TranslationPicker({
         </svg>
       </button>
 
-      {/* Dropdown panel */}
-      {open && (
+      {/* Dropdown panel — portaled to document.body so it always renders on
+          top of everything and is never clipped by a narrow Synoptic View
+          column's overflow/width. */}
+      {open && typeof document !== "undefined" && createPortal(
         <div
-          className={`absolute top-full mt-1 z-50 rounded-md border shadow-lg py-1 ${alignLeft ? "left-0" : "right-0"}`}
+          ref={panelRef}
+          className="rounded-md border shadow-lg py-1"
           style={{
+            ...panelStyle,
             minWidth: "320px",
             backgroundColor: "var(--surface)",
             borderColor: "var(--border)",
@@ -256,7 +314,8 @@ export default function TranslationPicker({
               })}
             </>
           )}
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

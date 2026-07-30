@@ -23,8 +23,15 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
-        {/* Set theme class before first paint to avoid flash */}
+        {/* Set theme class before first paint to avoid flash.
+            suppressHydrationWarning: this is a one-time, idempotent bootstrap
+            script (reads localStorage, sets a class) — nothing here depends
+            on matching server-rendered content, so a hydration mismatch here
+            is always either irrelevant or caused by something outside our
+            control (e.g. a browser extension injecting a script into <head>
+            before React hydrates, which shifts sibling ordering). */}
         <script
+          suppressHydrationWarning
           dangerouslySetInnerHTML={{
             __html: `(function(){try{var t=localStorage.getItem('theme');if(t==='dark'){document.documentElement.classList.add('dark')}else if(t==='light'){document.documentElement.classList.add('light')}else if(window.matchMedia('(prefers-color-scheme: dark)').matches){document.documentElement.classList.add('dark')}}catch(e){}})()`,
           }}
@@ -35,6 +42,7 @@ export default function RootLayout({
             --hebrew-font-family / --greek-font-family / --translation-font-family
             CSS variables on <html> immediately. */}
         <script
+          suppressHydrationWarning
           dangerouslySetInnerHTML={{
             // q() mirrors toCssFontFamily from lib/fonts.ts:
             // multi-word bare names must be quoted so CSS sees  "SBL Hebrew"
@@ -44,6 +52,7 @@ export default function RootLayout({
         />
         {/* Apply interface font-size preset before first paint to avoid flash. */}
         <script
+          suppressHydrationWarning
           dangerouslySetInnerHTML={{
             __html: `(function(){try{var pct={sm:87.5,md:100,lg:112.5,xl:125};var v=localStorage.getItem('structura:uiFontSize');if(v&&pct[v]!=null){document.documentElement.style.fontSize=pct[v]+'%';}}catch(e){}})()`,
           }}
