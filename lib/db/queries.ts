@@ -5,7 +5,7 @@ import type { LookupMaps } from "./index";
 import { books, words } from "./source-schema";
 import { lexiconEntries } from "./lexica-schema";
 import type { Word, WordRow } from "./source-schema";
-import { translations, translationVerses, paragraphBreaks, paragraphHeadings, characters, characterRefs, speechSections, wordTags, wordTagRefs, lineIndents, sceneBreaks, passages, rstRelations, wordArrows, wordFormatting, lineAnnotations, bookGroupings, appSettings, translationFootnotes, translationVersions, workspaces, users, textCriticalMarks, notes, intertextualLinks, synopticSets, synopticWordMarks } from "./user-schema";
+import { translations, translationVerses, paragraphBreaks, paragraphHeadings, characters, characterRefs, speechSections, wordTags, wordTagRefs, lineIndents, sceneBreaks, passages, rstRelations, wordArrows, wordFormatting, lineAnnotations, bookGroupings, appSettings, translationFootnotes, translationVersions, workspaces, users, textCriticalMarks, notes, intertextualLinks, synopticSets, synopticWordMarks, constituentLabels, transliterationFormats, wordDatasets, wordDatasetEntries, wordDatasetLabelColors } from "./user-schema";
 import type { Book, Translation, TranslationVerse, Character, CharacterRef, SpeechSection, WordTag, WordTagRef, Passage, RstRelation, WordArrow, LineAnnotation, BookGrouping, TranslationFootnote, TranslationVersion, IntertextualLink, SynopticSet, SynopticWordMark } from "./schema";
 import type { TextSource, Testament } from "@/lib/morphology/types";
 
@@ -2802,5 +2802,62 @@ export async function updateIntertextualLink(
 
 export async function deleteIntertextualLink(id: number): Promise<void> {
   await userDb.delete(intertextualLinks).where(eq(intertextualLinks.id, id));
+}
+
+// ─── Interlinear data (for export — read-only, mirrors the API routes under
+// app/api/interlinear/ used by the live ChapterDisplay view) ─────────────────
+
+export async function getChapterConstituentLabels(
+  book: string, chapter: number, textSource: string, workspaceId: number
+): Promise<{ wordId: string; label: string; groupId: string | null }[]> {
+  return userDb
+    .select({ wordId: constituentLabels.wordId, label: constituentLabels.label, groupId: constituentLabels.groupId })
+    .from(constituentLabels)
+    .where(and(
+      eq(constituentLabels.workspaceId, workspaceId),
+      eq(constituentLabels.book, book),
+      eq(constituentLabels.chapter, chapter),
+      eq(constituentLabels.textSource, textSource)
+    ));
+}
+
+export async function getChapterTransliterationFormats(
+  book: string, chapter: number, textSource: string, workspaceId: number
+): Promise<{ wordId: string; format: string }[]> {
+  return userDb
+    .select({ wordId: transliterationFormats.wordId, format: transliterationFormats.format })
+    .from(transliterationFormats)
+    .where(and(
+      eq(transliterationFormats.workspaceId, workspaceId),
+      eq(transliterationFormats.book, book),
+      eq(transliterationFormats.chapter, chapter),
+      eq(transliterationFormats.textSource, textSource)
+    ));
+}
+
+export async function getWordDataset(datasetId: number): Promise<{ id: number; name: string; direction: string } | null> {
+  const [row] = await userDb.select().from(wordDatasets).where(eq(wordDatasets.id, datasetId)).limit(1);
+  return row ?? null;
+}
+
+export async function getDatasetEntries(
+  datasetId: number, book: string, chapter: number, textSource: string
+): Promise<{ wordId: string; value: string; groupId: string | null }[]> {
+  return userDb
+    .select({ wordId: wordDatasetEntries.wordId, value: wordDatasetEntries.value, groupId: wordDatasetEntries.groupId })
+    .from(wordDatasetEntries)
+    .where(and(
+      eq(wordDatasetEntries.datasetId, datasetId),
+      eq(wordDatasetEntries.book, book),
+      eq(wordDatasetEntries.chapter, chapter),
+      eq(wordDatasetEntries.textSource, textSource)
+    ));
+}
+
+export async function getDatasetLabelColors(datasetId: number): Promise<{ value: string; color: string }[]> {
+  return userDb
+    .select({ value: wordDatasetLabelColors.value, color: wordDatasetLabelColors.color })
+    .from(wordDatasetLabelColors)
+    .where(eq(wordDatasetLabelColors.datasetId, datasetId));
 }
 

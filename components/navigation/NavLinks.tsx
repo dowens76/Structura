@@ -60,17 +60,32 @@ export default function NavLinks({
 }: NavLinksProps) {
   const { t, refBookName } = useTranslation();
 
-  // Build the export URL with active translations from localStorage.
-  // We read localStorage at click time (onClick) rather than relying solely on
-  // a useEffect state update, which can race against the user clicking the link
-  // before hydration settles in Tauri's WKWebView.
+  // Build the export URL with active translations, plus the currently
+  // displayed interlinear mode, from localStorage — so the exported PDF shows
+  // the same lemma/Strong's/morph/translit/constituent/dataset labels the
+  // user has on screen right now. We read localStorage at click time
+  // (onClick) rather than relying solely on a useEffect state update, which
+  // can race against the user clicking the link before hydration settles in
+  // Tauri's WKWebView.
   function buildExportHref(): string {
     try {
       const raw = localStorage.getItem("structura:activeTranslations");
       const abbrs: string[] = raw ? JSON.parse(raw) : [];
-      return abbrs.length > 0
-        ? `${exportHref}?t=${abbrs.map(encodeURIComponent).join(",")}`
-        : exportHref;
+      const params = new URLSearchParams();
+      if (abbrs.length > 0) params.set("t", abbrs.join(","));
+
+      const displayModeRaw = localStorage.getItem("structura:displayMode");
+      if (displayModeRaw) {
+        const displayMode = JSON.parse(displayModeRaw);
+        if (displayMode === "interlinear") {
+          params.set("mode", "interlinear");
+          const subModeRaw = localStorage.getItem("structura:interlinearSubMode");
+          if (subModeRaw) params.set("sub", subModeRaw);
+        }
+      }
+
+      const qs = params.toString();
+      return qs ? `${exportHref}?${qs}` : exportHref;
     } catch { return exportHref; }
   }
 

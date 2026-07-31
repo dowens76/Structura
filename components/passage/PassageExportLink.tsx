@@ -14,7 +14,23 @@ export default function PassageExportLink({ passageId }: Props) {
     try {
       const raw = localStorage.getItem("structura:activeTranslations");
       const abbrs: string[] = raw ? JSON.parse(raw) : [];
-      return abbrs.length > 0 ? `${base}?t=${abbrs.map(encodeURIComponent).join(",")}` : base;
+      const params = new URLSearchParams();
+      if (abbrs.length > 0) params.set("t", abbrs.join(","));
+
+      // Carry over the currently displayed interlinear mode, same as NavLinks'
+      // export link, so the exported PDF shows the same labels on screen.
+      const displayModeRaw = localStorage.getItem("structura:displayMode");
+      if (displayModeRaw) {
+        const displayMode = JSON.parse(displayModeRaw);
+        if (displayMode === "interlinear") {
+          params.set("mode", "interlinear");
+          const subModeRaw = localStorage.getItem("structura:interlinearSubMode");
+          if (subModeRaw) params.set("sub", subModeRaw);
+        }
+      }
+
+      const qs = params.toString();
+      return qs ? `${base}?${qs}` : base;
     } catch { return base; }
   }
 

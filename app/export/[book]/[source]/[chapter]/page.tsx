@@ -33,10 +33,11 @@ import ExportLayout, { type ExportPrintHeader } from "@/components/export/Export
 import ExportTextView from "@/components/export/ExportTextView";
 import { getActiveWorkspaceId } from "@/lib/workspace";
 import { tiptapToHtml } from "@/lib/utils/tiptap-text";
+import { parseExportViewParams, getInterlinearExportData } from "@/lib/export/interlinearExportData";
 
 interface PageProps {
   params: Promise<{ book: string; source: string; chapter: string }>;
-  searchParams?: Promise<{ t?: string; [key: string]: string | string[] | undefined }>;
+  searchParams?: Promise<{ t?: string; mode?: string; sub?: string; [key: string]: string | string[] | undefined }>;
 }
 
 export default async function ExportChapterPage({ params, searchParams }: PageProps) {
@@ -174,6 +175,15 @@ export default async function ExportChapterPage({ params, searchParams }: PagePr
     .filter((t) => (translationVerseData[t.id]?.length ?? 0) > 0)
     .map((t) => t.abbreviation);
 
+  // Reproduce whatever interlinear sub-mode (if any) was active in the live
+  // view when the user clicked Export — see NavLinks.tsx/PassageExportLink.tsx.
+  const { displayMode, interlinearSubMode } = parseExportViewParams(sp);
+  const interlinearData = await getInterlinearExportData({
+    osisBook, chapters: [chapter], textSource, workspaceId,
+    translationAbbrs: activeTranslationAbbrevs,
+    displayMode, interlinearSubMode,
+  });
+
   const bookName   = OSIS_REF_BOOK_NAMES[osisBook] ?? osisBook;
   const isHebrew   = words[0]?.language === "hebrew";
   const filename   = `${osisBook}-${chapter}`;
@@ -250,6 +260,15 @@ export default async function ExportChapterPage({ params, searchParams }: PagePr
           wordArrows={wordArrows}
           lineAnnotations={lineAnnotations}
           rstRelations={rstRelations}
+          displayMode={displayMode}
+          interlinearSubMode={interlinearSubMode}
+          constituentLabelMap={interlinearData.constituentLabelMap}
+          constituentGroupMap={interlinearData.constituentGroupMap}
+          transliterationFormatMap={interlinearData.transliterationFormatMap}
+          datasetEntryMap={interlinearData.datasetEntryMap}
+          datasetGroupMap={interlinearData.datasetGroupMap}
+          datasetLabelColors={interlinearData.datasetLabelColors}
+          datasetDirection={interlinearData.datasetDirection}
         />
       </ExportLayout>
     </div>

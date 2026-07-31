@@ -6,7 +6,7 @@ import type {
   WordTag, WordTagRef, WordArrow, LineAnnotation, RstRelation, RstCustomType,
   TranslationFootnote,
 } from "@/lib/db/schema";
-import type { TranslationTextEntry } from "@/lib/morphology/types";
+import type { TranslationTextEntry, DisplayMode, InterlinearSubMode } from "@/lib/morphology/types";
 import type { Translation, TranslationVerse } from "@/lib/db/schema";
 import VerseDisplay from "@/components/text/VerseDisplay";
 import WordArrowOverlay from "@/components/text/WordArrowOverlay";
@@ -34,6 +34,21 @@ interface Props {
   wordArrows: WordArrow[];
   lineAnnotations: LineAnnotation[];
   rstRelations: RstRelation[];
+  // Interlinear mode — mirrors whatever the live chapter view currently has
+  // displayed (see lib/export/interlinearExportData.ts), so the exported PDF
+  // shows the same lemma/Strong's/morph/translit/constituent/dataset labels
+  // (and, for a dataset, the same grouped values/colors) the user was looking
+  // at when they clicked Export. Defaults preserve the old Clean-mode-only
+  // export for callers that don't pass these.
+  displayMode?: DisplayMode;
+  interlinearSubMode?: InterlinearSubMode;
+  constituentLabelMap?: Map<string, string>;
+  constituentGroupMap?: Map<string, string>;
+  transliterationFormatMap?: Map<string, string>;
+  datasetEntryMap?: Map<string, string>;
+  datasetGroupMap?: Map<string, string>;
+  datasetLabelColors?: Map<string, string>;
+  datasetDirection?: "ltr" | "rtl";
 }
 
 export default function ExportTextView({
@@ -56,6 +71,15 @@ export default function ExportTextView({
   wordArrows,
   lineAnnotations,
   rstRelations,
+  displayMode = "clean",
+  interlinearSubMode = "lemma",
+  constituentLabelMap = new Map(),
+  constituentGroupMap = new Map(),
+  transliterationFormatMap = new Map(),
+  datasetEntryMap = new Map(),
+  datasetGroupMap = new Map(),
+  datasetLabelColors = new Map(),
+  datasetDirection = "ltr",
 }: Props) {
   // ── Refs for overlay positioning ─────────────────────────────────────────
   // outerRef: non-clipping wrapper — WordArrowOverlay SVG positions relative to this
@@ -302,7 +326,15 @@ export default function ExportTextView({
               key={verseNum}
               verseNum={verseNum}
               words={verseWords}
-              displayMode="clean"
+              displayMode={displayMode}
+              interlinearSubMode={interlinearSubMode}
+              constituentLabelMap={constituentLabelMap}
+              constituentGroupMap={constituentGroupMap}
+              transliterationFormatMap={transliterationFormatMap}
+              datasetEntryMap={datasetEntryMap}
+              datasetGroupMap={datasetGroupMap}
+              datasetLabelColors={datasetLabelColors}
+              datasetDirection={datasetDirection}
               grammarFilter={{
                 noun: true, verb: true, adjective: true, adverb: true,
                 preposition: true, conjunction: true, pronoun: true,
