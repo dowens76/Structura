@@ -19,7 +19,9 @@ const CORPUS_SECTIONS: { key: string; label: string }[] = [
 function refText(col: SynopticSetWithColumns["columns"][number]): string {
   const bookName = OSIS_BOOK_NAMES[col.book] ?? col.book;
   return col.startChapter === col.endChapter
-    ? `${bookName} ${col.startChapter}:${col.startVerse}–${col.endVerse}`
+    ? col.startVerse === col.endVerse
+      ? `${bookName} ${col.startChapter}:${col.startVerse}`
+      : `${bookName} ${col.startChapter}:${col.startVerse}–${col.endVerse}`
     : `${bookName} ${col.startChapter}:${col.startVerse}–${col.endChapter}:${col.endVerse}`;
 }
 

@@ -115,7 +115,9 @@ export default function DefinePassageDialog({
   const preview = (() => {
     if (!crossBook) {
       return startChapter === endChapter
-        ? `${bookName} ${startChapter}:${startVerse}–${endVerse}`
+        ? startVerse === endVerse
+          ? `${bookName} ${startChapter}:${startVerse}`
+          : `${bookName} ${startChapter}:${startVerse}–${endVerse}`
         : `${bookName} ${startChapter}:${startVerse} – ${endChapter}:${endVerse}`;
     }
     return `${bookName} ${startChapter}:${startVerse} – ${continuationBookName} ${contEndChapter}:${contEndVerse}`;

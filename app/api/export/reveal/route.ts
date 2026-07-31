@@ -865,7 +865,11 @@ export async function GET(req: NextRequest) {
     translationMap    = await buildTranslationMap(availableTranslations, osisBook, chapterRange, workspaceId);
 
     title    = passage.label
-      || `${bookName} ${passage.startChapter}:${passage.startVerse}–${passage.endChapter}:${passage.endVerse}`;
+      || (passage.startChapter === passage.endChapter
+        ? (passage.startVerse === passage.endVerse
+          ? `${bookName} ${passage.startChapter}:${passage.startVerse}`
+          : `${bookName} ${passage.startChapter}:${passage.startVerse}–${passage.endVerse}`)
+        : `${bookName} ${passage.startChapter}:${passage.startVerse}–${passage.endChapter}:${passage.endVerse}`);
     filename = `structura-passage-${passageId}`;
 
   } else {

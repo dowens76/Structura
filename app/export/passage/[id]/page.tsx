@@ -220,7 +220,11 @@ export default async function ExportPassagePage({ params, searchParams }: PagePr
   // Use first chapter for API route (single chapter passages most common)
   // For multi-chapter passages, include passageId
   const passageLabel = passage.label
-    || `${bookName} ${passage.startChapter}:${passage.startVerse}–${passage.endChapter}:${passage.endVerse}`;
+    || (passage.startChapter === passage.endChapter
+      ? (passage.startVerse === passage.endVerse
+        ? `${bookName} ${passage.startChapter}:${passage.startVerse}`
+        : `${bookName} ${passage.startChapter}:${passage.startVerse}–${passage.endVerse}`)
+      : `${bookName} ${passage.startChapter}:${passage.startVerse}–${passage.endChapter}:${passage.endVerse}`);
   const filename = `passage-${id}`;
   const revealHref = `/api/export/reveal?passageId=${id}`;
 
@@ -333,7 +337,11 @@ export async function generateMetadata({ params }: PageProps) {
     if (passage) {
       const bookName = OSIS_REF_BOOK_NAMES[passage.book] ?? passage.book;
       const label    = passage.label
-        || `${bookName} ${passage.startChapter}:${passage.startVerse}–${passage.endChapter}:${passage.endVerse}`;
+        || (passage.startChapter === passage.endChapter
+          ? (passage.startVerse === passage.endVerse
+            ? `${bookName} ${passage.startChapter}:${passage.startVerse}`
+            : `${bookName} ${passage.startChapter}:${passage.startVerse}–${passage.endVerse}`)
+          : `${bookName} ${passage.startChapter}:${passage.startVerse}–${passage.endChapter}:${passage.endVerse}`);
       return { title: `Export ${label} — Structura` };
     }
   }

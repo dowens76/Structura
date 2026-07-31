@@ -79,7 +79,9 @@ export default function PassageNavButtons({
       return `${startPrefix}${p.startChapter}:${p.startVerse} – ${endName} ${p.endChapter}:${p.endVerse}`;
     }
     const ref = p.startChapter === p.endChapter
-      ? `${p.startChapter}:${p.startVerse}–${p.endVerse}`
+      ? p.startVerse === p.endVerse
+        ? `${p.startChapter}:${p.startVerse}`
+        : `${p.startChapter}:${p.startVerse}–${p.endVerse}`
       : `${p.startChapter}:${p.startVerse} – ${p.endChapter}:${p.endVerse}`;
     return `${startPrefix}${ref}`;
   }

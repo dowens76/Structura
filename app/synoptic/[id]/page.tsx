@@ -107,7 +107,9 @@ async function loadColumnData(passage: Passage, workspaceId: number): Promise<Sy
 
   const bookName = OSIS_BOOK_NAMES[osisBook] ?? osisBook;
   const refText = passage.startChapter === passage.endChapter
-    ? `${bookName} ${passage.startChapter}:${passage.startVerse}–${passage.endVerse}`
+    ? passage.startVerse === passage.endVerse
+      ? `${bookName} ${passage.startChapter}:${passage.startVerse}`
+      : `${bookName} ${passage.startChapter}:${passage.startVerse}–${passage.endVerse}`
     : `${bookName} ${passage.startChapter}:${passage.startVerse}–${passage.endChapter}:${passage.endVerse}`;
 
   return {

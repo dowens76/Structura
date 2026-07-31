@@ -293,7 +293,7 @@ export default async function PassagePage({ params, searchParams }: PageProps) {
           <HistoryNav />
           <BookmarkButton
             href={`/${encodeURIComponent(osisBook)}/${textSource}/passage/${id}`}
-            label={`${crossBookRef ?? (passage.startChapter === passage.endChapter ? `${bookName} ${passage.startChapter}:${passage.startVerse}–${passage.endVerse}` : `${bookName} ${passage.startChapter}–${passage.endChapter}`)} · ${textSource}`}
+            label={`${crossBookRef ?? (passage.startChapter === passage.endChapter ? (passage.startVerse === passage.endVerse ? `${bookName} ${passage.startChapter}:${passage.startVerse}` : `${bookName} ${passage.startChapter}:${passage.startVerse}–${passage.endVerse}`) : `${bookName} ${passage.startChapter}–${passage.endChapter}`)} · ${textSource}`}
           />
           <WorkspaceSwitcher activeWorkspaceId={workspaceId} />
           <SettingsButton />
@@ -369,7 +369,9 @@ export async function generateMetadata({ params }: PageProps) {
       const ref = passage.endBook && passage.endBook !== osisBook
         ? `${bookName} ${passage.startChapter}:${passage.startVerse} – ${endBookName} ${passage.endChapter}:${passage.endVerse}`
         : passage.startChapter === passage.endChapter
-          ? `${bookName} ${passage.startChapter}:${passage.startVerse}–${passage.endVerse}`
+          ? passage.startVerse === passage.endVerse
+            ? `${bookName} ${passage.startChapter}:${passage.startVerse}`
+            : `${bookName} ${passage.startChapter}:${passage.startVerse}–${passage.endVerse}`
           : `${bookName} ${passage.startChapter}:${passage.startVerse} – ${passage.endChapter}:${passage.endVerse}`;
       return { title: `${ref} — Structura` };
     }

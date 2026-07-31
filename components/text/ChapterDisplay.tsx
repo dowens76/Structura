@@ -4610,7 +4610,9 @@ export default function ChapterDisplay({
       return `${refBookName(book)} ${startChapter}:${startVerse} – ${endBkName} ${endChapter}:${endVerse}`;
     }
     return startChapter === endChapter
-      ? `${refBookName(book)} ${startChapter}:${startVerse}–${endVerse}`
+      ? startVerse === endVerse
+        ? `${refBookName(book)} ${startChapter}:${startVerse}`
+        : `${refBookName(book)} ${startChapter}:${startVerse}–${endVerse}`
       : `${refBookName(book)} ${startChapter}:${startVerse} – ${endChapter}:${endVerse}`;
   })() : "";
 
