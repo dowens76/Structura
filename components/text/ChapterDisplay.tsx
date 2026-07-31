@@ -1454,6 +1454,24 @@ export default function ChapterDisplay({
     };
   }
 
+  // Like getWordLocation, but also resolves the correct `textSource` for a
+  // wordId — the current source edition (e.g. "OSHB") for ordinary source
+  // words, or the owning translation's abbreviation for a translation-text
+  // word (`tv:ABBR:Book.Ch.V.wi`), whose book/chapter are embedded in the id
+  // itself rather than looked up via `words`. Every interlinear dataset API
+  // call must use this instead of the outer `textSource` prop directly, since
+  // datasets can now attach values under translation words too.
+  function resolveWordSource(wordId: string): { textSource: string; book: string; chapter: number } {
+    if (wordId.startsWith("tv:")) {
+      const [, abbr, ref] = wordId.split(":");
+      const parts = ref?.split(".") ?? [];
+      if (abbr && parts.length === 4) {
+        return { textSource: abbr, book: parts[0], chapter: parseInt(parts[1], 10) };
+      }
+    }
+    return { textSource, ...getWordLocation(wordId) };
+  }
+
   // Ordered verse list for rendering & prev/next lookups. Keyed by (bookId,
   // chapter) so two books that happen to share a raw chapter number don't get
   // merged into one group. Degenerates to a single chapter/book group for the
@@ -1527,24 +1545,6 @@ export default function ChapterDisplay({
         const flat = all.flat();
         setConstituentLabelMap(new Map(flat.map((r) => [r.wordId, r.label])));
         setConstituentGroupMap(new Map(flat.filter((r) => r.groupId).map((r) => [r.wordId, r.groupId as string])));
-      })
-      .catch(() => {});
-  }, [displayMode, interlinearSubMode, coveredBookChapters, textSource]);
-
-  // ── Load dataset entries for active dataset across all chapters loaded ────
-  useEffect(() => {
-    if (displayMode !== "interlinear") return;
-    if (typeof interlinearSubMode !== "object" || interlinearSubMode.type !== "dataset") return;
-    const dsId = interlinearSubMode.id;
-    Promise.all(coveredBookChapters.map((g) =>
-      fetch(`/api/interlinear/datasets/${dsId}/entries?book=${encodeURIComponent(g.book)}&chapter=${g.ch}&textSource=${encodeURIComponent(textSource)}`)
-        .then((r) => r.json())
-        .then((rows: { wordId: string; value: string; groupId: string | null }[]) => rows)
-    ))
-      .then((all) => {
-        const flat = all.flat();
-        setDatasetEntryMap(new Map(flat.map((r) => [r.wordId, r.value])));
-        setDatasetGroupMap(new Map(flat.filter((r) => r.groupId).map((r) => [r.wordId, r.groupId as string])));
       })
       .catch(() => {});
   }, [displayMode, interlinearSubMode, coveredBookChapters, textSource]);
@@ -1862,6 +1862,36 @@ export default function ChapterDisplay({
     ),
     [activeTranslationAbbrs, allAvailableTranslations]
   );
+
+  // ── Load dataset entries for active dataset across all chapters loaded ────
+  // Includes entries for both the current source text AND every currently
+  // active translation — a dataset can attach values under translation words
+  // too, scoped per translation via textSource = the translation's abbreviation
+  // (see the `tv:` wordId branch of resolveWordSource below).
+  useEffect(() => {
+    if (displayMode !== "interlinear") return;
+    if (typeof interlinearSubMode !== "object" || interlinearSubMode.type !== "dataset") return;
+    const dsId = interlinearSubMode.id;
+    const activeTranslationAbbrList = allAvailableTranslations
+      .filter((t) => activeTranslationIds.has(t.id))
+      .map((t) => t.abbreviation);
+    const textSources = [textSource, ...activeTranslationAbbrList];
+    Promise.all(
+      coveredBookChapters.flatMap((g) =>
+        textSources.map((ts) =>
+          fetch(`/api/interlinear/datasets/${dsId}/entries?book=${encodeURIComponent(g.book)}&chapter=${g.ch}&textSource=${encodeURIComponent(ts)}`)
+            .then((r) => r.json())
+            .then((rows: { wordId: string; value: string; groupId: string | null }[]) => rows)
+        )
+      )
+    )
+      .then((all) => {
+        const flat = all.flat();
+        setDatasetEntryMap(new Map(flat.map((r) => [r.wordId, r.value])));
+        setDatasetGroupMap(new Map(flat.filter((r) => r.groupId).map((r) => [r.wordId, r.groupId as string])));
+      })
+      .catch(() => {});
+  }, [displayMode, interlinearSubMode, coveredBookChapters, textSource, allAvailableTranslations, activeTranslationIds]);
 
   // wordId → SpeechSection[] sorted largest-range-first (outermost → innermost).
   // Multiple sections per word occur when speech boxes nest (a quote within a quote).
@@ -3608,7 +3638,7 @@ export default function ChapterDisplay({
         await fetch(`/api/interlinear/datasets/${dsId}/entries`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ wordIds: members, value, groupId: gid, textSource, ...getWordLocation(wordId) }),
+          body: JSON.stringify({ wordIds: members, value, groupId: gid, ...resolveWordSource(wordId) }),
           keepalive: true,
         });
       } catch { /* ignore */ }
@@ -3642,7 +3672,7 @@ export default function ChapterDisplay({
         await fetch(`/api/interlinear/datasets/${dsId}/entries`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ wordId, value, textSource, ...getWordLocation(wordId) }),
+          body: JSON.stringify({ wordId, value, ...resolveWordSource(wordId) }),
           keepalive: true,
         });
       }
@@ -3747,7 +3777,7 @@ export default function ChapterDisplay({
         await fetch(`/api/interlinear/datasets/${dsId}/entries`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ wordIds, value, groupId, textSource, ...getWordLocation(wordIds[0]) }),
+          body: JSON.stringify({ wordIds, value, groupId, ...resolveWordSource(wordIds[0]) }),
           keepalive: true,
         });
       } catch { /* ignore */ }

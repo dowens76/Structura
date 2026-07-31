@@ -71,6 +71,7 @@ function splitTokenPunctuation(token: string): { leading: string; core: string; 
 
 import { CommunicativeFunctionPicker, getCommFunctionLeafLabel, useCommFunctionCustoms } from "./CommunicativeFunctionPicker";
 import WordToken from "./WordToken";
+import TranslationDatasetLabel from "./TranslationDatasetLabel";
 import ParseTooltip from "./ParseTooltip";
 import { useTranslation } from "@/lib/i18n/LocaleContext";
 
@@ -2529,6 +2530,15 @@ export default function VerseDisplay({
   // Per-translation footnote letter counter (a, b, c…). Mutable during render.
   const fnCounters: Record<string, number> = {};
 
+  // Interlinear datasets can attach a label under translation-text words too —
+  // same wordId scheme (`tv:ABBR:Book.Ch.V.wi`) and same active dataset as
+  // source words, just keyed by the translation's own token position instead
+  // of a source Word. Gated on interlinear display mode + a dataset (not
+  // constituent/lemma/strongs/morph/translit) being active, since those other
+  // sub-modes describe properties only source words have.
+  const isTvDatasetMode = displayMode === "interlinear"
+    && typeof interlinearSubMode === "object" && interlinearSubMode.type === "dataset";
+
   return (
     <div
       id={`verse-${verseNum}`}
@@ -2913,7 +2923,25 @@ export default function VerseDisplay({
                           : "3px")
                         : undefined;
 
-                      // Background-colour highlight (find > char ref > word tag)
+                      // ── Interlinear dataset grouping — same per-word highlight as
+                      // source-word groups (WordToken/renderWordGroups): each grouped
+                      // word gets its own flat-rounded highlight, with no highlight on
+                      // the space between words — source doesn't highlight that gap
+                      // either, relying on the shared label + proximity to read as one
+                      // group. Only the label (suppressValueDisplay below) is shared.
+                      const tvSavedGroupId = isTvDatasetMode ? datasetGroupMap.get(wordId) : undefined;
+                      const tvGroupValue = tvSavedGroupId != null
+                        ? (datasetEntryMap.get(wordId) ?? tvSavedGroupId)
+                        : undefined;
+                      const isTvPendingGroupMember = isTvDatasetMode && (pendingGroupWordIds?.has(wordId) ?? false);
+                      const sameGroupAsPrev = tvSavedGroupId != null && datasetGroupMap.get(prevWordId) === tvSavedGroupId;
+                      const tvDatasetHighlightBg = isTvPendingGroupMember
+                        ? "rgba(37, 99, 235, 0.35)"
+                        : tvSavedGroupId
+                          ? resolvedDatasetColor(tvGroupValue!, datasetLabelColors)
+                          : undefined;
+
+                      // Background-colour highlight (find > char ref > word tag > dataset group)
                       const tvBgStyle: React.CSSProperties = isTvFindFocus
                         ? { backgroundColor: "rgba(251, 146, 60, 0.65)", borderRadius: "3px" }
                         : isTvFindHit
@@ -2922,9 +2950,12 @@ export default function VerseDisplay({
                             ? { backgroundColor: "rgba(253, 224, 71, 0.45)", borderRadius: "3px" }
                             : tagBgColor && !isTokenHighlighted
                               ? { backgroundColor: tagBgColor, borderRadius: tagBorderRadius }
-                              : {};
+                              : tvDatasetHighlightBg
+                                ? { backgroundColor: tvDatasetHighlightBg, borderRadius: "3px" }
+                                : {};
 
-                      // Styled space: char-ref underline takes priority, then word-tag bg
+                      // Styled space: char-ref underline takes priority, then word-tag bg.
+                      // Dataset grouping does NOT highlight the space between words.
                       const tvSpaceStyle: React.CSSProperties | undefined =
                         sameCharAsNext && char1
                           ? { ...underlineStyle, whiteSpace: "pre" }
@@ -3047,21 +3078,35 @@ export default function VerseDisplay({
                             </>
                           )}
                           {tokLead}
-                          <span
-                            data-word-id={wordId}
-                            style={{ ...underlineStyle, ...tvBgStyle, ...tvFormattingStyle, ...usfmStyle }}
-                            className={[
-                              tokenClassName,
-                              usfmClassName,
-                              isTvRangeStart ? "outline outline-2 outline-violet-400 bg-violet-100 dark:bg-violet-900/40" : "",
-                              isAnchorMoveTarget ? "cursor-crosshair hover:ring-1 hover:ring-sky-400 hover:rounded-sm" : "",
-                            ].filter(Boolean).join(" ")}
-                            onClick={isAnchorMoveTarget
-                              ? (e) => { e.stopPropagation(); onMoveFootnoteAnchor?.(anchorMoveFootnote!.id, globalWi); }
-                              : handleClick}
-                            title={isAnchorMoveTarget ? "Click to place footnote anchor here" : undefined}
-                          >
-                            {renderInlineMarked(tokCore)}
+                          <span className={isTvDatasetMode ? "word-interlinear" : undefined}>
+                            <span
+                              data-word-id={wordId}
+                              style={{ ...underlineStyle, ...tvBgStyle, ...tvFormattingStyle, ...usfmStyle }}
+                              className={[
+                                tokenClassName,
+                                usfmClassName,
+                                isTvRangeStart ? "outline outline-2 outline-violet-400 bg-violet-100 dark:bg-violet-900/40" : "",
+                                isAnchorMoveTarget ? "cursor-crosshair hover:ring-1 hover:ring-sky-400 hover:rounded-sm" : "",
+                              ].filter(Boolean).join(" ")}
+                              onClick={isAnchorMoveTarget
+                                ? (e) => { e.stopPropagation(); onMoveFootnoteAnchor?.(anchorMoveFootnote!.id, globalWi); }
+                                : handleClick}
+                              title={isAnchorMoveTarget ? "Click to place footnote anchor here" : undefined}
+                            >
+                              {renderInlineMarked(tokCore)}
+                            </span>
+                            {isTvDatasetMode && (
+                              <TranslationDatasetLabel
+                                wordId={wordId}
+                                value={tvGroupValue ?? datasetEntryMap.get(wordId) ?? null}
+                                suppressValueDisplay={sameGroupAsPrev}
+                                direction={datasetDirection}
+                                onSave={onSaveDatasetEntry}
+                                groupingActive={datasetGroupingActive}
+                                isPendingGroupMember={isTvPendingGroupMember}
+                                onToggleGroupMember={onToggleDatasetGroupMember}
+                              />
+                            )}
                           </span>
                           {fnLetter && showFnAnchors && (
                             <sup className="text-[0.65em] font-normal leading-none text-stone-400 dark:text-stone-500 select-none">
@@ -3071,7 +3116,22 @@ export default function VerseDisplay({
                           {tokTrail}
                           {!isLastToken && (
                             tvSpaceStyle
-                              ? <span style={tvSpaceStyle}>{" "}</span>
+                              ? (isTvDatasetMode ? (
+                                  // In interlinear+dataset mode, sibling .word-interlinear
+                                  // blocks are vertical-align:bottom (their baseline sits at
+                                  // the bottom of the label row) — a bare highlighted space
+                                  // would inherit that baseline and render its highlight down
+                                  // on the label line instead of the text line. Wrap it in the
+                                  // same word/label column structure (with a hidden label-row
+                                  // placeholder) so it aligns like every other token and its
+                                  // highlight stays confined to the text row.
+                                  <span className="word-interlinear">
+                                    <span style={tvSpaceStyle}>{" "}</span>
+                                    <span className="word-parse" aria-hidden="true" style={{ visibility: "hidden" }}>·</span>
+                                  </span>
+                                ) : (
+                                  <span style={tvSpaceStyle}>{" "}</span>
+                                ))
                               : " "
                           )}
                         </span>
