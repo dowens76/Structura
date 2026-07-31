@@ -2253,7 +2253,7 @@ export default function VerseDisplay({
         const groupValue = activeValueMap?.get(word.wordId);
 
         return (
-          <span key={`grp-${word.wordId}`} style={{ position: "relative", display: "inline-flex" }}>
+          <span key={`grp-${word.wordId}`} className="word-interlinear-group" style={{ position: "relative", display: "inline-flex" }}>
             {runWords.map((w, k) => renderWord(w, wi + k))}
             {/* Centered label spanning the whole run. Purely a visual/click
                 proxy — clicking it forwards to the run's first word's own

@@ -150,8 +150,14 @@ body {
   /* Without this, word-surface inherits the verse line's large --source-lh
      line-height (2.5/2.25), which pads far more space below the word than
      the 2px margin-top below suggests — visually pulling the label down
-     toward the *next* verse line instead of keeping it with its own word. */
-  line-height: 1.15;
+     toward the *next* verse line instead of keeping it with its own word.
+     1.6 (not a tighter value like 1.15) because Ezra SIL/Gentium's actual
+     glyph ink extends well beyond what a smaller line-height's box would
+     contain — a tighter value here still visually overlaps the label line
+     below it, even though it looks "right" for ordinary Latin text metrics.
+     This matches the vertical gap translation-text words already get from
+     their own (unadjusted, ordinary-metrics) line-height. */
+  line-height: 1.6;
 }
 
 /* InterlinearLabel's positioning wrapper (needed for its edit popover) also
@@ -161,6 +167,26 @@ body {
    the next verse line. */
 .word-interlinear .relative {
   line-height: 1;
+}
+
+/* A saved dataset/constituent grouping that spans multiple contiguous source
+   words renders those words' .word-interlinear blocks inside a shared
+   `.word-interlinear-group` flex wrapper, with one absolutely-positioned
+   (bottom: 0) label overlay spanning the whole run (see VerseDisplay.tsx).
+   Each member word's own `.word-interlinear` still carries its normal 14px
+   margin-bottom (the spacing before the *next* verse row) — but nested
+   inside this wrapper, that trailing margin doesn't collapse out the way it
+   does for a normal inline `.word-interlinear` sitting directly in the
+   paragraph; it gets counted as part of the wrapper's own content height
+   instead, pushing the "bottom: 0" overlay ~14px lower than intended (it
+   ends up sitting closer to the next row than to the words it labels).
+   Move that margin to the wrapper itself — same total row-to-row spacing,
+   but no longer trapped inside the overlay's positioning box. */
+.word-interlinear-group {
+  margin-bottom: 14px;
+}
+.word-interlinear-group .word-interlinear {
+  margin-bottom: 0;
 }
 
 .word-interlinear .word-parse {
