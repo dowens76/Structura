@@ -34,17 +34,28 @@ export default function DefinePassageDialog({
   const [endChapter,   setEndChapter]   = useState(currentChapter);
   const [endVerse,     setEndVerse]     = useState(10);
 
+  // ── Verse counts for the primary book (per chapter) ────────────────────────
+  const [bookChapterMaxVerses, setBookChapterMaxVerses] = useState<Record<number, number> | null>(null);
+  const [loadingBookInfo,      setLoadingBookInfo]      = useState(true);
+
   // ── Cross-book extension ───────────────────────────────────────────────────
   // continuationBook: the OSIS code of the book that directly follows `book`
   // (null if there is no continuation pair)
   const continuationBook = CONTIGUOUS_BOOK_PAIRS[book] ?? null;
   const continuationBookName = continuationBook ? (OSIS_REF_BOOK_NAMES[continuationBook] ?? continuationBook) : null;
 
-  const [crossBook,         setCrossBook]         = useState(false);
-  const [contChapterCount,  setContChapterCount]  = useState<number | null>(null);
-  const [contEndChapter,    setContEndChapter]    = useState(1);
-  const [contEndVerse,      setContEndVerse]      = useState(1);
-  const [loadingContCount,  setLoadingContCount]  = useState(false);
+  const [crossBook,             setCrossBook]             = useState(false);
+  const [contChapterCount,      setContChapterCount]      = useState<number | null>(null);
+  const [contChapterMaxVerses,  setContChapterMaxVerses]  = useState<Record<number, number> | null>(null);
+  const [contEndChapter,        setContEndChapter]        = useState(1);
+  const [contEndVerse,          setContEndVerse]          = useState(1);
+  const [loadingContCount,      setLoadingContCount]      = useState(false);
+
+  // Fallback used while verse counts are still loading / unknown (Ps 119:176 is the longest chapter)
+  const FALLBACK_MAX_VERSE = 176;
+  function maxVerseFor(map: Record<number, number> | null, chapter: number): number {
+    return map?.[chapter] ?? FALLBACK_MAX_VERSE;
+  }
 
   // ── Other state ────────────────────────────────────────────────────────────
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -66,15 +77,39 @@ export default function DefinePassageDialog({
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
-  // Fetch continuation book chapter count when the toggle is turned on
+  // Fetch verse counts for the primary book on mount
+  useEffect(() => {
+    let cancelled = false;
+    setLoadingBookInfo(true);
+    fetch(`/api/book-info?book=${encodeURIComponent(book)}&source=${textSource}`)
+      .then((r) => r.json())
+      .then((d: { chapterMaxVerses?: Record<number, number> }) => {
+        if (!cancelled) setBookChapterMaxVerses(d.chapterMaxVerses ?? null);
+      })
+      .catch(() => { if (!cancelled) setBookChapterMaxVerses(null); })
+      .finally(() => { if (!cancelled) setLoadingBookInfo(false); });
+    return () => { cancelled = true; };
+  }, [book, textSource]);
+
+  // Once verse counts load, clamp the initial start/end verses (e.g. a short
+  // chapter with fewer verses than the default endVerse of 10)
+  useEffect(() => {
+    if (!bookChapterMaxVerses) return;
+    setStartVerse((sv) => Math.min(sv, maxVerseFor(bookChapterMaxVerses, startChapter)));
+    setEndVerse((ev) => Math.min(ev, maxVerseFor(bookChapterMaxVerses, endChapter)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bookChapterMaxVerses]);
+
+  // Fetch continuation book chapter/verse counts when the toggle is turned on
   useEffect(() => {
     if (!crossBook || !continuationBook) return;
     if (contChapterCount !== null) return; // already fetched
     setLoadingContCount(true);
     fetch(`/api/book-info?book=${encodeURIComponent(continuationBook)}&source=${textSource}`)
       .then((r) => r.json())
-      .then((d: { chapterCount?: number }) => {
+      .then((d: { chapterCount?: number; chapterMaxVerses?: Record<number, number> }) => {
         setContChapterCount(d.chapterCount ?? 1);
+        setContChapterMaxVerses(d.chapterMaxVerses ?? null);
       })
       .catch(() => setContChapterCount(24)) // fallback
       .finally(() => setLoadingContCount(false));
@@ -91,11 +126,13 @@ export default function DefinePassageDialog({
   function handleStartChapterChange(val: number) {
     const sc = Math.max(1, Math.min(chapterCount, val));
     setStartChapter(sc);
-    if (!crossBook) clampEnd(sc, startVerse, endChapter, endVerse);
+    const sv = Math.min(startVerse, maxVerseFor(bookChapterMaxVerses, sc));
+    setStartVerse(sv);
+    if (!crossBook) clampEnd(sc, sv, endChapter, endVerse);
   }
 
   function handleStartVerseChange(val: number) {
-    const sv = Math.max(1, val);
+    const sv = Math.max(1, Math.min(maxVerseFor(bookChapterMaxVerses, startChapter), val));
     setStartVerse(sv);
     if (!crossBook) clampEnd(startChapter, sv, endChapter, endVerse);
   }
@@ -103,12 +140,33 @@ export default function DefinePassageDialog({
   function handleEndChapterChange(val: number) {
     const ec = Math.max(startChapter, Math.min(chapterCount, val));
     setEndChapter(ec);
-    clampEnd(startChapter, startVerse, ec, endVerse);
+    const minV = ec === startChapter ? startVerse : 1;
+    const ev = Math.max(minV, Math.min(endVerse, maxVerseFor(bookChapterMaxVerses, ec)));
+    setEndVerse(ev);
+    clampEnd(startChapter, startVerse, ec, ev);
+  }
+
+  function handleEndVerseChange(val: number) {
+    const minV = startChapter === endChapter ? startVerse : 1;
+    const maxV = maxVerseFor(bookChapterMaxVerses, endChapter);
+    setEndVerse(Math.max(minV, Math.min(maxV, val)));
   }
 
   function handleContEndChapterChange(val: number) {
     const max = contChapterCount ?? 1;
-    setContEndChapter(Math.max(1, Math.min(max, val)));
+    const ec = Math.max(1, Math.min(max, val));
+    setContEndChapter(ec);
+    setContEndVerse((v) => Math.min(v, maxVerseFor(contChapterMaxVerses, ec)));
+  }
+
+  function handleContEndVerseChange(val: number) {
+    setContEndVerse(Math.max(1, Math.min(maxVerseFor(contChapterMaxVerses, contEndChapter), val)));
+  }
+
+  function handleWholeChapter() {
+    setStartVerse(1);
+    setEndChapter(startChapter);
+    setEndVerse(maxVerseFor(bookChapterMaxVerses, startChapter));
   }
 
   // ── Preview string ─────────────────────────────────────────────────────────
@@ -171,11 +229,16 @@ export default function DefinePassageDialog({
 
   // ── Styles ─────────────────────────────────────────────────────────────────
   const numInput = "w-16 px-2 py-1 rounded border text-sm text-center";
+  const verseSelect = "w-16 px-1.5 py-1 rounded border text-sm";
   const inputStyle: React.CSSProperties = {
     backgroundColor: "var(--background)",
     color: "var(--foreground)",
     borderColor: "var(--border)",
   };
+
+  function verseOptions(max: number) {
+    return Array.from({ length: Math.max(1, max) }, (_, i) => i + 1);
+  }
 
   return (
     <div
@@ -233,15 +296,28 @@ export default function DefinePassageDialog({
                   style={inputStyle}
                 />
                 <span className="text-xs" style={{ color: "var(--text-muted)" }}>{t("definePassage.vAbbr")}</span>
-                <input
-                  type="number"
-                  min={1}
+                <select
                   value={startVerse}
                   onChange={(e) => handleStartVerseChange(Number(e.target.value))}
-                  className={numInput}
+                  className={verseSelect}
                   style={inputStyle}
-                />
+                  disabled={loadingBookInfo}
+                >
+                  {verseOptions(maxVerseFor(bookChapterMaxVerses, startChapter)).map((v) => (
+                    <option key={v} value={v}>{v}</option>
+                  ))}
+                </select>
               </div>
+              <button
+                type="button"
+                onClick={handleWholeChapter}
+                disabled={crossBook || loadingBookInfo}
+                className="ml-auto text-xs px-2 py-1 rounded border transition-colors disabled:opacity-40"
+                style={{ color: "var(--text-muted)", borderColor: "var(--border)" }}
+                title={crossBook ? undefined : t("definePassage.wholeChapter")}
+              >
+                {t("definePassage.wholeChapter")}
+              </button>
             </div>
 
             {/* ── End — single-book ── */}
@@ -260,16 +336,19 @@ export default function DefinePassageDialog({
                     style={inputStyle}
                   />
                   <span className="text-xs" style={{ color: "var(--text-muted)" }}>{t("definePassage.vAbbr")}</span>
-                  <input
-                    type="number"
-                    min={startChapter === endChapter ? startVerse : 1}
+                  <select
                     value={endVerse}
-                    onChange={(e) =>
-                      setEndVerse(Math.max(startChapter === endChapter ? startVerse : 1, Number(e.target.value)))
-                    }
-                    className={numInput}
+                    onChange={(e) => handleEndVerseChange(Number(e.target.value))}
+                    className={verseSelect}
                     style={inputStyle}
-                  />
+                    disabled={loadingBookInfo}
+                  >
+                    {verseOptions(maxVerseFor(bookChapterMaxVerses, endChapter))
+                      .filter((v) => startChapter !== endChapter || v >= startVerse)
+                      .map((v) => (
+                        <option key={v} value={v}>{v}</option>
+                      ))}
+                  </select>
                 </div>
               </div>
             )}
@@ -293,15 +372,17 @@ export default function DefinePassageDialog({
                     disabled={loadingContCount}
                   />
                   <span className="text-xs" style={{ color: "var(--text-muted)" }}>{t("definePassage.vAbbr")}</span>
-                  <input
-                    type="number"
-                    min={1}
+                  <select
                     value={contEndVerse}
-                    onChange={(e) => setContEndVerse(Math.max(1, Number(e.target.value)))}
-                    className={numInput}
+                    onChange={(e) => handleContEndVerseChange(Number(e.target.value))}
+                    className={verseSelect}
                     style={inputStyle}
                     disabled={loadingContCount}
-                  />
+                  >
+                    {verseOptions(maxVerseFor(contChapterMaxVerses, contEndChapter)).map((v) => (
+                      <option key={v} value={v}>{v}</option>
+                    ))}
+                  </select>
                   {loadingContCount && (
                     <span className="text-[11px]" style={{ color: "var(--text-muted)" }}>…</span>
                   )}
