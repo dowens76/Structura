@@ -2598,7 +2598,7 @@ export default function VerseDisplay({
         // Translation content for this row:
         //   • All rows except the last get only tvSegs[si] (if it exists).
         //   • The last source row gets tvSegs[si…end] (all remaining tv paragraphs).
-        const tvRowContent = allTvSegs.map(({ abbr, text: tvFullText, translationId: tvTranslationId, embeddedFnCount, tvSegs, tvWords, tvWordSegs }) => {
+        const tvRowContent = allTvSegs.map(({ abbr, text: tvFullText, translationId: tvTranslationId, embeddedFnCount, tvSegs, tvWords, tvWordSegs }, tvIndex) => {
           const isLastRow = si === sourceSegments.length - 1;
           const rowSegs: TvSeg[] = si < sourceSegments.length - 1
             ? (tvSegs[si] ? [tvSegs[si]] : [])
@@ -2650,8 +2650,17 @@ export default function VerseDisplay({
 
           const hasContent = rowSegs.length > 0;
 
+          // Abbreviation label: only on row 0, only when multiple translations.
+          // It's absolutely positioned above the text (not in normal flow) so it
+          // doesn't push the first line down out of alignment with the source.
+          // For the 2nd+ translation, that means it floats up into the *previous*
+          // translation's block — give those extra margin-top so the label has
+          // room to sit above without overlapping the preceding text.
+          const showAbbrLabel = translationTexts.length > 1 && si === 0;
+          const needsLabelClearance = showAbbrLabel && tvIndex > 0;
+
           return (
-            <div key={abbr}>
+            <div key={abbr} className={["relative", needsLabelClearance ? "mt-5" : ""].join(" ")}>
               {tvStartsNewParagraph && (
                 editingParagraphs ? (
                   <div className="relative flex items-center mb-1">
@@ -2670,9 +2679,8 @@ export default function VerseDisplay({
                   <div className="w-full border-t border-dashed mb-1 border-stone-300 dark:border-stone-600" aria-hidden="true" />
                 )
               )}
-              {/* Abbreviation label: only on row 0, only when multiple translations */}
-              {translationTexts.length > 1 && si === 0 && (
-                <span className="block text-[10px] font-mono font-semibold text-stone-400 dark:text-stone-500 uppercase tracking-wider mb-0.5">
+              {showAbbrLabel && (
+                <span className="absolute bottom-full left-0 mb-0.5 text-[10px] font-mono font-semibold text-stone-400 dark:text-stone-500 uppercase tracking-wider whitespace-nowrap">
                   {abbr}
                 </span>
               )}
