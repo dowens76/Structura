@@ -9,6 +9,7 @@ import { PLOT_ELEMENTS, ANNOTATION_PALETTE, getPlotElement, getAnnotationColor }
 import { resolvedDatasetColor } from "@/lib/utils/datasetColors";
 import { encodeUsfmTokens, decodeUsfmToken, tokenizeTranslationText } from "@/lib/utils/translationTokens";
 import { wordFallsInPassageRange } from "@/lib/utils/passageRange";
+import { analyzeHebrewLine } from "@/lib/phonology/hebrew-syllables";
 
 /** Width of the hanging-indent space (px). RST lines are drawn inside this space. */
 const HANG_PX = 32;
@@ -259,6 +260,9 @@ interface VerseDisplayProps {
   onExpandAnnotationRange?: (id: number, direction: "expand-start" | "shrink-start" | "expand-end" | "shrink-end") => void;
   showAnnotationCol?: boolean;
   showAtnachBreaks?: boolean;
+  /** Shows a stresses/syllables count column, aligned past the end of the
+   *  Hebrew text, for each poetic line (paragraph-break-defined segment). */
+  showSyllableStress?: boolean;
   showVowels?: boolean;
   showCantillation?: boolean;
   /** Called when the user clicks a verse-number label; used to scroll the notes pane */
@@ -1319,6 +1323,7 @@ export default function VerseDisplay({
   rstSourcePad = 0,
   presentationMode = false,
   showAtnachBreaks = false,
+  showSyllableStress = false,
   showVowels = true,
   showCantillation = true,
   translationFootnotes = [] as TranslationFootnote[],
@@ -1946,6 +1951,30 @@ export default function VerseDisplay({
     );
   }
 
+  // ── Syllable/stress column renderer ──────────────────────────────────────
+  // Renders a fixed-width column past the end of one poetic line's (paragraph
+  // segment's) Hebrew text, showing "stresses / syllables" for that line.
+  // Fixed width keeps the numbers aligned vertically across every line.
+  function renderSyllableStressColForSeg(seg: Word[]): React.ReactNode {
+    if (!showSyllableStress || !isHebrew) return null;
+    const { stresses, syllables } = analyzeHebrewLine(seg);
+    const labelPaddingTop = "var(--source-half-leading, calc(0.75 * var(--hebrew-font-size, 1.375rem)))";
+    return (
+      <div
+        className="flex-none pr-2 self-stretch flex flex-col items-end"
+        style={{ minWidth: "3.5rem" }}
+      >
+        <span
+          className="text-sm font-mono tabular-nums whitespace-nowrap text-stone-400 dark:text-stone-600"
+          style={{ paddingTop: labelPaddingTop }}
+          title={`${stresses} stress${stresses === 1 ? "" : "es"} · ${syllables} syllable${syllables === 1 ? "" : "s"}`}
+        >
+          {stresses}<span className="opacity-50 mx-0.5">/</span>{syllables}
+        </span>
+      </div>
+    );
+  }
+
   // Returns the appropriate separator for a paragraph-starting word:
   // scene break → solid HR + heading; regular paragraph break → dashed line.
   function renderSegSeparator(wordId: string): React.ReactNode {
@@ -2438,8 +2467,10 @@ export default function VerseDisplay({
             <div key={si} data-rst-seg={seg[0].wordId}>
               {/* Separator (scene or regular paragraph break) on a within-verse segment */}
               {si > 0 && !suppressSeparator && renderSegSeparator(seg[0].wordId)}
-              {/* Flex wrapper so the annotation column can sit to the right of the text grid */}
+              {/* Flex wrapper: syllable/stress column (past the end of the RTL text) on
+                  the left, the annotation column on the right of the text grid */}
               <div className="flex items-stretch">
+                {renderSyllableStressColForSeg(seg)}
                 <div className="flex-1 min-w-0">
                   {/* 2-column grid: label first, source second. For Hebrew (RTL) dir="rtl"
                       reverses visual column order so label appears on the RIGHT.
@@ -3436,8 +3467,10 @@ export default function VerseDisplay({
           <div key={si} data-rst-seg={seg[0].wordId}>
             {/* Separator (scene or regular paragraph break) on a within-verse segment */}
             {si > 0 && !suppressSeparator && renderSegSeparator(seg[0].wordId)}
-            {/* Flex wrapper so the annotation column can sit to the right of the text grid */}
+            {/* Flex wrapper: syllable/stress column on the left, the annotation
+                column on the right of the text grid */}
             <div className="flex items-stretch">
+              {renderSyllableStressColForSeg(seg)}
               <div className="flex-1 min-w-0">
                 {/* Grid layout: nested speech-box divs wrap from the outside in.
                     The innermost div carries the grid styles; outer divs are borders only. */}

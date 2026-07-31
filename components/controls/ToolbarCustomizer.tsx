@@ -10,6 +10,7 @@ export interface ToolbarVisibility {
   outline: boolean;
   annotations: boolean;
   atnachInsert: boolean;
+  syllableStress: boolean;
   paragraphs: boolean;
   indents: boolean;
   rst: boolean;
@@ -31,7 +32,7 @@ export interface ToolbarVisibility {
 
 export const DEFAULT_TOOLBAR_VIS: ToolbarVisibility = {
   tooltips: true, qatal: true, atnach: true, scenes: true, outline: true,
-  annotations: true, atnachInsert: true, paragraphs: true, indents: true,
+  annotations: true, atnachInsert: true, syllableStress: true, paragraphs: true, indents: true,
   rst: true, arrows: true, bold: true, italic: true,
   refs: true, speech: true, wordTags: true, clear: true,
   notes: true, search: true, bible: true, intertextual: true, translations: true,
@@ -48,7 +49,7 @@ export const DEFAULT_TOOLBAR_VIS: ToolbarVisibility = {
  */
 export const SYNOPTIC_DEFAULT_TOOLBAR_VIS: ToolbarVisibility = {
   tooltips: true, qatal: false, atnach: false, scenes: false, outline: false,
-  annotations: false, atnachInsert: false, paragraphs: false, indents: false,
+  annotations: false, atnachInsert: false, syllableStress: false, paragraphs: false, indents: false,
   rst: false, arrows: false, bold: false, italic: false,
   refs: false, speech: false, wordTags: false, clear: false,
   notes: false, search: false, bible: false, intertextual: false, translations: false,
@@ -82,6 +83,7 @@ const SECTIONS: { label: string; items: { key: keyof ToolbarVisibility; label: s
       { key: "paragraphs",  label: "¶ Paragraphs" },
       { key: "atnach",      label: "Show Atnach", hebrew: true },
       { key: "atnachInsert",label: "¶ at Atnach", hebrew: true },
+      { key: "syllableStress", label: "Syllable/Stress counts", hebrew: true },
       { key: "indents",     label: "⇥ Indents" },
       { key: "rst",         label: "↳ Clause Relationships" },
       { key: "annotations", label: "≡ Clause/Paragraph labels" },

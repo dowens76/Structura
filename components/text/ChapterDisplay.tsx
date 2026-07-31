@@ -393,6 +393,7 @@ export default function ChapterDisplay({
   }, []);
   const [showTooltips, setShowTooltips] = useState(false);
   const [showAtnachBreaks, setShowAtnachBreaks] = useState(false);
+  const [showSyllableStress, setShowSyllableStress] = useState(false);
   const [showVowels, setShowVowels] = useState(true);
   const [showCantillation, setShowCantillation] = useState(true);
   // Store active translations by abbreviation so they survive cross-book navigation
@@ -1299,6 +1300,7 @@ export default function ChapterDisplay({
     }
     setShowVowels(readLocal<boolean>("structura:showVowels", true));
     setShowCantillation(readLocal<boolean>("structura:showCantillation", true));
+    setShowSyllableStress(readLocal<boolean>("structura:showSyllableStress", false));
     setUseLinguisticTerms(readLocal<boolean>("structura:useLinguisticTerms", false));
     setHebrewFontSize(readLocal<number>("structura:hebrewFontSize", 1.375));
     setGreekFontSize(readLocal<number>("structura:greekFontSize", 1.25));
@@ -1329,6 +1331,7 @@ export default function ChapterDisplay({
   useEffect(() => { writeLocal("structura:interlinearSubMode", interlinearSubMode); }, [interlinearSubMode]);
   useEffect(() => { writeLocal("structura:showVowels", showVowels); }, [showVowels]);
   useEffect(() => { writeLocal("structura:showCantillation", showCantillation); }, [showCantillation]);
+  useEffect(() => { writeLocal("structura:showSyllableStress", showSyllableStress); }, [showSyllableStress]);
   useEffect(() => { writeLocal("structura:useLinguisticTerms", useLinguisticTerms); }, [useLinguisticTerms]);
   useEffect(() => { writeLocal("structura:hideSourceText", hideSourceText); }, [hideSourceText]);
   // structura:rstLinked is now persisted inside useRstRelations hook.
@@ -5040,6 +5043,25 @@ export default function ChapterDisplay({
                 </button>
               )}
 
+              {/* Syllable/stress count column — Hebrew only. Each paragraph
+                  break defines a new poetic line; counts are recomputed live. */}
+              {isHebrew && toolbarVis.syllableStress && (
+                <button
+                  onClick={() => setShowSyllableStress((v) => !v)}
+                  data-tip={showSyllableStress
+                    ? "Hide syllable/stress counts"
+                    : "Show syllable and stress counts per line (stresses / syllables)"}
+                  className={[
+                    "px-3 py-1.5 rounded text-[13px] font-medium transition-colors",
+                    showSyllableStress
+                      ? "bg-violet-600 text-white"
+                      : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
+                  ].join(" ")}
+                >
+                  Syllables
+                </button>
+              )}
+
               {/* Paragraph indent mode */}
               {toolbarVis.indents && <button
                 onClick={() => {
@@ -6088,6 +6110,7 @@ export default function ChapterDisplay({
                 paragraphBreakIds={paragraphBreakIds}
                 editingParagraphs={editingParagraphs}
                 showAtnachBreaks={showAtnachBreaks}
+                showSyllableStress={showSyllableStress}
                 showVowels={showVowels}
                 showCantillation={showCantillation}
                 characterRefMap={characterRefMap}
