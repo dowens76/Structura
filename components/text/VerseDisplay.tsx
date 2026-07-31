@@ -2855,8 +2855,14 @@ export default function VerseDisplay({
                   onClick={editingScenes && firstWordId ? (e) => { e.stopPropagation(); if (!(sceneBreakMap.get(firstWordId)?.length)) onToggleSceneBreak?.(firstWordId, 1, verseNum); } : undefined}
                   title={editingScenes ? "Click to add a section heading above this verse" : undefined}
                 >
-                  {rowSegs.flatMap((tvSeg, segIdx) =>
-                    tvSeg.tokens.map((token, localWi) => {
+                  {rowSegs.flatMap((tvSeg, segIdx) => {
+                    // Renders one token's full <span key={globalWi}>...</span> —
+                    // extracted (rather than inlined in a .map()) so a contiguous
+                    // dataset-group run can call it per member below while still
+                    // producing one centered overlay label for the whole run,
+                    // instead of each member showing its own copy.
+                    function renderTvToken(localWi: number, suppressLabel: boolean): { node: React.ReactNode; wordId: string } {
+                      const token = tvSeg.tokens[localWi];
                       const globalWi = tvSeg.startIdx + localWi;
                       const wordId = `tv:${abbr}:${book}.${chapter}.${verseNum}.${globalWi}`;
                       const ref = characterRefMap.get(wordId);
@@ -2927,14 +2933,14 @@ export default function VerseDisplay({
                       // source-word groups (WordToken/renderWordGroups): each grouped
                       // word gets its own flat-rounded highlight, with no highlight on
                       // the space between words — source doesn't highlight that gap
-                      // either, relying on the shared label + proximity to read as one
-                      // group. Only the label (suppressValueDisplay below) is shared.
+                      // either, relying on the shared centered label + proximity to
+                      // read as one group (the caller renders that shared label; see
+                      // the run-detection loop below, which passes suppressLabel).
                       const tvSavedGroupId = isTvDatasetMode ? datasetGroupMap.get(wordId) : undefined;
                       const tvGroupValue = tvSavedGroupId != null
                         ? (datasetEntryMap.get(wordId) ?? tvSavedGroupId)
                         : undefined;
                       const isTvPendingGroupMember = isTvDatasetMode && (pendingGroupWordIds?.has(wordId) ?? false);
-                      const sameGroupAsPrev = tvSavedGroupId != null && datasetGroupMap.get(prevWordId) === tvSavedGroupId;
                       const tvDatasetHighlightBg = isTvPendingGroupMember
                         ? "rgba(37, 99, 235, 0.35)"
                         : tvSavedGroupId
@@ -3056,7 +3062,7 @@ export default function VerseDisplay({
                       const isAnchorMoveTarget =
                         !!anchorMoveFootnote && anchorMoveFootnote.translationId === tvTranslationId;
 
-                      return (
+                      const node = (
                         <span key={globalWi}>
                           {(isMidVerseBreak || isInterSegBreak) && (
                             <>
@@ -3099,7 +3105,7 @@ export default function VerseDisplay({
                               <TranslationDatasetLabel
                                 wordId={wordId}
                                 value={tvGroupValue ?? datasetEntryMap.get(wordId) ?? null}
-                                suppressValueDisplay={sameGroupAsPrev}
+                                suppressValueDisplay={suppressLabel}
                                 direction={datasetDirection}
                                 onSave={onSaveDatasetEntry}
                                 groupingActive={datasetGroupingActive}
@@ -3136,8 +3142,73 @@ export default function VerseDisplay({
                           )}
                         </span>
                       );
-                    })
-                  )}
+                      return { node, wordId };
+                    }
+
+                    // ── Run detection: render each token individually, except a
+                    // contiguous run of words sharing a saved dataset grouping,
+                    // which renders as one unit — member words wrapped together
+                    // (each with its own value display suppressed) plus a single
+                    // centered overlay label spanning the run, mirroring how
+                    // source-word groups render (see renderWordGroups above).
+                    const elements: React.ReactNode[] = [];
+                    let li = 0;
+                    while (li < tvSeg.tokens.length) {
+                      const groupId = isTvDatasetMode
+                        ? datasetGroupMap.get(`tv:${abbr}:${book}.${chapter}.${verseNum}.${tvSeg.startIdx + li}`)
+                        : undefined;
+
+                      if (groupId != null) {
+                        let runEnd = li;
+                        while (
+                          runEnd + 1 < tvSeg.tokens.length &&
+                          datasetGroupMap.get(`tv:${abbr}:${book}.${chapter}.${verseNum}.${tvSeg.startIdx + runEnd + 1}`) === groupId
+                        ) runEnd++;
+
+                        if (runEnd > li) {
+                          const firstWordIdInRun = `tv:${abbr}:${book}.${chapter}.${verseNum}.${tvSeg.startIdx + li}`;
+                          const runValue = datasetEntryMap.get(firstWordIdInRun) ?? groupId;
+                          const members: React.ReactNode[] = [];
+                          for (let k = li; k <= runEnd; k++) members.push(renderTvToken(k, true).node);
+                          elements.push(
+                            <span key={`grp-${firstWordIdInRun}`} className="word-interlinear-group" style={{ position: "relative", display: "inline-flex" }}>
+                              {members}
+                              {/* Centered label spanning the whole run. Purely a visual/click
+                                  proxy — clicking it forwards to the run's first word's own
+                                  (blank, since its value display is suppressed) interlinear
+                                  label span, which already has the real click behavior:
+                                  toggling group membership in grouping mode, or opening the
+                                  value-edit popover otherwise. */}
+                              <span
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  const wrapper = (e.currentTarget as HTMLElement).parentElement;
+                                  wrapper?.querySelector<HTMLElement>(".word-parse")?.click();
+                                }}
+                                title={datasetGroupingActive ? "Click to add/remove from grouping" : "Click to edit"}
+                                className={[
+                                  "absolute left-0 right-0 bottom-0 text-center cursor-pointer rounded px-0.5",
+                                  datasetGroupingActive
+                                    ? "hover:bg-blue-100 dark:hover:bg-blue-900/40"
+                                    : "hover:bg-stone-100 dark:hover:bg-stone-700",
+                                ].join(" ")}
+                                style={{ fontSize: "0.72em", lineHeight: 1.2, color: "var(--interlinear-color)" }}
+                                dir={datasetDirection}
+                              >
+                                {runValue}
+                              </span>
+                            </span>
+                          );
+                          li = runEnd + 1;
+                          continue;
+                        }
+                      }
+
+                      elements.push(renderTvToken(li, false).node);
+                      li++;
+                    }
+                    return elements;
+                  })}
                   {/* Orphaned anchors: footnotes without an embedded \fn marker in the verse text */}
                   {isLastRow && showFnAnchors && (() => {
                     const tFns = translationFootnotes.filter((f) => f.translationId === tvTranslationId);
