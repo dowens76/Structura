@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { userDb } from "@/lib/db";
 import { translations } from "@/lib/db/schema";
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, sql } from "drizzle-orm";
 import { getActiveWorkspaceId } from "@/lib/workspace";
 
 export const dynamic = "force-dynamic";
@@ -16,7 +16,7 @@ export async function GET() {
       language: translations.language,
     })
     .from(translations)
-    .orderBy(asc(translations.abbreviation));
+    .orderBy(asc(translations.sortOrder), asc(translations.abbreviation));
 
   return NextResponse.json(rows);
 }
@@ -50,9 +50,14 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  // New translations go at the end of the display order.
+  const [{ maxOrder }] = await userDb
+    .select({ maxOrder: sql<number>`coalesce(max(${translations.sortOrder}), -1)` })
+    .from(translations);
+
   const result = await userDb
     .insert(translations)
-    .values({ workspaceId, name, abbreviation, language: body.language ?? null })
+    .values({ workspaceId, name, abbreviation, language: body.language ?? null, sortOrder: maxOrder + 1 })
     .returning({ id: translations.id });
 
   return NextResponse.json({ id: result[0].id });

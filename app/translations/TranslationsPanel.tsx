@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import PageShell from "@/components/ui/PageShell";
 import SectionHeading from "@/components/ui/SectionHeading";
 import Button from "@/components/ui/Button";
@@ -101,6 +101,7 @@ export default function TranslationsPanel() {
   const [newAbbr, setNewAbbr] = useState("");
   const [newLang, setNewLang] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const dragIdx = useRef<number | null>(null);
 
   useEffect(() => {
     fetch("/api/translations")
@@ -155,6 +156,47 @@ export default function TranslationsPanel() {
     setCreating(false);
   }
 
+  function handleDragStart(e: React.DragEvent, idx: number) {
+    dragIdx.current = idx;
+    // Firefox requires data to be set on the drag for the drag session to be
+    // considered valid; without it dragover/drop never fire and the row snaps
+    // back to its original position on release.
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", String(idx));
+  }
+
+  function handleDragEnter(e: React.DragEvent) {
+    // Some browsers (Safari, Firefox) only allow drop on a target whose
+    // dragenter was also accepted — without this, dragover fires but shows
+    // a "not allowed" cursor and drop never applies.
+    e.preventDefault();
+  }
+
+  function handleDragOver(e: React.DragEvent, idx: number) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    if (dragIdx.current === null || dragIdx.current === idx) return;
+    const next = [...rows];
+    const [moved] = next.splice(dragIdx.current, 1);
+    next.splice(idx, 0, moved);
+    dragIdx.current = idx;
+    setRows(next);
+  }
+
+  function handleDrop(e: React.DragEvent) {
+    e.preventDefault();
+  }
+
+  function handleDragEnd() {
+    dragIdx.current = null;
+    const items = rows.map((r, idx) => ({ id: r.id, sortOrder: idx }));
+    fetch("/api/translations/reorder", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ items }),
+    });
+  }
+
   const inputCls = "w-full text-sm px-2 py-1 rounded border border-stone-300 dark:border-stone-600 bg-stone-50 dark:bg-stone-900 focus:outline-none focus:ring-1 focus:ring-sky-500";
   const labelCls = "text-[10px] font-semibold uppercase tracking-wider text-stone-400 dark:text-stone-500 mb-0.5 block";
 
@@ -166,18 +208,43 @@ export default function TranslationsPanel() {
           {!loading && rows.length === 0 && (
             <p className="text-sm text-stone-400 dark:text-stone-500">No translations yet. Create one below.</p>
           )}
-          {rows.map((row) => (
-            <TranslationEditor
+          {rows.length > 1 && (
+            <p className="text-xs text-stone-400 dark:text-stone-500">
+              Drag <span className="text-stone-300 dark:text-stone-600">⠿</span> to reorder. This controls the order translations appear when more than one is displayed.
+            </p>
+          )}
+          {rows.map((row, idx) => (
+            <div
               key={row.id}
-              row={row}
-              saving={saving === row.id}
-              onSave={(patch) => patchField(row.id, patch)}
-              confirmingDelete={confirmDeleteId === row.id}
-              deleting={deleting && confirmDeleteId === row.id}
-              onRequestDelete={() => setConfirmDeleteId(row.id)}
-              onCancelDelete={() => setConfirmDeleteId(null)}
-              onConfirmDelete={() => handleDelete(row.id)}
-            />
+              draggable={rows.length > 1}
+              onDragStart={(e) => handleDragStart(e, idx)}
+              onDragEnter={handleDragEnter}
+              onDragOver={(e) => handleDragOver(e, idx)}
+              onDrop={handleDrop}
+              onDragEnd={handleDragEnd}
+              className="flex items-start gap-1"
+            >
+              {rows.length > 1 && (
+                <span
+                  className="mt-3 cursor-grab active:cursor-grabbing select-none text-stone-300 dark:text-stone-600 text-sm leading-none shrink-0"
+                  title="Drag to reorder"
+                >
+                  ⠿
+                </span>
+              )}
+              <div className="flex-1 min-w-0">
+                <TranslationEditor
+                  row={row}
+                  saving={saving === row.id}
+                  onSave={(patch) => patchField(row.id, patch)}
+                  confirmingDelete={confirmDeleteId === row.id}
+                  deleting={deleting && confirmDeleteId === row.id}
+                  onRequestDelete={() => setConfirmDeleteId(row.id)}
+                  onCancelDelete={() => setConfirmDeleteId(null)}
+                  onConfirmDelete={() => handleDelete(row.id)}
+                />
+              </div>
+            </div>
           ))}
         </div>
 

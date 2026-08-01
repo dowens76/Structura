@@ -32,6 +32,7 @@ export const translations = sqliteTable(
     name:        text("name").notNull(),
     abbreviation: text("abbreviation").notNull(),
     language:    text("language"),
+    sortOrder:   integer("sort_order").notNull().default(0),
     createdAt:   integer("created_at", { mode: "timestamp" }).$defaultFn(() => new Date()),
   },
   (t) => [

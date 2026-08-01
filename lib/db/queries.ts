@@ -382,7 +382,13 @@ export async function getTranslations(_workspaceId?: number): Promise<Translatio
   return userDb
     .select()
     .from(translations)
-    .orderBy(asc(translations.abbreviation));
+    .orderBy(asc(translations.sortOrder), asc(translations.abbreviation));
+}
+
+export async function reorderTranslations(items: { id: number; sortOrder: number }[]): Promise<void> {
+  for (const { id, sortOrder } of items) {
+    await userDb.update(translations).set({ sortOrder }).where(eq(translations.id, id));
+  }
 }
 
 export async function getAvailableTranslationsForChapter(
@@ -434,7 +440,7 @@ export async function getAvailableTranslationsForChapter(
     .select()
     .from(translations)
     .where(inArray(translations.id, translationIds))
-    .orderBy(asc(translations.abbreviation));
+    .orderBy(asc(translations.sortOrder), asc(translations.abbreviation));
 }
 
 /** Returns all translation verses for a full book (used for USFM export). */
