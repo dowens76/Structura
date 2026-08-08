@@ -38,6 +38,7 @@ import PassageExportLink from "@/components/passage/PassageExportLink";
 import BookDropdown from "@/components/navigation/BookDropdown";
 import ChapterDropdown from "@/components/navigation/ChapterDropdown";
 import WorkspaceSwitcher from "@/components/WorkspaceSwitcher";
+import CopyFromWorkspaceDialog from "@/components/workspace/CopyFromWorkspaceDialog";
 import LanguagePicker from "@/components/ui/LanguagePicker";
 import ImportButton from "@/components/navigation/ImportButton";
 import HistoryNav from "@/components/navigation/HistoryNav";
@@ -294,6 +295,10 @@ export default async function PassagePage({ params, searchParams }: PageProps) {
           <BookmarkButton
             href={`/${encodeURIComponent(osisBook)}/${textSource}/passage/${id}`}
             label={`${crossBookRef ?? (passage.startChapter === passage.endChapter ? (passage.startVerse === passage.endVerse ? `${bookName} ${passage.startChapter}:${passage.startVerse}` : `${bookName} ${passage.startChapter}:${passage.startVerse}–${passage.endVerse}`) : `${bookName} ${passage.startChapter}–${passage.endChapter}`)} · ${textSource}`}
+          />
+          <CopyFromWorkspaceDialog
+            activeWorkspaceId={workspaceId}
+            scope={{ type: "passage", passageId: id }}
           />
           <WorkspaceSwitcher activeWorkspaceId={workspaceId} />
           <SettingsButton />

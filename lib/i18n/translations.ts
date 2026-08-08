@@ -141,6 +141,9 @@ const en = {
     manageWorkspaces: "Manage workspaces →",
     interfaceLanguage: "Interface language",
     home: "Home",
+    copyFromWorkspace: "Copy from workspace",
+    titleCopyFromWorkspace: "Copy annotations from another workspace into this chapter or passage",
+    reloadToSeeChanges: "Reload page to see changes",
   },
   // ── Home page ───────────────────────────────────────────────────────────────
   home: {
@@ -724,6 +727,9 @@ const vi: Translations = {
     manageWorkspaces: "Quản lý không gian làm việc →",
     interfaceLanguage: "Ngôn ngữ giao diện",
     home: "Trang chủ",
+    copyFromWorkspace: "Sao chép từ không gian khác",
+    titleCopyFromWorkspace: "Sao chép chú thích từ không gian làm việc khác vào chương hoặc phân đoạn này",
+    reloadToSeeChanges: "Tải lại trang để xem thay đổi",
   },
   home: {
     importTranslation: "+ Nhập bản dịch",

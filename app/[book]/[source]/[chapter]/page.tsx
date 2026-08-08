@@ -32,6 +32,7 @@ import BookmarkButton from "@/components/navigation/BookmarkButton";
 import ThemeToggle from "@/components/ThemeToggle";
 import SettingsButton from "@/components/SettingsButton";
 import WorkspaceSwitcher from "@/components/WorkspaceSwitcher";
+import CopyFromWorkspaceDialog from "@/components/workspace/CopyFromWorkspaceDialog";
 import { OSIS_BOOK_NAMES, OSIS_REF_BOOK_NAMES, OSHB_LXX_PARALLEL_BOOKS, CONTIGUOUS_BOOK_PAIRS, CONTIGUOUS_BOOK_PREV, canonicalPairBook } from "@/lib/utils/osis";
 import {
   getParallelGroup,
@@ -330,6 +331,12 @@ export default async function ChapterPage({ params, searchParams }: PageProps) {
             href={`/${encodeURIComponent(osisBook)}/${textSource}/${chapter}${parallelMode ? "?par=1" : ""}`}
             label={`${bookName} ${chapter} · ${parallelMode ? "OSHB ‖ LXX" : textSource}`}
           />
+          {!parallelMode && (
+            <CopyFromWorkspaceDialog
+              activeWorkspaceId={workspaceId}
+              scope={{ type: "chapter", book: osisBook, chapter }}
+            />
+          )}
           <WorkspaceSwitcher activeWorkspaceId={workspaceId} />
           <SettingsButton />
           <ThemeToggle />
