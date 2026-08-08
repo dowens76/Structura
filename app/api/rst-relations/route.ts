@@ -8,6 +8,7 @@ import {
   updateRstRelationIntersectPoint,
 } from "@/lib/db/queries";
 import { getActiveWorkspaceId } from "@/lib/workspace";
+import { getActiveVersionId } from "@/lib/versions/activeVersion";
 
 export const dynamic = "force-dynamic";
 
@@ -20,7 +21,8 @@ export async function GET(req: NextRequest) {
   const source  = searchParams.get("source");
   if (!book || isNaN(chapter) || !source)
     return NextResponse.json({ error: "Missing params" }, { status: 400 });
-  const relations = await getChapterRstRelations(book, chapter, source, workspaceId);
+  const versionId = await getActiveVersionId(workspaceId, book, chapter);
+  const relations = await getChapterRstRelations(book, chapter, source, workspaceId, versionId);
   return NextResponse.json({ relations });
 }
 
@@ -42,8 +44,9 @@ export async function POST(req: NextRequest) {
   };
   if (!groupId || !members?.length || !relType || !book || !chapter || !source)
     return NextResponse.json({ error: "Missing fields" }, { status: 400 });
+  const versionId = await getActiveVersionId(workspaceId, book, Number(chapter));
   const relations = await createRstRelationGroup(
-    groupId, members, relType, book, Number(chapter), source, workspaceId
+    groupId, members, relType, book, Number(chapter), source, workspaceId, versionId
   );
   return NextResponse.json({ relations });
 }

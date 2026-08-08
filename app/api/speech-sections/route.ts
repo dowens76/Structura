@@ -10,6 +10,7 @@ import {
 import type { SpeechSection } from "@/lib/db/schema";
 import type { TextSource } from "@/lib/morphology/types";
 import { getActiveWorkspaceId } from "@/lib/workspace";
+import { getActiveVersionId } from "@/lib/versions/activeVersion";
 
 export const dynamic = "force-dynamic";
 
@@ -25,7 +26,8 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Missing params" }, { status: 400 });
   }
 
-  const sections = await getChapterSpeechSections(book, chapter, source, workspaceId);
+  const versionId = await getActiveVersionId(workspaceId, book, chapter);
+  const sections = await getChapterSpeechSections(book, chapter, source, workspaceId, versionId);
   return NextResponse.json({ sections });
 }
 
@@ -53,9 +55,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Missing fields" }, { status: 400 });
   }
 
+  const versionId = await getActiveVersionId(workspaceId, book, chapter);
   const chapterWords = await getChapterWords(book, chapter, source as TextSource);
   const sections = await upsertSpeechSection(
-    characterId, startWordId, endWordId, book, chapter, source, chapterWords, workspaceId
+    characterId, startWordId, endWordId, book, chapter, source, chapterWords, workspaceId, versionId
   );
   return NextResponse.json({ sections });
 }
@@ -81,8 +84,9 @@ export async function PUT(request: NextRequest) {
     return NextResponse.json({ error: "Missing fields" }, { status: 400 });
   }
 
-  await replaceChapterSpeechSections(book, chapter, source, sections, workspaceId);
-  const updated = await getChapterSpeechSections(book, chapter, source, workspaceId);
+  const versionId = await getActiveVersionId(workspaceId, book, chapter);
+  await replaceChapterSpeechSections(book, chapter, source, sections, workspaceId, versionId);
+  const updated = await getChapterSpeechSections(book, chapter, source, workspaceId, versionId);
   return NextResponse.json({ sections: updated });
 }
 
@@ -103,7 +107,8 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ error: "Missing fields" }, { status: 400 });
   }
 
-  const sections = await updateSpeechSectionCharacter(sectionId, characterId, book, chapter, source, workspaceId);
+  const versionId = await getActiveVersionId(workspaceId, book, chapter);
+  const sections = await updateSpeechSectionCharacter(sectionId, characterId, book, chapter, source, workspaceId, versionId);
   return NextResponse.json({ sections });
 }
 
@@ -129,7 +134,8 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json({ error: "Missing fields" }, { status: 400 });
   }
 
+  const versionId = await getActiveVersionId(workspaceId, book, chapter);
   const chapterWords = await getChapterWords(book, chapter, source as TextSource);
-  const sections = await removeSpeechSectionContaining(wordId, book, chapter, source, chapterWords, workspaceId);
+  const sections = await removeSpeechSectionContaining(wordId, book, chapter, source, chapterWords, workspaceId, versionId);
   return NextResponse.json({ sections });
 }

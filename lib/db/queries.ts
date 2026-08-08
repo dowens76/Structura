@@ -5,8 +5,9 @@ import type { LookupMaps } from "./index";
 import { books, words } from "./source-schema";
 import { lexiconEntries } from "./lexica-schema";
 import type { Word, WordRow } from "./source-schema";
-import { translations, translationVerses, paragraphBreaks, paragraphHeadings, characters, characterRefs, speechSections, wordTags, wordTagRefs, lineIndents, sceneBreaks, passages, rstRelations, wordArrows, wordFormatting, lineAnnotations, bookGroupings, appSettings, translationFootnotes, translationVersions, workspaces, users, textCriticalMarks, notes, intertextualLinks, synopticSets, synopticWordMarks, constituentLabels, transliterationFormats, wordDatasets, wordDatasetEntries, wordDatasetLabelColors } from "./user-schema";
-import type { Book, Translation, TranslationVerse, Character, CharacterRef, SpeechSection, WordTag, WordTagRef, Passage, RstRelation, WordArrow, LineAnnotation, BookGrouping, TranslationFootnote, TranslationVersion, IntertextualLink, SynopticSet, SynopticWordMark } from "./schema";
+import { translations, translationVerses, paragraphBreaks, paragraphHeadings, characters, characterRefs, speechSections, wordTags, wordTagRefs, lineIndents, sceneBreaks, passages, rstRelations, wordArrows, wordFormatting, lineAnnotations, bookGroupings, appSettings, translationFootnotes, translationVersions, workspaces, users, textCriticalMarks, notes, intertextualLinks, synopticSets, synopticWordMarks, constituentLabels, transliterationFormats, wordDatasets, wordDatasetEntries, wordDatasetLabelColors, versions, activeVersionSelections } from "./user-schema";
+import type { Book, Translation, TranslationVerse, Character, CharacterRef, SpeechSection, WordTag, WordTagRef, Passage, RstRelation, WordArrow, LineAnnotation, BookGrouping, TranslationFootnote, TranslationVersion, IntertextualLink, SynopticSet, SynopticWordMark, Version } from "./schema";
+import { VERSIONABLE_FEATURES } from "@/lib/versions/registry";
 import type { TextSource, Testament } from "@/lib/morphology/types";
 
 // ── Decode helpers ────────────────────────────────────────────────────────────
@@ -531,7 +532,8 @@ export async function upsertTranslation(name: string, abbreviation: string, _wor
 export async function getChapterParagraphBreaks(
   book: string,
   chapter: number,
-  workspaceId: number
+  workspaceId: number,
+  versionId: number
 ): Promise<string[]> {
   const rows = await userDb
     .select({ wordId: paragraphBreaks.wordId })
@@ -539,6 +541,7 @@ export async function getChapterParagraphBreaks(
     .where(
       and(
         eq(paragraphBreaks.workspaceId, workspaceId),
+        eq(paragraphBreaks.versionId, versionId),
         eq(paragraphBreaks.book, book),
         eq(paragraphBreaks.chapter, chapter)
       )
@@ -552,21 +555,22 @@ export async function toggleParagraphBreak(
   book: string,
   chapter: number,
   textSource: string,
-  workspaceId: number
+  workspaceId: number,
+  versionId: number
 ): Promise<{ added: boolean }> {
   const existing = await userDb
     .select({ id: paragraphBreaks.id })
     .from(paragraphBreaks)
-    .where(and(eq(paragraphBreaks.workspaceId, workspaceId), eq(paragraphBreaks.wordId, wordId)))
+    .where(and(eq(paragraphBreaks.workspaceId, workspaceId), eq(paragraphBreaks.versionId, versionId), eq(paragraphBreaks.wordId, wordId)))
     .limit(1);
 
   if (existing.length > 0) {
     await userDb.delete(paragraphBreaks).where(
-      and(eq(paragraphBreaks.workspaceId, workspaceId), eq(paragraphBreaks.wordId, wordId))
+      and(eq(paragraphBreaks.workspaceId, workspaceId), eq(paragraphBreaks.versionId, versionId), eq(paragraphBreaks.wordId, wordId))
     );
     return { added: false };
   } else {
-    await userDb.insert(paragraphBreaks).values({ wordId, book, chapter, textSource, workspaceId });
+    await userDb.insert(paragraphBreaks).values({ wordId, book, chapter, textSource, workspaceId, versionId });
     return { added: true };
   }
 }
@@ -626,7 +630,8 @@ export async function setParagraphHeading(
 export async function getChapterSceneBreaks(
   book: string,
   chapter: number,
-  workspaceId: number
+  workspaceId: number,
+  versionId: number
 ): Promise<{ wordId: string; heading: string | null; level: number; verse: number; outOfSequence: boolean; extendedThrough: number | null; thematic: boolean; thematicLetter: string | null; transitional: boolean }[]> {
   const rows = await userDb
     .select({
@@ -641,7 +646,7 @@ export async function getChapterSceneBreaks(
       transitional:    sceneBreaks.transitional,
     })
     .from(sceneBreaks)
-    .where(and(eq(sceneBreaks.workspaceId, workspaceId), eq(sceneBreaks.book, book), eq(sceneBreaks.chapter, chapter)))
+    .where(and(eq(sceneBreaks.workspaceId, workspaceId), eq(sceneBreaks.versionId, versionId), eq(sceneBreaks.book, book), eq(sceneBreaks.chapter, chapter)))
     .orderBy(asc(sceneBreaks.verse), asc(sceneBreaks.level));
   return rows;
 }
@@ -725,61 +730,62 @@ export async function toggleSceneBreak(
   verse: number,
   textSource: string,
   level = 1,
-  workspaceId: number
+  workspaceId: number,
+  versionId: number
 ): Promise<{ added: boolean }> {
   // Check if this specific (wordId, level) already exists
   const existing = await userDb
     .select({ id: sceneBreaks.id })
     .from(sceneBreaks)
-    .where(and(eq(sceneBreaks.workspaceId, workspaceId), eq(sceneBreaks.wordId, wordId), eq(sceneBreaks.level, level)))
+    .where(and(eq(sceneBreaks.workspaceId, workspaceId), eq(sceneBreaks.versionId, versionId), eq(sceneBreaks.wordId, wordId), eq(sceneBreaks.level, level)))
     .limit(1);
 
   if (existing.length > 0) {
     // Remove this specific (wordId, level) section break
     await userDb.delete(sceneBreaks).where(
-      and(eq(sceneBreaks.workspaceId, workspaceId), eq(sceneBreaks.wordId, wordId), eq(sceneBreaks.level, level))
+      and(eq(sceneBreaks.workspaceId, workspaceId), eq(sceneBreaks.versionId, versionId), eq(sceneBreaks.wordId, wordId), eq(sceneBreaks.level, level))
     );
     // Only remove paragraph break if no other section breaks remain at this wordId
     const remaining = await userDb
       .select({ id: sceneBreaks.id })
       .from(sceneBreaks)
-      .where(and(eq(sceneBreaks.workspaceId, workspaceId), eq(sceneBreaks.wordId, wordId)))
+      .where(and(eq(sceneBreaks.workspaceId, workspaceId), eq(sceneBreaks.versionId, versionId), eq(sceneBreaks.wordId, wordId)))
       .limit(1);
     if (remaining.length === 0) {
       await userDb.delete(paragraphBreaks).where(
-        and(eq(paragraphBreaks.workspaceId, workspaceId), eq(paragraphBreaks.wordId, wordId))
+        and(eq(paragraphBreaks.workspaceId, workspaceId), eq(paragraphBreaks.versionId, versionId), eq(paragraphBreaks.wordId, wordId))
       );
     }
     return { added: false };
   } else {
     // Add this (wordId, level) section break with verse
-    await userDb.insert(sceneBreaks).values({ wordId, book, chapter, verse, textSource, level, workspaceId });
+    await userDb.insert(sceneBreaks).values({ wordId, book, chapter, verse, textSource, level, workspaceId, versionId });
     // Ensure a paragraph break exists (only if not already present)
     const pbExists = await userDb
       .select({ id: paragraphBreaks.id })
       .from(paragraphBreaks)
-      .where(and(eq(paragraphBreaks.workspaceId, workspaceId), eq(paragraphBreaks.wordId, wordId)))
+      .where(and(eq(paragraphBreaks.workspaceId, workspaceId), eq(paragraphBreaks.versionId, versionId), eq(paragraphBreaks.wordId, wordId)))
       .limit(1);
     if (pbExists.length === 0) {
-      await userDb.insert(paragraphBreaks).values({ wordId, book, chapter, textSource, workspaceId });
+      await userDb.insert(paragraphBreaks).values({ wordId, book, chapter, textSource, workspaceId, versionId });
     }
     return { added: true };
   }
 }
 
 /** Deletes a specific (wordId, level) section break. Removes paragraph break if no others remain. */
-export async function deleteSceneBreak(wordId: string, level: number, workspaceId: number): Promise<void> {
+export async function deleteSceneBreak(wordId: string, level: number, workspaceId: number, versionId: number): Promise<void> {
   await userDb.delete(sceneBreaks).where(
-    and(eq(sceneBreaks.workspaceId, workspaceId), eq(sceneBreaks.wordId, wordId), eq(sceneBreaks.level, level))
+    and(eq(sceneBreaks.workspaceId, workspaceId), eq(sceneBreaks.versionId, versionId), eq(sceneBreaks.wordId, wordId), eq(sceneBreaks.level, level))
   );
   const remaining = await userDb
     .select({ id: sceneBreaks.id })
     .from(sceneBreaks)
-    .where(and(eq(sceneBreaks.workspaceId, workspaceId), eq(sceneBreaks.wordId, wordId)))
+    .where(and(eq(sceneBreaks.workspaceId, workspaceId), eq(sceneBreaks.versionId, versionId), eq(sceneBreaks.wordId, wordId)))
     .limit(1);
   if (remaining.length === 0) {
     await userDb.delete(paragraphBreaks).where(
-      and(eq(paragraphBreaks.workspaceId, workspaceId), eq(paragraphBreaks.wordId, wordId))
+      and(eq(paragraphBreaks.workspaceId, workspaceId), eq(paragraphBreaks.versionId, versionId), eq(paragraphBreaks.wordId, wordId))
     );
   }
 }
@@ -789,12 +795,13 @@ export async function updateSceneBreakHeading(
   wordId: string,
   level: number,
   heading: string | null,
-  workspaceId: number
+  workspaceId: number,
+  versionId: number
 ): Promise<void> {
   await userDb
     .update(sceneBreaks)
     .set({ heading: heading && heading.trim() ? heading.trim() : null })
-    .where(and(eq(sceneBreaks.workspaceId, workspaceId), eq(sceneBreaks.wordId, wordId), eq(sceneBreaks.level, level)));
+    .where(and(eq(sceneBreaks.workspaceId, workspaceId), eq(sceneBreaks.versionId, versionId), eq(sceneBreaks.wordId, wordId), eq(sceneBreaks.level, level)));
 }
 
 /** Marks or unmarks a specific (wordId, level) section break as out of chronological sequence. */
@@ -802,12 +809,13 @@ export async function updateSceneBreakOutOfSequence(
   wordId: string,
   level: number,
   outOfSequence: boolean,
-  workspaceId: number
+  workspaceId: number,
+  versionId: number
 ): Promise<void> {
   await userDb
     .update(sceneBreaks)
     .set({ outOfSequence })
-    .where(and(eq(sceneBreaks.workspaceId, workspaceId), eq(sceneBreaks.wordId, wordId), eq(sceneBreaks.level, level)));
+    .where(and(eq(sceneBreaks.workspaceId, workspaceId), eq(sceneBreaks.versionId, versionId), eq(sceneBreaks.wordId, wordId), eq(sceneBreaks.level, level)));
 }
 
 /**
@@ -818,12 +826,13 @@ export async function updateSceneBreakExtendedThrough(
   wordId: string,
   level: number,
   extendedThrough: number | null,
-  workspaceId: number
+  workspaceId: number,
+  versionId: number
 ): Promise<void> {
   await userDb
     .update(sceneBreaks)
     .set({ extendedThrough })
-    .where(and(eq(sceneBreaks.workspaceId, workspaceId), eq(sceneBreaks.wordId, wordId), eq(sceneBreaks.level, level)));
+    .where(and(eq(sceneBreaks.workspaceId, workspaceId), eq(sceneBreaks.versionId, versionId), eq(sceneBreaks.wordId, wordId), eq(sceneBreaks.level, level)));
 }
 
 /** Sets or clears the transitional (janus) flag for a specific (wordId, level) section break. */
@@ -831,12 +840,13 @@ export async function updateSceneBreakTransitional(
   wordId: string,
   level: number,
   transitional: boolean,
-  workspaceId: number
+  workspaceId: number,
+  versionId: number
 ): Promise<void> {
   await userDb
     .update(sceneBreaks)
     .set({ transitional })
-    .where(and(eq(sceneBreaks.workspaceId, workspaceId), eq(sceneBreaks.wordId, wordId), eq(sceneBreaks.level, level)));
+    .where(and(eq(sceneBreaks.workspaceId, workspaceId), eq(sceneBreaks.versionId, versionId), eq(sceneBreaks.wordId, wordId), eq(sceneBreaks.level, level)));
 }
 
 /** Sets or clears the thematic flag and letter for a specific (wordId, level) section break. */
@@ -845,12 +855,13 @@ export async function updateSceneBreakThematic(
   level: number,
   thematic: boolean,
   thematicLetter: string | null,
-  workspaceId: number
+  workspaceId: number,
+  versionId: number
 ): Promise<void> {
   await userDb
     .update(sceneBreaks)
     .set({ thematic, thematicLetter: thematic ? thematicLetter : null })
-    .where(and(eq(sceneBreaks.workspaceId, workspaceId), eq(sceneBreaks.wordId, wordId), eq(sceneBreaks.level, level)));
+    .where(and(eq(sceneBreaks.workspaceId, workspaceId), eq(sceneBreaks.versionId, versionId), eq(sceneBreaks.wordId, wordId), eq(sceneBreaks.level, level)));
 }
 
 /**
@@ -894,6 +905,7 @@ export async function migratePassageLabelsToSectionBreaks(workspaceId: number): 
     if (firstWords.length === 0) continue;
 
     const { wordId, verse } = firstWords[0];
+    const versionId = await getOrCreateDefaultVersion(workspaceId, passage.book, passage.startChapter);
 
     // Insert level-2 section break for this passage label (ignore if already exists)
     await userDb
@@ -907,6 +919,7 @@ export async function migratePassageLabelsToSectionBreaks(workspaceId: number): 
         book: passage.book,
         chapter: passage.startChapter,
         workspaceId,
+        versionId,
       })
       .onConflictDoNothing();
 
@@ -919,6 +932,7 @@ export async function migratePassageLabelsToSectionBreaks(workspaceId: number): 
         book: passage.book,
         chapter: passage.startChapter,
         workspaceId,
+        versionId,
       })
       .onConflictDoNothing();
   }
@@ -1007,7 +1021,8 @@ export async function updateCharacter(
 export async function getChapterCharacterRefs(
   book: string,
   chapter: number,
-  workspaceId: number
+  workspaceId: number,
+  versionId: number
 ): Promise<CharacterRef[]> {
   return userDb
     .select()
@@ -1015,6 +1030,7 @@ export async function getChapterCharacterRefs(
     .where(
       and(
         eq(characterRefs.workspaceId, workspaceId),
+        eq(characterRefs.versionId, versionId),
         eq(characterRefs.book, book),
         eq(characterRefs.chapter, chapter)
       )
@@ -1028,20 +1044,21 @@ export async function upsertCharacterRef(
   book: string,
   chapter: number,
   textSource: string,
-  workspaceId: number
+  workspaceId: number,
+  versionId: number
 ): Promise<void> {
   await userDb
     .insert(characterRefs)
-    .values({ wordId, character1Id, character2Id, book, chapter, textSource, workspaceId })
+    .values({ wordId, character1Id, character2Id, book, chapter, textSource, workspaceId, versionId })
     .onConflictDoUpdate({
-      target: [characterRefs.workspaceId, characterRefs.wordId],
+      target: [characterRefs.workspaceId, characterRefs.versionId, characterRefs.wordId],
       set: { character1Id, character2Id },
     });
 }
 
-export async function removeCharacterRef(wordId: string, workspaceId: number): Promise<void> {
+export async function removeCharacterRef(wordId: string, workspaceId: number, versionId: number): Promise<void> {
   await userDb.delete(characterRefs).where(
-    and(eq(characterRefs.workspaceId, workspaceId), eq(characterRefs.wordId, wordId))
+    and(eq(characterRefs.workspaceId, workspaceId), eq(characterRefs.versionId, versionId), eq(characterRefs.wordId, wordId))
   );
 }
 
@@ -1071,18 +1088,32 @@ export async function bulkInsertCharacterRefs(
 ): Promise<{ inserted: number }> {
   if (refs.length === 0) return { inserted: 0 };
 
-  // SQLite has a limit of 999 bound parameters; each row uses 7 params.
-  const CHUNK = 140;
+  // Resolve the active version per (book, chapter) locus, caching since a
+  // corpus-wide auto-link can touch the same chapter's locus many times.
+  const versionCache = new Map<string, number>();
+  async function versionFor(book: string, chapter: number): Promise<number> {
+    const key = `${book}:${chapter}`;
+    const cached = versionCache.get(key);
+    if (cached != null) return cached;
+    const versionId = await resolveActiveVersionId(workspaceId, book, chapter);
+    versionCache.set(key, versionId);
+    return versionId;
+  }
+
+  // SQLite has a limit of 999 bound parameters; each row uses 8 params.
+  const CHUNK = 120;
   let inserted = 0;
 
   for (let i = 0; i < refs.length; i += CHUNK) {
     const chunk = refs.slice(i, i + CHUNK);
+    const chunkValues = await Promise.all(chunk.map(async (r) => ({
+      character1Id: characterId, character2Id: null, workspaceId,
+      wordId: r.wordId, book: r.book, chapter: r.chapter, textSource: r.textSource,
+      versionId: await versionFor(r.book, r.chapter),
+    })));
     const result = await userDb
       .insert(characterRefs)
-      .values(chunk.map((r) => ({
-        character1Id: characterId, character2Id: null, workspaceId,
-        wordId: r.wordId, book: r.book, chapter: r.chapter, textSource: r.textSource,
-      })))
+      .values(chunkValues)
       .onConflictDoNothing()
       .returning({ id: characterRefs.id });
     inserted += result.length;
@@ -1097,7 +1128,8 @@ export async function getChapterSpeechSections(
   book: string,
   chapter: number,
   textSource: string,
-  workspaceId: number
+  workspaceId: number,
+  versionId: number
 ): Promise<SpeechSection[]> {
   return userDb
     .select()
@@ -1105,6 +1137,7 @@ export async function getChapterSpeechSections(
     .where(
       and(
         eq(speechSections.workspaceId, workspaceId),
+        eq(speechSections.versionId, versionId),
         eq(speechSections.book, book),
         eq(speechSections.chapter, chapter),
         eq(speechSections.textSource, textSource)
@@ -1129,21 +1162,22 @@ export async function upsertSpeechSection(
   chapter: number,
   textSource: string,
   chapterWords: { wordId: string }[],
-  workspaceId: number
+  workspaceId: number,
+  versionId: number
 ): Promise<SpeechSection[]> {
   // Build a position index
   const posMap = new Map(chapterWords.map((w, i) => [w.wordId, i]));
   const startPos = posMap.get(startWordId) ?? -1;
   const endPos   = posMap.get(endWordId)   ?? -1;
   if (startPos < 0 || endPos < 0) {
-    return getChapterSpeechSections(book, chapter, textSource, workspaceId);
+    return getChapterSpeechSections(book, chapter, textSource, workspaceId, versionId);
   }
   // Ensure start <= end
   const lo = Math.min(startPos, endPos);
   const hi = Math.max(startPos, endPos);
 
   // Load all existing sections for this chapter
-  const existing = await getChapterSpeechSections(book, chapter, textSource, workspaceId);
+  const existing = await getChapterSpeechSections(book, chapter, textSource, workspaceId, versionId);
 
   // Classify overlapping sections
   const overlapping = existing.filter((s) => {
@@ -1203,9 +1237,10 @@ export async function upsertSpeechSection(
     chapter,
     textSource,
     workspaceId,
+    versionId,
   });
 
-  return getChapterSpeechSections(book, chapter, textSource, workspaceId);
+  return getChapterSpeechSections(book, chapter, textSource, workspaceId, versionId);
 }
 
 /**
@@ -1217,11 +1252,13 @@ export async function replaceChapterSpeechSections(
   chapter: number,
   textSource: string,
   sections: SpeechSection[],
-  workspaceId: number
+  workspaceId: number,
+  versionId: number
 ): Promise<void> {
   await userDb.delete(speechSections).where(
     and(
       eq(speechSections.workspaceId, workspaceId),
+      eq(speechSections.versionId, versionId),
       eq(speechSections.book, book),
       eq(speechSections.chapter, chapter),
       eq(speechSections.textSource, textSource)
@@ -1237,6 +1274,7 @@ export async function replaceChapterSpeechSections(
         chapter: s.chapter,
         textSource: s.textSource,
         workspaceId,
+        versionId,
       }))
     );
   }
@@ -1252,13 +1290,14 @@ export async function removeSpeechSectionContaining(
   chapter: number,
   textSource: string,
   chapterWords: { wordId: string }[],
-  workspaceId: number
+  workspaceId: number,
+  versionId: number
 ): Promise<SpeechSection[]> {
   const posMap = new Map(chapterWords.map((w, i) => [w.wordId, i]));
   const wordPos = posMap.get(wordId) ?? -1;
-  if (wordPos < 0) return getChapterSpeechSections(book, chapter, textSource, workspaceId);
+  if (wordPos < 0) return getChapterSpeechSections(book, chapter, textSource, workspaceId, versionId);
 
-  const existing = await getChapterSpeechSections(book, chapter, textSource, workspaceId);
+  const existing = await getChapterSpeechSections(book, chapter, textSource, workspaceId, versionId);
   const containing = existing.find((s) => {
     const si = posMap.get(s.startWordId) ?? -1;
     const ei = posMap.get(s.endWordId)   ?? -1;
@@ -1269,7 +1308,7 @@ export async function removeSpeechSectionContaining(
     await userDb.delete(speechSections).where(eq(speechSections.id, containing.id));
   }
 
-  return getChapterSpeechSections(book, chapter, textSource, workspaceId);
+  return getChapterSpeechSections(book, chapter, textSource, workspaceId, versionId);
 }
 
 export async function updateSpeechSectionCharacter(
@@ -1278,13 +1317,14 @@ export async function updateSpeechSectionCharacter(
   book: string,
   chapter: number,
   textSource: string,
-  workspaceId: number
+  workspaceId: number,
+  versionId: number
 ): Promise<SpeechSection[]> {
   await userDb
     .update(speechSections)
     .set({ characterId: newCharacterId })
     .where(eq(speechSections.id, sectionId));
-  return getChapterSpeechSections(book, chapter, textSource, workspaceId);
+  return getChapterSpeechSections(book, chapter, textSource, workspaceId, versionId);
 }
 
 // ── Word / Concept Tags (book-scoped) ─────────────────────────────────────────
@@ -1376,31 +1416,32 @@ export async function setWordTagHighlighted(id: number, highlighted: boolean): P
 
 // ── Word Tag Refs (chapter-scoped) ────────────────────────────────────────────
 
-export async function getChapterWordTagRefs(book: string, chapter: number, workspaceId: number): Promise<WordTagRef[]> {
+export async function getChapterWordTagRefs(book: string, chapter: number, workspaceId: number, versionId: number): Promise<WordTagRef[]> {
   return userDb
     .select()
     .from(wordTagRefs)
-    .where(and(eq(wordTagRefs.workspaceId, workspaceId), eq(wordTagRefs.book, book), eq(wordTagRefs.chapter, chapter)));
+    .where(and(eq(wordTagRefs.workspaceId, workspaceId), eq(wordTagRefs.versionId, versionId), eq(wordTagRefs.book, book), eq(wordTagRefs.chapter, chapter)));
 }
 
-/** Upsert a word tag ref — wordId is unique so conflict updates tagId. */
+/** Upsert a word tag ref — (workspaceId, versionId, wordId) is unique so conflict updates tagId. */
 export async function upsertWordTagRef(
   wordId: string,
   tagId: number,
   textSource: string,
   book: string,
   chapter: number,
-  workspaceId: number
+  workspaceId: number,
+  versionId: number
 ): Promise<void> {
   await userDb
     .insert(wordTagRefs)
-    .values({ wordId, tagId, textSource, book, chapter, workspaceId })
-    .onConflictDoUpdate({ target: [wordTagRefs.workspaceId, wordTagRefs.wordId], set: { tagId, textSource, book, chapter } });
+    .values({ wordId, tagId, textSource, book, chapter, workspaceId, versionId })
+    .onConflictDoUpdate({ target: [wordTagRefs.workspaceId, wordTagRefs.versionId, wordTagRefs.wordId], set: { tagId, textSource, book, chapter } });
 }
 
-export async function removeWordTagRef(wordId: string, workspaceId: number): Promise<void> {
+export async function removeWordTagRef(wordId: string, workspaceId: number, versionId: number): Promise<void> {
   await userDb.delete(wordTagRefs).where(
-    and(eq(wordTagRefs.workspaceId, workspaceId), eq(wordTagRefs.wordId, wordId))
+    and(eq(wordTagRefs.workspaceId, workspaceId), eq(wordTagRefs.versionId, versionId), eq(wordTagRefs.wordId, wordId))
   );
 }
 
@@ -1511,12 +1552,13 @@ export async function getWordRefsByLemmas(
 export async function getChapterLineIndents(
   book: string,
   chapter: number,
-  workspaceId: number
+  workspaceId: number,
+  versionId: number
 ): Promise<{ wordId: string; indentLevel: number }[]> {
   return userDb
     .select({ wordId: lineIndents.wordId, indentLevel: lineIndents.indentLevel })
     .from(lineIndents)
-    .where(and(eq(lineIndents.workspaceId, workspaceId), eq(lineIndents.book, book), eq(lineIndents.chapter, chapter)));
+    .where(and(eq(lineIndents.workspaceId, workspaceId), eq(lineIndents.versionId, versionId), eq(lineIndents.book, book), eq(lineIndents.chapter, chapter)));
 }
 
 /**
@@ -1529,17 +1571,18 @@ export async function setLineIndent(
   textSource: string,
   book: string,
   chapter: number,
-  workspaceId: number
+  workspaceId: number,
+  versionId: number
 ): Promise<void> {
   if (indentLevel <= 0) {
     await userDb.delete(lineIndents).where(
-      and(eq(lineIndents.workspaceId, workspaceId), eq(lineIndents.wordId, wordId))
+      and(eq(lineIndents.workspaceId, workspaceId), eq(lineIndents.versionId, versionId), eq(lineIndents.wordId, wordId))
     );
   } else {
     await userDb
       .insert(lineIndents)
-      .values({ wordId, indentLevel, textSource, book, chapter, workspaceId })
-      .onConflictDoUpdate({ target: [lineIndents.workspaceId, lineIndents.wordId], set: { indentLevel } });
+      .values({ wordId, indentLevel, textSource, book, chapter, workspaceId, versionId })
+      .onConflictDoUpdate({ target: [lineIndents.workspaceId, lineIndents.versionId, lineIndents.wordId], set: { indentLevel } });
   }
 }
 
@@ -1862,7 +1905,8 @@ export async function getChapterRstRelations(
   book: string,
   chapter: number,
   textSource: string,
-  workspaceId: number
+  workspaceId: number,
+  versionId: number
 ): Promise<RstRelation[]> {
   return userDb
     .select()
@@ -1870,6 +1914,7 @@ export async function getChapterRstRelations(
     .where(
       and(
         eq(rstRelations.workspaceId, workspaceId),
+        eq(rstRelations.versionId, versionId),
         eq(rstRelations.book, book),
         eq(rstRelations.chapter, chapter),
         eq(rstRelations.textSource, textSource)
@@ -1885,7 +1930,8 @@ export async function createRstRelationGroup(
   book: string,
   chapter: number,
   textSource: string,
-  workspaceId: number
+  workspaceId: number,
+  versionId: number
 ): Promise<RstRelation[]> {
   const rows = await userDb
     .insert(rstRelations)
@@ -1900,6 +1946,7 @@ export async function createRstRelationGroup(
         chapter,
         textSource,
         workspaceId,
+        versionId,
       }))
     )
     .returning();
@@ -1943,7 +1990,8 @@ export async function getChapterWordArrows(
   book: string,
   chapter: number,
   textSource: string,
-  workspaceId: number
+  workspaceId: number,
+  versionId: number
 ): Promise<WordArrow[]> {
   return userDb
     .select()
@@ -1951,6 +1999,7 @@ export async function getChapterWordArrows(
     .where(
       and(
         eq(wordArrows.workspaceId, workspaceId),
+        eq(wordArrows.versionId, versionId),
         eq(wordArrows.book, book),
         eq(wordArrows.chapter, chapter),
         eq(wordArrows.textSource, textSource)
@@ -1965,11 +2014,12 @@ export async function createWordArrow(
   chapter: number,
   textSource: string,
   workspaceId: number,
+  versionId: number,
   label?: string
 ): Promise<WordArrow> {
   const [row] = await userDb
     .insert(wordArrows)
-    .values({ fromWordId, toWordId, book, chapter, textSource, workspaceId, label: label ?? null })
+    .values({ fromWordId, toWordId, book, chapter, textSource, workspaceId, versionId, label: label ?? null })
     .returning();
   return row;
 }
@@ -2004,12 +2054,13 @@ export async function updateWordArrow(
 export async function getChapterWordFormatting(
   book: string,
   chapter: number,
-  workspaceId: number
+  workspaceId: number,
+  versionId: number
 ): Promise<{ wordId: string; isBold: boolean; isItalic: boolean }[]> {
   return userDb
     .select({ wordId: wordFormatting.wordId, isBold: wordFormatting.isBold, isItalic: wordFormatting.isItalic })
     .from(wordFormatting)
-    .where(and(eq(wordFormatting.workspaceId, workspaceId), eq(wordFormatting.book, book), eq(wordFormatting.chapter, chapter)));
+    .where(and(eq(wordFormatting.workspaceId, workspaceId), eq(wordFormatting.versionId, versionId), eq(wordFormatting.book, book), eq(wordFormatting.chapter, chapter)));
 }
 
 /**
@@ -2023,17 +2074,18 @@ export async function setWordFormatting(
   textSource: string,
   book: string,
   chapter: number,
-  workspaceId: number
+  workspaceId: number,
+  versionId: number
 ): Promise<void> {
   if (!isBold && !isItalic) {
     await userDb.delete(wordFormatting).where(
-      and(eq(wordFormatting.workspaceId, workspaceId), eq(wordFormatting.wordId, wordId))
+      and(eq(wordFormatting.workspaceId, workspaceId), eq(wordFormatting.versionId, versionId), eq(wordFormatting.wordId, wordId))
     );
   } else {
     await userDb
       .insert(wordFormatting)
-      .values({ wordId, isBold, isItalic, textSource, book, chapter, workspaceId })
-      .onConflictDoUpdate({ target: [wordFormatting.workspaceId, wordFormatting.wordId], set: { isBold, isItalic } });
+      .values({ wordId, isBold, isItalic, textSource, book, chapter, workspaceId, versionId })
+      .onConflictDoUpdate({ target: [wordFormatting.workspaceId, wordFormatting.versionId, wordFormatting.wordId], set: { isBold, isItalic } });
   }
 }
 
@@ -2072,7 +2124,8 @@ export async function getChapterLineAnnotations(
   book: string,
   chapter: number,
   textSource: string,
-  workspaceId: number
+  workspaceId: number,
+  versionId: number
 ): Promise<LineAnnotation[]> {
   return userDb
     .select()
@@ -2080,6 +2133,7 @@ export async function getChapterLineAnnotations(
     .where(
       and(
         eq(lineAnnotations.workspaceId, workspaceId),
+        eq(lineAnnotations.versionId, versionId),
         eq(lineAnnotations.book, book),
         eq(lineAnnotations.chapter, chapter),
         eq(lineAnnotations.textSource, textSource)
@@ -2102,11 +2156,12 @@ export async function createLineAnnotation(
   book: string,
   chapter: number,
   workspaceId: number,
+  versionId: number,
   commFunction: string | null = null
 ): Promise<LineAnnotation> {
   const [row] = await userDb
     .insert(lineAnnotations)
-    .values({ annotType, label, commFunction, color, description, outOfSequence, transitional, startWordId, endWordId, textSource, book, chapter, workspaceId })
+    .values({ annotType, label, commFunction, color, description, outOfSequence, transitional, startWordId, endWordId, textSource, book, chapter, workspaceId, versionId })
     .returning();
   return row;
 }
@@ -2341,6 +2396,162 @@ export async function getAuthorName(workspaceId: number): Promise<string | null>
   return rows[0]?.name ?? null;
 }
 
+// ── Versions (per workspace + book + chapter markup layers) ────────────────
+
+/** A single version row by id, or null if not found. */
+export async function getVersionById(id: number): Promise<Version | null> {
+  const rows = await userDb.select().from(versions).where(eq(versions.id, id)).limit(1);
+  return rows[0] ?? null;
+}
+
+/** All versions for a given (workspace, book, chapter) locus, oldest first. */
+export async function getVersionsForLocus(workspaceId: number, book: string, chapter: number): Promise<Version[]> {
+  return userDb
+    .select()
+    .from(versions)
+    .where(and(eq(versions.workspaceId, workspaceId), eq(versions.book, book), eq(versions.chapter, chapter)))
+    .orderBy(asc(versions.sortOrder), asc(versions.id));
+}
+
+/**
+ * Returns the id of a locus's first version, lazily creating a "Version 1"
+ * row if none exists yet (e.g. a chapter nobody has annotated before).
+ */
+export async function getOrCreateDefaultVersion(workspaceId: number, book: string, chapter: number): Promise<number> {
+  const existing = await getVersionsForLocus(workspaceId, book, chapter);
+  if (existing.length > 0) return existing[0].id;
+  const [row] = await userDb
+    .insert(versions)
+    .values({ workspaceId, book, chapter, name: "Version 1", sortOrder: 0 })
+    .returning({ id: versions.id });
+  return row.id;
+}
+
+/** The version currently selected for a locus, or null if none has been chosen yet. */
+export async function getActiveVersionSelection(workspaceId: number, book: string, chapter: number): Promise<number | null> {
+  const rows = await userDb
+    .select({ versionId: activeVersionSelections.versionId })
+    .from(activeVersionSelections)
+    .where(and(eq(activeVersionSelections.workspaceId, workspaceId), eq(activeVersionSelections.book, book), eq(activeVersionSelections.chapter, chapter)))
+    .limit(1);
+  return rows[0]?.versionId ?? null;
+}
+
+export async function setActiveVersionSelection(workspaceId: number, book: string, chapter: number, versionId: number): Promise<void> {
+  await userDb
+    .insert(activeVersionSelections)
+    .values({ workspaceId, book, chapter, versionId })
+    .onConflictDoUpdate({
+      target: [activeVersionSelections.workspaceId, activeVersionSelections.book, activeVersionSelections.chapter],
+      set: { versionId },
+    });
+}
+
+/**
+ * The version a locus's reads/writes should use right now: whatever the user
+ * last selected, falling back to (and lazily creating) the locus's default
+ * version. This is the single source of truth `lib/versions/activeVersion.ts`
+ * wraps for API routes and page components.
+ */
+export async function resolveActiveVersionId(workspaceId: number, book: string, chapter: number): Promise<number> {
+  const selected = await getActiveVersionSelection(workspaceId, book, chapter);
+  if (selected != null) return selected;
+  return getOrCreateDefaultVersion(workspaceId, book, chapter);
+}
+
+/** Creates a new version for a locus. A blank/omitted name auto-numbers as "Version N". */
+export async function createVersion(
+  workspaceId: number,
+  book: string,
+  chapter: number,
+  name?: string | null,
+  groupKey?: string | null
+): Promise<Version> {
+  const trimmed = name?.trim();
+  let finalName = trimmed;
+  if (!finalName) {
+    const existing = await getVersionsForLocus(workspaceId, book, chapter);
+    let max = 0;
+    for (const v of existing) {
+      const m = /^Version (\d+)$/.exec(v.name);
+      if (m) max = Math.max(max, parseInt(m[1], 10));
+    }
+    finalName = `Version ${max + 1}`;
+  }
+  const existingCount = (await getVersionsForLocus(workspaceId, book, chapter)).length;
+  const [row] = await userDb
+    .insert(versions)
+    .values({ workspaceId, book, chapter, name: finalName, sortOrder: existingCount, groupKey: groupKey ?? null })
+    .returning();
+  return row;
+}
+
+/** Renames a version. If it belongs to a passage-view fan-out group, every sibling version sharing the same groupKey is renamed too. */
+export async function renameVersion(id: number, name: string): Promise<Version> {
+  const trimmed = name.trim();
+  if (!trimmed) throw new Error("Version name cannot be blank");
+  const [row] = await userDb.update(versions).set({ name: trimmed }).where(eq(versions.id, id)).returning();
+  if (row?.groupKey) {
+    await userDb.update(versions).set({ name: trimmed }).where(and(eq(versions.groupKey, row.groupKey), eq(versions.workspaceId, row.workspaceId)));
+  }
+  return row;
+}
+
+/** Deletes a version (cascades to all of its markup via versionId FKs). Fan-out siblings sharing a groupKey are deleted together. */
+export async function deleteVersion(id: number): Promise<void> {
+  const [row] = await userDb.select().from(versions).where(eq(versions.id, id)).limit(1);
+  if (!row) return;
+  if (row.groupKey) {
+    await userDb.delete(versions).where(and(eq(versions.groupKey, row.groupKey), eq(versions.workspaceId, row.workspaceId)));
+  } else {
+    await userDb.delete(versions).where(eq(versions.id, id));
+  }
+}
+
+/**
+ * Copies the selected markup feature types from one version to another at the
+ * same (workspace, book, chapter) locus. Replace semantics: the destination
+ * version's existing rows for each selected feature are deleted first, then
+ * the source version's rows are cloned in with fresh ids. No FK remapping is
+ * needed since both versions live in the same workspace and reference the
+ * same shared taxonomy tables (characters, wordTags, etc.).
+ */
+export async function copyVersionAnnotations(
+  workspaceId: number,
+  book: string,
+  chapter: number,
+  fromVersionId: number,
+  toVersionId: number,
+  featureKeys: string[]
+): Promise<Record<string, number>> {
+  const result: Record<string, number> = {};
+  for (const feature of VERSIONABLE_FEATURES) {
+    if (!featureKeys.includes(feature.key)) continue;
+    const table = feature.table;
+    await userDb.delete(table).where(and(eq(table.workspaceId, workspaceId), eq(table.versionId, toVersionId), eq(table.book, book), eq(table.chapter, chapter)));
+    const sourceRows = await userDb
+      .select()
+      .from(table)
+      .where(and(eq(table.workspaceId, workspaceId), eq(table.versionId, fromVersionId), eq(table.book, book), eq(table.chapter, chapter)));
+    if (sourceRows.length === 0) {
+      result[feature.key] = 0;
+      continue;
+    }
+    const cloned = sourceRows.map((r) => {
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { id: _id, ...rest } = r as Record<string, unknown> & { id: number };
+      return { ...rest, workspaceId, versionId: toVersionId };
+    });
+    await userDb.insert(table).values(cloned);
+    result[feature.key] = sourceRows.length;
+  }
+  // Bump so the chapter/passage page's ChapterDisplay remount key changes
+  // even when toVersionId is the version currently being viewed (see the
+  // contentRevision column comment in user-schema.ts).
+  await userDb.update(versions).set({ contentRevision: sql`content_revision + 1` }).where(eq(versions.id, toVersionId));
+  return result;
+}
+
 /**
  * Bulk-insert word tag refs, skipping any that conflict on (workspaceId, wordId).
  * This preserves existing manually-assigned tags.
@@ -2353,15 +2564,31 @@ export async function bulkInsertWordTagRefs(
 ): Promise<{ inserted: number }> {
   if (refs.length === 0) return { inserted: 0 };
 
-  // SQLite has a limit of 999 bound parameters; each row uses 5 params.
-  const CHUNK = 190;
+  // Resolve the active version per (book, chapter) locus, caching since a
+  // corpus-wide auto-link can touch the same chapter's locus many times.
+  const versionCache = new Map<string, number>();
+  async function versionFor(book: string, chapter: number): Promise<number> {
+    const key = `${book}:${chapter}`;
+    const cached = versionCache.get(key);
+    if (cached != null) return cached;
+    const versionId = await resolveActiveVersionId(workspaceId, book, chapter);
+    versionCache.set(key, versionId);
+    return versionId;
+  }
+
+  // SQLite has a limit of 999 bound parameters; each row uses 6 params.
+  const CHUNK = 160;
   let inserted = 0;
 
   for (let i = 0; i < refs.length; i += CHUNK) {
     const chunk = refs.slice(i, i + CHUNK);
+    const chunkValues = await Promise.all(chunk.map(async (r) => ({
+      tagId, workspaceId, wordId: r.wordId, book: r.book, chapter: r.chapter, textSource: r.textSource,
+      versionId: await versionFor(r.book, r.chapter),
+    })));
     const result = await userDb
       .insert(wordTagRefs)
-      .values(chunk.map((r) => ({ tagId, workspaceId, wordId: r.wordId, book: r.book, chapter: r.chapter, textSource: r.textSource })))
+      .values(chunkValues)
       .onConflictDoNothing()
       .returning({ id: wordTagRefs.id });
     inserted += result.length;
@@ -2642,13 +2869,14 @@ export async function getLxxVerseWords(
 export function getChapterTextCriticalMarks(
   book: string,
   chapter: number,
-  workspaceId: number
+  workspaceId: number,
+  versionId: number
 ): { wordId: string; markType: string; textSource: string }[] {
   return getUserSqlite()
     .prepare(
-      "SELECT word_id as wordId, mark_type as markType, text_source as textSource FROM text_critical_marks WHERE workspace_id = ? AND book = ? AND chapter = ?"
+      "SELECT word_id as wordId, mark_type as markType, text_source as textSource FROM text_critical_marks WHERE workspace_id = ? AND version_id = ? AND book = ? AND chapter = ?"
     )
-    .all(workspaceId, book, chapter) as { wordId: string; markType: string; textSource: string }[];
+    .all(workspaceId, versionId, book, chapter) as { wordId: string; markType: string; textSource: string }[];
 }
 
 export async function upsertTextCriticalMark(
@@ -2657,24 +2885,26 @@ export async function upsertTextCriticalMark(
   textSource: string,
   book: string,
   chapter: number,
-  workspaceId: number
+  workspaceId: number,
+  versionId: number
 ): Promise<void> {
   await userDb
     .insert(textCriticalMarks)
-    .values({ workspaceId, wordId, markType, textSource, book, chapter })
+    .values({ workspaceId, versionId, wordId, markType, textSource, book, chapter })
     .onConflictDoUpdate({
-      target: [textCriticalMarks.workspaceId, textCriticalMarks.wordId],
+      target: [textCriticalMarks.workspaceId, textCriticalMarks.versionId, textCriticalMarks.wordId],
       set: { markType, textSource, book, chapter },
     });
 }
 
 export async function deleteTextCriticalMark(
   wordId: string,
-  workspaceId: number
+  workspaceId: number,
+  versionId: number
 ): Promise<void> {
   await userDb
     .delete(textCriticalMarks)
-    .where(and(eq(textCriticalMarks.workspaceId, workspaceId), eq(textCriticalMarks.wordId, wordId)));
+    .where(and(eq(textCriticalMarks.workspaceId, workspaceId), eq(textCriticalMarks.versionId, versionId), eq(textCriticalMarks.wordId, wordId)));
 }
 
 // ─── Notes (server-side fetch) ───────────────────────────────────────────────

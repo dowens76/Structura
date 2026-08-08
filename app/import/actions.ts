@@ -2,7 +2,7 @@
 
 import { parseBibleComText } from "@/lib/utils/translation-parser";
 import { parseUsfmFile } from "@/lib/utils/usfm-full-parser";
-import { upsertTranslation, getBook } from "@/lib/db/queries";
+import { upsertTranslation, getBook, getOrCreateDefaultVersion } from "@/lib/db/queries";
 import { userDb } from "@/lib/db";
 import { translations, translationVerses, translationFootnotes, paragraphBreaks, lineIndents, sceneBreaks } from "@/lib/db/schema";
 import { and, eq, inArray } from "drizzle-orm";
@@ -231,16 +231,27 @@ async function importSingleUsfmFile(
     }
   }
 
+  // Resolve the default version per chapter (this import always writes to
+  // workspace 1), caching since many rows can share the same chapter.
+  const versionCache = new Map<number, number>();
+  async function versionForChapter(ch: number): Promise<number> {
+    const cached = versionCache.get(ch);
+    if (cached != null) return cached;
+    const versionId = await getOrCreateDefaultVersion(1, osisBook, ch);
+    versionCache.set(ch, versionId);
+    return versionId;
+  }
+
   // ── Insert paragraph breaks ──────────────────────────────────────────────────
   const pbFiltered = parsed.paragraphBreaks.filter(pb => {
     const ch = parseInt(pb.osisRef.split(".")[1] ?? "0", 10);
     return shouldProcess(ch);
   });
   if (pbFiltered.length > 0) {
-    const pbRows = pbFiltered.map((pb) => {
+    const pbRows = await Promise.all(pbFiltered.map(async (pb) => {
       const ch = parseInt(pb.osisRef.split(".")[1] ?? "0", 10);
-      return { workspaceId: 1, wordId: `tv:${abbreviation}:${pb.osisRef}`, textSource, book: osisBook, chapter: ch };
-    });
+      return { workspaceId: 1, versionId: await versionForChapter(ch), wordId: `tv:${abbreviation}:${pb.osisRef}`, textSource, book: osisBook, chapter: ch };
+    }));
     for (let i = 0; i < pbRows.length; i += BATCH) {
       await userDb.insert(paragraphBreaks).values(pbRows.slice(i, i + BATCH)).onConflictDoNothing();
     }
@@ -252,10 +263,10 @@ async function importSingleUsfmFile(
     return shouldProcess(ch);
   });
   if (liFiltered.length > 0) {
-    const liRows = liFiltered.map((li) => {
+    const liRows = await Promise.all(liFiltered.map(async (li) => {
       const ch = parseInt(li.osisRef.split(".")[1] ?? "0", 10);
-      return { workspaceId: 1, wordId: `tv:${abbreviation}:${li.osisRef}`, indentLevel: li.level, textSource, book: osisBook, chapter: ch };
-    });
+      return { workspaceId: 1, versionId: await versionForChapter(ch), wordId: `tv:${abbreviation}:${li.osisRef}`, indentLevel: li.level, textSource, book: osisBook, chapter: ch };
+    }));
     for (let i = 0; i < liRows.length; i += BATCH) {
       await userDb.insert(lineIndents).values(liRows.slice(i, i + BATCH)).onConflictDoNothing();
     }
@@ -267,17 +278,17 @@ async function importSingleUsfmFile(
     return shouldProcess(ch);
   });
   if (sbFiltered.length > 0) {
-    const sbRows = sbFiltered.map((sb) => {
+    const sbRows = await Promise.all(sbFiltered.map(async (sb) => {
       const parts = sb.osisRef.split(".");
       const ch = parseInt(parts[1] ?? "0", 10);
       const v = parseInt(parts[2] ?? "1", 10);
       return {
-        workspaceId: 1, wordId: `tv:${abbreviation}:${sb.osisRef}`, heading: sb.heading,
+        workspaceId: 1, versionId: await versionForChapter(ch), wordId: `tv:${abbreviation}:${sb.osisRef}`, heading: sb.heading,
         level: sb.level, verse: v, outOfSequence: false,
         extendedThrough: null, thematic: false, thematicLetter: null,
         textSource, book: osisBook, chapter: ch,
       };
-    });
+    }));
     for (let i = 0; i < sbRows.length; i += BATCH) {
       await userDb.insert(sceneBreaks).values(sbRows.slice(i, i + BATCH)).onConflictDoNothing();
     }

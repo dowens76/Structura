@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getChapterTextCriticalMarks, upsertTextCriticalMark, deleteTextCriticalMark } from "@/lib/db/queries";
 import { getActiveWorkspaceId } from "@/lib/workspace";
+import { getActiveVersionId } from "@/lib/versions/activeVersion";
 
 export const dynamic = "force-dynamic";
 
@@ -15,7 +16,8 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Missing params" }, { status: 400 });
   }
 
-  const marks = getChapterTextCriticalMarks(book, chapter, workspaceId);
+  const versionId = await getActiveVersionId(workspaceId, book, chapter);
+  const marks = getChapterTextCriticalMarks(book, chapter, workspaceId, versionId);
   return NextResponse.json({ marks });
 }
 
@@ -33,24 +35,26 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Missing fields" }, { status: 400 });
   }
 
-  await upsertTextCriticalMark(wordId, markType, textSource, book, chapter, workspaceId);
+  const versionId = await getActiveVersionId(workspaceId, book, chapter);
+  await upsertTextCriticalMark(wordId, markType, textSource, book, chapter, workspaceId, versionId);
   return NextResponse.json({ ok: true });
 }
 
 // DELETE /api/text-critical-marks
-// Body: { wordId }
+// Body: { wordId, book, chapter }
 export async function DELETE(request: NextRequest) {
   const workspaceId = await getActiveWorkspaceId();
-  let body: { wordId?: string };
+  let body: { wordId?: string; book?: string; chapter?: number };
   try { body = await request.json(); } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const { wordId } = body;
-  if (!wordId) {
-    return NextResponse.json({ error: "Missing wordId" }, { status: 400 });
+  const { wordId, book, chapter } = body;
+  if (!wordId || !book || chapter == null) {
+    return NextResponse.json({ error: "Missing fields" }, { status: 400 });
   }
 
-  await deleteTextCriticalMark(wordId, workspaceId);
+  const versionId = await getActiveVersionId(workspaceId, book, chapter);
+  await deleteTextCriticalMark(wordId, workspaceId, versionId);
   return NextResponse.json({ ok: true });
 }

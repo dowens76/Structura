@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getChapterLineIndents, setLineIndent } from "@/lib/db/queries";
 import { getActiveWorkspaceId } from "@/lib/workspace";
+import { getActiveVersionId } from "@/lib/versions/activeVersion";
 
 export const dynamic = "force-dynamic";
 
@@ -15,7 +16,8 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Missing params" }, { status: 400 });
   }
 
-  const indents = await getChapterLineIndents(book, chapter, workspaceId);
+  const versionId = await getActiveVersionId(workspaceId, book, chapter);
+  const indents = await getChapterLineIndents(book, chapter, workspaceId, versionId);
   return NextResponse.json({ indents });
 }
 
@@ -36,6 +38,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Missing fields" }, { status: 400 });
   }
 
-  await setLineIndent(wordId, indentLevel, textSource, book, chapter, workspaceId);
+  const versionId = await getActiveVersionId(workspaceId, book, chapter);
+  await setLineIndent(wordId, indentLevel, textSource, book, chapter, workspaceId, versionId);
   return NextResponse.json({ ok: true });
 }

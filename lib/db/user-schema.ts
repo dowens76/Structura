@@ -21,6 +21,56 @@ export const workspaces = sqliteTable(
   (t) => [index("workspaces_user_idx").on(t.userId)]
 );
 
+// ─── Versions (per workspace + book + chapter markup layers) ──────────────
+
+export const versions = sqliteTable(
+  "versions",
+  {
+    id:          integer("id").primaryKey({ autoIncrement: true }),
+    workspaceId: integer("workspace_id").notNull()
+                   .references(() => workspaces.id, { onDelete: "cascade" }),
+    book:        text("book").notNull(),
+    chapter:     integer("chapter").notNull(),
+    name:        text("name").notNull(),
+    sortOrder:   integer("sort_order").notNull().default(0),
+    /** Set when this version was created from the Passage view and fanned
+     *  out across multiple chapters with the same name — lets rename/delete
+     *  apply to the whole group instead of matching by name text. Null for
+     *  versions created from a single-chapter view. */
+    groupKey:    text("group_key"),
+    /** Bumped by copyVersionAnnotations whenever this version's markup is
+     *  overwritten by a copy. The chapter/passage pages fold this into
+     *  ChapterDisplay's remount key so a copy targeting the version the user
+     *  is currently viewing forces a fresh render — otherwise the key
+     *  (workspaceId + versionId) is unchanged and React reuses the existing
+     *  instance, whose per-feature state was only ever initialized once from
+     *  the old initial* props and never re-syncs on its own. */
+    contentRevision: integer("content_revision").notNull().default(0),
+    createdAt:   text("created_at").$defaultFn(() => new Date().toISOString()),
+  },
+  (t) => [
+    index("ver_ws_book_ch_idx").on(t.workspaceId, t.book, t.chapter),
+    index("ver_group_idx").on(t.groupKey),
+  ]
+);
+
+/** Which version is currently active for a given (workspace, book, chapter)
+ *  locus — the version equivalent of the structura_active_workspace cookie,
+ *  but DB-backed since a per-locus cookie map would grow unboundedly. */
+export const activeVersionSelections = sqliteTable(
+  "active_version_selections",
+  {
+    id:          integer("id").primaryKey({ autoIncrement: true }),
+    workspaceId: integer("workspace_id").notNull()
+                   .references(() => workspaces.id, { onDelete: "cascade" }),
+    book:        text("book").notNull(),
+    chapter:     integer("chapter").notNull(),
+    versionId:   integer("version_id").notNull()
+                   .references(() => versions.id, { onDelete: "cascade" }),
+  },
+  (t) => [uniqueIndex("avs_ws_book_ch_idx").on(t.workspaceId, t.book, t.chapter)]
+);
+
 // ─── Annotation Tables (all scoped by workspaceId) ─────────────────────────
 
 export const translations = sqliteTable(
@@ -73,6 +123,8 @@ export const paragraphBreaks = sqliteTable(
     id:          integer("id").primaryKey({ autoIncrement: true }),
     workspaceId: integer("workspace_id").notNull().default(1)
                    .references(() => workspaces.id, { onDelete: "cascade" }),
+    versionId:   integer("version_id").notNull()
+                   .references(() => versions.id, { onDelete: "cascade" }),
     wordId:      text("word_id").notNull(),
     textSource:  text("text_source").notNull(),
     book:        text("book").notNull(),
@@ -80,7 +132,7 @@ export const paragraphBreaks = sqliteTable(
     createdAt:   text("created_at").$defaultFn(() => new Date().toISOString()),
   },
   (table) => [
-    uniqueIndex("pb_ws_word_idx").on(table.workspaceId, table.wordId),
+    uniqueIndex("pb_ws_word_idx").on(table.workspaceId, table.versionId, table.wordId),
     index("pb_book_ch_source_idx").on(table.book, table.chapter, table.textSource),
   ]
 );
@@ -119,6 +171,8 @@ export const characterRefs = sqliteTable(
     id:           integer("id").primaryKey({ autoIncrement: true }),
     workspaceId:  integer("workspace_id").notNull().default(1)
                     .references(() => workspaces.id, { onDelete: "cascade" }),
+    versionId:    integer("version_id").notNull()
+                    .references(() => versions.id, { onDelete: "cascade" }),
     wordId:       text("word_id").notNull(),
     character1Id: integer("character1_id").notNull().references(() => characters.id, { onDelete: "cascade" }),
     character2Id: integer("character2_id").references(() => characters.id, { onDelete: "set null" }),
@@ -127,7 +181,7 @@ export const characterRefs = sqliteTable(
     chapter:      integer("chapter").notNull(),
   },
   (t) => [
-    uniqueIndex("cr_ws_word_idx").on(t.workspaceId, t.wordId),
+    uniqueIndex("cr_ws_word_idx").on(t.workspaceId, t.versionId, t.wordId),
     index("cr_book_ch_src_idx").on(t.book, t.chapter, t.textSource),
   ]
 );
@@ -138,6 +192,8 @@ export const speechSections = sqliteTable(
     id:          integer("id").primaryKey({ autoIncrement: true }),
     workspaceId: integer("workspace_id").notNull().default(1)
                    .references(() => workspaces.id, { onDelete: "cascade" }),
+    versionId:   integer("version_id").notNull()
+                   .references(() => versions.id, { onDelete: "cascade" }),
     characterId: integer("character_id").notNull().references(() => characters.id, { onDelete: "cascade" }),
     startWordId: text("start_word_id").notNull(),
     endWordId:   text("end_word_id").notNull(),
@@ -188,6 +244,8 @@ export const wordTagRefs = sqliteTable(
     id:          integer("id").primaryKey({ autoIncrement: true }),
     workspaceId: integer("workspace_id").notNull().default(1)
                    .references(() => workspaces.id, { onDelete: "cascade" }),
+    versionId:   integer("version_id").notNull()
+                   .references(() => versions.id, { onDelete: "cascade" }),
     wordId:      text("word_id").notNull(),
     tagId:       integer("tag_id").notNull().references(() => wordTags.id, { onDelete: "cascade" }),
     textSource:  text("text_source").notNull(),
@@ -195,7 +253,7 @@ export const wordTagRefs = sqliteTable(
     chapter:     integer("chapter").notNull(),
   },
   (t) => [
-    uniqueIndex("wtr_ws_word_idx").on(t.workspaceId, t.wordId),
+    uniqueIndex("wtr_ws_word_idx").on(t.workspaceId, t.versionId, t.wordId),
     index("wtr_tag_id_idx").on(t.tagId),
     index("wtr_book_ch_idx").on(t.book, t.chapter),
   ]
@@ -207,6 +265,8 @@ export const lineIndents = sqliteTable(
     id:          integer("id").primaryKey({ autoIncrement: true }),
     workspaceId: integer("workspace_id").notNull().default(1)
                    .references(() => workspaces.id, { onDelete: "cascade" }),
+    versionId:   integer("version_id").notNull()
+                   .references(() => versions.id, { onDelete: "cascade" }),
     wordId:      text("word_id").notNull(),
     indentLevel: integer("indent_level").notNull(),
     textSource:  text("text_source").notNull(),
@@ -214,7 +274,7 @@ export const lineIndents = sqliteTable(
     chapter:     integer("chapter").notNull(),
   },
   (t) => [
-    uniqueIndex("li_ws_word_idx").on(t.workspaceId, t.wordId),
+    uniqueIndex("li_ws_word_idx").on(t.workspaceId, t.versionId, t.wordId),
     index("li_book_ch_idx").on(t.book, t.chapter),
   ]
 );
@@ -225,6 +285,8 @@ export const sceneBreaks = sqliteTable(
     id:              integer("id").primaryKey({ autoIncrement: true }),
     workspaceId:     integer("workspace_id").notNull().default(1)
                        .references(() => workspaces.id, { onDelete: "cascade" }),
+    versionId:       integer("version_id").notNull()
+                       .references(() => versions.id, { onDelete: "cascade" }),
     wordId:          text("word_id").notNull(),
     heading:         text("heading"),
     level:           integer("level").notNull().default(1),
@@ -241,7 +303,7 @@ export const sceneBreaks = sqliteTable(
   },
   (t) => [
     index("sb_book_ch_src_idx").on(t.book, t.chapter, t.textSource),
-    uniqueIndex("sb_ws_word_level_idx").on(t.workspaceId, t.wordId, t.level),
+    uniqueIndex("sb_ws_word_level_idx").on(t.workspaceId, t.versionId, t.wordId, t.level),
   ]
 );
 
@@ -304,6 +366,8 @@ export const rstRelations = sqliteTable(
     id:          integer("id").primaryKey({ autoIncrement: true }),
     workspaceId: integer("workspace_id").notNull().default(1)
                    .references(() => workspaces.id, { onDelete: "cascade" }),
+    versionId:   integer("version_id").notNull()
+                   .references(() => versions.id, { onDelete: "cascade" }),
     groupId:     text("group_id").notNull(),
     segWordId:   text("seg_word_id").notNull(),
     role:        text("role").notNull(),
@@ -327,6 +391,8 @@ export const wordArrows = sqliteTable(
     id:          integer("id").primaryKey({ autoIncrement: true }),
     workspaceId: integer("workspace_id").notNull().default(1)
                    .references(() => workspaces.id, { onDelete: "cascade" }),
+    versionId:   integer("version_id").notNull()
+                   .references(() => versions.id, { onDelete: "cascade" }),
     fromWordId:  text("from_word_id").notNull(),
     toWordId:    text("to_word_id").notNull(),
     label:       text("label"),
@@ -349,6 +415,8 @@ export const lineAnnotations = sqliteTable(
     id:            integer("id").primaryKey({ autoIncrement: true }),
     workspaceId:   integer("workspace_id").notNull().default(1)
                      .references(() => workspaces.id, { onDelete: "cascade" }),
+    versionId:     integer("version_id").notNull()
+                     .references(() => versions.id, { onDelete: "cascade" }),
     annotType:     text("annot_type").notNull(),
     label:         text("label").notNull(),
     commFunction:  text("comm_function"),
@@ -465,6 +533,8 @@ export const wordFormatting = sqliteTable(
     id:          integer("id").primaryKey({ autoIncrement: true }),
     workspaceId: integer("workspace_id").notNull().default(1)
                    .references(() => workspaces.id, { onDelete: "cascade" }),
+    versionId:   integer("version_id").notNull()
+                   .references(() => versions.id, { onDelete: "cascade" }),
     wordId:      text("word_id").notNull(),
     isBold:        integer("is_bold",       { mode: "boolean" }).notNull().default(false),
     isItalic:      integer("is_italic",     { mode: "boolean" }).notNull().default(false),
@@ -474,7 +544,7 @@ export const wordFormatting = sqliteTable(
     chapter:     integer("chapter").notNull(),
   },
   (t) => [
-    uniqueIndex("wfmt_ws_word_idx").on(t.workspaceId, t.wordId),
+    uniqueIndex("wfmt_ws_word_idx").on(t.workspaceId, t.versionId, t.wordId),
     index("wfmt_book_ch_idx").on(t.book, t.chapter),
   ]
 );
@@ -765,6 +835,8 @@ export const textCriticalMarks = sqliteTable(
     id:          integer("id").primaryKey({ autoIncrement: true }),
     workspaceId: integer("workspace_id").notNull().default(1)
                    .references(() => workspaces.id, { onDelete: "cascade" }),
+    versionId:   integer("version_id").notNull()
+                   .references(() => versions.id, { onDelete: "cascade" }),
     wordId:      text("word_id").notNull(),
     // 'lxx_unique' = green, 'mt_unique' = red, 'same_different' = yellow
     markType:    text("mark_type").notNull(),
@@ -774,7 +846,7 @@ export const textCriticalMarks = sqliteTable(
     createdAt:   text("created_at").$defaultFn(() => new Date().toISOString()),
   },
   (t) => [
-    uniqueIndex("tcm_ws_word_idx").on(t.workspaceId, t.wordId),
+    uniqueIndex("tcm_ws_word_idx").on(t.workspaceId, t.versionId, t.wordId),
     index("tcm_book_ch_idx").on(t.book, t.chapter),
   ]
 );
@@ -845,6 +917,9 @@ export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
 export type Workspace = typeof workspaces.$inferSelect;
 export type NewWorkspace = typeof workspaces.$inferInsert;
+export type Version = typeof versions.$inferSelect;
+export type NewVersion = typeof versions.$inferInsert;
+export type ActiveVersionSelection = typeof activeVersionSelections.$inferSelect;
 export type Translation = typeof translations.$inferSelect;
 export type TranslationVerse = typeof translationVerses.$inferSelect;
 export type ParagraphBreak = typeof paragraphBreaks.$inferSelect;

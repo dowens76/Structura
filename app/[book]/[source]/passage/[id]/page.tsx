@@ -16,7 +16,10 @@ import {
   getLxxVerseTexts,
   getLxxTranslation,
   getWorkspaceById,
+  getVersionsForLocus,
 } from "@/lib/db/queries";
+import { getActiveVersionId } from "@/lib/versions/activeVersion";
+import VersionSelector from "@/components/versions/VersionSelector";
 import {
   getScriptureLocusEditingData,
   getScriptureLocusUserTranslationVerses,
@@ -152,8 +155,21 @@ export default async function PassagePage({ params, searchParams }: PageProps) {
         : [{ osisBook, bookId: bookRecord.id, chapterCount: bookRecord.chapterCount }],
       textSource, workspaceId
     ),
-    getScriptureLocusEditingData(chapterEntries, textSource, workspaceId),
+    getScriptureLocusEditingData(chapterEntries, textSource, workspaceId, (b, c) => getActiveVersionId(workspaceId, b, c)),
   ]);
+
+  // Representative locus for the version selector: the passage's first
+  // chapter. Create/rename/delete fan out across every chapter in
+  // chapterEntries via the shared groupKey (see /api/versions).
+  const [activeVersionId, initialVersions] = await Promise.all([
+    getActiveVersionId(workspaceId, chapterEntries[0].book, chapterEntries[0].chapter),
+    getVersionsForLocus(workspaceId, chapterEntries[0].book, chapterEntries[0].chapter),
+  ]);
+  // Included in ChapterDisplay's remount key below so a Manage Versions copy
+  // targeting the version currently being viewed forces a fresh render even
+  // though activeVersionId itself doesn't change (see contentRevision's
+  // comment in lib/db/user-schema.ts).
+  const activeVersionRevision = initialVersions.find((v) => v.id === activeVersionId)?.contentRevision ?? 0;
 
   const {
     initialParagraphBreakIds, initialCharacterRefs, initialSpeechSections,
@@ -300,6 +316,12 @@ export default async function PassagePage({ params, searchParams }: PageProps) {
             activeWorkspaceId={workspaceId}
             scope={{ type: "passage", passageId: id }}
           />
+          <VersionSelector
+            workspaceId={workspaceId}
+            chapters={chapterEntries}
+            initialVersions={initialVersions}
+            initialActiveVersionId={activeVersionId}
+          />
           <WorkspaceSwitcher activeWorkspaceId={workspaceId} />
           <SettingsButton />
           <ThemeToggle />
@@ -309,7 +331,7 @@ export default async function PassagePage({ params, searchParams }: PageProps) {
       {/* Passage content */}
       <div className="flex-1 min-h-0">
         <ChapterDisplay
-          key={workspaceId}
+          key={`${workspaceId}:${activeVersionId}:${activeVersionRevision}`}
           passage={passage}
           words={passageWords}
           book={osisBook}

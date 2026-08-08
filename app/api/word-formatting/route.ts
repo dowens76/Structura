@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getChapterWordFormatting, setWordFormatting } from "@/lib/db/queries";
 import { getActiveWorkspaceId } from "@/lib/workspace";
+import { getActiveVersionId } from "@/lib/versions/activeVersion";
 
 export const dynamic = "force-dynamic";
 
@@ -15,7 +16,8 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Missing params" }, { status: 400 });
   }
 
-  const formatting = await getChapterWordFormatting(book, chapter, workspaceId);
+  const versionId = await getActiveVersionId(workspaceId, book, chapter);
+  const formatting = await getChapterWordFormatting(book, chapter, workspaceId, versionId);
   return NextResponse.json({ formatting });
 }
 
@@ -36,6 +38,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Missing fields" }, { status: 400 });
   }
 
-  await setWordFormatting(wordId, isBold, isItalic, textSource, book, chapter, workspaceId);
+  const versionId = await getActiveVersionId(workspaceId, book, chapter);
+  await setWordFormatting(wordId, isBold, isItalic, textSource, book, chapter, workspaceId, versionId);
   return NextResponse.json({ ok: true });
 }

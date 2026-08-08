@@ -8,7 +8,10 @@ import {
   getUltVerses, getUltTranslation, getVcbVerses, getVcbTranslation,
   getWorkspaceById,
   getLxxVerseTexts, getLxxVerseWords, getLxxTranslation,
+  getVersionsForLocus,
 } from "@/lib/db/queries";
+import { getActiveVersionId } from "@/lib/versions/activeVersion";
+import VersionSelector from "@/components/versions/VersionSelector";
 import { resolveVisibleWordTags } from "@/lib/db/wordTagVisibility";
 import { resolveVisibleCharacters } from "@/lib/db/characterVisibility";
 import {
@@ -157,12 +160,20 @@ export default async function ChapterPage({ params, searchParams }: PageProps) {
   let lxxVerseWords: Map<number, import("@/lib/db/source-schema").Word[]> = new Map();
   let lxxTranslation: Awaited<ReturnType<typeof getLxxTranslation>> = null;
 
+  const activeVersionId = parallelMode ? 0 : await getActiveVersionId(workspaceId, osisBook, chapter);
+  const initialVersions = parallelMode ? [] : await getVersionsForLocus(workspaceId, osisBook, chapter);
+  // Included in ChapterDisplay's remount key below so a Manage Versions copy
+  // targeting the version currently being viewed forces a fresh render even
+  // though activeVersionId itself doesn't change (see contentRevision's
+  // comment in lib/db/user-schema.ts).
+  const activeVersionRevision = initialVersions.find((v) => v.id === activeVersionId)?.contentRevision ?? 0;
+
   if (!parallelMode) {
     const locus: ChapterLocus[] = [{ book: osisBook, chapter }];
 
     const [translations, ed, bookWide] = await Promise.all([
       getTranslations(workspaceId),
-      getScriptureLocusEditingData(locus, textSource, workspaceId),
+      getScriptureLocusEditingData(locus, textSource, workspaceId, () => Promise.resolve(activeVersionId)),
       getScriptureLocusBookWideData(
         [{ osisBook, bookId: bookRecord?.id ?? 0, chapterCount: bookRecord?.chapterCount ?? 1 }],
         textSource, workspaceId
@@ -175,7 +186,7 @@ export default async function ChapterPage({ params, searchParams }: PageProps) {
     [initialCharacters, initialWordTags, initialTvRstRelations] = await Promise.all([
       resolveVisibleCharacters({ books: [osisBook], chapters: [{ book: osisBook, chapter }] }, workspaceId),
       resolveVisibleWordTags({ books: [osisBook], chapters: [{ book: osisBook, chapter }] }, workspaceId),
-      getChapterRstRelations(osisBook, chapter, `tv:${textSource}`, workspaceId),
+      getChapterRstRelations(osisBook, chapter, `tv:${textSource}`, workspaceId, activeVersionId),
     ]);
 
     [translationVerseData, initialTranslationFootnotes] = await Promise.all([
@@ -337,6 +348,14 @@ export default async function ChapterPage({ params, searchParams }: PageProps) {
               scope={{ type: "chapter", book: osisBook, chapter }}
             />
           )}
+          {!parallelMode && (
+            <VersionSelector
+              workspaceId={workspaceId}
+              chapters={[{ book: osisBook, chapter }]}
+              initialVersions={initialVersions}
+              initialActiveVersionId={activeVersionId}
+            />
+          )}
           <WorkspaceSwitcher activeWorkspaceId={workspaceId} />
           <SettingsButton />
           <ThemeToggle />
@@ -382,7 +401,7 @@ export default async function ChapterPage({ params, searchParams }: PageProps) {
           </>
         ) : (
           <ChapterDisplay
-            key={workspaceId}
+            key={`${workspaceId}:${activeVersionId}:${activeVersionRevision}`}
             words={words}
             book={osisBook}
             chapter={chapter}

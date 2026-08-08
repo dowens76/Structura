@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { parseUsfmFile } from "@/lib/utils/usfm-full-parser";
-import { getBook } from "@/lib/db/queries";
+import { getBook, getOrCreateDefaultVersion } from "@/lib/db/queries";
 import { userDb } from "@/lib/db";
 import {
   translations, translationVerses, translationFootnotes,
@@ -83,6 +83,7 @@ export async function POST(req: NextRequest) {
   await deleteByPrefix(sceneBreaks);
 
   const textSource = bookRecord.textSource;
+  const versionId = await getOrCreateDefaultVersion(1, book, chapter);
 
   // Insert verses (only this chapter)
   const verseRows = parsed.verses
@@ -113,7 +114,7 @@ export async function POST(req: NextRequest) {
     .filter(pb => pb.osisRef.startsWith(osisChapterPrefix))
     .map(pb => {
       const [, ch] = pb.osisRef.split(".");
-      return { workspaceId: 1, wordId: `tv:${abbr}:${pb.osisRef}`, textSource, book, chapter: parseInt(ch, 10) };
+      return { workspaceId: 1, versionId, wordId: `tv:${abbr}:${pb.osisRef}`, textSource, book, chapter: parseInt(ch, 10) };
     });
   for (let i = 0; i < pbRows.length; i += BATCH) {
     if (pbRows.slice(i, i + BATCH).length > 0)
@@ -125,7 +126,7 @@ export async function POST(req: NextRequest) {
     .filter(li => li.osisRef.startsWith(osisChapterPrefix))
     .map(li => {
       const [, ch] = li.osisRef.split(".");
-      return { workspaceId: 1, wordId: `tv:${abbr}:${li.osisRef}`, indentLevel: li.level, textSource, book, chapter: parseInt(ch, 10) };
+      return { workspaceId: 1, versionId, wordId: `tv:${abbr}:${li.osisRef}`, indentLevel: li.level, textSource, book, chapter: parseInt(ch, 10) };
     });
   for (let i = 0; i < liRows.length; i += BATCH) {
     if (liRows.slice(i, i + BATCH).length > 0)
@@ -138,7 +139,7 @@ export async function POST(req: NextRequest) {
     .map(sb => {
       const [, ch, v] = sb.osisRef.split(".");
       return {
-        workspaceId: 1, wordId: `tv:${abbr}:${sb.osisRef}`, heading: sb.heading,
+        workspaceId: 1, versionId, wordId: `tv:${abbr}:${sb.osisRef}`, heading: sb.heading,
         level: sb.level, verse: parseInt(v ?? "1", 10), outOfSequence: false,
         extendedThrough: null, thematic: false, thematicLetter: null,
         textSource, book, chapter: parseInt(ch, 10),

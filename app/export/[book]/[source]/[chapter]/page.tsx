@@ -32,6 +32,7 @@ import { OSIS_REF_BOOK_NAMES } from "@/lib/utils/osis";
 import ExportLayout, { type ExportPrintHeader } from "@/components/export/ExportLayout";
 import ExportTextView from "@/components/export/ExportTextView";
 import { getActiveWorkspaceId } from "@/lib/workspace";
+import { getActiveVersionId } from "@/lib/versions/activeVersion";
 import { tiptapToHtml } from "@/lib/utils/tiptap-text";
 import { parseExportViewParams, getInterlinearExportData } from "@/lib/export/interlinearExportData";
 
@@ -64,6 +65,8 @@ export default async function ExportChapterPage({ params, searchParams }: PagePr
 
   if (!words || words.length === 0) notFound();
 
+  const versionId = await getActiveVersionId(workspaceId, osisBook, chapter);
+
   const [
     paragraphBreakIds,
     characters,
@@ -79,19 +82,19 @@ export default async function ExportChapterPage({ params, searchParams }: PagePr
     lineAnnotations,
     rstRelations,
   ] = await Promise.all([
-    getChapterParagraphBreaks(osisBook, chapter, workspaceId),
+    getChapterParagraphBreaks(osisBook, chapter, workspaceId, versionId),
     getCharacters(osisBook, workspaceId),
-    getChapterCharacterRefs(osisBook, chapter, workspaceId),
-    getChapterSpeechSections(osisBook, chapter, textSource, workspaceId),
+    getChapterCharacterRefs(osisBook, chapter, workspaceId, versionId),
+    getChapterSpeechSections(osisBook, chapter, textSource, workspaceId, versionId),
     getWordTags(osisBook, workspaceId),
-    getChapterWordTagRefs(osisBook, chapter, workspaceId),
-    getChapterLineIndents(osisBook, chapter, workspaceId),
-    getChapterWordFormatting(osisBook, chapter, workspaceId),
-    getChapterSceneBreaks(osisBook, chapter, workspaceId),
+    getChapterWordTagRefs(osisBook, chapter, workspaceId, versionId),
+    getChapterLineIndents(osisBook, chapter, workspaceId, versionId),
+    getChapterWordFormatting(osisBook, chapter, workspaceId, versionId),
+    getChapterSceneBreaks(osisBook, chapter, workspaceId, versionId),
     getTranslations(workspaceId),
-    getChapterWordArrows(osisBook, chapter, textSource, workspaceId),
-    getChapterLineAnnotations(osisBook, chapter, textSource, workspaceId),
-    getChapterRstRelations(osisBook, chapter, textSource, workspaceId),
+    getChapterWordArrows(osisBook, chapter, textSource, workspaceId, versionId),
+    getChapterLineAnnotations(osisBook, chapter, textSource, workspaceId, versionId),
+    getChapterRstRelations(osisBook, chapter, textSource, workspaceId, versionId),
   ]);
 
   // Include built-in ULT and VCB translations (same as ChapterDisplay does).

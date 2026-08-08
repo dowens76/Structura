@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getChapterParagraphBreaks, toggleParagraphBreak } from "@/lib/db/queries";
 import { getActiveWorkspaceId } from "@/lib/workspace";
+import { getActiveVersionId } from "@/lib/versions/activeVersion";
 
 export const dynamic = "force-dynamic";
 
@@ -15,7 +16,8 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Missing params" }, { status: 400 });
   }
 
-  const wordIds = await getChapterParagraphBreaks(book, chapter, workspaceId);
+  const versionId = await getActiveVersionId(workspaceId, book, chapter);
+  const wordIds = await getChapterParagraphBreaks(book, chapter, workspaceId, versionId);
   return NextResponse.json({ wordIds });
 }
 
@@ -35,6 +37,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Missing fields" }, { status: 400 });
   }
 
-  const result = await toggleParagraphBreak(wordId, book, chapter, source, workspaceId);
+  const versionId = await getActiveVersionId(workspaceId, book, chapter);
+  const result = await toggleParagraphBreak(wordId, book, chapter, source, workspaceId, versionId);
   return NextResponse.json(result);
 }

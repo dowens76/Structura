@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { upsertWordTagRef, removeWordTagRef } from "@/lib/db/queries";
 import { getActiveWorkspaceId } from "@/lib/workspace";
+import { getActiveVersionId } from "@/lib/versions/activeVersion";
 
 export const dynamic = "force-dynamic";
 
@@ -23,10 +24,11 @@ export async function POST(request: NextRequest) {
   if (!wordId || chapter == null || !book || !source) {
     return NextResponse.json({ error: "Missing fields" }, { status: 400 });
   }
+  const versionId = await getActiveVersionId(workspaceId, book, chapter);
   if (tagId == null) {
-    await removeWordTagRef(wordId, workspaceId);
+    await removeWordTagRef(wordId, workspaceId, versionId);
   } else {
-    await upsertWordTagRef(wordId, tagId, source, book, chapter, workspaceId);
+    await upsertWordTagRef(wordId, tagId, source, book, chapter, workspaceId, versionId);
   }
   return NextResponse.json({ ok: true });
 }

@@ -19,6 +19,8 @@
     "db:split:lexica": "tsx scripts/split-lexica.ts",
     "db:migrate:workspaces": "tsx scripts/migrate-add-workspaces.ts",
     "db:migrate:tag-corpus": "tsx scripts/migrate-add-tag-corpus.ts",
+    "db:migrate:versions": "tsx scripts/migrate-add-versions.ts",
+    "db:migrate:version-content-revision": "tsx scripts/migrate-add-version-content-revision.ts",
     "import:oshb": "tsx scripts/import-oshb.ts",
     "import:morphgnt": "tsx scripts/import-morphgnt.ts",
     "import:lxx": "tsx scripts/import-lxx.ts",

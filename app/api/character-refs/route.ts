@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getChapterCharacterRefs, upsertCharacterRef, removeCharacterRef } from "@/lib/db/queries";
 import { getActiveWorkspaceId } from "@/lib/workspace";
+import { getActiveVersionId } from "@/lib/versions/activeVersion";
 
 export const dynamic = "force-dynamic";
 
@@ -16,7 +17,8 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Missing params" }, { status: 400 });
   }
 
-  const refs = await getChapterCharacterRefs(book, chapter, workspaceId);
+  const versionId = await getActiveVersionId(workspaceId, book, chapter);
+  const refs = await getChapterCharacterRefs(book, chapter, workspaceId, versionId);
   return NextResponse.json({ refs });
 }
 
@@ -44,10 +46,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Missing fields" }, { status: 400 });
   }
 
+  const versionId = await getActiveVersionId(workspaceId, book, chapter);
   if (character1Id == null) {
-    await removeCharacterRef(wordId, workspaceId);
+    await removeCharacterRef(wordId, workspaceId, versionId);
   } else {
-    await upsertCharacterRef(wordId, character1Id, character2Id ?? null, book, chapter, source, workspaceId);
+    await upsertCharacterRef(wordId, character1Id, character2Id ?? null, book, chapter, source, workspaceId, versionId);
   }
 
   return NextResponse.json({ ok: true });

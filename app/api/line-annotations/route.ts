@@ -6,6 +6,7 @@ import {
   deleteLineAnnotation,
 } from "@/lib/db/queries";
 import { getActiveWorkspaceId } from "@/lib/workspace";
+import { getActiveVersionId } from "@/lib/versions/activeVersion";
 
 export const dynamic = "force-dynamic";
 
@@ -16,7 +17,8 @@ export async function GET(req: NextRequest) {
   const book    = searchParams.get("book")    ?? "";
   const chapter = parseInt(searchParams.get("chapter") ?? "0", 10);
   const source  = searchParams.get("source")  ?? "";
-  const annotations = await getChapterLineAnnotations(book, chapter, source, workspaceId);
+  const versionId = await getActiveVersionId(workspaceId, book, chapter);
+  const annotations = await getChapterLineAnnotations(book, chapter, source, workspaceId, versionId);
   return NextResponse.json({ annotations });
 }
 
@@ -26,6 +28,7 @@ export async function POST(req: NextRequest) {
   const workspaceId = await getActiveWorkspaceId();
   const body = await req.json();
   const { annotType, label, commFunction, color, description, outOfSequence, transitional, startWordId, endWordId, book, chapter, source } = body;
+  const versionId = await getActiveVersionId(workspaceId, book, chapter);
   const annotation = await createLineAnnotation(
     annotType,
     label,
@@ -39,6 +42,7 @@ export async function POST(req: NextRequest) {
     book,
     chapter,
     workspaceId,
+    versionId,
     commFunction ?? null
   );
   return NextResponse.json({ annotation });

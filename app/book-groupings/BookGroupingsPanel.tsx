@@ -16,10 +16,9 @@ export const GROUPING_FEATURES: { key: string; label: string }[] = [
   { key: "paragraphBreaks", label: "Paragraph Breaks" },
   { key: "characters",      label: "Characters & Speech" },
   { key: "wordTags",        label: "Word / Concept Tags" },
-  { key: "rstRelations",    label: "RST Relations" },
+  { key: "rstRelations",    label: "Clause Relationships" },
   { key: "wordArrows",      label: "Word Arrows" },
   { key: "lineIndents",     label: "Poetic Line Indents" },
-  { key: "clauseRelations", label: "Clause Relationships" },
   { key: "lineAnnotations", label: "Line Annotations" },
   { key: "translation",     label: "Translation Text" },
 ];

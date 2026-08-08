@@ -18,6 +18,7 @@ import {
   getChapterSceneBreaks,
 } from "@/lib/db/queries";
 import { getActiveWorkspaceId } from "@/lib/workspace";
+import { getActiveVersionId } from "@/lib/versions/activeVersion";
 import { OSIS_BOOK_NAMES } from "@/lib/utils/osis";
 import type {
   Word, Character, CharacterRef, SpeechSection,
@@ -833,20 +834,24 @@ export async function GET(req: NextRequest) {
         getCharacters(osisBook, workspaceId),
         getWordTags(osisBook, workspaceId),
         Promise.all(
-          chapterRange.map((ch) =>
-            Promise.all([
-              getChapterCharacterRefs(osisBook, ch, workspaceId),
-              getChapterSpeechSections(osisBook, ch, textSource, workspaceId),
-              getChapterWordFormatting(osisBook, ch, workspaceId),
-              getChapterParagraphBreaks(osisBook, ch, workspaceId),
-              getChapterWordTagRefs(osisBook, ch, workspaceId),
-              getChapterLineIndents(osisBook, ch, workspaceId),
-              getChapterSceneBreaks(osisBook, ch, workspaceId),
-            ])
-          )
+          chapterRange.map(async (ch) => {
+            const versionId = await getActiveVersionId(workspaceId, osisBook, ch);
+            return Promise.all([
+              getChapterCharacterRefs(osisBook, ch, workspaceId, versionId),
+              getChapterSpeechSections(osisBook, ch, textSource, workspaceId, versionId),
+              getChapterWordFormatting(osisBook, ch, workspaceId, versionId),
+              getChapterParagraphBreaks(osisBook, ch, workspaceId, versionId),
+              getChapterWordTagRefs(osisBook, ch, workspaceId, versionId),
+              getChapterLineIndents(osisBook, ch, workspaceId, versionId),
+              getChapterSceneBreaks(osisBook, ch, workspaceId, versionId),
+            ]);
+          })
         ),
         Promise.all(
-          chapterRange.map((ch) => getChapterWordArrows(osisBook, ch, textSource, workspaceId))
+          chapterRange.map(async (ch) => {
+            const versionId = await getActiveVersionId(workspaceId, osisBook, ch);
+            return getChapterWordArrows(osisBook, ch, textSource, workspaceId, versionId);
+          })
         ),
         getAvailableTranslationsForChapter(osisBook, passage.startChapter, workspaceId),
       ]);
@@ -897,19 +902,20 @@ export async function GET(req: NextRequest) {
     const bookName   = OSIS_BOOK_NAMES[osisBook] ?? osisBook;
     isHebrew         = bookRecord?.language === "hebrew";
 
+    const versionId = await getActiveVersionId(workspaceId, osisBook, chapter);
     const [chapterWords, chars, refs, sections, fmt, paraBreaks, sceneBreaks, tags, tagRefs, indents, arrows, availableTranslations] =
       await Promise.all([
         getChapterWords(osisBook, chapter, textSource),
         getCharacters(osisBook, workspaceId),
-        getChapterCharacterRefs(osisBook, chapter, workspaceId),
-        getChapterSpeechSections(osisBook, chapter, textSource, workspaceId),
-        getChapterWordFormatting(osisBook, chapter, workspaceId),
-        getChapterParagraphBreaks(osisBook, chapter, workspaceId),
-        getChapterSceneBreaks(osisBook, chapter, workspaceId),
+        getChapterCharacterRefs(osisBook, chapter, workspaceId, versionId),
+        getChapterSpeechSections(osisBook, chapter, textSource, workspaceId, versionId),
+        getChapterWordFormatting(osisBook, chapter, workspaceId, versionId),
+        getChapterParagraphBreaks(osisBook, chapter, workspaceId, versionId),
+        getChapterSceneBreaks(osisBook, chapter, workspaceId, versionId),
         getWordTags(osisBook, workspaceId),
-        getChapterWordTagRefs(osisBook, chapter, workspaceId),
-        getChapterLineIndents(osisBook, chapter, workspaceId),
-        getChapterWordArrows(osisBook, chapter, textSource, workspaceId),
+        getChapterWordTagRefs(osisBook, chapter, workspaceId, versionId),
+        getChapterLineIndents(osisBook, chapter, workspaceId, versionId),
+        getChapterWordArrows(osisBook, chapter, textSource, workspaceId, versionId),
         getAvailableTranslationsForChapter(osisBook, chapter, workspaceId),
       ]);
 

@@ -639,7 +639,7 @@ export default function ChapterDisplay({
         for (const r of chapterRefs) {
           // Only add if not already tagged (onConflictDoNothing mirrors DB behaviour)
           if (!next.has(r.wordId)) {
-            next.set(r.wordId, { id: -1, workspaceId: 1, wordId: r.wordId, tagId, textSource: r.textSource, book: r.book, chapter: r.chapter });
+            next.set(r.wordId, { id: -1, workspaceId: 1, versionId: 1, wordId: r.wordId, tagId, textSource: r.textSource, book: r.book, chapter: r.chapter });
           }
         }
         return next;
@@ -2421,7 +2421,7 @@ export default function ChapterDisplay({
       await fetch("/api/scene-breaks", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ wordId, level, heading: heading.trim() || null }),
+        body: JSON.stringify({ wordId, ...getWordLocation(wordId), level, heading: heading.trim() || null }),
       });
     } catch {
       // Non-critical; leave optimistic state
@@ -2446,7 +2446,7 @@ export default function ChapterDisplay({
       await fetch("/api/scene-breaks", {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ wordId, level }),
+        body: JSON.stringify({ wordId, ...getWordLocation(wordId), level }),
       });
     } catch {
       // Rollback on error
@@ -2485,7 +2485,7 @@ export default function ChapterDisplay({
       // Restore heading on the new level
       if (existing.heading) {
         await fetch("/api/scene-breaks", { method: "PATCH", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ wordId, level: toLevel, heading: existing.heading }) });
+          body: JSON.stringify({ wordId, ...getWordLocation(wordId), level: toLevel, heading: existing.heading }) });
       }
     } catch {
       // Rollback
@@ -2557,7 +2557,7 @@ export default function ChapterDisplay({
       await fetch("/api/scene-breaks", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ wordId, level, outOfSequence }),
+        body: JSON.stringify({ wordId, ...getWordLocation(wordId), level, outOfSequence }),
       });
     } catch {
       // Non-critical; leave optimistic state
@@ -2577,7 +2577,7 @@ export default function ChapterDisplay({
       await fetch("/api/scene-breaks", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ wordId, level, extendedThrough }),
+        body: JSON.stringify({ wordId, ...getWordLocation(wordId), level, extendedThrough }),
       });
     } catch {
       // Non-critical; leave optimistic state
@@ -2597,7 +2597,7 @@ export default function ChapterDisplay({
       await fetch("/api/scene-breaks", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ wordId, level, thematic, thematicLetter }),
+        body: JSON.stringify({ wordId, ...getWordLocation(wordId), level, thematic, thematicLetter }),
       });
     } catch {
       // Non-critical; leave optimistic state
@@ -2617,7 +2617,7 @@ export default function ChapterDisplay({
       await fetch("/api/scene-breaks", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ wordId, level, transitional }),
+        body: JSON.stringify({ wordId, ...getWordLocation(wordId), level, transitional }),
       });
     } catch {
       // Non-critical; leave optimistic state
@@ -2677,7 +2677,7 @@ export default function ChapterDisplay({
       // No ref → add with character1
       nextRef = {
         id: -1, wordId, character1Id: activeCharId,
-        character2Id: null, textSource: source, book: refBook, chapter: refChapter, workspaceId: 0,
+        character2Id: null, textSource: source, book: refBook, chapter: refChapter, workspaceId: 0, versionId: 0,
       };
     } else if (existing.character1Id === activeCharId) {
       if (existing.character2Id !== null) {
@@ -2825,7 +2825,7 @@ export default function ChapterDisplay({
     setWordTagRefMap((prev) => {
       const next = new Map(prev);
       if (isRemove) next.delete(wordId);
-      else next.set(wordId, { id: -1, wordId, tagId: activeWordTagId!, textSource: source, book: refBook, chapter: refChapter, workspaceId: 0 });
+      else next.set(wordId, { id: -1, wordId, tagId: activeWordTagId!, textSource: source, book: refBook, chapter: refChapter, workspaceId: 0, versionId: 0 });
       return next;
     });
 
@@ -2921,7 +2921,7 @@ export default function ChapterDisplay({
         const { book: refBook, chapter: refChapter } = getWordLocation(firstWordId);
         const ref: WordTagRef = {
           id: -1, wordId: firstWordId, tagId: realTag.id,
-          textSource: firstWordSource, book: refBook, chapter: refChapter, workspaceId: 0,
+          textSource: firstWordSource, book: refBook, chapter: refChapter, workspaceId: 0, versionId: 0,
         };
         setWordTagRefMap((prev) => new Map(prev).set(firstWordId, ref));
         await fetch("/api/word-tag-refs", {
@@ -2979,7 +2979,7 @@ export default function ChapterDisplay({
           const next = new Map(prev);
           for (const r of chapterRefs) {
             if (!next.has(r.wordId)) {
-              next.set(r.wordId, { id: -1, wordId: r.wordId, tagId: realTag.id, textSource: r.textSource, book: r.book, chapter: r.chapter, workspaceId: 0 });
+              next.set(r.wordId, { id: -1, wordId: r.wordId, tagId: realTag.id, textSource: r.textSource, book: r.book, chapter: r.chapter, workspaceId: 0, versionId: 0 });
             }
           }
           return next;
@@ -3057,7 +3057,7 @@ export default function ChapterDisplay({
             if (ref.tagId === id) next.delete(wid);
           }
           for (const r of chapterRefs) {
-            next.set(r.wordId, { id: -1, wordId: r.wordId, tagId: id, textSource: r.textSource, book: r.book, chapter: r.chapter, workspaceId: 0 });
+            next.set(r.wordId, { id: -1, wordId: r.wordId, tagId: id, textSource: r.textSource, book: r.book, chapter: r.chapter, workspaceId: 0, versionId: 0 });
           }
           return next;
         });
@@ -3251,7 +3251,7 @@ export default function ChapterDisplay({
     const tempSection: SpeechSection = {
       id: Date.now(), characterId: activeCharId,
       startWordId: orderedStart, endWordId: orderedEnd,
-      textSource, book: refBook, chapter: refChapter, workspaceId: 0,
+      textSource, book: refBook, chapter: refChapter, workspaceId: 0, versionId: 0,
     };
     setSpeechSections((prev) => [...prev, tempSection]);
 
@@ -3316,7 +3316,7 @@ export default function ChapterDisplay({
           const next = new Map(prev);
           for (const r of chapterRefs) {
             if (!next.has(r.wordId)) {
-              next.set(r.wordId, { id: -1, wordId: r.wordId, character1Id: realChar.id, character2Id: null, textSource: r.textSource, book: r.book, chapter: r.chapter, workspaceId: 0 });
+              next.set(r.wordId, { id: -1, wordId: r.wordId, character1Id: realChar.id, character2Id: null, textSource: r.textSource, book: r.book, chapter: r.chapter, workspaceId: 0, versionId: 0 });
             }
           }
           return next;
@@ -3507,7 +3507,7 @@ export default function ChapterDisplay({
             else if (ref.character2Id === id) next.set(wid, { ...ref, character2Id: null });
           }
           for (const r of chapterRefs) {
-            next.set(r.wordId, { id: -1, wordId: r.wordId, character1Id: id, character2Id: null, textSource: r.textSource, book: r.book, chapter: r.chapter, workspaceId: 0 });
+            next.set(r.wordId, { id: -1, wordId: r.wordId, character1Id: id, character2Id: null, textSource: r.textSource, book: r.book, chapter: r.chapter, workspaceId: 0, versionId: 0 });
           }
           return next;
         });
@@ -4040,7 +4040,7 @@ export default function ChapterDisplay({
       fetch("/api/text-critical-marks", {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ wordId }),
+        body: JSON.stringify({ wordId, ...getWordLocation(wordId) }),
       }).catch(() => {});
     } else {
       // Assign active mark
@@ -4062,7 +4062,7 @@ export default function ChapterDisplay({
       fetch("/api/text-critical-marks", {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ wordId }),
+        body: JSON.stringify({ wordId, ...getWordLocation(wordId) }),
       }).catch(() => {});
     } else {
       setTcMarkMap((prev) => new Map(prev).set(wordId, activeTcMark));

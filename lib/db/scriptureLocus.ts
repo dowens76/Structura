@@ -40,27 +40,34 @@ export interface ChapterLocus {
 export async function getScriptureLocusEditingData(
   loci: ChapterLocus[],
   textSource: TextSource,
-  workspaceId: number
+  workspaceId: number,
+  getVersionId: (book: string, chapter: number) => Promise<number>
 ) {
   const perChapterResults = await Promise.all(
-    loci.map(({ book, chapter }) =>
-      Promise.all([
-        getChapterParagraphBreaks(book, chapter, workspaceId),
-        getChapterCharacterRefs(book, chapter, workspaceId),
-        getChapterSpeechSections(book, chapter, textSource, workspaceId),
-        getChapterWordTagRefs(book, chapter, workspaceId),
-        getChapterLineIndents(book, chapter, workspaceId),
-        getChapterRstRelations(book, chapter, textSource, workspaceId),
-        getChapterWordArrows(book, chapter, textSource, workspaceId),
-        getChapterWordFormatting(book, chapter, workspaceId),
-        getChapterSceneBreaks(book, chapter, workspaceId),
-        getChapterLineAnnotations(book, chapter, textSource, workspaceId),
-      ])
+    loci.map(async ({ book, chapter }) => {
+      const versionId = await getVersionId(book, chapter);
+      return Promise.all([
+        getChapterParagraphBreaks(book, chapter, workspaceId, versionId),
+        getChapterCharacterRefs(book, chapter, workspaceId, versionId),
+        getChapterSpeechSections(book, chapter, textSource, workspaceId, versionId),
+        getChapterWordTagRefs(book, chapter, workspaceId, versionId),
+        getChapterLineIndents(book, chapter, workspaceId, versionId),
+        getChapterRstRelations(book, chapter, textSource, workspaceId, versionId),
+        getChapterWordArrows(book, chapter, textSource, workspaceId, versionId),
+        getChapterWordFormatting(book, chapter, workspaceId, versionId),
+        getChapterSceneBreaks(book, chapter, workspaceId, versionId),
+        getChapterLineAnnotations(book, chapter, textSource, workspaceId, versionId),
+      ]);
+    })
+  );
+  const initialTextCriticalMarks = (
+    await Promise.all(
+      loci.map(async ({ book, chapter }) => {
+        const versionId = await getVersionId(book, chapter);
+        return getChapterTextCriticalMarks(book, chapter, workspaceId, versionId);
+      })
     )
-  );
-  const initialTextCriticalMarks = loci.flatMap(({ book, chapter }) =>
-    getChapterTextCriticalMarks(book, chapter, workspaceId)
-  );
+  ).flat();
   return {
     initialParagraphBreakIds: perChapterResults.flatMap(([p]) => p),
     initialCharacterRefs:     perChapterResults.flatMap(([, r]) => r),

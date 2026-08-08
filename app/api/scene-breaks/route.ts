@@ -10,6 +10,7 @@ import {
   updateSceneBreakTransitional,
 } from "@/lib/db/queries";
 import { getActiveWorkspaceId } from "@/lib/workspace";
+import { getActiveVersionId } from "@/lib/versions/activeVersion";
 
 export const dynamic = "force-dynamic";
 
@@ -24,7 +25,8 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Missing params" }, { status: 400 });
   }
 
-  const rows = await getChapterSceneBreaks(book, chapter, workspaceId);
+  const versionId = await getActiveVersionId(workspaceId, book, chapter);
+  const rows = await getChapterSceneBreaks(book, chapter, workspaceId, versionId);
   return NextResponse.json({ sceneBreaks: rows });
 }
 
@@ -45,63 +47,67 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Missing fields" }, { status: 400 });
   }
 
-  const result = await toggleSceneBreak(wordId, book, chapter, verse, source, level ?? 1, workspaceId);
+  const versionId = await getActiveVersionId(workspaceId, book, chapter);
+  const result = await toggleSceneBreak(wordId, book, chapter, verse, source, level ?? 1, workspaceId, versionId);
   return NextResponse.json(result);
 }
 
 // PATCH /api/scene-breaks
-// Body: { wordId, level, heading? } | { wordId, level, outOfSequence? } | { wordId, level, extendedThrough? }
+// Body: { wordId, book, chapter, level, heading? } | { ..., outOfSequence? } | { ..., extendedThrough? }
 // Updates heading, outOfSequence, and/or extendedThrough for a specific (wordId, level) break.
-// Level is required to identify which break to update.
+// Level is required to identify which break to update. book/chapter resolve the active version.
 export async function PATCH(request: NextRequest) {
   const workspaceId = await getActiveWorkspaceId();
-  let body: { wordId?: string; level?: number; heading?: string | null; outOfSequence?: boolean; extendedThrough?: number | null; thematic?: boolean; thematicLetter?: string | null; transitional?: boolean };
+  let body: { wordId?: string; book?: string; chapter?: number; level?: number; heading?: string | null; outOfSequence?: boolean; extendedThrough?: number | null; thematic?: boolean; thematicLetter?: string | null; transitional?: boolean };
   try {
     body = await request.json();
   } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const { wordId, level, heading, outOfSequence, extendedThrough, thematic, thematicLetter, transitional } = body;
-  if (!wordId || level == null) {
-    return NextResponse.json({ error: "Missing wordId or level" }, { status: 400 });
+  const { wordId, book, chapter, level, heading, outOfSequence, extendedThrough, thematic, thematicLetter, transitional } = body;
+  if (!wordId || level == null || !book || chapter == null) {
+    return NextResponse.json({ error: "Missing wordId, level, book, or chapter" }, { status: 400 });
   }
 
+  const versionId = await getActiveVersionId(workspaceId, book, chapter);
+
   if (heading !== undefined) {
-    await updateSceneBreakHeading(wordId, level, heading ?? null, workspaceId);
+    await updateSceneBreakHeading(wordId, level, heading ?? null, workspaceId, versionId);
   }
   if (outOfSequence !== undefined) {
-    await updateSceneBreakOutOfSequence(wordId, level, outOfSequence, workspaceId);
+    await updateSceneBreakOutOfSequence(wordId, level, outOfSequence, workspaceId, versionId);
   }
   if (extendedThrough !== undefined) {
-    await updateSceneBreakExtendedThrough(wordId, level, extendedThrough, workspaceId);
+    await updateSceneBreakExtendedThrough(wordId, level, extendedThrough, workspaceId, versionId);
   }
   if (thematic !== undefined) {
-    await updateSceneBreakThematic(wordId, level, thematic, thematicLetter ?? null, workspaceId);
+    await updateSceneBreakThematic(wordId, level, thematic, thematicLetter ?? null, workspaceId, versionId);
   }
   if (transitional !== undefined) {
-    await updateSceneBreakTransitional(wordId, level, transitional, workspaceId);
+    await updateSceneBreakTransitional(wordId, level, transitional, workspaceId, versionId);
   }
   return new NextResponse(null, { status: 204 });
 }
 
 // DELETE /api/scene-breaks
-// Body: { wordId, level }
+// Body: { wordId, book, chapter, level }
 // Deletes a specific (wordId, level) section break; removes paragraph break if no others remain.
 export async function DELETE(request: NextRequest) {
   const workspaceId = await getActiveWorkspaceId();
-  let body: { wordId?: string; level?: number };
+  let body: { wordId?: string; book?: string; chapter?: number; level?: number };
   try {
     body = await request.json();
   } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const { wordId, level } = body;
-  if (!wordId || level == null) {
-    return NextResponse.json({ error: "Missing wordId or level" }, { status: 400 });
+  const { wordId, book, chapter, level } = body;
+  if (!wordId || level == null || !book || chapter == null) {
+    return NextResponse.json({ error: "Missing wordId, level, book, or chapter" }, { status: 400 });
   }
 
-  await deleteSceneBreak(wordId, level, workspaceId);
+  const versionId = await getActiveVersionId(workspaceId, book, chapter);
+  await deleteSceneBreak(wordId, level, workspaceId, versionId);
   return new NextResponse(null, { status: 204 });
 }

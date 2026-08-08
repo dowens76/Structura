@@ -37,6 +37,7 @@ import {
   chapterCondition,
   filterByChapters,
   filterVersesByChapters,
+  buildVersionMap,
   type Chapter,
   type Scope,
   type DataType,
@@ -70,10 +71,14 @@ async function importSectionBreaks(
   let sbRows = await userDb.select().from(sceneBreaks).where(cond);
   sbRows = filterByChapters(sbRows, chapters);
 
+  const srcVersions = await buildVersionMap(src, chapters);
+  sbRows = sbRows.filter((r) => r.versionId === srcVersions.get(`${r.book}:${r.chapter}`));
+
   if (sbRows.length > 0) {
+    const tgtVersions = await buildVersionMap(tgt, chapters);
     await userDb
       .insert(sceneBreaks)
-      .values(sbRows.map((r) => ({ ...r, id: undefined, workspaceId: tgt })))
+      .values(sbRows.map((r) => ({ ...r, id: undefined, workspaceId: tgt, versionId: tgtVersions.get(`${r.book}:${r.chapter}`)! })))
       .onConflictDoNothing();
   }
 
@@ -92,10 +97,14 @@ async function importParagraphBreaks(
   let rows = await userDb.select().from(paragraphBreaks).where(cond);
   rows = filterByChapters(rows, chapters);
 
+  const srcVersions = await buildVersionMap(src, chapters);
+  rows = rows.filter((r) => r.versionId === srcVersions.get(`${r.book}:${r.chapter}`));
+
   if (rows.length > 0) {
+    const tgtVersions = await buildVersionMap(tgt, chapters);
     await userDb
       .insert(paragraphBreaks)
-      .values(rows.map((r) => ({ ...r, id: undefined, workspaceId: tgt })))
+      .values(rows.map((r) => ({ ...r, id: undefined, workspaceId: tgt, versionId: tgtVersions.get(`${r.book}:${r.chapter}`)! })))
       .onConflictDoNothing();
   }
 
@@ -115,15 +124,29 @@ async function importLineAnnotations(
   let rows = await userDb.select().from(lineAnnotations).where(cond);
   rows = filterByChapters(rows, chapters);
 
+  const srcVersions = await buildVersionMap(src, chapters);
+  rows = rows.filter((r) => r.versionId === srcVersions.get(`${r.book}:${r.chapter}`));
+
+  const tgtVersions = await buildVersionMap(tgt, chapters);
+
   if (mode === "overwrite") {
     const tgtCond = chapterCondition(lineAnnotations, tgt, chapters);
-    if (tgtCond) await userDb.delete(lineAnnotations).where(tgtCond);
+    if (tgtCond) {
+      let tgtRows = await userDb.select({ id: lineAnnotations.id, book: lineAnnotations.book, chapter: lineAnnotations.chapter, versionId: lineAnnotations.versionId }).from(lineAnnotations).where(tgtCond);
+      tgtRows = filterByChapters(tgtRows, chapters);
+      const idsInActiveVersion = tgtRows
+        .filter((r) => r.versionId === tgtVersions.get(`${r.book}:${r.chapter}`))
+        .map((r) => r.id);
+      if (idsInActiveVersion.length > 0) {
+        await userDb.delete(lineAnnotations).where(inArray(lineAnnotations.id, idsInActiveVersion));
+      }
+    }
   }
 
   if (rows.length > 0) {
     await userDb
       .insert(lineAnnotations)
-      .values(rows.map((r) => ({ ...r, id: undefined, workspaceId: tgt })));
+      .values(rows.map((r) => ({ ...r, id: undefined, workspaceId: tgt, versionId: tgtVersions.get(`${r.book}:${r.chapter}`)! })));
   }
   return rows.length;
 }
@@ -140,10 +163,14 @@ async function importWordFormatting(
   let rows = await userDb.select().from(wordFormatting).where(cond);
   rows = filterByChapters(rows, chapters);
 
+  const srcVersions = await buildVersionMap(src, chapters);
+  rows = rows.filter((r) => r.versionId === srcVersions.get(`${r.book}:${r.chapter}`));
+
   if (rows.length > 0) {
+    const tgtVersions = await buildVersionMap(tgt, chapters);
     await userDb
       .insert(wordFormatting)
-      .values(rows.map((r) => ({ ...r, id: undefined, workspaceId: tgt })))
+      .values(rows.map((r) => ({ ...r, id: undefined, workspaceId: tgt, versionId: tgtVersions.get(`${r.book}:${r.chapter}`)! })))
       .onConflictDoNothing();
   }
   return rows.length;
@@ -161,10 +188,14 @@ async function importLineIndents(
   let rows = await userDb.select().from(lineIndents).where(cond);
   rows = filterByChapters(rows, chapters);
 
+  const srcVersions = await buildVersionMap(src, chapters);
+  rows = rows.filter((r) => r.versionId === srcVersions.get(`${r.book}:${r.chapter}`));
+
   if (rows.length > 0) {
+    const tgtVersions = await buildVersionMap(tgt, chapters);
     await userDb
       .insert(lineIndents)
-      .values(rows.map((r) => ({ ...r, id: undefined, workspaceId: tgt })))
+      .values(rows.map((r) => ({ ...r, id: undefined, workspaceId: tgt, versionId: tgtVersions.get(`${r.book}:${r.chapter}`)! })))
       .onConflictDoNothing();
   }
   return rows.length;
@@ -224,10 +255,14 @@ async function importTextCriticalMarks(
   let rows = await userDb.select().from(textCriticalMarks).where(cond);
   rows = filterByChapters(rows, chapters);
 
+  const srcVersions = await buildVersionMap(src, chapters);
+  rows = rows.filter((r) => r.versionId === srcVersions.get(`${r.book}:${r.chapter}`));
+
   if (rows.length > 0) {
+    const tgtVersions = await buildVersionMap(tgt, chapters);
     await userDb
       .insert(textCriticalMarks)
-      .values(rows.map((r) => ({ ...r, id: undefined, workspaceId: tgt })))
+      .values(rows.map((r) => ({ ...r, id: undefined, workspaceId: tgt, versionId: tgtVersions.get(`${r.book}:${r.chapter}`)! })))
       .onConflictDoNothing();
   }
   return rows.length;
@@ -266,10 +301,14 @@ async function importWordArrows(
   let rows = await userDb.select().from(wordArrows).where(cond);
   rows = filterByChapters(rows, chapters);
 
+  const srcVersions = await buildVersionMap(src, chapters);
+  rows = rows.filter((r) => r.versionId === srcVersions.get(`${r.book}:${r.chapter}`));
+
   if (rows.length > 0) {
+    const tgtVersions = await buildVersionMap(tgt, chapters);
     await userDb
       .insert(wordArrows)
-      .values(rows.map((r) => ({ ...r, id: undefined, workspaceId: tgt })));
+      .values(rows.map((r) => ({ ...r, id: undefined, workspaceId: tgt, versionId: tgtVersions.get(`${r.book}:${r.chapter}`)! })));
   }
   return rows.length;
 }
@@ -388,7 +427,11 @@ async function importWordTags(
   // Only copy refs whose tagId is in our map
   refs = refs.filter((r) => tagIdMap.has(r.tagId));
 
+  const srcVersions = await buildVersionMap(src, chapters);
+  refs = refs.filter((r) => r.versionId === srcVersions.get(`${r.book}:${r.chapter}`));
+
   if (refs.length > 0) {
+    const tgtVersions = await buildVersionMap(tgt, chapters);
     await userDb
       .insert(wordTagRefs)
       .values(
@@ -396,6 +439,7 @@ async function importWordTags(
           ...r,
           id: undefined,
           workspaceId: tgt,
+          versionId: tgtVersions.get(`${r.book}:${r.chapter}`)!,
           tagId: tagIdMap.get(r.tagId)!,
         }))
       )
@@ -509,6 +553,9 @@ async function importCharacters(
     }
   }
 
+  const srcVersions = await buildVersionMap(src, chapters);
+  const tgtVersions = await buildVersionMap(tgt, chapters);
+
   // 3. Fetch and insert characterRefs
   const crCond = chapterCondition(characterRefs, src, chapters);
   let crCount = 0;
@@ -516,6 +563,7 @@ async function importCharacters(
     let refs = await userDb.select().from(characterRefs).where(crCond);
     refs = filterByChapters(refs, chapters);
     refs = refs.filter((r) => charIdMap.has(r.character1Id));
+    refs = refs.filter((r) => r.versionId === srcVersions.get(`${r.book}:${r.chapter}`));
 
     if (refs.length > 0) {
       await userDb
@@ -525,6 +573,7 @@ async function importCharacters(
             ...r,
             id: undefined,
             workspaceId: tgt,
+            versionId: tgtVersions.get(`${r.book}:${r.chapter}`)!,
             character1Id: charIdMap.get(r.character1Id)!,
             character2Id:
               r.character2Id != null ? (charIdMap.get(r.character2Id) ?? null) : null,
@@ -542,6 +591,7 @@ async function importCharacters(
     let sections = await userDb.select().from(speechSections).where(ssCond);
     sections = filterByChapters(sections, chapters);
     sections = sections.filter((r) => charIdMap.has(r.characterId));
+    sections = sections.filter((r) => r.versionId === srcVersions.get(`${r.book}:${r.chapter}`));
 
     if (sections.length > 0) {
       await userDb
@@ -551,6 +601,7 @@ async function importCharacters(
             ...r,
             id: undefined,
             workspaceId: tgt,
+            versionId: tgtVersions.get(`${r.book}:${r.chapter}`)!,
             characterId: charIdMap.get(r.characterId)!,
           }))
         );
@@ -747,10 +798,14 @@ async function importRstRelations(
   let rows = await userDb.select().from(rstRelations).where(cond);
   rows = filterByChapters(rows, chapters);
 
+  const srcVersions = await buildVersionMap(src, chapters);
+  rows = rows.filter((r) => r.versionId === srcVersions.get(`${r.book}:${r.chapter}`));
+
   if (rows.length > 0) {
+    const tgtVersions = await buildVersionMap(tgt, chapters);
     await userDb
       .insert(rstRelations)
-      .values(rows.map((r) => ({ ...r, id: undefined, workspaceId: tgt })));
+      .values(rows.map((r) => ({ ...r, id: undefined, workspaceId: tgt, versionId: tgtVersions.get(`${r.book}:${r.chapter}`)! })));
   }
 
   // Copy any custom types referenced by these relations

@@ -6,6 +6,7 @@ import {
   updateWordArrow,
 } from "@/lib/db/queries";
 import { getActiveWorkspaceId } from "@/lib/workspace";
+import { getActiveVersionId } from "@/lib/versions/activeVersion";
 
 export const dynamic = "force-dynamic";
 
@@ -17,7 +18,8 @@ export async function GET(req: NextRequest) {
   const source  = searchParams.get("source");
   if (!book || isNaN(chapter) || !source)
     return NextResponse.json({ error: "Missing params" }, { status: 400 });
-  const arrows = await getChapterWordArrows(book, chapter, source, workspaceId);
+  const versionId = await getActiveVersionId(workspaceId, book, chapter);
+  const arrows = await getChapterWordArrows(book, chapter, source, workspaceId, versionId);
   return NextResponse.json({ arrows });
 }
 
@@ -27,8 +29,9 @@ export async function POST(req: NextRequest) {
   const { fromWordId, toWordId, book, chapter, source, label } = body;
   if (!fromWordId || !toWordId || !book || !chapter || !source)
     return NextResponse.json({ error: "Missing fields" }, { status: 400 });
+  const versionId = await getActiveVersionId(workspaceId, book, Number(chapter));
   const arrow = await createWordArrow(
-    fromWordId, toWordId, book, Number(chapter), source, workspaceId, label ?? undefined
+    fromWordId, toWordId, book, Number(chapter), source, workspaceId, versionId, label ?? undefined
   );
   return NextResponse.json({ arrow });
 }

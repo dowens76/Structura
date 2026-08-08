@@ -1,6 +1,7 @@
 import { eq, and, inArray } from "drizzle-orm";
 import { userDb } from "@/lib/db";
 import { passages } from "@/lib/db/user-schema";
+import { getActiveVersionId } from "@/lib/versions/activeVersion";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -119,6 +120,23 @@ export function chapterCondition<T extends { workspaceId: any; book: any; chapte
   // correct we use the broadest safe filter and let the insert be idempotent).
   // For correctness with multiple books: return workspace-level filter and post-filter.
   return eq(table.workspaceId, workspaceId);
+}
+
+/**
+ * Resolves the active version id for every (book, chapter) in `chapters`, for
+ * one workspace. Used on the source side to read only the currently-active
+ * version's rows (not every version's), and on the target side to stamp
+ * copied rows with the correct destination version instead of carrying the
+ * source workspace's versionId verbatim (which would violate the FK or land
+ * in an unrelated version there).
+ */
+export async function buildVersionMap(workspaceId: number, chapters: Chapter[]): Promise<Map<string, number>> {
+  const map = new Map<string, number>();
+  for (const { book, chapter } of chapters) {
+    const key = `${book}:${chapter}`;
+    if (!map.has(key)) map.set(key, await getActiveVersionId(workspaceId, book, chapter));
+  }
+  return map;
 }
 
 /** Filter fetched rows to only those matching the chapters list. */

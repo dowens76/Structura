@@ -24,6 +24,7 @@ import {
 import { resolveVisibleWordTags } from "@/lib/db/wordTagVisibility";
 import { resolveVisibleCharacters } from "@/lib/db/characterVisibility";
 import { getActiveWorkspaceId } from "@/lib/workspace";
+import { getActiveVersionId } from "@/lib/versions/activeVersion";
 import { OSIS_BOOK_NAMES } from "@/lib/utils/osis";
 import type { Passage } from "@/lib/db/schema";
 import type { TextSource } from "@/lib/morphology/types";
@@ -71,7 +72,7 @@ async function loadColumnData(passage: Passage, workspaceId: number): Promise<Sy
       [{ osisBook, bookId: bookRecord.id, chapterCount: bookRecord.chapterCount }],
       textSource, workspaceId
     ),
-    getScriptureLocusEditingData(chapterEntries, textSource, workspaceId),
+    getScriptureLocusEditingData(chapterEntries, textSource, workspaceId, (b, c) => getActiveVersionId(workspaceId, b, c)),
     getAvailableTranslationsForChapter(osisBook, passage.startChapter),
   ]);
 
