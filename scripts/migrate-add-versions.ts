@@ -11,12 +11,14 @@
  * safe to run multiple times.
  *
  * Run with: npm run db:migrate:versions
+ * Or against a specific file (e.g. the packaged Tauri app's separate DB —
+ * see project_dual_user_db in memory): npm run db:migrate:versions -- /path/to/user.db
  */
 
 import Database from "better-sqlite3";
 import path from "path";
 
-const DB_PATH = path.join(process.cwd(), "data", "user.db");
+const DB_PATH = process.argv[2] ?? path.join(process.cwd(), "data", "user.db");
 
 const db = new Database(DB_PATH);
 db.pragma("journal_mode = WAL");
