@@ -12,6 +12,13 @@ export interface SegPos {
   leftX: number;
   rightX: number;
   transLeftX?: number;
+  /** Full bounding-box top/bottom of the translation column's own text block
+   *  (unlike `top`/`bottom`, which anchor to the source text's first line).
+   *  Needed so a translation-side bracket can extend to the bottom of a
+   *  translation that wraps onto more lines than its source line — see
+   *  LineGroupOverlay's yTopTrans/yBottomTrans. */
+  transTop?: number;
+  transBottom?: number;
   /** Right edge of the source grid-cell div (3-col layout only). Used to anchor
    *  the source tree from the column boundary rather than from the inline text span. */
   srcCellRightX?: number;
@@ -72,6 +79,12 @@ export function measureSegments(
     const transLeftX = transEl
       ? transEl.getBoundingClientRect().left - cRect.left + transPadL
       : undefined;
+    // Full block extent (not just first line) — a translation can wrap onto
+    // more lines than its source, so its bottom edge needs its own measurement
+    // rather than inheriting the source text's (shorter) anchorBottom.
+    const transR = transEl?.getBoundingClientRect();
+    const transTop    = transR ? transR.top    - cRect.top + scrollTop : undefined;
+    const transBottom = transR ? transR.bottom - cRect.top + scrollTop : undefined;
 
     // Measure the source grid-cell div.  Its padding carries the paragraph
     // indentation (paddingLeft for LTR, paddingRight for Hebrew RTL), so we
@@ -107,6 +120,8 @@ export function measureSegments(
       leftX:     posR.left  - cRect.left + padLeft,
       rightX:    posR.right - cRect.left - padRight,
       transLeftX,
+      transTop,
+      transBottom,
       srcCellRightX,
       labelLeftX,
     });

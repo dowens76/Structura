@@ -164,6 +164,13 @@ export default function LineGroupOverlay({
       if (!positions.length) return;
       const yTop    = Math.min(...positions.map(p => p.top));
       const yBottom = Math.max(...positions.map(p => p.bottom));
+      // Translation side uses its own bottom edge — when 2+ translations wrap
+      // a line onto more rows than its source, the mirrored bracket must
+      // extend to the bottom of that wrapped text, not just the source's
+      // (shorter) line height. Falls back to the source Y when a leaf has no
+      // measured translation block.
+      const yTopTrans    = Math.min(...positions.map(p => p.transTop    ?? p.top));
+      const yBottomTrans = Math.max(...positions.map(p => p.transBottom ?? p.bottom));
 
       // ── Source-side node ──────────────────────────────────────────────
       let x = srcXFn(hNode.depth);
@@ -185,7 +192,7 @@ export default function LineGroupOverlay({
         }
         if (txAll.length) {
           const tx = d.type === "segment" ? txAll[0] - LEAF_MARGIN : transXFn(hNode.depth);
-          out.push({ id: d.id, x: tx, yTop, yBottom, isTrans: true, isGroup: d.type === "group", level: hNode.height });
+          out.push({ id: d.id, x: tx, yTop: yTopTrans, yBottom: yBottomTrans, isTrans: true, isGroup: d.type === "group", level: hNode.height });
         }
       }
     });
