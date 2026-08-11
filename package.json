@@ -21,6 +21,7 @@
     "db:migrate:tag-corpus": "tsx scripts/migrate-add-tag-corpus.ts",
     "db:migrate:versions": "tsx scripts/migrate-add-versions.ts",
     "db:migrate:version-content-revision": "tsx scripts/migrate-add-version-content-revision.ts",
+    "db:migrate:translations-sort-order": "tsx scripts/migrate-add-translations-sort-order.ts",
     "import:oshb": "tsx scripts/import-oshb.ts",
     "import:morphgnt": "tsx scripts/import-morphgnt.ts",
     "import:lxx": "tsx scripts/import-lxx.ts",

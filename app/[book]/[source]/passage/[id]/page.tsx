@@ -173,7 +173,7 @@ export default async function PassagePage({ params, searchParams }: PageProps) {
 
   const {
     initialParagraphBreakIds, initialCharacterRefs, initialSpeechSections,
-    initialWordTagRefs, initialLineIndents, initialRstRelations,
+    initialWordTagRefs, initialLineIndents, initialRstRelations, initialLineGroups,
     initialWordArrows, initialWordFormatting, initialSceneBreaks,
     initialLineAnnotations, initialTextCriticalMarks,
   } = editingData;
@@ -363,6 +363,7 @@ export default async function PassagePage({ params, searchParams }: PageProps) {
           lxxTranslation={lxxTranslation}
           initialTextCriticalMarks={initialTextCriticalMarks}
           initialRstRelations={initialRstRelations}
+          initialLineGroups={initialLineGroups}
           initialWordArrows={initialWordArrows}
           initialWordFormatting={initialWordFormatting}
           initialSceneBreaks={initialSceneBreaks}

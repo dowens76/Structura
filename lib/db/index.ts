@@ -417,6 +417,23 @@ function _migrateUserDbInner(sqlite: Database.Database): void {
     try { sqlite.exec("ALTER TABLE rst_relations ADD COLUMN intersect_point TEXT NOT NULL DEFAULT 'mid'"); } catch { /* already exists */ }
 
   sqlite.exec(`
+    CREATE TABLE IF NOT EXISTS line_groups (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      workspace_id INTEGER NOT NULL DEFAULT 1 REFERENCES workspaces(id) ON DELETE CASCADE,
+      version_id   INTEGER NOT NULL REFERENCES versions(id) ON DELETE CASCADE,
+      group_id     TEXT    NOT NULL,
+      member_id    TEXT    NOT NULL,
+      sort_order   INTEGER NOT NULL DEFAULT 0,
+      text_source  TEXT    NOT NULL,
+      book         TEXT    NOT NULL,
+      chapter      INTEGER NOT NULL,
+      created_at   TEXT    DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now'))
+    );
+    CREATE INDEX IF NOT EXISTS lg_book_ch_src_idx ON line_groups(book, chapter, text_source);
+    CREATE INDEX IF NOT EXISTS lg_group_idx ON line_groups(group_id);
+  `);
+
+  sqlite.exec(`
     CREATE TABLE IF NOT EXISTS passages (
       id           INTEGER PRIMARY KEY AUTOINCREMENT,
       workspace_id INTEGER NOT NULL DEFAULT 1 REFERENCES workspaces(id) ON DELETE CASCADE,

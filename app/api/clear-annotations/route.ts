@@ -9,6 +9,7 @@ import {
   wordArrows,
   wordFormatting,
   rstRelations,
+  lineGroups,
   lineAnnotations,
 } from "@/lib/db/schema";
 import { and, eq } from "drizzle-orm";
@@ -26,6 +27,7 @@ const VALID_CATEGORIES = [
   "wordArrows",
   "wordFormatting",
   "rstRelations",
+  "lineGroups",
   "lineAnnotations",
 ] as const;
 type Category = (typeof VALID_CATEGORIES)[number];
@@ -104,6 +106,11 @@ export async function POST(req: NextRequest) {
         case "rstRelations":
           await userDb.delete(rstRelations).where(
             and(eq(rstRelations.workspaceId, workspaceId), eq(rstRelations.versionId, versionId), eq(rstRelations.book, book), eq(rstRelations.chapter, ch), eq(rstRelations.textSource, textSource))
+          );
+          break;
+        case "lineGroups":
+          await userDb.delete(lineGroups).where(
+            and(eq(lineGroups.workspaceId, workspaceId), eq(lineGroups.versionId, versionId), eq(lineGroups.book, book), eq(lineGroups.chapter, ch), eq(lineGroups.textSource, textSource))
           );
           break;
         case "lineAnnotations":

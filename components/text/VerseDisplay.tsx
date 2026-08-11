@@ -270,6 +270,11 @@ interface VerseDisplayProps {
   /** Extra gap (px) inserted between the verse-label column and the source-text column
    *  so that RST tree arrows don't overlap the verse number. */
   rstSourcePad?: number;
+  /** Per-line vertical-spacing override (px), keyed by a paragraph segment's
+   *  first wordId — set by computeLineSpacing() when that line's gap from the
+   *  previous line is tightened by a shared line-group bracket. Lines absent
+   *  from the map keep the normal mt-1 / mt-5 spacing. */
+  lineSpacingMap?: Map<string, number>;
   /** When true, doubles font sizes for section headings and annotation labels */
   presentationMode?: boolean;
   /** Footnotes/cross-references attached to this verse (from USFM import or manual entry). */
@@ -1321,6 +1326,7 @@ export default function VerseDisplay({
   showAnnotationCol = false,
   onVerseClick,
   rstSourcePad = 0,
+  lineSpacingMap,
   presentationMode = false,
   showAtnachBreaks = false,
   showSyllableStress = false,
@@ -2366,8 +2372,15 @@ export default function VerseDisplay({
   // for this verse yet — fall through to the two-column layout instead so
   // the placeholder column stays visible.
   if (translationTexts.length === 0 && !hasActiveTranslations) {
+    const verseSpacingOverride = verseStartsNewParagraph && firstWordId
+      ? lineSpacingMap?.get(firstWordId)
+      : undefined;
     return (
-      <div id={`verse-${verseNum}`} className={`${verseStartsNewParagraph ? "mt-5" : ""} ${(speechContinuesIntoNext || annotContinuesIntoNext) ? "" : "mb-4"}`}>
+      <div
+        id={`verse-${verseNum}`}
+        className={`${verseStartsNewParagraph && verseSpacingOverride === undefined ? "mt-5" : ""} ${(speechContinuesIntoNext || annotContinuesIntoNext) ? "" : "mb-4"}`}
+        style={verseSpacingOverride !== undefined ? { marginTop: verseSpacingOverride } : undefined}
+      >
         {verseStartsNewParagraph && firstWordId && renderSegSeparator(firstWordId)}
         {sourceSegments.map((seg, si) => {
           const { layers, isSegStart } = getSegSpeech(seg, si);
@@ -2452,6 +2465,13 @@ export default function VerseDisplay({
             (annotationsBySegment?.get(seg[0].wordId) ?? []).some(e => !e.isStart)
           );
 
+          // Line-group bracket spacing override — tightens the gap above this
+          // line when it's closely grouped with the previous one. Only applies
+          // where the mt-1 class would otherwise fire (si > 0, no suppression).
+          const lineSpacingOverride = si > 0 && !suppressSeparator
+            ? lineSpacingMap?.get(seg[0].wordId)
+            : undefined;
+
           // Grid styles for the innermost box div (or the plain div when no layers).
           // Keep at least 1rem between the verse-label column and the text so Hebrew
           // text (where rstSourcePad stays 0) doesn't press flush against the label —
@@ -2459,8 +2479,9 @@ export default function VerseDisplay({
           const gridStyle: React.CSSProperties = {
             gridTemplateColumns: "auto 1fr",
             columnGap: rstSourcePad || (compactVerseLabels ? "0.25rem" : "1rem"),
+            ...(lineSpacingOverride !== undefined ? { marginTop: lineSpacingOverride } : {}),
           };
-          const gridClass = `grid items-start${editingSpeech ? " cursor-crosshair" : ""}${editingAnnotations ? " cursor-pointer" : ""}${si > 0 && !suppressSeparator ? " mt-1" : ""}`;
+          const gridClass = `grid items-start${editingSpeech ? " cursor-crosshair" : ""}${editingAnnotations ? " cursor-pointer" : ""}${si > 0 && !suppressSeparator && lineSpacingOverride === undefined ? " mt-1" : ""}`;
 
           return (
             // data-rst-seg is used by RstRelationOverlay to measure segment position
@@ -2570,6 +2591,10 @@ export default function VerseDisplay({
   const isTvDatasetMode = displayMode === "interlinear"
     && typeof interlinearSubMode === "object" && interlinearSubMode.type === "dataset";
 
+  const verseSpacingOverrideMulti = verseStartsNewParagraph && !(speechContinuesFromPrev || annotContinuesFromPrev) && firstWordId
+    ? lineSpacingMap?.get(firstWordId)
+    : undefined;
+
   return (
     <div
       id={`verse-${verseNum}`}
@@ -2577,7 +2602,8 @@ export default function VerseDisplay({
         (speechContinuesIntoNext || annotContinuesIntoNext) ? "" : "border-b border-[var(--border)]"
       } ${(speechContinuesFromPrev || annotContinuesFromPrev) ? "pt-0" : "pt-4"} ${
         (speechContinuesIntoNext || annotContinuesIntoNext) ? "pb-0" : "pb-4"
-      } last:border-0${verseStartsNewParagraph && !(speechContinuesFromPrev || annotContinuesFromPrev) ? " mt-4" : ""}`}
+      } last:border-0${verseStartsNewParagraph && !(speechContinuesFromPrev || annotContinuesFromPrev) && verseSpacingOverrideMulti === undefined ? " mt-4" : ""}`}
+      style={verseSpacingOverrideMulti !== undefined ? { marginTop: verseSpacingOverrideMulti } : undefined}
     >
       {verseStartsNewParagraph && firstWordId && renderSegSeparator(firstWordId)}
 

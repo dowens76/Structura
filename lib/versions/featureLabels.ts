@@ -1,5 +1,5 @@
 /**
- * Client-safe labels for the 11 versionable markup types — shared by
+ * Client-safe labels for the 12 versionable markup types — shared by
  * lib/versions/registry.ts (server, pairs each key with its Drizzle table)
  * and the version dialogs (client, render checkboxes from this list alone).
  * Keep in sync with VERSIONABLE_FEATURES in registry.ts — same keys, same order.
@@ -17,6 +17,7 @@ export const VERSIONABLE_FEATURE_LABELS: VersionableFeatureLabel[] = [
   { key: "lineIndents", label: "Line indents" },
   { key: "sceneBreaks", label: "Scene breaks / headings" },
   { key: "rstRelations", label: "Clause relationships" },
+  { key: "lineGroups", label: "Line groups (poetry)" },
   { key: "wordArrows", label: "Word arrows" },
   { key: "lineAnnotations", label: "Clause labels (plot/theme/desc)" },
   { key: "wordFormatting", label: "Word formatting (bold/italic)" },

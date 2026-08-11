@@ -385,6 +385,39 @@ export const rstRelations = sqliteTable(
   ]
 );
 
+/**
+ * Poetry line-grouping brackets — groups 2+ consecutive paragraph "lines"
+ * (or nested sub-groupings) to render as a vertical bracket in the margin,
+ * with tighter vertical spacing between more closely-grouped lines. See
+ * lib/lineGroups/buildLineGroupTree.ts for the nesting convention.
+ *
+ * Structurally a trimmed rstRelations: same flat-rows-form-a-group shape,
+ * but no role (nucleus/satellite) or relType — grouping here is symmetric
+ * and untyped, so members are ordered purely by sortOrder.
+ */
+export const lineGroups = sqliteTable(
+  "line_groups",
+  {
+    id:          integer("id").primaryKey({ autoIncrement: true }),
+    workspaceId: integer("workspace_id").notNull().default(1)
+                   .references(() => workspaces.id, { onDelete: "cascade" }),
+    versionId:   integer("version_id").notNull()
+                   .references(() => versions.id, { onDelete: "cascade" }),
+    groupId:     text("group_id").notNull(),
+    /** A paragraph's first wordId, OR another group's groupId (nesting). */
+    memberId:    text("member_id").notNull(),
+    sortOrder:   integer("sort_order").notNull().default(0),
+    textSource:  text("text_source").notNull(),
+    book:        text("book").notNull(),
+    chapter:     integer("chapter").notNull(),
+    createdAt:   text("created_at").$defaultFn(() => new Date().toISOString()),
+  },
+  (t) => [
+    index("lg_book_ch_src_idx").on(t.book, t.chapter, t.textSource),
+    index("lg_group_idx").on(t.groupId),
+  ]
+);
+
 export const wordArrows = sqliteTable(
   "word_arrows",
   {
@@ -933,6 +966,7 @@ export type LineIndent = typeof lineIndents.$inferSelect;
 export type SceneBreak = typeof sceneBreaks.$inferSelect;
 export type Passage = typeof passages.$inferSelect;
 export type RstRelation = typeof rstRelations.$inferSelect;
+export type LineGroup = typeof lineGroups.$inferSelect;
 export type WordArrow = typeof wordArrows.$inferSelect;
 export type WordFormatting = typeof wordFormatting.$inferSelect;
 export type LineAnnotation = typeof lineAnnotations.$inferSelect;

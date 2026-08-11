@@ -16,6 +16,7 @@ import {
   lineIndents,
   wordArrows,
   rstRelations,
+  lineGroups,
   rstCustomTypes,
   notes,
   passages,
@@ -836,6 +837,31 @@ async function importRstRelations(
   return rows.length;
 }
 
+async function importLineGroups(
+  src: number,
+  tgt: number,
+  chapters: Chapter[]
+): Promise<number> {
+  if (chapters.length === 0) return 0;
+
+  const cond = chapterCondition(lineGroups, src, chapters);
+  if (!cond) return 0;
+  let rows = await userDb.select().from(lineGroups).where(cond);
+  rows = filterByChapters(rows, chapters);
+
+  const srcVersions = await buildVersionMap(src, chapters);
+  rows = rows.filter((r) => r.versionId === srcVersions.get(`${r.book}:${r.chapter}`));
+
+  if (rows.length > 0) {
+    const tgtVersions = await buildVersionMap(tgt, chapters);
+    await userDb
+      .insert(lineGroups)
+      .values(rows.map((r) => ({ ...r, id: undefined, workspaceId: tgt, versionId: tgtVersions.get(`${r.book}:${r.chapter}`)! })));
+  }
+
+  return rows.length;
+}
+
 // ─── Group D: bespoke scope logic ────────────────────────────────────────────
 // These tables don't fit the book+chapter scope model used above, so each
 // gets its own matching rule instead of chapterCondition/filterByChapters.
@@ -1088,6 +1114,13 @@ export async function POST(request: NextRequest) {
         break;
       case "rstRelations":
         count = await importRstRelations(
+          sourceWorkspaceId,
+          targetWorkspaceId,
+          chapters
+        );
+        break;
+      case "lineGroups":
+        count = await importLineGroups(
           sourceWorkspaceId,
           targetWorkspaceId,
           chapters

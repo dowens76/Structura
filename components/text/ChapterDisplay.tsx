@@ -3,7 +3,7 @@
 import { useMemo, useState, useEffect, useRef, useCallback, useTransition } from "react";
 import { getMtToKjvInstructions, getKjvVerseLabel } from "@/lib/versification/mt-kjv-mapping";
 import { useRouter, useSearchParams } from "next/navigation";
-import type { Word, Character, CharacterRef, SpeechSection, WordTag, WordTagRef, RstRelation, WordArrow, LineAnnotation, Passage, SynopticWordMark } from "@/lib/db/schema";
+import type { Word, Character, CharacterRef, SpeechSection, WordTag, WordTagRef, RstRelation, WordArrow, LineAnnotation, Passage, SynopticWordMark, LineGroup } from "@/lib/db/schema";
 import { useSynopticCategories } from "@/lib/hooks/useSynopticCategories";
 import SynopticCategoryManager from "@/components/synoptic/SynopticCategoryManager";
 import type { Translation, TranslationVerse, TranslationFootnote } from "@/lib/db/schema";
@@ -28,6 +28,7 @@ import PassagePreviewPane from "@/components/text/PassagePreviewPane";
 import IntertextualPanel from "@/components/text/IntertextualPanel";
 import ResizablePane from "@/components/ResizablePane";
 import RstTypeManager from "@/components/controls/RstTypeManager";
+import LineGroupColorPanel from "@/components/controls/LineGroupColorPanel";
 import ToolbarCustomizer, { DEFAULT_TOOLBAR_VIS, type ToolbarVisibility } from "@/components/controls/ToolbarCustomizer";
 import type { ColorRule } from "@/lib/morphology/colorRules";
 import { RELATIONSHIP_TYPES } from "@/lib/morphology/clauseRelationships";
@@ -36,6 +37,10 @@ import type { RstCustomType } from "@/lib/db/schema";
 import { useWordArrows } from "@/lib/hooks/useWordArrows";
 import { useAnnotationRange } from "@/lib/hooks/useAnnotationRange";
 import { useRstRelations } from "@/lib/hooks/useRstRelations";
+import { useLineGroups } from "@/lib/hooks/useLineGroups";
+import { buildLineGroupTree, getMaxNestingLevel } from "@/lib/lineGroups/buildLineGroupTree";
+import { MAX_CONFIGURABLE_LEVELS } from "@/lib/lineGroups/colors";
+import { computeLineSpacing } from "@/lib/lineGroups/computeLineSpacing";
 import hebrewLemmas from "@/lib/data/hebrew-lemmas.json";
 import { computeSectionRanges, formatVerseRange } from "@/lib/utils/sectionRanges";
 import { chapterFallsInPassage } from "@/lib/utils/passageRange";
@@ -109,6 +114,7 @@ interface ChapterDisplayProps {
   initialLineIndents: { wordId: string; indentLevel: number }[];
   initialRstRelations: RstRelation[];
   initialTvRstRelations?: RstRelation[];
+  initialLineGroups: LineGroup[];
   initialWordArrows: WordArrow[];
   initialWordFormatting: { wordId: string; isBold: boolean; isItalic: boolean }[];
   initialSceneBreaks: { wordId: string; heading: string | null; level: number; verse: number; outOfSequence: boolean; extendedThrough: number | null; thematic: boolean; thematicLetter: string | null; transitional: boolean }[];
@@ -251,6 +257,7 @@ export default function ChapterDisplay({
   initialLineIndents,
   initialRstRelations,
   initialTvRstRelations = [],
+  initialLineGroups,
   initialWordArrows,
   initialWordFormatting,
   initialSceneBreaks,
@@ -377,6 +384,8 @@ export default function ChapterDisplay({
 
   // RST source-pad: dynamically sized so group chips never overlap verse labels
   const [rstSourcePad, setRstSourcePad] = useState(0);
+  // Line-group bracket source-pad: same idea, combined with rstSourcePad below.
+  const [lineGroupSourcePad, setLineGroupSourcePad] = useState(0);
 
   // Find-in-page bar
   const [findOpen, setFindOpen] = useState(false);
@@ -736,6 +745,9 @@ export default function ChapterDisplay({
   const [customRstTypes, setCustomRstTypes] = useState<RstCustomType[]>([]);
   const [showRstTypeManager, setShowRstTypeManager] = useState(false);
 
+  // Line-group bracket color-by-level panel (local to ChapterDisplay — not part of the hook)
+  const [showLineGroupColors, setShowLineGroupColors] = useState(false);
+
   // ── Word arrows (hook) ────────────────────────────────────────────────────
   const {
     wordArrowsState, setWordArrowsState,
@@ -1026,6 +1038,36 @@ export default function ChapterDisplay({
     getChapterForWord,
     paragraphFirstWordIds,
   });
+
+  // ── Line groups (poetry bracket grouping) hook ────────────────────────────
+  const {
+    lineGroups, setLineGroups,
+    editingLineGroups, setEditingLineGroups,
+    lineGroupSegA, setLineGroupSegA,
+    lineGroupSegAGroupId, setLineGroupSegAGroupId,
+    getBracketColor, setBracketColorForLevel,
+    handleSelectLineGroupSegment,
+    handleSelectLineGroupGroup,
+    handleDeleteLineGroup,
+  } = useLineGroups({
+    initialLineGroups,
+    book,
+    textSource,
+    getChapterForWord,
+    paragraphFirstWordIds,
+  });
+
+  // Nesting tree + per-line vertical-spacing overrides, recomputed whenever
+  // the groups or the segment order changes.
+  const lineGroupTree = useMemo(
+    () => buildLineGroupTree(lineGroups, paragraphFirstWordIds),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [lineGroups, paragraphFirstWordIds.join(",")]
+  );
+  const lineSpacingMap = useMemo(
+    () => computeLineSpacing(lineGroupTree, paragraphFirstWordIds),
+    [lineGroupTree, paragraphFirstWordIds]
+  );
 
   // ── Annotation coverage map ───────────────────────────────────────────────
   // Maps each paragraph-segment first-word-id to the annotations that cover it,
@@ -3554,6 +3596,7 @@ export default function ChapterDisplay({
         case "lineIndents":        setLineIndentMap(new Map()); break;
         case "wordArrows":         setWordArrowsState([]); break;
         case "rstRelations":       setRstRelations([]); break;
+        case "lineGroups":         setLineGroups([]); break;
         case "wordFormatting":     setWordFormattingMap(new Map()); break;
         case "lineAnnotations":    setLineAnnotations([]); break;
       }
@@ -4508,14 +4551,15 @@ export default function ChapterDisplay({
   //   refs, speech, arrows, wordTags, paragraph
   // Each lists everything it is COMPATIBLE with — i.e., everything except the
   // other annotation-editing modes.
-  const NON_ANNOTATION = ["paragraph", "scenes", "annotations", "indents", "rst"] as const;
+  const NON_ANNOTATION = ["paragraph", "scenes", "annotations", "indents", "rst", "lineGroups"] as const;
   const COMPAT: Record<string, string[]> = {
     paragraph:   ["indents"],
-    indents:     ["paragraph", "speech", "rst"],
+    indents:     ["paragraph", "speech", "rst", "lineGroups"],
     bold:        ["italic"],
     italic:      ["bold"],
     speech:      ["rst", "indents", "scenes", "annotations"],
     rst:         ["speech", "indents"],
+    lineGroups:  ["indents"],
     arrows:      [...NON_ANNOTATION],
     scenes:      [],
     annotations: [],
@@ -4533,6 +4577,7 @@ export default function ChapterDisplay({
     if (!keep.has("wordTags"))    { setEditingWordTags(false); setWordTagRangeStart(null); }
     if (!keep.has("indents"))     setEditingIndents(false);
     if (!keep.has("rst"))         { setEditingRst(false); setRstSegA(null); setRstSegB(null); setShowRstPicker(false); setRstEditGroupId(null); }
+    if (!keep.has("lineGroups"))  { setEditingLineGroups(false); setLineGroupSegA(null); setLineGroupSegAGroupId(null); setShowLineGroupColors(false); }
     if (!keep.has("arrows"))      { setEditingArrows(false); setArrowFromWordId(null); }
     if (!keep.has("bold"))        setEditingBold(false);
     if (!keep.has("italic"))      setEditingItalic(false);
@@ -4796,6 +4841,15 @@ export default function ChapterDisplay({
             arrowFromWordId={arrowFromWordId}
             onDeleteArrow={handleDeleteWordArrow}
             onUpdateArrow={handleUpdateWordArrow}
+            lineGroups={lineGroups}
+            editingLineGroups={editingLineGroups}
+            lineGroupSegA={lineGroupSegA}
+            lineGroupSegAGroupId={lineGroupSegAGroupId}
+            getLineGroupColor={getBracketColor}
+            onSelectLineGroupSegment={handleSelectLineGroupSegment}
+            onSelectLineGroupGroup={handleSelectLineGroupGroup}
+            onDeleteLineGroup={handleDeleteLineGroup}
+            onRequiredLineGroupPad={setLineGroupSourcePad}
             containerRef={textContainerRef}
             layoutRef={outerRef}
           />
@@ -5201,6 +5255,49 @@ export default function ChapterDisplay({
                     </div>
                   )}
                 </>
+              )}
+
+              {/* Line group (poetry bracket) mode */}
+              {toolbarVis.lineGroups && <button
+                disabled={editingWordTags}
+                onClick={() => {
+                  const entering = !editingLineGroups;
+                  if (entering) {
+                    deactivateIncompatible("lineGroups");
+                  } else {
+                    setLineGroupSegA(null);
+                    setLineGroupSegAGroupId(null);
+                    setShowLineGroupColors(false);
+                  }
+                  setEditingLineGroups(entering);
+                }}
+                data-tip={editingLineGroups
+                  ? t("toolbar.titleLineGroupsOn")
+                  : t("toolbar.titleLineGroupsOff")}
+                className={[
+                  "px-3 py-1.5 rounded text-[13px] font-medium transition-colors",
+                  editingLineGroups
+                    ? "bg-teal-600 text-white"
+                    : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
+                  "disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-stone-100 dark:disabled:hover:bg-stone-800",
+                ].join(" ")}
+              >
+                ⌐
+              </button>}
+              {toolbarVis.lineGroups && editingLineGroups && (
+                <button
+                  onClick={() => setShowLineGroupColors((v) => !v)}
+                  data-tip={t("toolbar.titleLineGroupsColor")}
+                  className={[
+                    "px-3 py-1.5 rounded text-[13px] font-medium transition-colors",
+                    showLineGroupColors
+                      ? "bg-amber-500 text-white"
+                      : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
+                  ].join(" ")}
+                  type="button"
+                >
+                  🎨
+                </button>
               )}
 
               {/* Line annotation mode */}
@@ -5872,6 +5969,26 @@ export default function ChapterDisplay({
           </div>
         )}
 
+        {/* Line group hint */}
+        {editingLineGroups && (
+          <div className="px-6 py-1 text-xs border-b border-[var(--border)] text-stone-500 dark:text-stone-400"
+               style={{ backgroundColor: "var(--nav-bg)" }}>
+            {lineGroupSegA
+              ? t("toolbar.hintLineGroupsA")
+              : t("toolbar.hintLineGroupsStart")}
+          </div>
+        )}
+
+        {/* Line group color-by-level panel */}
+        {editingLineGroups && showLineGroupColors && (
+          <LineGroupColorPanel
+            levelCount={Math.min(MAX_CONFIGURABLE_LEVELS, Math.max(3, getMaxNestingLevel(lineGroupTree)))}
+            getColor={getBracketColor}
+            onChange={setBracketColorForLevel}
+            onClose={() => setShowLineGroupColors(false)}
+          />
+        )}
+
         {/* RST relation type picker bar */}
         {showRstPicker && (
           <div
@@ -6206,7 +6323,8 @@ export default function ChapterDisplay({
                   setNotesOpen(true);
                   setNotesScrollVerse({ ch: verse.ch, v });
                 }}
-                rstSourcePad={rstSourcePad}
+                rstSourcePad={Math.max(rstSourcePad, lineGroupSourcePad)}
+                lineSpacingMap={lineSpacingMap}
                 presentationMode={presentationMode}
                 translationFootnotes={
                   showFootnotes

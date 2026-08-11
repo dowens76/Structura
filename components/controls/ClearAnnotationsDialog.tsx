@@ -11,6 +11,7 @@ export type ClearCategory =
   | "wordArrows"
   | "wordFormatting"
   | "rstRelations"
+  | "lineGroups"
   | "lineAnnotations";
 
 const CATEGORY_META: { key: ClearCategory; label: string; icon: string }[] = [
@@ -20,6 +21,7 @@ const CATEGORY_META: { key: ClearCategory; label: string; icon: string }[] = [
   { key: "wordTagRefs",        label: "Word / concept tags",     icon: "🏷" },
   { key: "lineIndents",        label: "Indentations",            icon: "⇥" },
   { key: "rstRelations",        label: "Relational arrows",       icon: "↳" },
+  { key: "lineGroups",          label: "Line groups (poetry)",    icon: "⌐" },
   { key: "wordArrows",         label: "Arrows",                  icon: "↷" },
   { key: "wordFormatting",     label: "Bold / italic formatting",icon: "B" },
   { key: "lineAnnotations",    label: "Clause labels",           icon: "≡" },

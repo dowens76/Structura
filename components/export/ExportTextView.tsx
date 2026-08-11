@@ -3,7 +3,7 @@
 import { useMemo, useRef, useState, useEffect } from "react";
 import type {
   Word, Character, CharacterRef, SpeechSection,
-  WordTag, WordTagRef, WordArrow, LineAnnotation, RstRelation, RstCustomType,
+  WordTag, WordTagRef, WordArrow, LineAnnotation, RstRelation, RstCustomType, LineGroup,
   TranslationFootnote,
 } from "@/lib/db/schema";
 import type { TranslationTextEntry, DisplayMode, InterlinearSubMode } from "@/lib/morphology/types";
@@ -11,6 +11,10 @@ import type { Translation, TranslationVerse } from "@/lib/db/schema";
 import VerseDisplay from "@/components/text/VerseDisplay";
 import WordArrowOverlay from "@/components/text/WordArrowOverlay";
 import RstRelationOverlay from "@/components/text/RstRelationOverlay";
+import LineGroupOverlay from "@/components/text/LineGroupOverlay";
+import { buildLineGroupTree } from "@/lib/lineGroups/buildLineGroupTree";
+import { computeLineSpacing } from "@/lib/lineGroups/computeLineSpacing";
+import { defaultColorForLevel } from "@/lib/lineGroups/colors";
 import { RELATIONSHIP_TYPES } from "@/lib/morphology/clauseRelationships";
 import type { RstTypeEntry } from "@/lib/morphology/clauseRelationships";
 
@@ -34,6 +38,7 @@ interface Props {
   wordArrows: WordArrow[];
   lineAnnotations: LineAnnotation[];
   rstRelations: RstRelation[];
+  lineGroups: LineGroup[];
   // Interlinear mode — mirrors whatever the live chapter view currently has
   // displayed (see lib/export/interlinearExportData.ts), so the exported PDF
   // shows the same lemma/Strong's/morph/translit/constituent/dataset labels
@@ -71,6 +76,7 @@ export default function ExportTextView({
   wordArrows,
   lineAnnotations,
   rstRelations,
+  lineGroups,
   displayMode = "clean",
   interlinearSubMode = "lemma",
   constituentLabelMap = new Map(),
@@ -201,6 +207,15 @@ export default function ExportTextView({
       .map((w) => w.wordId);
   }, [words, paragraphBreakIds]);
 
+  const lineGroupTree = useMemo(
+    () => buildLineGroupTree(lineGroups, paragraphFirstWordIds),
+    [lineGroups, paragraphFirstWordIds]
+  );
+  const lineSpacingMap = useMemo(
+    () => computeLineSpacing(lineGroupTree, paragraphFirstWordIds),
+    [lineGroupTree, paragraphFirstWordIds]
+  );
+
   // ── Annotation coverage map (mirrors ChapterDisplay logic) ───────────────
   type SegAnnotationEntry = { annotation: LineAnnotation; isStart: boolean; isEnd: boolean };
   const annotationsBySegment = useMemo<Map<string, SegAnnotationEntry[]>>(() => {
@@ -302,6 +317,19 @@ export default function ExportTextView({
           onDeleteGroup={noop}
           customTypes={allRstTypes}
         />
+        <LineGroupOverlay
+          groups={lineGroups}
+          containerRef={containerRef}
+          isHebrew={isHebrew}
+          hasTranslation={hasTranslation}
+          editing={false}
+          paragraphFirstWordIds={paragraphFirstWordIds}
+          selectedSegA={null}
+          getColor={defaultColorForLevel}
+          onSelectSegment={noop}
+          onSelectGroup={noop}
+          onDeleteGroup={noop}
+        />
 
         {verseNums.map((verseNum) => {
           const verseWords = verseGroups.get(verseNum)!;
@@ -382,7 +410,8 @@ export default function ExportTextView({
               annotRangeStartWordId={null}
               annotRangeEndWordId={null}
               showAnnotationCol={lineAnnotations.length > 0}
-              rstSourcePad={rstRelations.length > 0 ? 48 : 0}
+              rstSourcePad={Math.max(rstRelations.length > 0 ? 48 : 0, lineGroups.length > 0 ? 32 : 0)}
+              lineSpacingMap={lineSpacingMap}
               translationFootnotes={verseFootnotes}
             />
           );

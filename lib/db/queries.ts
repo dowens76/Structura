@@ -5,8 +5,8 @@ import type { LookupMaps } from "./index";
 import { books, words } from "./source-schema";
 import { lexiconEntries } from "./lexica-schema";
 import type { Word, WordRow } from "./source-schema";
-import { translations, translationVerses, paragraphBreaks, paragraphHeadings, characters, characterRefs, speechSections, wordTags, wordTagRefs, lineIndents, sceneBreaks, passages, rstRelations, wordArrows, wordFormatting, lineAnnotations, bookGroupings, appSettings, translationFootnotes, translationVersions, workspaces, users, textCriticalMarks, notes, intertextualLinks, synopticSets, synopticWordMarks, constituentLabels, transliterationFormats, wordDatasets, wordDatasetEntries, wordDatasetLabelColors, versions, activeVersionSelections } from "./user-schema";
-import type { Book, Translation, TranslationVerse, Character, CharacterRef, SpeechSection, WordTag, WordTagRef, Passage, RstRelation, WordArrow, LineAnnotation, BookGrouping, TranslationFootnote, TranslationVersion, IntertextualLink, SynopticSet, SynopticWordMark, Version } from "./schema";
+import { translations, translationVerses, paragraphBreaks, paragraphHeadings, characters, characterRefs, speechSections, wordTags, wordTagRefs, lineIndents, sceneBreaks, passages, rstRelations, lineGroups, wordArrows, wordFormatting, lineAnnotations, bookGroupings, appSettings, translationFootnotes, translationVersions, workspaces, users, textCriticalMarks, notes, intertextualLinks, synopticSets, synopticWordMarks, constituentLabels, transliterationFormats, wordDatasets, wordDatasetEntries, wordDatasetLabelColors, versions, activeVersionSelections } from "./user-schema";
+import type { Book, Translation, TranslationVerse, Character, CharacterRef, SpeechSection, WordTag, WordTagRef, Passage, RstRelation, LineGroup, WordArrow, LineAnnotation, BookGrouping, TranslationFootnote, TranslationVersion, IntertextualLink, SynopticSet, SynopticWordMark, Version } from "./schema";
 import { VERSIONABLE_FEATURES } from "@/lib/versions/registry";
 import type { TextSource, Testament } from "@/lib/morphology/types";
 
@@ -1982,6 +1982,67 @@ export async function updateRstRelationIntersectPoint(
     .update(rstRelations)
     .set({ intersectPoint })
     .where(eq(rstRelations.id, id));
+}
+
+// ── Line Groups (poetry line-grouping brackets) ─────────────────────────────────
+
+export async function getChapterLineGroups(
+  book: string,
+  chapter: number,
+  textSource: string,
+  workspaceId: number,
+  versionId: number
+): Promise<LineGroup[]> {
+  return userDb
+    .select()
+    .from(lineGroups)
+    .where(
+      and(
+        eq(lineGroups.workspaceId, workspaceId),
+        eq(lineGroups.versionId, versionId),
+        eq(lineGroups.book, book),
+        eq(lineGroups.chapter, chapter),
+        eq(lineGroups.textSource, textSource)
+      )
+    )
+    .orderBy(asc(lineGroups.groupId), asc(lineGroups.sortOrder));
+}
+
+export async function createLineGroup(
+  groupId: string,
+  members: { memberId: string; sortOrder: number }[],
+  book: string,
+  chapter: number,
+  textSource: string,
+  workspaceId: number,
+  versionId: number
+): Promise<LineGroup[]> {
+  const rows = await userDb
+    .insert(lineGroups)
+    .values(
+      members.map((m) => ({
+        groupId,
+        memberId: m.memberId,
+        sortOrder: m.sortOrder,
+        book,
+        chapter,
+        textSource,
+        workspaceId,
+        versionId,
+      }))
+    )
+    .returning();
+  return rows;
+}
+
+export async function deleteLineGroup(groupId: string, workspaceId: number): Promise<void> {
+  await userDb.delete(lineGroups).where(
+    and(eq(lineGroups.workspaceId, workspaceId), eq(lineGroups.groupId, groupId))
+  );
+}
+
+export async function deleteLineGroupMember(id: number): Promise<void> {
+  await userDb.delete(lineGroups).where(eq(lineGroups.id, id));
 }
 
 // ── Word Arrows ───────────────────────────────────────────────────────────────

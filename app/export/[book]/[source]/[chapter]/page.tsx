@@ -19,6 +19,7 @@ import {
   getChapterSceneBreaks,
   getChapterLineAnnotations,
   getChapterRstRelations,
+  getChapterLineGroups,
   getAuthorName,
   getUltTranslation,
   getUltVerses,
@@ -81,6 +82,7 @@ export default async function ExportChapterPage({ params, searchParams }: PagePr
     wordArrows,
     lineAnnotations,
     rstRelations,
+    lineGroups,
   ] = await Promise.all([
     getChapterParagraphBreaks(osisBook, chapter, workspaceId, versionId),
     getCharacters(osisBook, workspaceId),
@@ -95,6 +97,7 @@ export default async function ExportChapterPage({ params, searchParams }: PagePr
     getChapterWordArrows(osisBook, chapter, textSource, workspaceId, versionId),
     getChapterLineAnnotations(osisBook, chapter, textSource, workspaceId, versionId),
     getChapterRstRelations(osisBook, chapter, textSource, workspaceId, versionId),
+    getChapterLineGroups(osisBook, chapter, textSource, workspaceId, versionId),
   ]);
 
   // Include built-in ULT and VCB translations (same as ChapterDisplay does).
@@ -263,6 +266,7 @@ export default async function ExportChapterPage({ params, searchParams }: PagePr
           wordArrows={wordArrows}
           lineAnnotations={lineAnnotations}
           rstRelations={rstRelations}
+          lineGroups={lineGroups}
           displayMode={displayMode}
           interlinearSubMode={interlinearSubMode}
           constituentLabelMap={interlinearData.constituentLabelMap}

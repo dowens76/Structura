@@ -34,6 +34,7 @@ interface DataTypes {
   lineIndents: boolean;
   wordArrows: boolean;
   rstRelations: boolean;
+  lineGroups: boolean;
   notes: boolean;
   passages: boolean;
   constituentLabels: boolean;
@@ -75,7 +76,7 @@ interface Props {
 const ALL_DATA_TYPES_TRUE: DataTypes = {
   translationVerses: true, sectionBreaks: true, paragraphBreaks: true,
   lineAnnotations: true, wordTags: true, wordFormatting: true,
-  characters: true, lineIndents: true, wordArrows: true, rstRelations: true,
+  characters: true, lineIndents: true, wordArrows: true, rstRelations: true, lineGroups: true,
   notes: true, passages: true, constituentLabels: true,
   transliterationFormats: true, textCriticalMarks: true, paragraphHeadings: true,
   translationFootnotes: true, translationVersions: true, wordDatasets: true,
@@ -97,6 +98,7 @@ const DATA_TYPE_KEYS: { key: keyof DataTypes; tKey: string }[] = [
   { key: "lineIndents", tKey: "account.dataTypeLineIndents" },
   { key: "wordArrows", tKey: "account.dataTypeWordArrows" },
   { key: "rstRelations", tKey: "account.dataTypeRstRelations" },
+  { key: "lineGroups", tKey: "account.dataTypeLineGroups" },
   { key: "notes", tKey: "account.dataTypeNotes" },
   { key: "passages", tKey: "account.dataTypePassages" },
   { key: "constituentLabels", tKey: "account.dataTypeConstituentLabels" },

@@ -22,6 +22,7 @@ export type DataType =
   | "lineIndents"
   | "wordArrows"
   | "rstRelations"
+  | "lineGroups"
   | "notes"
   | "passages"
   // Group A — trivial flat chapter-scoped copies

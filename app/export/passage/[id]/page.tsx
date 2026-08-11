@@ -20,6 +20,7 @@ import {
   getChapterSceneBreaks,
   getChapterLineAnnotations,
   getChapterRstRelations,
+  getChapterLineGroups,
   getAuthorName,
   getUltTranslation,
   getUltVerses,
@@ -91,6 +92,7 @@ export default async function ExportPassagePage({ params, searchParams }: PagePr
           getChapterWordArrows(osisBook, ch, textSource, workspaceId, versionId),
           getChapterLineAnnotations(osisBook, ch, textSource, workspaceId, versionId),
           getChapterRstRelations(osisBook, ch, textSource, workspaceId, versionId),
+          getChapterLineGroups(osisBook, ch, textSource, workspaceId, versionId),
         ]);
       })
     ),
@@ -108,6 +110,7 @@ export default async function ExportPassagePage({ params, searchParams }: PagePr
   const wordArrows          = perChapterResults.flatMap(([,,,,,,, wa]) => wa);
   const lineAnnotations     = perChapterResults.flatMap(([,,,,,,,, la]) => la);
   const rstRelations        = perChapterResults.flatMap(([,,,,,,,,, rr]) => rr);
+  const lineGroups          = perChapterResults.flatMap(([,,,,,,,,,, lg]) => lg);
 
   // Include built-in ULT and VCB translations (same as ChapterDisplay does).
   const ultBaseVersesByChapter = new Map(
@@ -316,6 +319,7 @@ export default async function ExportPassagePage({ params, searchParams }: PagePr
           wordArrows={wordArrows}
           lineAnnotations={lineAnnotations}
           rstRelations={rstRelations}
+          lineGroups={lineGroups}
           displayMode={displayMode}
           interlinearSubMode={interlinearSubMode}
           constituentLabelMap={interlinearData.constituentLabelMap}

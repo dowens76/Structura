@@ -11,7 +11,8 @@
 import type { RefObject } from "react";
 import RstRelationOverlay from "./RstRelationOverlay";
 import WordArrowOverlay from "./WordArrowOverlay";
-import type { RstRelation, WordArrow, RstCustomType } from "@/lib/db/schema";
+import LineGroupOverlay from "./LineGroupOverlay";
+import type { RstRelation, WordArrow, RstCustomType, LineGroup } from "@/lib/db/schema";
 import type { ArrowPatch } from "@/lib/hooks/useWordArrows";
 
 export interface ChapterOverlaysProps {
@@ -45,6 +46,17 @@ export interface ChapterOverlaysProps {
   arrowFromWordId: string | null;
   onDeleteArrow: (id: number) => Promise<void>;
   onUpdateArrow: (id: number, patch: ArrowPatch) => Promise<void>;
+
+  // ── Line-group bracket overlay ───────────────────────────────────────────────
+  lineGroups: LineGroup[];
+  editingLineGroups: boolean;
+  lineGroupSegA: string | null;
+  lineGroupSegAGroupId: string | null;
+  getLineGroupColor: (level: number) => string;
+  onSelectLineGroupSegment: (wordId: string) => void;
+  onSelectLineGroupGroup: (groupId: string) => void;
+  onDeleteLineGroup: (groupId: string) => void;
+  onRequiredLineGroupPad?: (pad: number) => void;
 
   // ── Shared layout refs ──────────────────────────────────────────────────────
   /** The scrollable content container — overlays render SVG inside this. */
@@ -82,6 +94,15 @@ export default function ChapterOverlays({
   arrowFromWordId,
   onDeleteArrow,
   onUpdateArrow,
+  lineGroups,
+  editingLineGroups,
+  lineGroupSegA,
+  lineGroupSegAGroupId,
+  getLineGroupColor,
+  onSelectLineGroupSegment,
+  onSelectLineGroupGroup,
+  onDeleteLineGroup,
+  onRequiredLineGroupPad,
   containerRef,
   layoutRef,
 }: ChapterOverlaysProps) {
@@ -120,6 +141,22 @@ export default function ChapterOverlays({
         onUpdateArrow={onUpdateArrow}
         isHebrew={isHebrew}
         hasTranslation={hasTranslation}
+      />
+      <LineGroupOverlay
+        groups={lineGroups}
+        containerRef={containerRef}
+        layoutRef={layoutRef}
+        isHebrew={isHebrew}
+        hasTranslation={hasTranslation}
+        editing={editingLineGroups}
+        paragraphFirstWordIds={paragraphFirstWordIds}
+        selectedSegA={lineGroupSegA}
+        selectedSegAGroupId={lineGroupSegAGroupId}
+        getColor={getLineGroupColor}
+        onSelectSegment={onSelectLineGroupSegment}
+        onSelectGroup={onSelectLineGroupGroup}
+        onDeleteGroup={onDeleteLineGroup}
+        onRequiredSourcePad={onRequiredLineGroupPad}
       />
     </>
   );

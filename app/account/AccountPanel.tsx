@@ -41,6 +41,7 @@ interface ImportForm {
     lineIndents: boolean;
     wordArrows: boolean;
     rstRelations: boolean;
+    lineGroups: boolean;
     notes: boolean;
     passages: boolean;
     constituentLabels: boolean;
@@ -207,6 +208,7 @@ const defaultImportForm: ImportForm = {
     lineIndents: true,
     wordArrows: true,
     rstRelations: true,
+    lineGroups: true,
     notes: true,
     passages: true,
     constituentLabels: true,
@@ -233,6 +235,7 @@ const DATA_TYPE_KEYS: { key: keyof ImportForm["dataTypes"]; tKey: string }[] = [
   { key: "lineIndents", tKey: "account.dataTypeLineIndents" },
   { key: "wordArrows", tKey: "account.dataTypeWordArrows" },
   { key: "rstRelations", tKey: "account.dataTypeRstRelations" },
+  { key: "lineGroups", tKey: "account.dataTypeLineGroups" },
   { key: "notes", tKey: "account.dataTypeNotes" },
   { key: "passages", tKey: "account.dataTypePassages" },
   { key: "constituentLabels", tKey: "account.dataTypeConstituentLabels" },
