@@ -105,15 +105,24 @@ function findImmediateGroupParent(leafId: string, node: LineGroupNode): LineGrou
  * instead — this is what lets three consecutive lines merge into a single
  * flat bracket instead of two overlapping ones that both touch the shared
  * middle line.
+ *
+ * `explicitGroup` records WHY this endpoint is a group: true when the user
+ * deliberately clicked the group's own connector dot, false when it was only
+ * inferred because the clicked line happens to already be a member of one.
+ * commitPair only auto-flattens on the inferred case — an explicit connector
+ * click always means "nest a new outer level", never "merge into me", even
+ * when the other endpoint is immediately adjacent.
  */
 function resolveEndpoint(
   id: string,
   isGroup: boolean,
   tree: LineGroupNode,
-): { id: string; isGroup: boolean } {
-  if (isGroup) return { id, isGroup };
+): { id: string; isGroup: boolean; explicitGroup: boolean } {
+  if (isGroup) return { id, isGroup, explicitGroup: true };
   const parent = findImmediateGroupParent(id, tree);
-  return parent ? { id: parent.id, isGroup: true } : { id, isGroup };
+  return parent
+    ? { id: parent.id, isGroup: true, explicitGroup: false }
+    : { id, isGroup, explicitGroup: false };
 }
 
 export function useLineGroups({
@@ -167,8 +176,10 @@ export function useLineGroups({
     // (e.g. clicking already-grouped 1c, then adjacent 1d, extends the
     // existing {1b,1c} group to {1b,1c,1d}) instead of creating a second,
     // overlapping 2-member bracket that duplicates the shared line.
-    const { id: aId, isGroup: aIsGroup } = resolveEndpoint(rawAId, rawAIsGroup, tree);
-    const { id: bId, isGroup: bIsGroup } = resolveEndpoint(rawBId, rawBIsGroup, tree);
+    const rA = resolveEndpoint(rawAId, rawAIsGroup, tree);
+    const rB = resolveEndpoint(rawBId, rawBIsGroup, tree);
+    const { id: aId, isGroup: aIsGroup } = rA;
+    const { id: bId, isGroup: bIsGroup } = rB;
 
     // Guard: both endpoints resolved to the same group (e.g. two lines
     // already inside the same group) — nothing meaningful to do.
@@ -176,10 +187,15 @@ export function useLineGroups({
 
     const ch = getChapterForWord(aId);
 
-    // Flat-extend: exactly one endpoint is an existing group and the other is
-    // a plain line immediately adjacent to that group's span — add it as a
-    // direct (flat) member rather than nesting a new wrapper group.
-    if (aIsGroup !== bIsGroup) {
+    // Flat-extend: exactly one endpoint is an existing group (and that
+    // group-ness was only INFERRED, not an explicit connector-dot click) and
+    // the other is a plain line immediately adjacent to that group's span —
+    // add it as a direct (flat) member rather than nesting a new wrapper
+    // group. An explicit connector-dot selection always falls through to the
+    // nesting branch below instead, even when adjacent, since clicking the
+    // group's own dot is a deliberate "treat this as one unit" signal.
+    const groupSideExplicit = aIsGroup ? rA.explicitGroup : rB.explicitGroup;
+    if (aIsGroup !== bIsGroup && !groupSideExplicit) {
       const groupId = aIsGroup ? aId : bId;
       const lineId  = aIsGroup ? bId : aId;
       const span = getGroupSpan(groupId, tree, paragraphFirstWordIds);

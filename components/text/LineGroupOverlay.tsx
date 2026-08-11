@@ -290,7 +290,11 @@ export default function LineGroupOverlay({
         const isInteractive = editing && !b.isTrans;
         const isSelected = b.id === selectedSegAGroupId;
         const midY = (b.yTop + b.yBottom) / 2;
-        const connDotX = ticksLeft ? b.x - 6 : b.x + 6;
+        // Outside the bracket stroke (opposite the tick direction, away from
+        // the text) — not on the text-facing side, where it would otherwise
+        // sit right on top of the line dots' own cluster (both computed from
+        // roughly the same LEAF_MARGIN offset for a single-level bracket).
+        const connDotX = ticksLeft ? b.x + 8 : b.x - 8;
         const strokeColor = getColor(b.level);
 
         return (
@@ -318,6 +322,7 @@ export default function LineGroupOverlay({
             )}
             {isInteractive && (
               <circle
+                data-lg-connector={b.id}
                 cx={connDotX} cy={midY} r={DOT_R}
                 fill={isSelected ? "#7C3AED" : "transparent"}
                 stroke={isSelected ? "#7C3AED" : "#94A3B8"}
@@ -351,7 +356,7 @@ export default function LineGroupOverlay({
           const dots: React.ReactElement[] = [];
           if (editing) {
             dots.push(
-              <circle key={`${wordId}-src`} cx={srcDotX} cy={dotY} r={isSelected ? 5 : DOT_R}
+              <circle key={`${wordId}-src`} data-lg-line={wordId} cx={srcDotX} cy={dotY} r={isSelected ? 5 : DOT_R}
                 fill={isSelected ? "#7C3AED" : "transparent"}
                 stroke={isSelected ? "#7C3AED" : "#94A3B8"} strokeWidth={isSelected ? 0 : 1.5}
                 style={{ cursor: "pointer", pointerEvents: "all" }}
