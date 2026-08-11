@@ -572,6 +572,8 @@ export const wordFormatting = sqliteTable(
     isBold:        integer("is_bold",       { mode: "boolean" }).notNull().default(false),
     isItalic:      integer("is_italic",     { mode: "boolean" }).notNull().default(false),
     isSmallCaps:   integer("is_small_caps", { mode: "boolean" }).notNull().default(false),
+    /** Hex color (e.g. "#DC2626") applied to the word's text, or null for the default color. */
+    textColor:     text("text_color"),
     textSource:  text("text_source").notNull(),
     book:        text("book").notNull(),
     chapter:     integer("chapter").notNull(),

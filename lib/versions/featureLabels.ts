@@ -20,7 +20,7 @@ export const VERSIONABLE_FEATURE_LABELS: VersionableFeatureLabel[] = [
   { key: "lineGroups", label: "Line groups (poetry)" },
   { key: "wordArrows", label: "Word arrows" },
   { key: "lineAnnotations", label: "Clause labels (plot/theme/desc)" },
-  { key: "wordFormatting", label: "Word formatting (bold/italic)" },
+  { key: "wordFormatting", label: "Word formatting (bold/italic/color)" },
   { key: "textCriticalMarks", label: "Text-critical marks" },
 ];
 

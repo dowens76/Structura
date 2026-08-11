@@ -18,6 +18,7 @@ export interface ToolbarVisibility {
   arrows: boolean;
   bold: boolean;
   italic: boolean;
+  textColor: boolean;
   refs: boolean;
   speech: boolean;
   wordTags: boolean;
@@ -34,7 +35,7 @@ export interface ToolbarVisibility {
 export const DEFAULT_TOOLBAR_VIS: ToolbarVisibility = {
   tooltips: true, qatal: true, atnach: true, scenes: true, outline: true,
   annotations: true, atnachInsert: true, syllableStress: true, paragraphs: true, indents: true,
-  rst: true, lineGroups: true, arrows: true, bold: true, italic: true,
+  rst: true, lineGroups: true, arrows: true, bold: true, italic: true, textColor: true,
   refs: true, speech: true, wordTags: true, clear: true,
   notes: true, search: true, bible: true, intertextual: true, translations: true,
   wordCompare: true, tc: true,
@@ -51,7 +52,7 @@ export const DEFAULT_TOOLBAR_VIS: ToolbarVisibility = {
 export const SYNOPTIC_DEFAULT_TOOLBAR_VIS: ToolbarVisibility = {
   tooltips: true, qatal: false, atnach: false, scenes: false, outline: false,
   annotations: false, atnachInsert: false, syllableStress: false, paragraphs: false, indents: false,
-  rst: false, lineGroups: false, arrows: false, bold: false, italic: false,
+  rst: false, lineGroups: false, arrows: false, bold: false, italic: false, textColor: false,
   refs: false, speech: false, wordTags: false, clear: false,
   notes: false, search: false, bible: false, intertextual: false, translations: false,
   wordCompare: true, tc: false,
@@ -96,8 +97,9 @@ const SECTIONS: { label: string; items: { key: keyof ToolbarVisibility; label: s
   {
     label: "Formatting",
     items: [
-      { key: "bold",   label: "B Bold" },
-      { key: "italic", label: "I Italic" },
+      { key: "bold",      label: "B Bold" },
+      { key: "italic",    label: "I Italic" },
+      { key: "textColor", label: "A Text color" },
     ],
   },
   {

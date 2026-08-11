@@ -30,7 +30,7 @@ interface Props {
   wordTags: WordTag[];
   wordTagRefs: WordTagRef[];
   lineIndents: { wordId: string; indentLevel: number }[];
-  wordFormatting: { wordId: string; isBold: boolean; isItalic: boolean }[];
+  wordFormatting: { wordId: string; isBold: boolean; isItalic: boolean; textColor: string | null }[];
   sceneBreaks: { wordId: string; heading: string | null; level: number; verse: number; outOfSequence: boolean }[];
   availableTranslations: Translation[];
   translationVerseData: Record<number, TranslationVerse[]>;
@@ -181,7 +181,7 @@ export default function ExportTextView({
   }, [words, paragraphBreakIds]);
 
   const wordFormattingMap = useMemo(
-    () => new Map(wordFormatting.map((f) => [f.wordId, { isBold: f.isBold, isItalic: f.isItalic }])),
+    () => new Map(wordFormatting.map((f) => [f.wordId, { isBold: f.isBold, isItalic: f.isItalic, textColor: f.textColor }])),
     [wordFormatting]
   );
 

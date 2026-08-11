@@ -22,23 +22,24 @@ export async function GET(request: NextRequest) {
 }
 
 // POST /api/word-formatting
-// Body: { wordId, isBold, isItalic, textSource, book, chapter }
-// If both isBold and isItalic are false, the record is removed (resets to no formatting).
+// Body: { wordId, isBold, isItalic, textColor, textSource, book, chapter }
+// If isBold and isItalic are both false and textColor is null/omitted, the
+// record is removed (resets to no formatting).
 export async function POST(request: NextRequest) {
   const workspaceId = await getActiveWorkspaceId();
-  let body: { wordId?: string; isBold?: boolean; isItalic?: boolean; textSource?: string; book?: string; chapter?: number };
+  let body: { wordId?: string; isBold?: boolean; isItalic?: boolean; textColor?: string | null; textSource?: string; book?: string; chapter?: number };
   try {
     body = await request.json();
   } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const { wordId, isBold, isItalic, textSource, book, chapter } = body;
+  const { wordId, isBold, isItalic, textColor, textSource, book, chapter } = body;
   if (!wordId || isBold == null || isItalic == null || !textSource || !book || chapter == null) {
     return NextResponse.json({ error: "Missing fields" }, { status: 400 });
   }
 
   const versionId = await getActiveVersionId(workspaceId, book, chapter);
-  await setWordFormatting(wordId, isBold, isItalic, textSource, book, chapter, workspaceId, versionId);
+  await setWordFormatting(wordId, isBold, isItalic, textColor ?? null, textSource, book, chapter, workspaceId, versionId);
   return NextResponse.json({ ok: true });
 }

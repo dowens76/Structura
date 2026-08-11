@@ -116,7 +116,7 @@ interface ChapterDisplayProps {
   initialTvRstRelations?: RstRelation[];
   initialLineGroups: LineGroup[];
   initialWordArrows: WordArrow[];
-  initialWordFormatting: { wordId: string; isBold: boolean; isItalic: boolean }[];
+  initialWordFormatting: { wordId: string; isBold: boolean; isItalic: boolean; textColor: string | null }[];
   initialSceneBreaks: { wordId: string; heading: string | null; level: number; verse: number; outOfSequence: boolean; extendedThrough: number | null; thematic: boolean; thematicLetter: string | null; transitional: boolean }[];
   initialLineAnnotations: LineAnnotation[];
   // `bookId` disambiguates which book each break belongs to — required for
@@ -763,12 +763,20 @@ export default function ChapterDisplay({
     getChapterForWord,
   });
 
-  // ── Word formatting (bold / italic) state ─────────────────────────────────
-  const [wordFormattingMap, setWordFormattingMap] = useState<Map<string, { isBold: boolean; isItalic: boolean }>>(
-    () => new Map(initialWordFormatting.map((f) => [f.wordId, { isBold: f.isBold, isItalic: f.isItalic }]))
+  // ── Word formatting (bold / italic / color) state ─────────────────────────
+  const [wordFormattingMap, setWordFormattingMap] = useState<Map<string, { isBold: boolean; isItalic: boolean; textColor: string | null }>>(
+    () => new Map(initialWordFormatting.map((f) => [f.wordId, { isBold: f.isBold, isItalic: f.isItalic, textColor: f.textColor }]))
   );
   const [editingBold, setEditingBold]     = useState(false);
   const [editingItalic, setEditingItalic] = useState(false);
+  const [editingTextColor, setEditingTextColor] = useState(false);
+  const [activeTextColor, setActiveTextColor] = useState(
+    () => readLocal("structura:activeTextColor", "#DC2626")
+  );
+  function updateActiveTextColor(color: string) {
+    setActiveTextColor(color);
+    writeLocal("structura:activeTextColor", color);
+  }
   const [showClearDialog, setShowClearDialog] = useState(false);
 
   // ── Source text visibility ─────────────────────────────────────────────────
@@ -2214,7 +2222,7 @@ export default function ChapterDisplay({
       handleSelectAnnotationSegment(segId, shiftHeld);
       return;
     }
-    if (editingBold || editingItalic) {
+    if (editingBold || editingItalic || editingTextColor) {
       handleToggleWordFormatting(word);
       return;
     }
@@ -2810,7 +2818,7 @@ export default function ChapterDisplay({
   // Called when a translation word is clicked in refs-editing, word-tag-editing,
   // or formatting mode.
   function handleSelectTranslationWord(wordId: string, abbr: string, shiftHeld = false) {
-    if (editingBold || editingItalic) {
+    if (editingBold || editingItalic || editingTextColor) {
       handleToggleFormattingById(wordId, abbr);
       return;
     }
@@ -4041,28 +4049,35 @@ export default function ChapterDisplay({
   // Core toggle — shared by source words (source = textSource) and translation
   // words (source = translation abbreviation, e.g. "ESV").
   async function handleToggleFormattingById(wordId: string, source: string) {
-    const existing = wordFormattingMap.get(wordId) ?? { isBold: false, isItalic: false };
+    const existing = wordFormattingMap.get(wordId) ?? { isBold: false, isItalic: false, textColor: null };
     const nextBold   = editingBold   ? !existing.isBold   : existing.isBold;
     const nextItalic = editingItalic ? !existing.isItalic : existing.isItalic;
+    // Color isn't a plain boolean toggle: clicking a word that already has the
+    // currently-active color removes it (back to default); otherwise it's set
+    // (or replaced) to the active color — mirrors bold/italic's "click again
+    // to undo" behavior while still allowing one click to switch colors.
+    const nextColor  = editingTextColor
+      ? (existing.textColor === activeTextColor ? null : activeTextColor)
+      : existing.textColor;
 
     // Optimistic update
     setWordFormattingMap((prev) => {
       const next = new Map(prev);
-      if (!nextBold && !nextItalic) next.delete(wordId);
-      else next.set(wordId, { isBold: nextBold, isItalic: nextItalic });
+      if (!nextBold && !nextItalic && !nextColor) next.delete(wordId);
+      else next.set(wordId, { isBold: nextBold, isItalic: nextItalic, textColor: nextColor });
       return next;
     });
     try {
       await fetch("/api/word-formatting", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ wordId, isBold: nextBold, isItalic: nextItalic, textSource: source, ...getWordLocation(wordId) }),
+        body: JSON.stringify({ wordId, isBold: nextBold, isItalic: nextItalic, textColor: nextColor, textSource: source, ...getWordLocation(wordId) }),
       });
     } catch {
       // Rollback on error
       setWordFormattingMap((prev) => {
         const next = new Map(prev);
-        if (!existing.isBold && !existing.isItalic) next.delete(wordId);
+        if (!existing.isBold && !existing.isItalic && !existing.textColor) next.delete(wordId);
         else next.set(wordId, existing);
         return next;
       });
@@ -4555,8 +4570,9 @@ export default function ChapterDisplay({
   const COMPAT: Record<string, string[]> = {
     paragraph:   ["indents"],
     indents:     ["paragraph", "speech", "rst", "lineGroups"],
-    bold:        ["italic"],
-    italic:      ["bold"],
+    bold:        ["italic", "textColor"],
+    italic:      ["bold", "textColor"],
+    textColor:   ["bold", "italic"],
     speech:      ["rst", "indents", "scenes", "annotations"],
     rst:         ["speech", "indents"],
     lineGroups:  ["indents"],
@@ -4581,6 +4597,7 @@ export default function ChapterDisplay({
     if (!keep.has("arrows"))      { setEditingArrows(false); setArrowFromWordId(null); }
     if (!keep.has("bold"))        setEditingBold(false);
     if (!keep.has("italic"))      setEditingItalic(false);
+    if (!keep.has("textColor"))   setEditingTextColor(false);
     if (!keep.has("footnotes"))   { setEditingFootnotes(false); setFnAnchorMoveId(null); }
     if (!keep.has("wordCompare")) { setEditingWordCompare(false); setWordCompareRangeStart(null); }
   }
@@ -5391,6 +5408,35 @@ export default function ChapterDisplay({
               >
                 I
               </button>}
+
+              {/* Text color formatting mode */}
+              {toolbarVis.textColor && <button
+                disabled={editingWordTags}
+                onClick={() => {
+                  if (!editingTextColor) deactivateIncompatible("textColor");
+                  setEditingTextColor((v) => !v);
+                }}
+                data-tip={editingWordTags ? t("toolbar.titleTextColorDisabled") : editingTextColor ? t("toolbar.titleTextColorOn") : t("toolbar.titleTextColorOff")}
+                className={[
+                  "px-3 py-1.5 rounded text-[13px] font-bold transition-colors",
+                  editingTextColor
+                    ? "bg-stone-800 text-white dark:bg-stone-200 dark:text-stone-900"
+                    : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
+                  "disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-stone-100 dark:disabled:hover:bg-stone-800",
+                ].join(" ")}
+                style={{ color: editingTextColor ? undefined : activeTextColor }}
+              >
+                A
+              </button>}
+              {toolbarVis.textColor && editingTextColor && (
+                <input
+                  type="color"
+                  value={activeTextColor}
+                  onChange={(e) => updateActiveTextColor(e.target.value)}
+                  data-tip={t("toolbar.titleTextColorPicker")}
+                  className="w-7 h-7 rounded cursor-pointer border border-[var(--border)] bg-transparent p-0.5"
+                />
+              )}
 
               {/* Text Critical markup mode */}
               {toolbarVis.tc && (
@@ -6268,7 +6314,7 @@ export default function ChapterDisplay({
                 onSetSegmentIndent={handleSetIndent}
                 onSetSegmentTvIndent={handleSetTvIndent}
                 wordFormattingMap={wordFormattingMap}
-                editingFormatting={editingBold || editingItalic}
+                editingFormatting={editingBold || editingItalic || editingTextColor}
                 interlinearSubMode={interlinearSubMode}
                 constituentLabelMap={constituentLabelMap}
                 constituentGroupMap={constituentGroupMap}

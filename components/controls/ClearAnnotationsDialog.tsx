@@ -23,7 +23,7 @@ const CATEGORY_META: { key: ClearCategory; label: string; icon: string }[] = [
   { key: "rstRelations",        label: "Relational arrows",       icon: "↳" },
   { key: "lineGroups",          label: "Line groups (poetry)",    icon: "⌐" },
   { key: "wordArrows",         label: "Arrows",                  icon: "↷" },
-  { key: "wordFormatting",     label: "Bold / italic formatting",icon: "B" },
+  { key: "wordFormatting",     label: "Bold / italic / color formatting",icon: "B" },
   { key: "lineAnnotations",    label: "Clause labels",           icon: "≡" },
 ];
 

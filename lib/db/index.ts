@@ -658,6 +658,8 @@ function _migrateUserDbInner(sqlite: Database.Database): void {
   const wfmtCols = (sqlite.prepare("PRAGMA table_info(word_formatting)").all() as { name: string }[]).map(r => r.name);
   if (!wfmtCols.includes("is_small_caps"))
     try { sqlite.exec("ALTER TABLE word_formatting ADD COLUMN is_small_caps INTEGER NOT NULL DEFAULT 0"); } catch { /* already exists */ }
+  if (!wfmtCols.includes("text_color"))
+    try { sqlite.exec("ALTER TABLE word_formatting ADD COLUMN text_color TEXT"); } catch { /* already exists */ }
 
   sqlite.exec(`
     CREATE TABLE IF NOT EXISTS app_settings (
@@ -761,6 +763,7 @@ function _migrateUserDbInner(sqlite: Database.Database): void {
       is_bold      INTEGER NOT NULL DEFAULT 0,
       is_italic    INTEGER NOT NULL DEFAULT 0,
       is_small_caps INTEGER NOT NULL DEFAULT 0,
+      text_color   TEXT,
       text_source  TEXT    NOT NULL,
       book         TEXT    NOT NULL,
       chapter      INTEGER NOT NULL

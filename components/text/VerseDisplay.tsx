@@ -195,8 +195,8 @@ interface VerseDisplayProps {
   editingIndents: boolean;
   onSetSegmentIndent: (paraStartWordId: string, level: number) => void;
   onSetSegmentTvIndent?: (paraStartWordId: string, level: number) => void;
-  // Bold / italic formatting
-  wordFormattingMap?: Map<string, { isBold: boolean; isItalic: boolean }>;
+  // Bold / italic / color formatting
+  wordFormattingMap?: Map<string, { isBold: boolean; isItalic: boolean; textColor: string | null }>;
   editingFormatting?: boolean;
   // Text critical markup
   tcMarkMap?: Map<string, string>;
@@ -1272,7 +1272,7 @@ export default function VerseDisplay({
   editingIndents,
   onSetSegmentIndent,
   onSetSegmentTvIndent,
-  wordFormattingMap = new Map() as Map<string, { isBold: boolean; isItalic: boolean }>,
+  wordFormattingMap = new Map() as Map<string, { isBold: boolean; isItalic: boolean; textColor: string | null }>,
   editingFormatting = false,
   tcMarkMap,
   editingTc = false,
@@ -2792,6 +2792,7 @@ export default function VerseDisplay({
                       const formattingStyle: React.CSSProperties = {
                         fontWeight: tvFormatting?.isBold ? "bold" : undefined,
                         fontStyle: tvFormatting?.isItalic ? "italic" : undefined,
+                        color: tvFormatting?.textColor ?? undefined,
                       };
 
                       // ── Combined background colour (with shaped border-radius) ─
@@ -3044,6 +3045,7 @@ export default function VerseDisplay({
                       const tvFormattingStyle: React.CSSProperties = {
                         fontWeight: tvFormatting?.isBold ? "bold" : undefined,
                         fontStyle:  tvFormatting?.isItalic ? "italic" : undefined,
+                        color:      tvFormatting?.textColor ?? undefined,
                       };
 
                       const tokenClassName = editingArrows

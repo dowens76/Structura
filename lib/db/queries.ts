@@ -2111,42 +2111,49 @@ export async function updateWordArrow(
 
 // ── Word Formatting (chapter-scoped) ──────────────────────────────────────────
 
-/** Returns all bold/italic formatting entries for a chapter. */
+/** Returns all bold/italic/color formatting entries for a chapter. */
 export async function getChapterWordFormatting(
   book: string,
   chapter: number,
   workspaceId: number,
   versionId: number
-): Promise<{ wordId: string; isBold: boolean; isItalic: boolean }[]> {
+): Promise<{ wordId: string; isBold: boolean; isItalic: boolean; textColor: string | null }[]> {
   return userDb
-    .select({ wordId: wordFormatting.wordId, isBold: wordFormatting.isBold, isItalic: wordFormatting.isItalic })
+    .select({
+      wordId: wordFormatting.wordId,
+      isBold: wordFormatting.isBold,
+      isItalic: wordFormatting.isItalic,
+      textColor: wordFormatting.textColor,
+    })
     .from(wordFormatting)
     .where(and(eq(wordFormatting.workspaceId, workspaceId), eq(wordFormatting.versionId, versionId), eq(wordFormatting.book, book), eq(wordFormatting.chapter, chapter)));
 }
 
 /**
- * Upsert bold/italic formatting for a word.
- * If both isBold and isItalic are false, the record is deleted (reset to no formatting).
+ * Upsert bold/italic/color formatting for a word.
+ * If isBold and isItalic are both false and textColor is null, the record is
+ * deleted (reset to no formatting).
  */
 export async function setWordFormatting(
   wordId: string,
   isBold: boolean,
   isItalic: boolean,
+  textColor: string | null,
   textSource: string,
   book: string,
   chapter: number,
   workspaceId: number,
   versionId: number
 ): Promise<void> {
-  if (!isBold && !isItalic) {
+  if (!isBold && !isItalic && !textColor) {
     await userDb.delete(wordFormatting).where(
       and(eq(wordFormatting.workspaceId, workspaceId), eq(wordFormatting.versionId, versionId), eq(wordFormatting.wordId, wordId))
     );
   } else {
     await userDb
       .insert(wordFormatting)
-      .values({ wordId, isBold, isItalic, textSource, book, chapter, workspaceId, versionId })
-      .onConflictDoUpdate({ target: [wordFormatting.workspaceId, wordFormatting.versionId, wordFormatting.wordId], set: { isBold, isItalic } });
+      .values({ wordId, isBold, isItalic, textColor, textSource, book, chapter, workspaceId, versionId })
+      .onConflictDoUpdate({ target: [wordFormatting.workspaceId, wordFormatting.versionId, wordFormatting.wordId], set: { isBold, isItalic, textColor } });
   }
 }
 

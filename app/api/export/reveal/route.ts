@@ -90,7 +90,7 @@ function tvTokenToSpan(
 
 function wordToSpan(
   word: Word,
-  formatting:   { isBold: boolean; isItalic: boolean } | undefined,
+  formatting:   { isBold: boolean; isItalic: boolean; textColor: string | null } | undefined,
   speechChar:   Character | undefined,
   ref:          CharacterRef | undefined,
   characterMap: Map<number, Character>,
@@ -101,8 +101,9 @@ function wordToSpan(
 
   const styles: string[] = [];
 
-  if (formatting?.isBold)   styles.push("font-weight:bold");
-  if (formatting?.isItalic) styles.push("font-style:italic");
+  if (formatting?.isBold)    styles.push("font-weight:bold");
+  if (formatting?.isItalic)  styles.push("font-style:italic");
+  if (formatting?.textColor) styles.push(`color:${esc(formatting.textColor)}`);
 
   // Character ref underline (overrides speech section when present)
   if (ref) {
@@ -216,7 +217,7 @@ function buildSegments(
 // translationMap key: "${chapter}.${verse}" → array of { abbr, text } entries
 function renderWords(
   words:            Word[],
-  formattingMap:    Map<string, { isBold: boolean; isItalic: boolean }>,
+  formattingMap:    Map<string, { isBold: boolean; isItalic: boolean; textColor: string | null }>,
   wordSpeechMap:    Map<string, SpeechSection>,
   characterMap:     Map<number, Character>,
   characterRefMap:  Map<string, CharacterRef>,
@@ -792,7 +793,7 @@ export async function GET(req: NextRequest) {
   let characters:           Character[];
   let characterRefs:        CharacterRef[];
   let speechSections:       SpeechSection[];
-  let formattingRows:       { wordId: string; isBold: boolean; isItalic: boolean }[];
+  let formattingRows:       { wordId: string; isBold: boolean; isItalic: boolean; textColor: string | null }[];
   let paragraphBreakIds:    string[];
   let sceneBreakRows:       { wordId: string; heading: string | null; level: number; verse: number; outOfSequence: boolean }[];
   let wordTags:             WordTag[];
@@ -943,7 +944,7 @@ export async function GET(req: NextRequest) {
   // ── Build lookup maps ────────────────────────────────────────────────────────
 
   const characterMap     = new Map(characters.map((c) => [c.id, c]));
-  const formattingMap    = new Map(formattingRows.map((f) => [f.wordId, { isBold: f.isBold, isItalic: f.isItalic }]));
+  const formattingMap    = new Map(formattingRows.map((f) => [f.wordId, { isBold: f.isBold, isItalic: f.isItalic, textColor: f.textColor }]));
   const wordSpeechMap    = buildWordSpeechMap(words, speechSections);
   const characterRefMap  = new Map(characterRefs.map((r) => [r.wordId, r]));
   const wordTagMap       = new Map(wordTags.map((t) => [t.id, t]));
