@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { userDb } from "@/lib/db";
 import { translations } from "@/lib/db/schema";
-import { and, asc, eq, sql } from "drizzle-orm";
+import { asc, eq, sql } from "drizzle-orm";
 import { getActiveWorkspaceId } from "@/lib/workspace";
 
 export const dynamic = "force-dynamic";
@@ -65,9 +65,10 @@ export async function POST(request: NextRequest) {
 
 // PATCH /api/translations
 // Body: { id, name?, abbreviation?, language? }
-// Updates editable fields of a translation.
+// Updates editable fields of a translation. Translations are shared across
+// workspaces (see getTranslations in lib/db/queries.ts), so edits aren't
+// restricted to the workspace that originally created the row.
 export async function PATCH(request: NextRequest) {
-  const workspaceId = await getActiveWorkspaceId();
   let body: { id?: number; name?: string; abbreviation?: string; language?: string | null };
   try { body = await request.json(); } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
@@ -99,20 +100,21 @@ export async function PATCH(request: NextRequest) {
   await userDb
     .update(translations)
     .set(patch)
-    .where(and(eq(translations.id, id), eq(translations.workspaceId, workspaceId)));
+    .where(eq(translations.id, id));
 
   return NextResponse.json({ ok: true });
 }
 
 // DELETE /api/translations?id=N
+// Translations are shared across workspaces (see PATCH above), so deletion
+// isn't restricted to the workspace that originally created the row.
 export async function DELETE(request: NextRequest) {
-  const workspaceId = await getActiveWorkspaceId();
   const id = parseInt(request.nextUrl.searchParams.get("id") ?? "", 10);
   if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 });
 
   await userDb
     .delete(translations)
-    .where(and(eq(translations.id, id), eq(translations.workspaceId, workspaceId)));
+    .where(eq(translations.id, id));
 
   return NextResponse.json({ ok: true });
 }

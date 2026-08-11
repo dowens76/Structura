@@ -23,9 +23,10 @@ export async function PUT(request: NextRequest) {
   }
   // Persist only non-empty strings; omit keys that revert to the CSS default.
   const cleaned: FontSettings = {};
-  if (body.hebrew?.trim())      cleaned.hebrew      = body.hebrew.trim();
-  if (body.greek?.trim())       cleaned.greek       = body.greek.trim();
-  if (body.translation?.trim()) cleaned.translation = body.translation.trim();
+  if (body.hebrew?.trim())          cleaned.hebrew          = body.hebrew.trim();
+  if (body.greek?.trim())           cleaned.greek           = body.greek.trim();
+  if (body.translation?.trim())     cleaned.translation     = body.translation.trim();
+  if (body.transliteration?.trim()) cleaned.transliteration = body.transliteration.trim();
   await setAppSetting(KEY, JSON.stringify(cleaned));
   return NextResponse.json(cleaned);
 }

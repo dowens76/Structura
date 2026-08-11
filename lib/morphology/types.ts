@@ -97,6 +97,8 @@ export interface TranslationTextEntry {
   abbr: string;
   text: string;
   translationId: number;
+  /** Translation's language code (e.g. "trl" for Transliteration); drives per-language rendering. */
+  language?: string | null;
   /** Present for LXX: enables word-token rendering and per-word TC marking. */
   words?: import("@/lib/db/source-schema").Word[];
 }

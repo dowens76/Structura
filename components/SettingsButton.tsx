@@ -116,7 +116,7 @@ export default function SettingsButton() {
 
   // Custom font settings
   const [fontInputs, setFontInputs] = useState<Required<FontSettings>>({
-    hebrew: "", greek: "", translation: "",
+    hebrew: "", greek: "", translation: "", transliteration: "",
   });
   const [savingFonts, setSavingFonts] = useState(false);
   const [fontSaved,   setFontSaved]   = useState(false);
@@ -150,9 +150,10 @@ export default function SettingsButton() {
     // Populate font inputs from localStorage (fast, no network round-trip)
     const saved = readFontSettingsFromStorage();
     setFontInputs({
-      hebrew:      saved.hebrew      ?? "",
-      greek:       saved.greek       ?? "",
-      translation: saved.translation ?? "",
+      hebrew:          saved.hebrew          ?? "",
+      greek:           saved.greek           ?? "",
+      translation:     saved.translation     ?? "",
+      transliteration: saved.transliteration ?? "",
     });
     fetch("/api/settings/hidden-sources")
       .then((r) => r.json())
@@ -317,9 +318,10 @@ export default function SettingsButton() {
     setSavingFonts(true);
     try {
       const payload: FontSettings = {
-        hebrew:      inputs.hebrew.trim()      || undefined,
-        greek:       inputs.greek.trim()       || undefined,
-        translation: inputs.translation.trim() || undefined,
+        hebrew:          inputs.hebrew.trim()          || undefined,
+        greek:           inputs.greek.trim()           || undefined,
+        translation:     inputs.translation.trim()     || undefined,
+        transliteration: inputs.transliteration.trim() || undefined,
       };
       await fetch("/api/settings/fonts", {
         method: "PUT",
@@ -496,9 +498,10 @@ export default function SettingsButton() {
 
             {(
               [
-                { key: "hebrew"      as const, label: "Hebrew",      sampleDir: "rtl" as const },
-                { key: "greek"       as const, label: "Greek",       sampleDir: "ltr" as const },
-                { key: "translation" as const, label: "Translation", sampleDir: "ltr" as const },
+                { key: "hebrew"          as const, label: "Hebrew",          sampleDir: "rtl" as const },
+                { key: "greek"           as const, label: "Greek",           sampleDir: "ltr" as const },
+                { key: "translation"     as const, label: "Translation",     sampleDir: "ltr" as const },
+                { key: "transliteration" as const, label: "Transliteration", sampleDir: "ltr" as const },
               ]
             ).map(({ key, label, sampleDir }) => {
               const activeFont = fontInputs[key];
@@ -517,6 +520,7 @@ export default function SettingsButton() {
                         background: "var(--surface-muted)",
                         color: activeFont ? "var(--foreground)" : "var(--text-muted)",
                         fontFamily: activeFont || undefined,
+                        fontStyle: key === "transliteration" ? "italic" : undefined,
                         direction: sampleDir,
                       }}
                       title={activeFont || "Default (click to choose)"}

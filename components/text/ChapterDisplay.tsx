@@ -1995,7 +1995,7 @@ export default function ChapterDisplay({
       for (const tv of deduped.values()) {
         const key = `${chapterKey(tv.bookId, tv.chapter)}:${tv.verse}`;
         const existing = map.get(key) ?? [];
-        const entry: TranslationTextEntry = { abbr: t.abbreviation, text: tv.text, translationId: t.id };
+        const entry: TranslationTextEntry = { abbr: t.abbreviation, text: tv.text, translationId: t.id, language: t.language };
         // Attach LXX word tokens so the translation column can render them individually.
         if (t.abbreviation === "LXX" && lxxVerseWords) {
           entry.words = lxxVerseWords.get(tv.verse);
@@ -2020,7 +2020,7 @@ export default function ChapterDisplay({
       const existingAbbrs = new Set(existing.map((e) => e.abbr));
       const empties = activeList
         .filter((t) => !existingAbbrs.has(t.abbreviation))
-        .map((t) => ({ abbr: t.abbreviation, text: "", translationId: t.id }));
+        .map((t) => ({ abbr: t.abbreviation, text: "", translationId: t.id, language: t.language }));
       map.set(key, [...existing, ...empties]);
     }
     return map;

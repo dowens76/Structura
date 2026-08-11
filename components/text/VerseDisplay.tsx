@@ -2542,7 +2542,7 @@ export default function VerseDisplay({
     );
   }
 
-  const allTvSegs = translationTexts.map(({ abbr, text, translationId, words: tvWords }) => {
+  const allTvSegs = translationTexts.map(({ abbr, text, translationId, language, words: tvWords }) => {
     const encoded = encodeUsfmTokens(text);
     const embeddedFnCount = (encoded.match(/«fn»/g) ?? []).length;
     const tokens = tokenizeTranslationText(text);
@@ -2576,7 +2576,7 @@ export default function VerseDisplay({
       if (wCur.length > 0) tvWordSegs.push({ startIdx: wStart, words: wCur });
     }
 
-    return { abbr, text, translationId, embeddedFnCount, tvSegs: segs, tvWords, tvWordSegs };
+    return { abbr, text, translationId, language, embeddedFnCount, tvSegs: segs, tvWords, tvWordSegs };
   });
 
   // Per-translation footnote letter counter (a, b, c…). Mutable during render.
@@ -2624,7 +2624,7 @@ export default function VerseDisplay({
         // Translation content for this row:
         //   • All rows except the last get only tvSegs[si] (if it exists).
         //   • The last source row gets tvSegs[si…end] (all remaining tv paragraphs).
-        const tvRowContent = allTvSegs.map(({ abbr, text: tvFullText, translationId: tvTranslationId, embeddedFnCount, tvSegs, tvWords, tvWordSegs }, tvIndex) => {
+        const tvRowContent = allTvSegs.map(({ abbr, text: tvFullText, translationId: tvTranslationId, language: tvLanguage, embeddedFnCount, tvSegs, tvWords, tvWordSegs }, tvIndex) => {
           const isLastRow = si === sourceSegments.length - 1;
           const rowSegs: TvSeg[] = si < sourceSegments.length - 1
             ? (tvSegs[si] ? [tvSegs[si]] : [])
@@ -2911,6 +2911,7 @@ export default function VerseDisplay({
               )}
               {!tvWords && hasContent && (
                 <p
+                  className={tvLanguage === "trl" ? "text-transliteration" : undefined}
                   style={{
                     color: "var(--foreground)",
                     fontSize: "var(--translation-font-size, 0.875rem)",

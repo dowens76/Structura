@@ -5,9 +5,10 @@
  * An absent / empty string for any key means "use the CSS default".
  */
 export interface FontSettings {
-  hebrew?:      string;
-  greek?:       string;
-  translation?: string;
+  hebrew?:          string;
+  greek?:           string;
+  translation?:     string;
+  transliteration?: string;
 }
 
 /** localStorage key for persisting font settings browser-side. */
@@ -29,9 +30,10 @@ export function applyFontSettings(settings: FontSettings): void {
     if (v) root.style.setProperty(prop, toCssFontFamily(v));
     else   root.style.removeProperty(prop);
   };
-  apply("--hebrew-font-family",      settings.hebrew);
-  apply("--greek-font-family",       settings.greek);
-  apply("--translation-font-family", settings.translation);
+  apply("--hebrew-font-family",          settings.hebrew);
+  apply("--greek-font-family",           settings.greek);
+  apply("--translation-font-family",     settings.translation);
+  apply("--transliteration-font-family", settings.transliteration);
 }
 
 /**

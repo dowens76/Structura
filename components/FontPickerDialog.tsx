@@ -64,18 +64,34 @@ const CURATED: Record<FontLanguage, string[]> = {
     "Linux Libertine",
     "Cardo",
   ],
+  transliteration: [
+    "Georgia",
+    "Palatino",
+    "Palatino Linotype",
+    "Times New Roman",
+    "Garamond",
+    "EB Garamond",
+    "Cambria",
+    "Cardo",
+    "Gentium Plus",
+    "Gentium Book Plus",
+    "Noto Serif",
+    "Linux Libertine",
+    "Charis SIL",
+  ],
 };
 
 // Sample text shown in the preview panel
 const PREVIEW_TEXT: Record<FontLanguage, string> = {
-  hebrew:      "בְּרֵאשִׁית בָּרָא אֱלֹהִים אֵת הַשָּׁמַיִם וְאֵת הָאָרֶץ",
-  greek:       "Ἐν ἀρχῇ ἦν ὁ λόγος, καὶ ὁ λόγος ἦν πρὸς τὸν θεόν",
-  translation: "In the beginning God created the heavens and the earth",
+  hebrew:          "בְּרֵאשִׁית בָּרָא אֱלֹהִים אֵת הַשָּׁמַיִם וְאֵת הָאָרֶץ",
+  greek:           "Ἐν ἀρχῇ ἦν ὁ λόγος, καὶ ὁ λόγος ἦν πρὸς τὸν θεόν",
+  translation:     "In the beginning God created the heavens and the earth",
+  transliteration: "Bərēʾšît bārāʾ ʾĕlōhîm ʾēt haššāmayim wəʾēt hāʾāreṣ",
 };
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
-export type FontLanguage = "hebrew" | "greek" | "translation";
+export type FontLanguage = "hebrew" | "greek" | "translation" | "transliteration";
 
 interface Props {
   language: FontLanguage;
@@ -183,9 +199,10 @@ export default function FontPickerDialog({ language, current, onApply, onClose }
   const previewFont = hovered ?? selected;
 
   const TITLE: Record<FontLanguage, string> = {
-    hebrew:      "Choose Hebrew Font",
-    greek:       "Choose Greek Font",
-    translation: "Choose Translation Font",
+    hebrew:          "Choose Hebrew Font",
+    greek:           "Choose Greek Font",
+    translation:     "Choose Translation Font",
+    transliteration: "Choose Transliteration Font",
   };
 
   const sourceLabel =
@@ -326,6 +343,7 @@ export default function FontPickerDialog({ language, current, onApply, onClose }
                   style={{
                     fontFamily: previewFont || undefined,
                     fontSize: language === "hebrew" ? "1.5rem" : language === "greek" ? "1.35rem" : "1.1rem",
+                    fontStyle: language === "transliteration" ? "italic" : undefined,
                     direction: language === "hebrew" ? "rtl" : "ltr",
                     color: "var(--foreground)",
                   }}
@@ -346,6 +364,7 @@ export default function FontPickerDialog({ language, current, onApply, onClose }
                   className="leading-relaxed text-sm"
                   style={{
                     fontFamily: previewFont || undefined,
+                    fontStyle: language === "transliteration" ? "italic" : undefined,
                     direction: language === "hebrew" ? "rtl" : "ltr",
                     color: "var(--foreground)",
                   }}
@@ -370,7 +389,12 @@ export default function FontPickerDialog({ language, current, onApply, onClose }
                   <p
                     key={size}
                     className="leading-relaxed"
-                    style={{ fontFamily: previewFont || undefined, fontSize: size, color: "var(--foreground)" }}
+                    style={{
+                      fontFamily: previewFont || undefined,
+                      fontSize: size,
+                      fontStyle: language === "transliteration" ? "italic" : undefined,
+                      color: "var(--foreground)",
+                    }}
                   >
                     {PREVIEW_TEXT[language].slice(0, 30)}
                   </p>

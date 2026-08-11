@@ -25,9 +25,10 @@
   /* Per-language font families — overridden at runtime via JS when the user
      sets a custom font in Settings.  The defaults here match the @font-face
      declarations and bundled @fontsource packages already loaded by the app. */
-  --hebrew-font-family:      "Ezra SIL", "SBL Hebrew", serif;
-  --greek-font-family:       "Gentium Plus", "GFS Didot", serif;
-  --translation-font-family: inherit;
+  --hebrew-font-family:         "Ezra SIL", "SBL Hebrew", serif;
+  --greek-font-family:          "Gentium Plus", "GFS Didot", serif;
+  --translation-font-family:    inherit;
+  --transliteration-font-family: inherit;
 }
 
 /* Dark mode: applied via .dark class (manual toggle) or system preference */
@@ -218,6 +219,13 @@ body {
  * Falls back to `inherit` (body/system font) when no preference is set. */
 [data-seg-translation] {
   font-family: var(--translation-font-family);
+}
+
+/* Transliteration translation text — always italic, with its own configurable
+ * font (independent of the general translation font setting). */
+.text-transliteration {
+  font-family: var(--transliteration-font-family);
+  font-style: italic;
 }
 
 /* ── Tiptap note editor ────────────────────────────────────────────────────── */

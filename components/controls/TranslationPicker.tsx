@@ -4,17 +4,20 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { Translation } from "@/lib/db/schema";
 
-const LANGUAGES = [
-  "Afrikaans", "Arabic", "Armenian", "Bulgarian",
-  "Chinese (Simplified)", "Chinese (Traditional)",
-  "Czech", "Danish", "Dutch", "English",
-  "Finnish", "French", "German", "Greek",
-  "Hebrew (Modern)", "Hindi", "Hungarian",
-  "Indonesian", "Italian", "Japanese", "Korean",
-  "Latin", "Norwegian", "Polish", "Portuguese",
-  "Romanian", "Russian", "Serbian", "Spanish",
-  "Swahili", "Swedish", "Tamil", "Turkish",
-  "Ukrainian", "Vietnamese",
+const LANGUAGES: { value: string; label: string }[] = [
+  { value: "trl", label: "Transliteration" },
+  ...[
+    "Afrikaans", "Arabic", "Armenian", "Bulgarian",
+    "Chinese (Simplified)", "Chinese (Traditional)",
+    "Czech", "Danish", "Dutch", "English",
+    "Finnish", "French", "German", "Greek",
+    "Hebrew (Modern)", "Hindi", "Hungarian",
+    "Indonesian", "Italian", "Japanese", "Korean",
+    "Latin", "Norwegian", "Polish", "Portuguese",
+    "Romanian", "Russian", "Serbian", "Spanish",
+    "Swahili", "Swedish", "Tamil", "Turkish",
+    "Ukrainian", "Vietnamese",
+  ].map((name) => ({ value: name, label: name })),
 ];
 
 interface TranslationPickerProps {
@@ -291,7 +294,7 @@ export default function TranslationPicker({
                       >
                         <option value="">— unset —</option>
                         {LANGUAGES.map((l) => (
-                          <option key={l} value={l}>{l}</option>
+                          <option key={l.value} value={l.value}>{l.label}</option>
                         ))}
                       </select>
                     )}
