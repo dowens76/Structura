@@ -9,15 +9,14 @@ import { getActiveVersionId } from "@/lib/versions/activeVersion";
 
 export const dynamic = "force-dynamic";
 
-/** GET ?book=&chapter=&source= → { exclusions: PoetryLineBracketExclusion[] } */
+/** GET ?book=&chapter= → { exclusions: PoetryLineBracketExclusion[] } */
 export async function GET(req: NextRequest) {
   const workspaceId = await getActiveWorkspaceId();
   const { searchParams } = new URL(req.url);
   const book    = searchParams.get("book")    ?? "";
   const chapter = parseInt(searchParams.get("chapter") ?? "0", 10);
-  const source  = searchParams.get("source")  ?? "";
   const versionId = await getActiveVersionId(workspaceId, book, chapter);
-  const exclusions = await getChapterPoetryLineBracketExclusions(book, chapter, source, workspaceId, versionId);
+  const exclusions = await getChapterPoetryLineBracketExclusions(book, chapter, workspaceId, versionId);
   return NextResponse.json({ exclusions });
 }
 

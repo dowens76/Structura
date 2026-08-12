@@ -61,8 +61,8 @@ export async function getScriptureLocusEditingData(
         getChapterWordFormatting(book, chapter, workspaceId, versionId),
         getChapterSceneBreaks(book, chapter, workspaceId, versionId),
         getChapterLineAnnotations(book, chapter, textSource, workspaceId, versionId),
-        getChapterPoetryNotations(book, chapter, textSource, workspaceId, versionId),
-        getChapterPoetryLineBracketExclusions(book, chapter, textSource, workspaceId, versionId),
+        getChapterPoetryNotations(book, chapter, workspaceId, versionId),
+        getChapterPoetryLineBracketExclusions(book, chapter, workspaceId, versionId),
       ]);
     })
   );

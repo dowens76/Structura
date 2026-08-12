@@ -10,15 +10,15 @@ import { getActiveVersionId } from "@/lib/versions/activeVersion";
 
 export const dynamic = "force-dynamic";
 
-/** GET ?book=&chapter=&source= → { notations: PoetryNotation[] } */
+/** GET ?book=&chapter= → { notations: PoetryNotation[] } — every mark for the chapter
+ *  regardless of which text (source or a translation) it's anchored to. */
 export async function GET(req: NextRequest) {
   const workspaceId = await getActiveWorkspaceId();
   const { searchParams } = new URL(req.url);
   const book    = searchParams.get("book")    ?? "";
   const chapter = parseInt(searchParams.get("chapter") ?? "0", 10);
-  const source  = searchParams.get("source")  ?? "";
   const versionId = await getActiveVersionId(workspaceId, book, chapter);
-  const notations = await getChapterPoetryNotations(book, chapter, source, workspaceId, versionId);
+  const notations = await getChapterPoetryNotations(book, chapter, workspaceId, versionId);
   return NextResponse.json({ notations });
 }
 

@@ -2255,10 +2255,17 @@ export async function deleteLineAnnotation(id: number): Promise<void> {
 // ── Poetry Notations (Gestalt: continuation/balance/requiredness/symmetry/similarity/closure) ──
 
 /** Returns all poetry notation marks for a chapter, ordered by creation time. */
+/**
+ * Not filtered by textSource — unlike lineAnnotations (always source-anchored),
+ * a poetry notation mark can anchor to the chapter's source text OR any of its
+ * displayed translations (tv:ABBR:... word ids), so this must return every mark
+ * for the chapter regardless of which text it's anchored to, matching how
+ * getChapterCharacterRefs/getChapterWordTagRefs/getChapterWordFormatting (the
+ * other tv:-anchor-capable features) already do it.
+ */
 export async function getChapterPoetryNotations(
   book: string,
   chapter: number,
-  textSource: string,
   workspaceId: number,
   versionId: number
 ): Promise<PoetryNotation[]> {
@@ -2270,8 +2277,7 @@ export async function getChapterPoetryNotations(
         eq(poetryNotations.workspaceId, workspaceId),
         eq(poetryNotations.versionId, versionId),
         eq(poetryNotations.book, book),
-        eq(poetryNotations.chapter, chapter),
-        eq(poetryNotations.textSource, textSource)
+        eq(poetryNotations.chapter, chapter)
       )
     )
     .orderBy(asc(poetryNotations.createdAt));
@@ -2335,10 +2341,10 @@ export async function deletePoetryNotation(id: number): Promise<void> {
 // ── Poetry Line Bracket Exclusions (Poetry Notation's auto-bracket toggle) ────
 
 /** Returns all excluded-line markers for a chapter. */
+/** Not filtered by textSource — see getChapterPoetryNotations's comment above. */
 export async function getChapterPoetryLineBracketExclusions(
   book: string,
   chapter: number,
-  textSource: string,
   workspaceId: number,
   versionId: number
 ): Promise<PoetryLineBracketExclusion[]> {
@@ -2350,8 +2356,7 @@ export async function getChapterPoetryLineBracketExclusions(
         eq(poetryLineBracketExclusions.workspaceId, workspaceId),
         eq(poetryLineBracketExclusions.versionId, versionId),
         eq(poetryLineBracketExclusions.book, book),
-        eq(poetryLineBracketExclusions.chapter, chapter),
-        eq(poetryLineBracketExclusions.textSource, textSource)
+        eq(poetryLineBracketExclusions.chapter, chapter)
       )
     );
 }

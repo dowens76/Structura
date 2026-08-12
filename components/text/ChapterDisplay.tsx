@@ -1228,9 +1228,20 @@ export default function ChapterDisplay({
     const set = new Set<string>();
     for (const n of poetryNotations) {
       if (n.principle !== "closure" || n.subtype !== "weak" || !n.endWordId) continue;
+      if (n.startWordId === n.endWordId) { set.add(n.startWordId); continue; }
       const lo = wordIndexMap.get(n.startWordId);
       const hi = wordIndexMap.get(n.endWordId);
-      if (lo === undefined || hi === undefined) continue;
+      if (lo === undefined || hi === undefined) {
+        // wordIndexMap only resolves source Word ids — a translation-anchored
+        // (tv:ABBR:...) endpoint can't be positioned in it, so the "words
+        // strictly between" can't be computed here. Mark just the two
+        // endpoints rather than silently dropping the mark's underline
+        // entirely, which made translation-anchored ranges invisible (and
+        // therefore unclickable/undeletable).
+        set.add(n.startWordId);
+        set.add(n.endWordId);
+        continue;
+      }
       const [from, to] = lo <= hi ? [lo, hi] : [hi, lo];
       for (let i = from; i <= to; i++) { const w = words[i]; if (w) set.add(w.wordId); }
     }
