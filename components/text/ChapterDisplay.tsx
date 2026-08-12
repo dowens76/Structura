@@ -1231,16 +1231,27 @@ export default function ChapterDisplay({
   }, [poetryNotations]);
 
   // The mark (if any) currently open for note-editing, resolved to the single
-  // word its popover should anchor to.
+  // word its popover should anchor to. Balance/Symmetry are excluded — those
+  // are deleted via their always-visible panel badge (PoetryLineBadge's own
+  // "x" button in VerseDisplay), not this word-anchored popover. Every other
+  // principle (including "closure — complete", which was previously and
+  // wrongly excluded here — the only way to delete it was this popover, so it
+  // was undeletable) opens here so its Delete button is reachable.
   const openPoetryNoteMarkByWord = useMemo(() => {
     const map = new Map<string, PoetryNotation>();
     if (editingNotationId == null) return map;
     const mark = poetryNotations.find((n) => n.id === editingNotationId);
-    if (mark && (mark.principle === "continuation" || mark.principle === "requiredness" || mark.principle === "similarity" || (mark.principle === "closure" && mark.subtype === "weak"))) {
-      map.set(mark.startWordId, mark);
-    }
+    if (!mark || mark.principle === "balance" || mark.principle === "symmetry") return map;
+    // Closure-complete's visible bar renders on the LAST word of its line
+    // (poetryClosureCompleteSet, below) even though the mark's own
+    // startWordId is the line's FIRST word — anchor the popover to the same
+    // word as the bar so it appears where the user actually clicked.
+    const anchorWordId = mark.principle === "closure" && mark.subtype === "complete"
+      ? (segLastWordId.get(mark.startWordId) ?? mark.startWordId)
+      : mark.startWordId;
+    map.set(anchorWordId, mark);
     return map;
-  }, [poetryNotations, editingNotationId]);
+  }, [poetryNotations, editingNotationId, segLastWordId]);
 
   const pendingSimilarityAnchor = similarityStart;
 

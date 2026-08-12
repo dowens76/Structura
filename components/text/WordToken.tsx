@@ -599,12 +599,16 @@ export default function WordToken({
     borderRadius: "3px",
   } : {};
 
-  // ── Poetry notation: Closure (weak) underline — same mechanism as tcStyle's overline. ──
+  // ── Poetry notation: Closure (weak) underline — same mechanism as tcStyle's overline.
+  // Thickness is 200% thicker than the tcStyle/underline baseline (2.5px -> 7.5px), per request.
+  // textUnderlineOffset pushes the line below Hebrew vowel points (niqqud render below the
+  // consonant, lower than the browser's default underline position) so the two don't collide. ──
   const poetryClosureStyle: React.CSSProperties = poetryClosureWeak ? {
     textDecorationLine:      "underline",
     textDecorationStyle:     "solid",
     textDecorationColor:     POETRY_COLORS.closure,
-    textDecorationThickness: "2.5px",
+    textDecorationThickness: "7.5px",
+    textUnderlineOffset:     "0.35em",
   } : {};
 
   const style: React.CSSProperties = { ...colorStyle, ...underlineStyle, ...formattingStyle, ...tcStyle, ...synopticMarkStyle, ...poetryClosureStyle };
@@ -686,13 +690,6 @@ export default function WordToken({
           <PoetryArrowIcon direction="right" color={POETRY_COLORS.requiredness} />
         </span>
       )}
-      {poetryClosureComplete && (
-        <span
-          className="absolute top-0 bottom-0 pointer-events-none select-none"
-          style={{ insetInlineEnd: "-3px", width: "2px", backgroundColor: POETRY_COLORS.closure }}
-          aria-hidden
-        />
-      )}
       {openPoetryNoteMark && onSavePoetryNote && onDeletePoetryMark && onClosePoetryNote && (
         <PoetryNotePopover
           mark={openPoetryNoteMark}
@@ -723,6 +720,17 @@ export default function WordToken({
         {poetryGlyphs}
       </span>
       {trailing}
+      {poetryClosureComplete && (
+        // Rendered in normal inline flow AFTER the trailing punctuation (e.g. sof
+        // pasuq ׃) rather than absolutely positioned against the core word span,
+        // so the bar sits outside the punctuation instead of behind/under it.
+        // Width is 200% thicker than the original 2px baseline (2px -> 6px).
+        <span
+          aria-hidden
+          className="inline-block align-middle pointer-events-none select-none"
+          style={{ width: "6px", height: "1.1em", backgroundColor: POETRY_COLORS.closure, marginInlineStart: "3px" }}
+        />
+      )}
     </>
   );
 

@@ -3113,11 +3113,13 @@ export default function VerseDisplay({
                       const tvPoetryClosureWeak = poetryClosureWeakSet?.has(wordId) ?? false;
                       const tvSimilarityMark = similarityMarkByWord?.get(wordId) ?? null;
                       const tvOpenPoetryNote = openPoetryNoteMarkByWord?.get(wordId) ?? null;
+                      // Thickness is 200% thicker than the baseline (2.5px -> 7.5px), matching WordToken's poetryClosureStyle.
                       const tvPoetryClosureStyle: React.CSSProperties = tvPoetryClosureWeak ? {
                         textDecorationLine:      "underline",
                         textDecorationStyle:     "solid",
                         textDecorationColor:     POETRY_COLORS.closure,
-                        textDecorationThickness: "2.5px",
+                        textDecorationThickness: "7.5px",
+                        textUnderlineOffset:     "0.35em",
                       } : {};
 
                       const ref = characterRefMap.get(wordId);
