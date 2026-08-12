@@ -9,6 +9,9 @@ export type PoetryPrinciple =
 export type BalanceSubtype = "balance" | "imbalance";
 export type ClosureSubtype = "weak" | "complete";
 export type ImbalanceDirection = "left" | "right";
+/** "arrow" (default/legacy, null subtype) = single-word gray → above the word;
+ *  "underline" = arbitrary word range, gray underline (same range-picking UX as Closure — weak). */
+export type RequirednessSubtype = "arrow" | "underline";
 
 /** Fixed color per Gestalt principle (and balance/imbalance sub-variant), following the
  *  TC_COLORS / POS_COLORS idiom — colors are not stored per-row. */
@@ -37,7 +40,7 @@ export const POETRY_PRINCIPLE_GLYPHS: Record<PoetryPrinciple, string> = {
   continuation: "↓",
   balance: "=",
   requiredness: "→",
-  symmetry: "▽△",
+  symmetry: "▼▲",
   similarity: "◯",
   closure: "▬",
 };

@@ -473,7 +473,8 @@ export const lineAnnotations = sqliteTable(
  * similarity, closure. One unified table (rather than one per principle)
  * since every row shares the same versioning/CRUD shape; unused geometry
  * columns stay null for a given row:
- *   continuation / requiredness : startWordId only (word-anchored)
+ *   continuation                : startWordId only (word-anchored)
+ *   requiredness                : subtype null|"arrow" (startWordId only, word-anchored) | "underline" (startWordId/endWordId = arbitrary word range, not segment-snapped, same as closure "weak")
  *   balance                     : startWordId = a paragraphFirstWordIds entry (line-anchored); subtype "balance"|"imbalance"; direction "left"|"right" (imbalance only)
  *   symmetry                    : startWordId/endWordId = two paragraphFirstWordIds entries, in click order (upper/lower triangle)
  *   similarity                  : startWordId/startGraphemeIndex .. endWordId/endGraphemeIndex (letter range, may span adjacent words in one line)
@@ -488,7 +489,7 @@ export const poetryNotations = sqliteTable(
     versionId:          integer("version_id").notNull()
                           .references(() => versions.id, { onDelete: "cascade" }),
     principle:          text("principle").notNull(), // "continuation"|"balance"|"requiredness"|"symmetry"|"similarity"|"closure"
-    subtype:            text("subtype"),              // balance: "balance"|"imbalance"; closure: "weak"|"complete"
+    subtype:            text("subtype"),              // balance: "balance"|"imbalance"; closure: "weak"|"complete"; requiredness: "arrow"|"underline"
     direction:          text("direction"),             // imbalance triangle: "left"|"right"
     startWordId:        text("start_word_id").notNull(),
     endWordId:          text("end_word_id"),

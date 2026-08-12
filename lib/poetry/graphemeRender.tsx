@@ -38,13 +38,20 @@ export function renderClickableGraphemes(
  *  "yellow oval under selected letters" with a rounded background rather
  *  than a precise cross-word measured ellipse, so multi-word spans still
  *  render correctly without any DOM-measurement overlay). Shared between
- *  WordToken.tsx and VerseDisplay.tsx's translation-token renderer. */
+ *  WordToken.tsx and VerseDisplay.tsx's translation-token renderer.
+ *
+ *  `interactive` (default true) gates the click-to-open-note behavior — pass
+ *  false whenever the Similarity tool isn't the thing currently editing this
+ *  word, so the mark stays visible but clicks fall through to whatever else
+ *  is listening (e.g. free-form arrow creation) instead of always stealing
+ *  the click and stopping it from reaching the word's own onClick. */
 export function renderGraphemesWithSimilarityHighlight(
   text: string,
   language: string,
   startIdx: number,
   endIdx: number,
-  onClick: () => void
+  onClick: () => void,
+  interactive = true
 ): React.ReactNode {
   const segmenter = new Intl.Segmenter(language === "hebrew" ? "he" : "en", { granularity: "grapheme" });
   const clusters = [...segmenter.segment(text)].map((s) => s.segment);
@@ -55,9 +62,9 @@ export function renderGraphemesWithSimilarityHighlight(
     <>
       {before}
       <span
-        className="cursor-pointer rounded-full px-0.5"
+        className={interactive ? "cursor-pointer rounded-full px-0.5" : "rounded-full px-0.5"}
         style={{ backgroundColor: `${POETRY_COLORS.similarity}70` }}
-        onClick={(e) => { e.stopPropagation(); onClick(); }}
+        onClick={interactive ? (e) => { e.stopPropagation(); onClick(); } : undefined}
       >
         {covered}
       </span>

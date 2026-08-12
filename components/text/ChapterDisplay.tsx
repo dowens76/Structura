@@ -1107,10 +1107,12 @@ export default function ChapterDisplay({
     activeBalanceSubtype, setActiveBalanceSubtype,
     activeImbalanceDirection, setActiveImbalanceDirection,
     activeClosureSubtype, setActiveClosureSubtype,
+    activeRequirednessSubtype, setActiveRequirednessSubtype,
     editingNotationId, setEditingNotationId,
     symmetryLineA,
     similarityStart,
     closureRangeStart,
+    requirednessRangeStart,
     clearPending: clearPoetryPending,
     handleWordClick: handlePoetryWordClick,
     handleLineClick: handlePoetryLineClick,
@@ -1118,6 +1120,7 @@ export default function ChapterDisplay({
     handleGraphemeClick,
     handleClosureWordClick,
     handleClosureLineClick,
+    handleRequirednessWordClick,
     handleUpdateNote: handleUpdatePoetryNote,
     handleDeleteNotation: handleDeletePoetryNotation,
   } = usePoetryNotations({
@@ -1191,8 +1194,11 @@ export default function ChapterDisplay({
   function handlePoetryWordSelectByIds(wordId: string, segFirstWordId: string, tvSegFirstWordId?: string, shiftHeld = false) {
     switch (activePrinciple) {
       case "continuation":
-      case "requiredness":
         handlePoetryWordClick(wordId);
+        return;
+      case "requiredness":
+        if (activeRequirednessSubtype === "underline") handleRequirednessWordClick(wordId, shiftHeld);
+        else handlePoetryWordClick(wordId);
         return;
       case "balance":
         handlePoetryLineClick(segFirstWordId);
@@ -1210,15 +1216,57 @@ export default function ChapterDisplay({
     }
   }
 
-  // Per-word map of continuation/requiredness marks, keyed by wordId.
+  // Per-word map of continuation/requiredness (arrow-subtype only) marks, keyed by wordId.
   const poetryWordMarkMap = useMemo(() => {
     const map = new Map<string, { continuation?: PoetryNotation; requiredness?: PoetryNotation }>();
     for (const n of poetryNotations) {
       if (n.principle !== "continuation" && n.principle !== "requiredness") continue;
+      if (n.principle === "requiredness" && n.subtype === "underline") continue;
       const entry = map.get(n.startWordId) ?? {};
       if (n.principle === "continuation") entry.continuation = n;
       else entry.requiredness = n;
       map.set(n.startWordId, entry);
+    }
+    return map;
+  }, [poetryNotations]);
+
+  // Words covered by a "requiredness — underline" range (inclusive, chapter-wide order).
+  // Mirrors poetryClosureWeakSet below.
+  const poetryRequirednessUnderlineSet = useMemo(() => {
+    const set = new Set<string>();
+    for (const n of poetryNotations) {
+      if (n.principle !== "requiredness" || n.subtype !== "underline" || !n.endWordId) continue;
+      if (n.startWordId === n.endWordId) { set.add(n.startWordId); continue; }
+      const lo = wordIndexMap.get(n.startWordId);
+      const hi = wordIndexMap.get(n.endWordId);
+      if (lo === undefined || hi === undefined) {
+        set.add(n.startWordId);
+        set.add(n.endWordId);
+        continue;
+      }
+      const [from, to] = lo <= hi ? [lo, hi] : [hi, lo];
+      for (let i = from; i <= to; i++) { const w = words[i]; if (w) set.add(w.wordId); }
+    }
+    return set;
+  }, [poetryNotations, wordIndexMap, words]);
+
+  // Requiredness-underline ranges anchored on TRANSLATION text, grouped by
+  // translation abbreviation — mirrors poetryClosureWeakRangesByAbbr below.
+  const poetryRequirednessUnderlineRangesByAbbr = useMemo(() => {
+    const map = new Map<string, { book: string; chapter: number; loKey: number; hiKey: number }[]>();
+    for (const n of poetryNotations) {
+      if (n.principle !== "requiredness" || n.subtype !== "underline" || !n.endWordId) continue;
+      const start = parseTvWordId(n.startWordId);
+      const end = parseTvWordId(n.endWordId);
+      if (!start || !end) continue;
+      if (start.abbr !== end.abbr || start.book !== end.book || start.chapter !== end.chapter) continue;
+      const key = (v: number, wi: number) => v * 100000 + wi;
+      const a = key(start.verse, start.wi);
+      const b = key(end.verse, end.wi);
+      const [loKey, hiKey] = a <= b ? [a, b] : [b, a];
+      const arr = map.get(start.abbr) ?? [];
+      arr.push({ book: start.book, chapter: start.chapter, loKey, hiKey });
+      map.set(start.abbr, arr);
     }
     return map;
   }, [poetryNotations]);
@@ -4907,7 +4955,7 @@ export default function ChapterDisplay({
     if (!keep.has("paragraph"))   setEditingParagraphs(false);
     if (!keep.has("scenes"))      setEditingScenes(false);
     if (!keep.has("annotations")) { setEditingAnnotations(false); setAnnotRangeStart(null); setAnnotRangeEnd(null); setEditingAnnotationId(null); }
-    if (!keep.has("poetry"))      { setEditingPoetryNotation(false); clearPoetryPending(); setShowPoetryLineBrackets(false); }
+    if (!keep.has("poetry"))      { setEditingPoetryNotation(false); clearPoetryPending(); }
     if (!keep.has("refs"))        { setEditingRefs(false); setRefRangeStart(null); }
     if (!keep.has("speech"))      { setEditingSpeech(false); setSpeechRangeStart(null); }
     if (!keep.has("wordTags"))    { setEditingWordTags(false); setWordTagRangeStart(null); }
@@ -5187,9 +5235,9 @@ export default function ChapterDisplay({
             onSelectLineGroupGroup={handleSelectLineGroupGroup}
             onDeleteLineGroup={handleDeleteLineGroup}
             onRequiredLineGroupPad={setLineGroupSourcePad}
-            showAutoLineBrackets={editingPoetryNotation && showPoetryLineBrackets}
+            showAutoLineBrackets={showPoetryLineBrackets}
             excludedLineIds={excludedLineIds}
-            onToggleLineBracketExclusion={handleToggleLineBracketExclusion}
+            onToggleLineBracketExclusion={editingPoetryNotation ? handleToggleLineBracketExclusion : undefined}
             containerRef={textContainerRef}
             layoutRef={outerRef}
           />
@@ -5668,10 +5716,9 @@ export default function ChapterDisplay({
                 onClick={() => {
                   const entering = !editingPoetryNotation;
                   if (entering) { deactivateIncompatible("poetry"); setPanelDisplayMode("poetry"); }
-                  else setShowPoetryLineBrackets(false);
                   setEditingPoetryNotation(entering);
                 }}
-                data-tip="Poetry notation (Gestalt)"
+                data-tip="Poetry notation (Gestalt principles)"
                 className={[
                   "px-3 py-1.5 rounded text-[13px] leading-none font-medium transition-colors",
                   editingPoetryNotation
@@ -5746,6 +5793,14 @@ export default function ChapterDisplay({
                         className={`px-1.5 py-1 rounded text-[11px] ${activeClosureSubtype === "weak" ? "bg-purple-500 text-white" : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300"}`}>weak</button>
                       <button type="button" onClick={() => setActiveClosureSubtype("complete")}
                         className={`px-1.5 py-1 rounded text-[11px] ${activeClosureSubtype === "complete" ? "bg-purple-500 text-white" : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300"}`}>complete</button>
+                    </span>
+                  )}
+                  {activePrinciple === "requiredness" && (
+                    <span className="flex items-center gap-1 pl-1">
+                      <button type="button" onClick={() => setActiveRequirednessSubtype("arrow")}
+                        className={`px-1.5 py-1 rounded text-[11px] ${activeRequirednessSubtype === "arrow" ? "bg-gray-500 text-white" : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300"}`}>arrow</button>
+                      <button type="button" onClick={() => setActiveRequirednessSubtype("underline")}
+                        className={`px-1.5 py-1 rounded text-[11px] ${activeRequirednessSubtype === "underline" ? "bg-gray-500 text-white" : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300"}`}>underline</button>
                     </span>
                   )}
                 </div>
@@ -6669,6 +6724,7 @@ export default function ChapterDisplay({
               <VerseDisplay
                 key={verseNum}
                 verseNum={verseNum}
+                isFirstVerseOfPassage={idx === 0}
                 words={verse.words}
                 displayMode={displayMode}
                 grammarFilter={grammarFilter}
@@ -6774,18 +6830,22 @@ export default function ChapterDisplay({
                 onUpdateAnnotation={handleUpdateAnnotation}
                 onExpandAnnotationRange={handleExpandAnnotationRange}
                 showAnnotationCol={panelDisplayMode === "annotations" && (editingAnnotations || lineAnnotations.length > 0)}
-                showPoetryCol={panelDisplayMode === "poetry" && (editingPoetryNotation || balanceMarkBySegment.size > 0 || symmetryMarksBySegment.size > 0)}
+                showPoetryCol={panelDisplayMode === "poetry" && (editingPoetryNotation || showPoetryLineBrackets || balanceMarkBySegment.size > 0 || symmetryMarksBySegment.size > 0)}
                 editingPoetryNotation={editingPoetryNotation}
+                showPoetryLineBrackets={showPoetryLineBrackets}
                 balanceMarkBySegment={balanceMarkBySegment}
                 symmetryMarksBySegment={symmetryMarksBySegment}
                 symmetryLineA={symmetryLineA}
                 closureRangeStart={closureRangeStart}
+                requirednessRangeStart={requirednessRangeStart}
                 onSelectPoetryLine={(segId) => {
                   if (activePrinciple === "symmetry") handleSymmetryLineClick(segId);
                   else if (activePrinciple === "balance") handlePoetryLineClick(segId);
                 }}
                 onSelectPoetryWord={handlePoetryWordSelectByIds}
                 poetryWordMarkMap={poetryWordMarkMap}
+                poetryRequirednessUnderlineSet={poetryRequirednessUnderlineSet}
+                poetryRequirednessUnderlineRangesByAbbr={poetryRequirednessUnderlineRangesByAbbr}
                 poetryClosureWeakSet={poetryClosureWeakSet}
                 poetryClosureWeakRangesByAbbr={poetryClosureWeakRangesByAbbr}
                 poetryClosureCompleteSet={poetryClosureCompleteSet}

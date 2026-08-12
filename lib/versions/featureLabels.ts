@@ -22,7 +22,7 @@ export const VERSIONABLE_FEATURE_LABELS: VersionableFeatureLabel[] = [
   { key: "lineAnnotations", label: "Clause labels (plot/theme/desc)" },
   { key: "wordFormatting", label: "Word formatting (bold/italic/color)" },
   { key: "textCriticalMarks", label: "Text-critical marks" },
-  { key: "poetryNotations", label: "Poetry notation (Gestalt)" },
+  { key: "poetryNotations", label: "Poetry notation (Gestalt principles)" },
   { key: "poetryLineBracketExclusions", label: "Poetry line bracket exclusions" },
 ];
 

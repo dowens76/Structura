@@ -139,6 +139,10 @@ interface VerseDisplayProps {
   isHebrew: boolean;
   showTooltips: boolean;
   translationTexts: TranslationTextEntry[];
+  /** True only for the very first verse rendered in the whole passage — shows
+   *  the "ABBR | ABBR" translation-column header once there instead of
+   *  repeating each translation's abbreviation on every verse. */
+  isFirstVerseOfPassage?: boolean;
   useLinguisticTerms: boolean;
   paragraphBreakIds: Set<string>;
   editingParagraphs: boolean;
@@ -266,12 +270,22 @@ interface VerseDisplayProps {
   // Poetry notation (Gestalt: continuation/balance/requiredness/symmetry/similarity/closure)
   showPoetryCol?: boolean;
   editingPoetryNotation?: boolean;
+  /** True while the "bracket every poetic line" auto-brackets are on — keeps
+   *  every line's poetry column reserved (even lines with no Balance/Symmetry
+   *  mark) so the shared margin's width stays constant whether or not Poetry
+   *  Notation editing itself is active, since toggling that column's presence
+   *  on/off reflows the whole row and shifts LineGroupOverlay's measured
+   *  bracket positions out from under the (now edit-mode-independent) auto
+   *  brackets. */
+  showPoetryLineBrackets?: boolean;
   /** Balance/Imbalance mark for a line (segment), keyed by segFirstWordId. */
   balanceMarkBySegment?: Map<string, PoetryNotation>;
-  /** Symmetry marks touching a line, keyed by segFirstWordId — "start" = upper ▽, "end" = lower △. */
+  /** Symmetry marks touching a line, keyed by segFirstWordId — "start" = upper ▼, "end" = lower ▲. */
   symmetryMarksBySegment?: Map<string, { mark: PoetryNotation; role: "start" | "end" }[]>;
   /** The line currently pending as Symmetry's first click (highlighted while awaiting the second). */
   symmetryLineA?: string | null;
+  /** The word currently pending as Requiredness (underline)'s range start (highlighted while awaiting the shift-click end). */
+  requirednessRangeStart?: string | null;
   /** The word currently pending as Closure (weak)'s range start (highlighted,
    *  same outline as a range-start word tag/speech selection, while awaiting
    *  the shift-click that completes the range). */
@@ -289,6 +303,10 @@ interface VerseDisplayProps {
   onSelectPoetryWord?: (wordId: string, segFirstWordId: string, tvSegFirstWordId?: string, shiftHeld?: boolean) => void;
   /** Word-anchored marks (continuation ↓ / requiredness →), keyed by wordId. */
   poetryWordMarkMap?: Map<string, { continuation?: PoetryNotation; requiredness?: PoetryNotation }>;
+  /** Words covered by a "requiredness — underline" range (gray underline), SOURCE text only. */
+  poetryRequirednessUnderlineSet?: Set<string>;
+  /** Requiredness-underline ranges anchored on translation text — same shape/purpose as poetryClosureWeakRangesByAbbr below. */
+  poetryRequirednessUnderlineRangesByAbbr?: Map<string, { book: string; chapter: number; loKey: number; hiKey: number }[]>;
   /** Words covered by a "closure — weak" range (purple underline), SOURCE text only. */
   poetryClosureWeakSet?: Set<string>;
   /** Closure-weak ranges anchored on translation text, grouped by translation
@@ -431,7 +449,7 @@ function toSubscript(n: number): string {
 
 /**
  * One poetry-notation mark badge in the shared right-panel column — used for
- * both Balance/Imbalance (one mark per line) and Symmetry (▽ start / △ end).
+ * both Balance/Imbalance (one mark per line) and Symmetry (▼ start / ▲ end).
  * The note field is always-visible and editable inline, matching how
  * lineAnnotations.description is shown for clause labels, rather than a
  * click-to-open popover (see AnnotBadge above for that alternate pattern,
@@ -441,12 +459,16 @@ function PoetryLineBadge({
   mark,
   glyph,
   color,
+  glyphFontSize = "0.875rem",
   onSaveNote,
   onDeleteMark,
 }: {
   mark: PoetryNotation;
   glyph: string;
   color: string;
+  /** Overrides the glyph's font-size (defaults to text-sm's 0.875rem) — Symmetry's
+   *  triangles render at 2x this (see call site) per user request. */
+  glyphFontSize?: string;
   onSaveNote?: (id: number, note: string | null) => void;
   onDeleteMark?: (id: number) => void;
 }) {
@@ -454,7 +476,7 @@ function PoetryLineBadge({
   return (
     <div className="flex flex-col gap-0.5" onClick={(e) => e.stopPropagation()}>
       <div className="flex items-center gap-1">
-        <span className="font-bold text-sm leading-none" style={{ color }}>{glyph}</span>
+        <span className="font-bold leading-none" style={{ color, fontSize: glyphFontSize }}>{glyph}</span>
         <button
           type="button"
           className="text-[10px] text-stone-400 hover:text-red-500 ml-auto"
@@ -1336,6 +1358,7 @@ export default function VerseDisplay({
   isHebrew,
   showTooltips,
   translationTexts,
+  isFirstVerseOfPassage = false,
   useLinguisticTerms,
   paragraphBreakIds,
   editingParagraphs,
@@ -1430,13 +1453,17 @@ export default function VerseDisplay({
   showAnnotationCol = false,
   showPoetryCol = false,
   editingPoetryNotation = false,
+  showPoetryLineBrackets = false,
   balanceMarkBySegment,
   symmetryMarksBySegment,
   symmetryLineA = null,
   closureRangeStart = null,
+  requirednessRangeStart = null,
   onSelectPoetryLine,
   onSelectPoetryWord,
   poetryWordMarkMap,
+  poetryRequirednessUnderlineSet,
+  poetryRequirednessUnderlineRangesByAbbr,
   poetryClosureWeakSet,
   poetryClosureWeakRangesByAbbr,
   poetryClosureCompleteSet,
@@ -2095,13 +2122,13 @@ export default function VerseDisplay({
     const balanceMark = balanceMarkBySegment?.get(segFirstWordId);
     const symMarks = symmetryMarksBySegment?.get(segFirstWordId) ?? [];
     const isPendingSymmetryA = symmetryLineA === segFirstWordId;
-    if (!balanceMark && symMarks.length === 0 && !editingPoetryNotation) return null;
+    if (!balanceMark && symMarks.length === 0 && !editingPoetryNotation && !showPoetryLineBrackets) return null;
 
     return (
       <div
         className={[
           presentationMode ? "w-72" : "w-48",
-          "flex-none pl-3 self-stretch flex flex-col gap-1.5",
+          "flex-none pl-3 self-stretch flex flex-row gap-2",
           editingPoetryNotation
             ? "cursor-pointer hover:bg-sky-50 dark:hover:bg-sky-950/20 rounded transition-colors"
             : "",
@@ -2113,25 +2140,51 @@ export default function VerseDisplay({
             : undefined
         }
       >
-        {balanceMark && (
-          <PoetryLineBadge
-            mark={balanceMark}
-            glyph={balanceGlyph(balanceMark.subtype as BalanceSubtype | null, balanceMark.direction as ImbalanceDirection | null)}
-            color={POETRY_COLORS.balance}
-            onSaveNote={onSavePoetryNote}
-            onDeleteMark={onDeletePoetryMark}
-          />
+        {/* Symmetry first — ▼ (start) pinned to the top of the line's space,
+           ▲ (end) pinned to the bottom of it. Solid triangles at 2x the
+           normal badge-glyph size, per user request. */}
+        {symMarks.length > 0 && (
+          <div className="flex-1 min-w-0 flex flex-col justify-between gap-1.5">
+            <div className="flex flex-col gap-1.5">
+              {symMarks.filter((m) => m.role === "start").map(({ mark }) => (
+                <PoetryLineBadge
+                  key={mark.id}
+                  mark={mark}
+                  glyph="▼"
+                  color={POETRY_COLORS.symmetry}
+                  glyphFontSize="1.75rem"
+                  onSaveNote={onSavePoetryNote}
+                  onDeleteMark={onDeletePoetryMark}
+                />
+              ))}
+            </div>
+            <div className="flex flex-col gap-1.5">
+              {symMarks.filter((m) => m.role === "end").map(({ mark }) => (
+                <PoetryLineBadge
+                  key={mark.id}
+                  mark={mark}
+                  glyph="▲"
+                  color={POETRY_COLORS.symmetry}
+                  glyphFontSize="1.75rem"
+                  onSaveNote={onSavePoetryNote}
+                  onDeleteMark={onDeletePoetryMark}
+                />
+              ))}
+            </div>
+          </div>
         )}
-        {symMarks.map(({ mark, role }) => (
-          <PoetryLineBadge
-            key={mark.id}
-            mark={mark}
-            glyph={role === "start" ? "▽" : "△"}
-            color={POETRY_COLORS.symmetry}
-            onSaveNote={onSavePoetryNote}
-            onDeleteMark={onDeletePoetryMark}
-          />
-        ))}
+        {/* Balance — to the right of Symmetry, vertically centered in the line's space. */}
+        {balanceMark && (
+          <div className="flex-1 min-w-0 flex flex-col justify-center">
+            <PoetryLineBadge
+              mark={balanceMark}
+              glyph={balanceGlyph(balanceMark.subtype as BalanceSubtype | null, balanceMark.direction as ImbalanceDirection | null)}
+              color={POETRY_COLORS.balance}
+              onSaveNote={onSavePoetryNote}
+              onDeleteMark={onDeletePoetryMark}
+            />
+          </div>
+        )}
       </div>
     );
   }
@@ -2432,7 +2485,7 @@ export default function VerseDisplay({
               characterMap={characterMap}
               editingRefs={editingRefs}
               editingSpeech={editingSpeech}
-              isRangeStart={word.wordId === speechRangeStartWordId || word.wordId === tagRangeStartWordId || word.wordId === wordCompareRangeStartWordId || word.wordId === closureRangeStart}
+              isRangeStart={word.wordId === speechRangeStartWordId || word.wordId === tagRangeStartWordId || word.wordId === wordCompareRangeStartWordId || word.wordId === closureRangeStart || word.wordId === requirednessRangeStart}
               highlightCharIds={highlightCharIds}
               synopticMarkColor={synopticWordMarkColorMap?.get(word.wordId) ?? null}
               editingWordCompare={editingWordCompare}
@@ -2461,6 +2514,7 @@ export default function VerseDisplay({
               onToggleDatasetGroupMember={onToggleDatasetGroupMember}
               poetryMarkContinuation={poetryWordMarkMap?.get(word.wordId)?.continuation ?? null}
               poetryMarkRequiredness={poetryWordMarkMap?.get(word.wordId)?.requiredness ?? null}
+              poetryRequirednessUnderline={poetryRequirednessUnderlineSet?.has(word.wordId) ?? false}
               poetryClosureWeak={poetryClosureWeakSet?.has(word.wordId) ?? false}
               poetryClosureComplete={poetryClosureCompleteSet?.has(word.wordId) ?? false}
               openPoetryNoteMark={openPoetryNoteMarkByWord?.get(word.wordId) ?? null}
@@ -2858,7 +2912,7 @@ export default function VerseDisplay({
         // Translation content for this row:
         //   • All rows except the last get only tvSegs[si] (if it exists).
         //   • The last source row gets tvSegs[si…end] (all remaining tv paragraphs).
-        const tvRowContent = allTvSegs.map(({ abbr, text: tvFullText, translationId: tvTranslationId, language: tvLanguage, embeddedFnCount, tvSegs, tvWords, tvWordSegs }, tvIndex) => {
+        const tvRowContent = allTvSegs.map(({ abbr, text: tvFullText, translationId: tvTranslationId, language: tvLanguage, embeddedFnCount, tvSegs, tvWords, tvWordSegs }) => {
           const isLastRow = si === sourceSegments.length - 1;
           const rowSegs: TvSeg[] = si < sourceSegments.length - 1
             ? (tvSegs[si] ? [tvSegs[si]] : [])
@@ -2910,17 +2964,8 @@ export default function VerseDisplay({
 
           const hasContent = rowSegs.length > 0;
 
-          // Abbreviation label: only on row 0, only when multiple translations.
-          // It's absolutely positioned above the text (not in normal flow) so it
-          // doesn't push the first line down out of alignment with the source.
-          // For the 2nd+ translation, that means it floats up into the *previous*
-          // translation's block — give those extra margin-top so the label has
-          // room to sit above without overlapping the preceding text.
-          const showAbbrLabel = translationTexts.length > 1 && si === 0;
-          const needsLabelClearance = showAbbrLabel && tvIndex > 0;
-
           return (
-            <div key={abbr} className={["relative", needsLabelClearance ? "mt-5" : ""].join(" ")}>
+            <div key={abbr} className="relative">
               {tvStartsNewParagraph && (
                 editingParagraphs ? (
                   <div className="relative flex items-center mb-1">
@@ -2938,11 +2983,6 @@ export default function VerseDisplay({
                 ) : (
                   <div className="w-full border-t border-dashed mb-1 border-stone-300 dark:border-stone-600" aria-hidden="true" />
                 )
-              )}
-              {showAbbrLabel && (
-                <span className="absolute bottom-full left-0 mb-0.5 text-[10px] font-mono font-semibold text-stone-400 dark:text-stone-500 uppercase tracking-wider whitespace-nowrap">
-                  {abbr}
-                </span>
               )}
               {/* LXX word-token rendering (when words are attached to the entry).
                   Uses a <div>, not <p> — ParseTooltip renders a <div> on hover, and
@@ -3192,6 +3232,15 @@ export default function VerseDisplay({
                       const tvPoetryClosureWeakConnectsNext = tvPoetryClosureWeak && (tvClosureWeakRanges?.some(
                         (r) => r.book === book && r.chapter === chapter && tvNextWeakKey >= r.loKey && tvNextWeakKey <= r.hiKey
                       ) ?? false);
+                      // Requiredness — underline: same (verse, wordIndex) range-membership
+                      // check as closure-weak above, just against its own range map.
+                      const tvRequirednessRanges = poetryRequirednessUnderlineRangesByAbbr?.get(abbr);
+                      const tvPoetryRequirednessUnderline = tvRequirednessRanges?.some(
+                        (r) => r.book === book && r.chapter === chapter && tvWeakKey >= r.loKey && tvWeakKey <= r.hiKey
+                      ) ?? false;
+                      const tvPoetryRequirednessUnderlineConnectsNext = tvPoetryRequirednessUnderline && (tvRequirednessRanges?.some(
+                        (r) => r.book === book && r.chapter === chapter && tvNextWeakKey >= r.loKey && tvNextWeakKey <= r.hiKey
+                      ) ?? false);
                       const tvSegFirstWordId = `tv:${abbr}:${book}.${chapter}.${verseNum}.${tvSeg.startIdx}`;
                       const tvPoetryClosureComplete =
                         localWi === tvSeg.tokens.length - 1 &&
@@ -3209,13 +3258,38 @@ export default function VerseDisplay({
                           ? null
                           : tvWordNoteRaw ?? (tvPoetryClosureComplete ? openPoetryNoteMarkByWord?.get(tvSegFirstWordId) ?? null : null);
                       // Thickness is 200% thicker than the baseline (2.5px -> 7.5px), matching WordToken's poetryClosureStyle.
-                      const tvPoetryClosureStyle: React.CSSProperties = tvPoetryClosureWeak ? {
+                      // text-decoration can only draw one line per token, so when both marks land
+                      // on the same token, that combination switches to two stacked background
+                      // stripes instead (Requiredness above, Closure at the original spot) — see
+                      // tvPoetryDualUnderlineStyle below, mirrors WordToken.tsx's same fix.
+                      const tvBothPoetryUnderlinesActive = tvPoetryClosureWeak && tvPoetryRequirednessUnderline;
+                      const tvPoetryClosureStyle: React.CSSProperties = (tvPoetryClosureWeak && !tvBothPoetryUnderlinesActive) ? {
                         textDecorationLine:      "underline",
                         textDecorationStyle:     "solid",
                         textDecorationColor:     POETRY_COLORS.closure,
                         textDecorationThickness: "7.5px",
                         textUnderlineOffset:     "0.35em",
                       } : {};
+                      // Same mechanism, gray, for Requiredness — underline.
+                      const tvPoetryRequirednessStyle: React.CSSProperties = (tvPoetryRequirednessUnderline && !tvBothPoetryUnderlinesActive) ? {
+                        textDecorationLine:      "underline",
+                        textDecorationStyle:     "solid",
+                        textDecorationColor:     POETRY_COLORS.requiredness,
+                        textDecorationThickness: "7.5px",
+                        textUnderlineOffset:     "0.35em",
+                      } : {};
+                      // Reserves its own room via paddingBottom (translation tokens are short —
+                      // a compact word's natural line-height isn't tall enough to fit two lines
+                      // below the text without one colliding with the glyphs), stacked flush
+                      // (no gap) at a reduced thickness so the pair stays compact.
+                      const tvPoetryDualUnderlineStyle: React.CSSProperties = tvBothPoetryUnderlinesActive ? {
+                        backgroundImage: `linear-gradient(to right, ${POETRY_COLORS.requiredness}, ${POETRY_COLORS.requiredness}), linear-gradient(to right, ${POETRY_COLORS.closure}, ${POETRY_COLORS.closure})`,
+                        backgroundSize: "100% 4px, 100% 4px",
+                        backgroundPosition: "center bottom 4px, center bottom 0px",
+                        backgroundRepeat: "no-repeat, no-repeat",
+                        paddingBottom: "10px",
+                      } : {};
+                      const tvBothPoetryUnderlinesConnectNext = tvPoetryClosureWeakConnectsNext && tvPoetryRequirednessUnderlineConnectsNext;
 
                       const ref = characterRefMap.get(wordId);
                       const char1 = ref ? resolveCharacter(ref.character1Id) : null;
@@ -3321,8 +3395,12 @@ export default function VerseDisplay({
                           : sameTagAsNext && tagBgColor
                           ? { backgroundColor: tagBgColor, whiteSpace: "pre" }
                           : undefined;
-                      const tvSpaceStyle: React.CSSProperties | undefined = tvPoetryClosureWeakConnectsNext
+                      const tvSpaceStyle: React.CSSProperties | undefined = tvBothPoetryUnderlinesConnectNext
+                        ? { ...tvSpaceStyleBase, ...tvPoetryDualUnderlineStyle, whiteSpace: "pre" }
+                        : tvPoetryClosureWeakConnectsNext
                         ? { ...tvSpaceStyleBase, ...tvPoetryClosureStyle, whiteSpace: "pre" }
+                        : tvPoetryRequirednessUnderlineConnectsNext
+                        ? { ...tvSpaceStyleBase, ...tvPoetryRequirednessStyle, whiteSpace: "pre" }
                         : tvSpaceStyleBase;
 
                       // Within a tvSeg, localWi > 0 could still have a break (defensive)
@@ -3356,7 +3434,7 @@ export default function VerseDisplay({
                         ? "cursor-crosshair rounded px-0.5 -mx-0.5 hover:bg-yellow-100 dark:hover:bg-yellow-900/40 transition-colors"
                         : undefined;
 
-                      const isTvRangeStart = wordId === tagRangeStartWordId || wordId === closureRangeStart;
+                      const isTvRangeStart = wordId === tagRangeStartWordId || wordId === closureRangeStart || wordId === requirednessRangeStart;
 
                       const handleClick = editingPoetryNotation && !editingPoetrySimilarity
                         ? (e: React.MouseEvent) => { e.stopPropagation(); onSelectPoetryWord?.(wordId, seg[0].wordId, tvSegFirstWordId, e.shiftKey); }
@@ -3426,21 +3504,22 @@ export default function VerseDisplay({
                       // Poetry Similarity: swap to per-letter clickable spans while editing,
                       // or a read-mode highlight if a saved mark touches this token —
                       // otherwise fall through to the normal inline-markup rendering.
-                      const tvCoreContent = editingPoetrySimilarity
-                        ? renderClickableGraphemes(
+                      const tvCoreContent = tvSimilarityMark
+                        ? renderGraphemesWithSimilarityHighlight(
                             tokCore,
-                            wordId,
                             tvLanguage ?? "",
-                            pendingSimilarityAnchor?.wordId === wordId ? pendingSimilarityAnchor.graphemeIndex : null,
-                            (wid, idx, shiftHeld) => onGraphemeClick?.(wid, idx, shiftHeld, seg[0].wordId)
+                            tvSimilarityMark.startIdx,
+                            tvSimilarityMark.endIdx,
+                            () => onClickSimilarityMark?.(tvSimilarityMark.mark.id),
+                            editingPoetrySimilarity
                           )
-                        : tvSimilarityMark
-                          ? renderGraphemesWithSimilarityHighlight(
+                        : editingPoetrySimilarity
+                          ? renderClickableGraphemes(
                               tokCore,
+                              wordId,
                               tvLanguage ?? "",
-                              tvSimilarityMark.startIdx,
-                              tvSimilarityMark.endIdx,
-                              () => onClickSimilarityMark?.(tvSimilarityMark.mark.id)
+                              pendingSimilarityAnchor?.wordId === wordId ? pendingSimilarityAnchor.graphemeIndex : null,
+                              (wid, idx, shiftHeld) => onGraphemeClick?.(wid, idx, shiftHeld, seg[0].wordId)
                             )
                           : renderInlineMarked(tokCore);
 
@@ -3469,7 +3548,7 @@ export default function VerseDisplay({
                           <span className={isTvDatasetMode ? "word-interlinear" : undefined}>
                             <span
                               data-word-id={wordId}
-                              style={{ position: "relative", ...underlineStyle, ...tvBgStyle, ...tvFormattingStyle, ...usfmStyle, ...tvPoetryClosureStyle }}
+                              style={{ position: "relative", ...underlineStyle, ...tvBgStyle, ...tvFormattingStyle, ...usfmStyle, ...tvPoetryRequirednessStyle, ...tvPoetryClosureStyle, ...tvPoetryDualUnderlineStyle }}
                               className={[
                                 tokenClassName,
                                 usfmClassName,
@@ -3794,6 +3873,20 @@ export default function VerseDisplay({
                 marginLeft: rstSourcePad || undefined,
               }}
             >
+              {/* Translation column header — shown once, at the top of the whole
+                  passage, instead of repeating each translation's abbreviation
+                  on every verse (which was crowding the column). Rendered inside
+                  this grid cell (not as a sibling) — gridContent's direct
+                  children are positioned by the enclosing 3-column grid
+                  (source | label | translation), so an extra sibling here would
+                  consume the translation column's own slot and push the real
+                  content down into a new implicit row starting back at column 1. */}
+              {isFirstVerseOfPassage && si === 0 && translationTexts.length > 1 &&
+               !editingTranslation && !editingTranslationSource && (
+                <div className="text-[10px] font-mono font-semibold text-stone-400 dark:text-stone-500 uppercase tracking-wider whitespace-nowrap">
+                  {translationTexts.map((t) => t.abbr).join(" | ")}
+                </div>
+              )}
               {tvRowContent}
               {/* Placeholder shown on the first row when a translation is active but
                   this chapter has no text yet — prompts the user to start translating. */}

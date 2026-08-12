@@ -91,7 +91,7 @@ const SECTIONS: { label: string; items: { key: keyof ToolbarVisibility; label: s
       { key: "rst",         label: "↳ Clause Relationships" },
       { key: "lineGroups",  label: "⌐ Line Groups (poetry)" },
       { key: "annotations", label: "≡ Clause/Paragraph labels" },
-      { key: "poetry",      label: "◈ Poetry notation (Gestalt)" },
+      { key: "poetry",      label: "◈ Poetry notation (Gestalt principles)" },
       { key: "arrows",      label: "↷ Arrows" },
       { key: "tc",          label: "TC Text Critical markup" },
     ],

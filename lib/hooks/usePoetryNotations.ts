@@ -2,7 +2,7 @@
 import { useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import type { PoetryNotation } from "@/lib/db/schema";
-import type { PoetryPrinciple, BalanceSubtype, ClosureSubtype, ImbalanceDirection } from "@/lib/poetry/constants";
+import type { PoetryPrinciple, BalanceSubtype, ClosureSubtype, ImbalanceDirection, RequirednessSubtype } from "@/lib/poetry/constants";
 
 export interface GraphemeAnchor {
   wordId: string;
@@ -44,6 +44,8 @@ export interface UsePoetryNotationsReturn {
   setActiveImbalanceDirection: Dispatch<SetStateAction<ImbalanceDirection>>;
   activeClosureSubtype: ClosureSubtype;
   setActiveClosureSubtype: Dispatch<SetStateAction<ClosureSubtype>>;
+  activeRequirednessSubtype: RequirednessSubtype;
+  setActiveRequirednessSubtype: Dispatch<SetStateAction<RequirednessSubtype>>;
 
   editingNotationId: number | null;
   setEditingNotationId: Dispatch<SetStateAction<number | null>>;
@@ -51,6 +53,7 @@ export interface UsePoetryNotationsReturn {
   symmetryLineA: string | null;
   similarityStart: GraphemeAnchor | null;
   closureRangeStart: string | null;
+  requirednessRangeStart: string | null;
 
   /** Clears every pending (mid-selection) state — called when leaving poetry
    *  edit mode or switching which principle/sub-tool is active. */
@@ -62,6 +65,7 @@ export interface UsePoetryNotationsReturn {
   handleGraphemeClick: (wordId: string, graphemeIndex: number, shiftHeld: boolean, segFirstWordId: string) => void;
   handleClosureWordClick: (wordId: string, shiftHeld: boolean) => void;
   handleClosureLineClick: (segFirstWordId: string) => void;
+  handleRequirednessWordClick: (wordId: string, shiftHeld: boolean) => void;
 
   handleUpdateNote: (id: number, note: string | null) => Promise<void>;
   handleDeleteNotation: (id: number) => Promise<void>;
@@ -78,16 +82,19 @@ export function usePoetryNotations({
   const [activeBalanceSubtype, setActiveBalanceSubtype] = useState<BalanceSubtype>("balance");
   const [activeImbalanceDirection, setActiveImbalanceDirection] = useState<ImbalanceDirection>("right");
   const [activeClosureSubtype, setActiveClosureSubtype] = useState<ClosureSubtype>("weak");
+  const [activeRequirednessSubtype, setActiveRequirednessSubtype] = useState<RequirednessSubtype>("arrow");
   const [editingNotationId, setEditingNotationId] = useState<number | null>(null);
 
   const [symmetryLineA, setSymmetryLineA] = useState<string | null>(null);
   const [similarityStart, setSimilarityStart] = useState<GraphemeAnchor | null>(null);
   const [closureRangeStart, setClosureRangeStart] = useState<string | null>(null);
+  const [requirednessRangeStart, setRequirednessRangeStart] = useState<string | null>(null);
 
   function clearPending() {
     setSymmetryLineA(null);
     setSimilarityStart(null);
     setClosureRangeStart(null);
+    setRequirednessRangeStart(null);
     setEditingNotationId(null);
   }
 
@@ -270,6 +277,41 @@ export function usePoetryNotations({
     createNotation({ principle: "closure", subtype: "weak", startWordId, endWordId });
   }
 
+  // ── Requiredness (underline) — arbitrary word range, chapter-ordered ───────
+  // Same range-picking UX as Closure (weak): first click anchors the pending
+  // start, a plain click re-anchors it, a SHIFT-click completes the range.
+  function handleRequirednessWordClick(wordId: string, shiftHeld: boolean) {
+    if (!requirednessRangeStart) {
+      const covering = poetryNotations.find((n) => {
+        if (n.principle !== "requiredness" || n.subtype !== "underline" || !n.endWordId) return false;
+        if (n.startWordId === wordId || n.endWordId === wordId) return true;
+        const lo = wordIndexMap.get(n.startWordId);
+        const hi = wordIndexMap.get(n.endWordId);
+        const pos = wordIndexMap.get(wordId);
+        if (lo === undefined || hi === undefined || pos === undefined) return false;
+        return pos >= Math.min(lo, hi) && pos <= Math.max(lo, hi);
+      });
+      if (covering) {
+        setEditingNotationId(covering.id);
+        return;
+      }
+      setRequirednessRangeStart(wordId);
+      return;
+    }
+    if (!shiftHeld) {
+      setRequirednessRangeStart(wordId);
+      return;
+    }
+    const startPos = wordIndexMap.get(requirednessRangeStart);
+    const endPos = wordIndexMap.get(wordId);
+    const [startWordId, endWordId] =
+      startPos !== undefined && endPos !== undefined && startPos > endPos
+        ? [wordId, requirednessRangeStart]
+        : [requirednessRangeStart, wordId];
+    setRequirednessRangeStart(null);
+    createNotation({ principle: "requiredness", subtype: "underline", startWordId, endWordId });
+  }
+
   // ── Closure (complete) — one mark per line ──────────────────────────────────
   function handleClosureLineClick(segFirstWordId: string) {
     const existing = poetryNotations.find(
@@ -322,11 +364,14 @@ export function usePoetryNotations({
     setActiveImbalanceDirection,
     activeClosureSubtype,
     setActiveClosureSubtype,
+    activeRequirednessSubtype,
+    setActiveRequirednessSubtype,
     editingNotationId,
     setEditingNotationId,
     symmetryLineA,
     similarityStart,
     closureRangeStart,
+    requirednessRangeStart,
     clearPending,
     handleWordClick,
     handleLineClick,
@@ -334,6 +379,7 @@ export function usePoetryNotations({
     handleGraphemeClick,
     handleClosureWordClick,
     handleClosureLineClick,
+    handleRequirednessWordClick,
     handleUpdateNote,
     handleDeleteNotation,
   };

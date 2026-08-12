@@ -231,23 +231,29 @@ export default function LineGroupOverlay({
     });
 
     // ── Automatic "one bracket per poetic line" nodes (level 1) ────────────
-    // Always at the innermost slot (same base offset a lone leaf's selector
-    // dot already uses) — real groups were shifted outward above to make
-    // room. Mirrored onto the translation column too, same as real groups.
+    // Positioned via the SAME shared-reference-edge formula real group
+    // brackets use (srcXFn/transXFn at the reserved level-1 slot), rather
+    // than each line's own local text edge — real group gaps are always a
+    // uniform LEVEL_WIDTH apart because every level shares one reference
+    // edge (refRightX/refLeftX, the widest line in scope); anchoring the
+    // auto bracket to that same edge is what makes ITS gap to the next
+    // (real) level a uniform LEVEL_WIDTH too, instead of varying with how
+    // much shorter each individual line is than the widest one. Mirrored
+    // onto the translation column too, same as real groups.
     if (showAutoLineBrackets) {
+      const autoX = srcXFn(maxDepth - 1);
+      const autoTransX = hasTransMeasured ? transXFn(maxDepth - 1) : undefined;
       for (const segId of paragraphFirstWordIds) {
         const pos = posArg.get(segId);
         if (!pos) continue;
         const isExcluded = excludedLineIds?.has(segId) ?? false;
-        const raw = isHebrew ? pos.rightX + LEAF_MARGIN : pos.leftX - LEAF_MARGIN;
-        const x = (isHebrew && hasLabelBound) ? Math.min(raw, hebrewLabelBound - 4) : raw;
-        out.push({ id: `${segId}__auto`, segId, x, yTop: pos.top, yBottom: pos.bottom, isTrans: false, isGroup: true, level: 1, isAuto: true, isExcluded });
+        out.push({ id: `${segId}__auto`, segId, x: autoX, yTop: pos.top, yBottom: pos.bottom, isTrans: false, isGroup: true, level: 1, isAuto: true, isExcluded });
 
-        if (pos.transLeftX !== undefined) {
+        if (pos.transLeftX !== undefined && autoTransX !== undefined) {
           out.push({
             id: `${segId}__auto`,
             segId,
-            x: pos.transLeftX - LEAF_MARGIN,
+            x: autoTransX,
             yTop: pos.transTop ?? pos.top,
             yBottom: pos.transBottom ?? pos.bottom,
             isTrans: true,
@@ -456,9 +462,10 @@ export default function LineGroupOverlay({
           if (!pos) return [];
           const isSelected = wordId === selectedSegA && !selectedSegAGroupId;
           const dotY = pos.top + (pos.bottom - pos.top) / 2;
-          // Shifted outward by one level when auto line-brackets occupy the
-          // innermost slot, so the selector dot doesn't sit on top of it.
-          const dotOffset = LEAF_MARGIN + extraLevel * LEVEL_WIDTH;
+          // Auto line-brackets now occupy the level-1 slot (LEAF_MARGIN +
+          // LEVEL_WIDTH), leaving level 0 (LEAF_MARGIN) free for the dot —
+          // no extra shift needed here regardless of extraLevel.
+          const dotOffset = LEAF_MARGIN;
           const srcDotX = isHebrew ? pos.rightX + dotOffset : pos.leftX - dotOffset;
           const dots: React.ReactElement[] = [];
           if (editing) {

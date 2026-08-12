@@ -74,6 +74,8 @@ interface WordTokenProps {
   poetryMarkContinuation?: PoetryNotation | null;
   /** Requiredness mark anchored to this exact word, if any (gray → above). */
   poetryMarkRequiredness?: PoetryNotation | null;
+  /** True when this word falls inside a "requiredness — underline" range (gray underline). */
+  poetryRequirednessUnderline?: boolean;
   /** True when this word falls inside a "closure — weak" range (purple underline). */
   poetryClosureWeak?: boolean;
   /** True when this word is the LAST word of a line marked "closure — complete"
@@ -512,6 +514,7 @@ export default function WordToken({
   suppressDatasetValueDisplay,
   poetryMarkContinuation,
   poetryMarkRequiredness,
+  poetryRequirednessUnderline,
   poetryClosureWeak,
   poetryClosureComplete,
   openPoetryNoteMark,
@@ -599,19 +602,52 @@ export default function WordToken({
     borderRadius: "3px",
   } : {};
 
-  // ── Poetry notation: Closure (weak) underline — same mechanism as tcStyle's overline.
-  // Thickness is 200% thicker than the tcStyle/underline baseline (2.5px -> 7.5px), per request.
+  // ── Poetry notation: Closure (weak) / Requiredness (underline) — same
+  // mechanism as tcStyle's overline. Thickness is 200% thicker than the
+  // tcStyle/underline baseline (2.5px -> 7.5px), per request.
   // textUnderlineOffset pushes the line below Hebrew vowel points (niqqud render below the
-  // consonant, lower than the browser's default underline position) so the two don't collide. ──
-  const poetryClosureStyle: React.CSSProperties = poetryClosureWeak ? {
+  // consonant, lower than the browser's default underline position) so the two don't collide.
+  // text-decoration can only draw ONE line per element, so when a word carries BOTH marks at
+  // once, that combination switches to two stacked background stripes instead — see
+  // poetryDualUnderlineStyle below, which reserves its own room via paddingBottom (rather than
+  // relying on the word's natural line-height, which for short/small tokens — e.g. a two-line
+  // translation word — isn't tall enough to fit two lines below the text without one colliding
+  // with the glyphs) and renders both flush against each other with no gap, thinner than the
+  // single-line baseline so the pair stays compact (Requiredness stacked directly above Closure). ──
+  const bothPoetryUnderlinesActive = !!poetryClosureWeak && !!poetryRequirednessUnderline;
+  const POETRY_UNDERLINE_THICKNESS_PX = 7.5;
+  const POETRY_UNDERLINE_BASE_OFFSET = "0.35em";
+  const POETRY_DUAL_UNDERLINE_THICKNESS_PX = 4;
+  const POETRY_DUAL_UNDERLINE_CLEARANCE_PX = isHebrew ? 4 : 2;
+
+  const poetryClosureStyle: React.CSSProperties = (poetryClosureWeak && !bothPoetryUnderlinesActive) ? {
     textDecorationLine:      "underline",
     textDecorationStyle:     "solid",
     textDecorationColor:     POETRY_COLORS.closure,
-    textDecorationThickness: "7.5px",
-    textUnderlineOffset:     "0.35em",
+    textDecorationThickness: `${POETRY_UNDERLINE_THICKNESS_PX}px`,
+    textUnderlineOffset:     POETRY_UNDERLINE_BASE_OFFSET,
   } : {};
 
-  const style: React.CSSProperties = { ...colorStyle, ...underlineStyle, ...formattingStyle, ...tcStyle, ...synopticMarkStyle, ...poetryClosureStyle };
+  // Same mechanism, gray, for Requiredness — underline.
+  const poetryRequirednessStyle: React.CSSProperties = (poetryRequirednessUnderline && !bothPoetryUnderlinesActive) ? {
+    textDecorationLine:      "underline",
+    textDecorationStyle:     "solid",
+    textDecorationColor:     POETRY_COLORS.requiredness,
+    textDecorationThickness: `${POETRY_UNDERLINE_THICKNESS_PX}px`,
+    textUnderlineOffset:     POETRY_UNDERLINE_BASE_OFFSET,
+  } : {};
+
+  // Both at once: two background stripes stacked flush (no gap) in a dedicated
+  // padding-bottom strip below the text, Requiredness directly above Closure.
+  const poetryDualUnderlineStyle: React.CSSProperties = bothPoetryUnderlinesActive ? {
+    backgroundImage: `linear-gradient(to right, ${POETRY_COLORS.requiredness}, ${POETRY_COLORS.requiredness}), linear-gradient(to right, ${POETRY_COLORS.closure}, ${POETRY_COLORS.closure})`,
+    backgroundSize: `100% ${POETRY_DUAL_UNDERLINE_THICKNESS_PX}px, 100% ${POETRY_DUAL_UNDERLINE_THICKNESS_PX}px`,
+    backgroundPosition: `center bottom ${POETRY_DUAL_UNDERLINE_THICKNESS_PX}px, center bottom 0px`,
+    backgroundRepeat: "no-repeat, no-repeat",
+    paddingBottom: `${POETRY_DUAL_UNDERLINE_CLEARANCE_PX + POETRY_DUAL_UNDERLINE_THICKNESS_PX * 2}px`,
+  } : {};
+
+  const style: React.CSSProperties = { ...colorStyle, ...underlineStyle, ...formattingStyle, ...tcStyle, ...synopticMarkStyle, ...poetryRequirednessStyle, ...poetryClosureStyle, ...poetryDualUnderlineStyle };
 
   const isInterlinear = displayMode === "interlinear";
 
@@ -652,21 +688,26 @@ export default function WordToken({
     if (!showVowels)       displayText = displayText.replace(/[ְ-ׇֽֿׁׂׅׄ]/g, "");
   }
   const { leading, core, trailing } = splitPunctuation(displayText);
-  const coreContent = editingPoetrySimilarity
-    ? renderClickableGraphemes(
+  // A saved mark takes priority over the clickable-graphemes editing UI —
+  // otherwise a word that already carries a Similarity mark goes invisible
+  // (renders as plain hover-only letters) the moment Similarity edit mode is
+  // active, including right after the mark you just created.
+  const coreContent = similarityMark
+    ? renderGraphemesWithSimilarityHighlight(
         core,
-        word.wordId,
         word.language,
-        pendingSimilarityAnchor?.wordId === word.wordId ? pendingSimilarityAnchor.graphemeIndex : null,
-        onGraphemeClick ?? (() => {})
+        similarityMark.startIdx,
+        similarityMark.endIdx,
+        () => onClickSimilarityMark?.(similarityMark.mark.id),
+        editingPoetrySimilarity
       )
-    : similarityMark
-      ? renderGraphemesWithSimilarityHighlight(
+    : editingPoetrySimilarity
+      ? renderClickableGraphemes(
           core,
+          word.wordId,
           word.language,
-          similarityMark.startIdx,
-          similarityMark.endIdx,
-          () => onClickSimilarityMark?.(similarityMark.mark.id)
+          pendingSimilarityAnchor?.wordId === word.wordId ? pendingSimilarityAnchor.graphemeIndex : null,
+          onGraphemeClick ?? (() => {})
         )
     : word.largeLetters
       ? renderWithLargeLetters(core, word.largeLetters)
