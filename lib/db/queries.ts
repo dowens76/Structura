@@ -5,8 +5,8 @@ import type { LookupMaps } from "./index";
 import { books, words } from "./source-schema";
 import { lexiconEntries } from "./lexica-schema";
 import type { Word, WordRow } from "./source-schema";
-import { translations, translationVerses, paragraphBreaks, paragraphHeadings, characters, characterRefs, speechSections, wordTags, wordTagRefs, lineIndents, sceneBreaks, passages, rstRelations, lineGroups, wordArrows, wordFormatting, lineAnnotations, bookGroupings, appSettings, translationFootnotes, translationVersions, workspaces, users, textCriticalMarks, notes, intertextualLinks, synopticSets, synopticWordMarks, constituentLabels, transliterationFormats, wordDatasets, wordDatasetEntries, wordDatasetLabelColors, versions, activeVersionSelections } from "./user-schema";
-import type { Book, Translation, TranslationVerse, Character, CharacterRef, SpeechSection, WordTag, WordTagRef, Passage, RstRelation, LineGroup, WordArrow, LineAnnotation, BookGrouping, TranslationFootnote, TranslationVersion, IntertextualLink, SynopticSet, SynopticWordMark, Version } from "./schema";
+import { translations, translationVerses, paragraphBreaks, paragraphHeadings, characters, characterRefs, speechSections, wordTags, wordTagRefs, lineIndents, sceneBreaks, passages, rstRelations, lineGroups, wordArrows, wordFormatting, lineAnnotations, poetryNotations, bookGroupings, appSettings, translationFootnotes, translationVersions, workspaces, users, textCriticalMarks, notes, intertextualLinks, synopticSets, synopticWordMarks, constituentLabels, transliterationFormats, wordDatasets, wordDatasetEntries, wordDatasetLabelColors, versions, activeVersionSelections } from "./user-schema";
+import type { Book, Translation, TranslationVerse, Character, CharacterRef, SpeechSection, WordTag, WordTagRef, Passage, RstRelation, LineGroup, WordArrow, LineAnnotation, PoetryNotation, BookGrouping, TranslationFootnote, TranslationVersion, IntertextualLink, SynopticSet, SynopticWordMark, Version } from "./schema";
 import { VERSIONABLE_FEATURES } from "@/lib/versions/registry";
 import type { TextSource, Testament } from "@/lib/morphology/types";
 
@@ -2250,6 +2250,86 @@ export async function updateLineAnnotation(
 /** Delete an annotation by id. */
 export async function deleteLineAnnotation(id: number): Promise<void> {
   await userDb.delete(lineAnnotations).where(eq(lineAnnotations.id, id));
+}
+
+// ── Poetry Notations (Gestalt: continuation/balance/requiredness/symmetry/similarity/closure) ──
+
+/** Returns all poetry notation marks for a chapter, ordered by creation time. */
+export async function getChapterPoetryNotations(
+  book: string,
+  chapter: number,
+  textSource: string,
+  workspaceId: number,
+  versionId: number
+): Promise<PoetryNotation[]> {
+  return userDb
+    .select()
+    .from(poetryNotations)
+    .where(
+      and(
+        eq(poetryNotations.workspaceId, workspaceId),
+        eq(poetryNotations.versionId, versionId),
+        eq(poetryNotations.book, book),
+        eq(poetryNotations.chapter, chapter),
+        eq(poetryNotations.textSource, textSource)
+      )
+    )
+    .orderBy(asc(poetryNotations.createdAt));
+}
+
+/** Insert a new poetry notation mark and return the created record. */
+export async function createPoetryNotation(fields: {
+  principle: string;
+  subtype?: string | null;
+  direction?: string | null;
+  startWordId: string;
+  endWordId?: string | null;
+  startGraphemeIndex?: number | null;
+  endGraphemeIndex?: number | null;
+  note?: string | null;
+  textSource: string;
+  book: string;
+  chapter: number;
+  workspaceId: number;
+  versionId: number;
+}): Promise<PoetryNotation> {
+  const [row] = await userDb
+    .insert(poetryNotations)
+    .values({
+      principle: fields.principle,
+      subtype: fields.subtype ?? null,
+      direction: fields.direction ?? null,
+      startWordId: fields.startWordId,
+      endWordId: fields.endWordId ?? null,
+      startGraphemeIndex: fields.startGraphemeIndex ?? null,
+      endGraphemeIndex: fields.endGraphemeIndex ?? null,
+      note: fields.note ?? null,
+      textSource: fields.textSource,
+      book: fields.book,
+      chapter: fields.chapter,
+      workspaceId: fields.workspaceId,
+      versionId: fields.versionId,
+    })
+    .returning();
+  return row;
+}
+
+/** Update fields of an existing poetry notation mark (note, direction, or its anchor range). */
+export async function updatePoetryNotation(
+  id: number,
+  updates: Partial<Pick<PoetryNotation, "note" | "direction" | "startWordId" | "endWordId" | "startGraphemeIndex" | "endGraphemeIndex">>
+): Promise<PoetryNotation> {
+  const [row] = await userDb
+    .update(poetryNotations)
+    .set(updates)
+    .where(eq(poetryNotations.id, id))
+    .returning();
+  return row;
+}
+
+/** Delete a poetry notation mark by id. */
+export async function deletePoetryNotation(id: number): Promise<void> {
+  await userDb.delete(poetryNotations).where(eq(poetryNotations.id, id));
 }
 
 // ── Synoptic Word Marks (word-level comparison marking) ──────────────────────

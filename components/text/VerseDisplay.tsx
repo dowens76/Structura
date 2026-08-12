@@ -1,7 +1,11 @@
 "use client";
 
 import React, { useState, useEffect, useRef, useMemo } from "react";
-import type { Word, CharacterRef, Character, SpeechSection, WordTag, WordTagRef, LineAnnotation, TranslationFootnote } from "@/lib/db/schema";
+import type { Word, CharacterRef, Character, SpeechSection, WordTag, WordTagRef, LineAnnotation, PoetryNotation, TranslationFootnote } from "@/lib/db/schema";
+import { POETRY_COLORS, balanceGlyph, type BalanceSubtype, type ImbalanceDirection } from "@/lib/poetry/constants";
+import { renderClickableGraphemes, renderGraphemesWithSimilarityHighlight } from "@/lib/poetry/graphemeRender";
+import PoetryNotePopover from "./PoetryNotePopover";
+import PoetryArrowIcon from "./PoetryArrowIcon";
 import { renderUsfmText } from "@/lib/utils/usfm-renderer";
 import type { DisplayMode, GrammarFilterState, TranslationTextEntry, InterlinearSubMode } from "@/lib/morphology/types";
 import type { ColorRule } from "@/lib/morphology/colorRules";
@@ -259,6 +263,39 @@ interface VerseDisplayProps {
   onUpdateAnnotation?: (id: number, updates: { annotType?: string; label?: string; commFunction?: string | null; color?: string; description?: string | null; outOfSequence?: boolean; transitional?: boolean }) => void;
   onExpandAnnotationRange?: (id: number, direction: "expand-start" | "shrink-start" | "expand-end" | "shrink-end") => void;
   showAnnotationCol?: boolean;
+  // Poetry notation (Gestalt: continuation/balance/requiredness/symmetry/similarity/closure)
+  showPoetryCol?: boolean;
+  editingPoetryNotation?: boolean;
+  /** Balance/Imbalance mark for a line (segment), keyed by segFirstWordId. */
+  balanceMarkBySegment?: Map<string, PoetryNotation>;
+  /** Symmetry marks touching a line, keyed by segFirstWordId — "start" = upper ▽, "end" = lower △. */
+  symmetryMarksBySegment?: Map<string, { mark: PoetryNotation; role: "start" | "end" }[]>;
+  /** The line currently pending as Symmetry's first click (highlighted while awaiting the second). */
+  symmetryLineA?: string | null;
+  onSelectPoetryLine?: (segFirstWordId: string) => void;
+  /** Word-anchored poetry click from a TRANSLATION token — wordId is a
+   *  `tv:ABBR:...` id, segFirstWordId is the SOURCE line (paragraph segment)
+   *  the translation row belongs to (translations don't have their own
+   *  independent "line" identity for panel-anchored marks — see renderTvToken). */
+  onSelectPoetryWord?: (wordId: string, segFirstWordId: string) => void;
+  /** Word-anchored marks (continuation ↓ / requiredness →), keyed by wordId. */
+  poetryWordMarkMap?: Map<string, { continuation?: PoetryNotation; requiredness?: PoetryNotation }>;
+  /** Words covered by a "closure — weak" range (purple underline). */
+  poetryClosureWeakSet?: Set<string>;
+  /** Words that are the LAST word of a "closure — complete" line (purple end bar). */
+  poetryClosureCompleteSet?: Set<string>;
+  /** Saved Similarity marks touching a word (read mode), with the local grapheme range for that word. */
+  similarityMarkByWord?: Map<string, { mark: PoetryNotation; startIdx: number; endIdx: number }>;
+  /** True only while editing AND the "similarity" sub-tool is active. */
+  editingPoetrySimilarity?: boolean;
+  pendingSimilarityAnchor?: { wordId: string; graphemeIndex: number } | null;
+  onGraphemeClick?: (wordId: string, graphemeIndex: number, shiftHeld: boolean, segFirstWordId: string) => void;
+  onClickSimilarityMark?: (markId: number) => void;
+  /** The id of the poetry-notation mark currently open for note-editing (word/letter-anchored marks only). */
+  openPoetryNoteMarkByWord?: Map<string, PoetryNotation>;
+  onSavePoetryNote?: (id: number, note: string | null) => void;
+  onDeletePoetryMark?: (id: number) => void;
+  onClosePoetryNote?: () => void;
   showAtnachBreaks?: boolean;
   /** Shows a stresses/syllables count column, aligned past the end of the
    *  Hebrew text, for each poetic line (paragraph-break-defined segment). */
@@ -370,6 +407,53 @@ function ColorPalette({
 /** Displays one annotation at a segment — full badge at start, continuation bar at middle/end. */
 function toSubscript(n: number): string {
   return String(n).split("").map((c) => "₀₁₂₃₄₅₆₇₈₉"[parseInt(c)]).join("");
+}
+
+/**
+ * One poetry-notation mark badge in the shared right-panel column — used for
+ * both Balance/Imbalance (one mark per line) and Symmetry (▽ start / △ end).
+ * The note field is always-visible and editable inline, matching how
+ * lineAnnotations.description is shown for clause labels, rather than a
+ * click-to-open popover (see AnnotBadge above for that alternate pattern,
+ * used for the word/letter-anchored marks in WordToken instead).
+ */
+function PoetryLineBadge({
+  mark,
+  glyph,
+  color,
+  onSaveNote,
+  onDeleteMark,
+}: {
+  mark: PoetryNotation;
+  glyph: string;
+  color: string;
+  onSaveNote?: (id: number, note: string | null) => void;
+  onDeleteMark?: (id: number) => void;
+}) {
+  const [draft, setDraft] = useState(mark.note ?? "");
+  return (
+    <div className="flex flex-col gap-0.5" onClick={(e) => e.stopPropagation()}>
+      <div className="flex items-center gap-1">
+        <span className="font-bold text-sm leading-none" style={{ color }}>{glyph}</span>
+        <button
+          type="button"
+          className="text-[10px] text-stone-400 hover:text-red-500 ml-auto"
+          onClick={() => onDeleteMark?.(mark.id)}
+          title="Delete"
+        >
+          ×
+        </button>
+      </div>
+      <input
+        type="text"
+        className="text-[10px] bg-transparent border-b border-transparent focus:border-stone-300 dark:focus:border-stone-600 outline-none"
+        placeholder="Note"
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={() => { if (draft !== (mark.note ?? "")) onSaveNote?.(mark.id, draft.trim() || null); }}
+      />
+    </div>
+  );
 }
 
 function AnnotBadge({
@@ -1324,6 +1408,25 @@ export default function VerseDisplay({
   onUpdateAnnotation,
   onExpandAnnotationRange,
   showAnnotationCol = false,
+  showPoetryCol = false,
+  editingPoetryNotation = false,
+  balanceMarkBySegment,
+  symmetryMarksBySegment,
+  symmetryLineA = null,
+  onSelectPoetryLine,
+  onSelectPoetryWord,
+  poetryWordMarkMap,
+  poetryClosureWeakSet,
+  poetryClosureCompleteSet,
+  similarityMarkByWord,
+  editingPoetrySimilarity = false,
+  pendingSimilarityAnchor = null,
+  onGraphemeClick,
+  onClickSimilarityMark,
+  openPoetryNoteMarkByWord,
+  onSavePoetryNote,
+  onDeletePoetryMark,
+  onClosePoetryNote,
   onVerseClick,
   rstSourcePad = 0,
   lineSpacingMap,
@@ -1957,6 +2060,59 @@ export default function VerseDisplay({
     );
   }
 
+  // ── Poetry notation column renderer ───────────────────────────────────────
+  // Shares the same margin space as the clause-label column above — only one
+  // of the two is ever shown at once (showAnnotationCol / showPoetryCol are
+  // mutually exclusive, driven by ChapterDisplay's panelDisplayMode). Only
+  // Balance/Imbalance and Symmetry render here; the other four principles
+  // render inline on the words themselves (see WordToken.tsx).
+  function renderPoetryColForSeg(segFirstWordId: string): React.ReactNode {
+    if (!showPoetryCol) return null;
+
+    const balanceMark = balanceMarkBySegment?.get(segFirstWordId);
+    const symMarks = symmetryMarksBySegment?.get(segFirstWordId) ?? [];
+    const isPendingSymmetryA = symmetryLineA === segFirstWordId;
+    if (!balanceMark && symMarks.length === 0 && !editingPoetryNotation) return null;
+
+    return (
+      <div
+        className={[
+          presentationMode ? "w-72" : "w-48",
+          "flex-none pl-3 self-stretch flex flex-col gap-1.5",
+          editingPoetryNotation
+            ? "cursor-pointer hover:bg-sky-50 dark:hover:bg-sky-950/20 rounded transition-colors"
+            : "",
+          isPendingSymmetryA ? "ring-1 ring-inset ring-green-400/60 rounded" : "",
+        ].filter(Boolean).join(" ")}
+        onClick={
+          editingPoetryNotation
+            ? (e) => { e.stopPropagation(); onSelectPoetryLine?.(segFirstWordId); }
+            : undefined
+        }
+      >
+        {balanceMark && (
+          <PoetryLineBadge
+            mark={balanceMark}
+            glyph={balanceGlyph(balanceMark.subtype as BalanceSubtype | null, balanceMark.direction as ImbalanceDirection | null)}
+            color={POETRY_COLORS.balance}
+            onSaveNote={onSavePoetryNote}
+            onDeleteMark={onDeletePoetryMark}
+          />
+        )}
+        {symMarks.map(({ mark, role }) => (
+          <PoetryLineBadge
+            key={mark.id}
+            mark={mark}
+            glyph={role === "start" ? "▽" : "△"}
+            color={POETRY_COLORS.symmetry}
+            onSaveNote={onSavePoetryNote}
+            onDeleteMark={onDeletePoetryMark}
+          />
+        ))}
+      </div>
+    );
+  }
+
   // ── Syllable/stress column renderer ──────────────────────────────────────
   // Renders a fixed-width column past the end of one poetic line's (paragraph
   // segment's) Hebrew text, showing "stresses / syllables" for that line.
@@ -2246,6 +2402,19 @@ export default function VerseDisplay({
               datasetGroupingActive={isGroupingCapableMode && datasetGroupingActive}
               isPendingGroupMember={isPendingGroupMember}
               onToggleDatasetGroupMember={onToggleDatasetGroupMember}
+              poetryMarkContinuation={poetryWordMarkMap?.get(word.wordId)?.continuation ?? null}
+              poetryMarkRequiredness={poetryWordMarkMap?.get(word.wordId)?.requiredness ?? null}
+              poetryClosureWeak={poetryClosureWeakSet?.has(word.wordId) ?? false}
+              poetryClosureComplete={poetryClosureCompleteSet?.has(word.wordId) ?? false}
+              openPoetryNoteMark={openPoetryNoteMarkByWord?.get(word.wordId) ?? null}
+              onSavePoetryNote={onSavePoetryNote}
+              onDeletePoetryMark={onDeletePoetryMark}
+              onClosePoetryNote={onClosePoetryNote}
+              editingPoetrySimilarity={editingPoetrySimilarity}
+              pendingSimilarityAnchor={pendingSimilarityAnchor}
+              onGraphemeClick={onGraphemeClick ? (wordId, idx, shiftHeld) => onGraphemeClick(wordId, idx, shiftHeld, wordToParaStart.get(wordId) ?? wordId) : undefined}
+              similarityMark={similarityMarkByWord?.get(word.wordId) ?? null}
+              onClickSimilarityMark={onClickSimilarityMark}
             />
             {wordHasAtnach && (
               <span
@@ -2505,6 +2674,7 @@ export default function VerseDisplay({
                   )}
                 </div>
                 {renderAnnotationColForSeg(seg[0].wordId)}
+                {renderPoetryColForSeg(seg[0].wordId)}
               </div>
             </div>
           );
@@ -2932,6 +3102,24 @@ export default function VerseDisplay({
                       const token = tvSeg.tokens[localWi];
                       const globalWi = tvSeg.startIdx + localWi;
                       const wordId = `tv:${abbr}:${book}.${chapter}.${verseNum}.${globalWi}`;
+
+                      // ── Poetry notation (Gestalt) — same marks a source word can carry,
+                      // anchored here by the translation token's own tv: id. Line-anchored
+                      // marks (balance/symmetry/closure-complete) instead key off seg[0].wordId
+                      // (the SOURCE line this translation row renders inside) — see
+                      // onSelectPoetryWord below and renderPoetryColForSeg above.
+                      const tvPoetryContinuation = poetryWordMarkMap?.get(wordId)?.continuation ?? null;
+                      const tvPoetryRequiredness = poetryWordMarkMap?.get(wordId)?.requiredness ?? null;
+                      const tvPoetryClosureWeak = poetryClosureWeakSet?.has(wordId) ?? false;
+                      const tvSimilarityMark = similarityMarkByWord?.get(wordId) ?? null;
+                      const tvOpenPoetryNote = openPoetryNoteMarkByWord?.get(wordId) ?? null;
+                      const tvPoetryClosureStyle: React.CSSProperties = tvPoetryClosureWeak ? {
+                        textDecorationLine:      "underline",
+                        textDecorationStyle:     "solid",
+                        textDecorationColor:     POETRY_COLORS.closure,
+                        textDecorationThickness: "2.5px",
+                      } : {};
+
                       const ref = characterRefMap.get(wordId);
                       const char1 = ref ? resolveCharacter(ref.character1Id) : null;
                       const char2 = ref?.character2Id != null
@@ -3049,7 +3237,9 @@ export default function VerseDisplay({
                         color:      tvFormatting?.textColor ?? undefined,
                       };
 
-                      const tokenClassName = editingArrows
+                      const tokenClassName = editingPoetryNotation && !editingPoetrySimilarity
+                        ? "cursor-crosshair rounded px-0.5 -mx-0.5 hover:bg-orange-50 dark:hover:bg-orange-950/40 transition-colors"
+                        : editingArrows
                         ? "cursor-crosshair rounded px-0.5 -mx-0.5 hover:bg-slate-100 dark:hover:bg-slate-900/40 transition-colors"
                         : editingScenes
                         ? "cursor-pointer rounded px-0.5 -mx-0.5 hover:bg-violet-100 dark:hover:bg-violet-900/40 transition-colors"
@@ -3067,7 +3257,9 @@ export default function VerseDisplay({
 
                       const isTvRangeStart = wordId === tagRangeStartWordId;
 
-                      const handleClick = editingArrows
+                      const handleClick = editingPoetryNotation && !editingPoetrySimilarity
+                        ? (e: React.MouseEvent) => { e.stopPropagation(); onSelectPoetryWord?.(wordId, seg[0].wordId); }
+                        : editingArrows
                         ? () => onSelectArrowWordById?.(wordId)
                         : editingScenes
                         ? (e: React.MouseEvent) => { e.stopPropagation(); if (firstWordId && !(sceneBreakMap.get(firstWordId)?.length)) onToggleSceneBreak?.(firstWordId, 1, verseNum); }
@@ -3130,6 +3322,27 @@ export default function VerseDisplay({
                       const isAnchorMoveTarget =
                         !!anchorMoveFootnote && anchorMoveFootnote.translationId === tvTranslationId;
 
+                      // Poetry Similarity: swap to per-letter clickable spans while editing,
+                      // or a read-mode highlight if a saved mark touches this token —
+                      // otherwise fall through to the normal inline-markup rendering.
+                      const tvCoreContent = editingPoetrySimilarity
+                        ? renderClickableGraphemes(
+                            tokCore,
+                            wordId,
+                            tvLanguage ?? "",
+                            pendingSimilarityAnchor?.wordId === wordId ? pendingSimilarityAnchor.graphemeIndex : null,
+                            (wid, idx, shiftHeld) => onGraphemeClick?.(wid, idx, shiftHeld, seg[0].wordId)
+                          )
+                        : tvSimilarityMark
+                          ? renderGraphemesWithSimilarityHighlight(
+                              tokCore,
+                              tvLanguage ?? "",
+                              tvSimilarityMark.startIdx,
+                              tvSimilarityMark.endIdx,
+                              () => onClickSimilarityMark?.(tvSimilarityMark.mark.id)
+                            )
+                          : renderInlineMarked(tokCore);
+
                       const node = (
                         <span key={globalWi}>
                           {(isMidVerseBreak || isInterSegBreak) && (
@@ -3155,7 +3368,7 @@ export default function VerseDisplay({
                           <span className={isTvDatasetMode ? "word-interlinear" : undefined}>
                             <span
                               data-word-id={wordId}
-                              style={{ ...underlineStyle, ...tvBgStyle, ...tvFormattingStyle, ...usfmStyle }}
+                              style={{ position: "relative", ...underlineStyle, ...tvBgStyle, ...tvFormattingStyle, ...usfmStyle, ...tvPoetryClosureStyle }}
                               className={[
                                 tokenClassName,
                                 usfmClassName,
@@ -3167,7 +3380,32 @@ export default function VerseDisplay({
                                 : handleClick}
                               title={isAnchorMoveTarget ? "Click to place footnote anchor here" : undefined}
                             >
-                              {renderInlineMarked(tokCore)}
+                              {tvCoreContent}
+                              {tvPoetryContinuation && (
+                                <span
+                                  className="absolute left-1/2 -translate-x-1/2 top-full pointer-events-none select-none"
+                                  aria-hidden
+                                >
+                                  <PoetryArrowIcon direction="down" color={POETRY_COLORS.continuation} />
+                                </span>
+                              )}
+                              {tvPoetryRequiredness && (
+                                <span
+                                  className="absolute left-1/2 -translate-x-1/2 bottom-full pointer-events-none select-none"
+                                  aria-hidden
+                                >
+                                  <PoetryArrowIcon direction="right" color={POETRY_COLORS.requiredness} />
+                                </span>
+                              )}
+                              {tvOpenPoetryNote && onSavePoetryNote && onDeletePoetryMark && onClosePoetryNote && (
+                                <PoetryNotePopover
+                                  mark={tvOpenPoetryNote}
+                                  color={POETRY_COLORS[(tvOpenPoetryNote.principle as keyof typeof POETRY_COLORS)] ?? "#888"}
+                                  onSave={onSavePoetryNote}
+                                  onDelete={onDeletePoetryMark}
+                                  onClose={onClosePoetryNote}
+                                />
+                              )}
                             </span>
                             {isTvDatasetMode && (
                               <TranslationDatasetLabel
@@ -3514,6 +3752,7 @@ export default function VerseDisplay({
                 {wrapInSpeechLayers(layers, gridContent, gridStyle, gridClass)}
               </div>
               {renderAnnotationColForSeg(seg[0].wordId)}
+              {renderPoetryColForSeg(seg[0].wordId)}
             </div>
           </div>
         );

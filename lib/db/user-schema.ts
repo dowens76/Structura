@@ -468,6 +468,43 @@ export const lineAnnotations = sqliteTable(
 );
 
 /**
+ * Poetry notation marks — Emmylou Grosser's Gestalt-based Biblical Hebrew
+ * poetry notation: continuation, balance/imbalance, requiredness, symmetry,
+ * similarity, closure. One unified table (rather than one per principle)
+ * since every row shares the same versioning/CRUD shape; unused geometry
+ * columns stay null for a given row:
+ *   continuation / requiredness : startWordId only (word-anchored)
+ *   balance                     : startWordId = a paragraphFirstWordIds entry (line-anchored); subtype "balance"|"imbalance"; direction "left"|"right" (imbalance only)
+ *   symmetry                    : startWordId/endWordId = two paragraphFirstWordIds entries, in click order (upper/lower triangle)
+ *   similarity                  : startWordId/startGraphemeIndex .. endWordId/endGraphemeIndex (letter range, may span adjacent words in one line)
+ *   closure                     : subtype "weak" (startWordId/endWordId = arbitrary word range, not segment-snapped) | "complete" (startWordId = a line's segFirstWordId, endWordId null)
+ */
+export const poetryNotations = sqliteTable(
+  "poetry_notations",
+  {
+    id:                 integer("id").primaryKey({ autoIncrement: true }),
+    workspaceId:        integer("workspace_id").notNull().default(1)
+                          .references(() => workspaces.id, { onDelete: "cascade" }),
+    versionId:          integer("version_id").notNull()
+                          .references(() => versions.id, { onDelete: "cascade" }),
+    principle:          text("principle").notNull(), // "continuation"|"balance"|"requiredness"|"symmetry"|"similarity"|"closure"
+    subtype:            text("subtype"),              // balance: "balance"|"imbalance"; closure: "weak"|"complete"
+    direction:          text("direction"),             // imbalance triangle: "left"|"right"
+    startWordId:        text("start_word_id").notNull(),
+    endWordId:          text("end_word_id"),
+    startGraphemeIndex: integer("start_grapheme_index"), // similarity only
+    endGraphemeIndex:   integer("end_grapheme_index"),   // similarity only
+    note:               text("note"),
+    textSource:         text("text_source").notNull(),
+    book:               text("book").notNull(),
+    chapter:            integer("chapter").notNull(),
+    createdAt:          text("created_at").$defaultFn(() => new Date().toISOString()),
+  },
+  (t) => [index("pn_book_ch_src_idx").on(t.book, t.chapter, t.textSource)]
+);
+export type PoetryNotation = typeof poetryNotations.$inferSelect;
+
+/**
  * Word-level "Synoptic comparison" marks — unlike lineAnnotations (which snap
  * to whole paragraph segments and render as a margin badge), these are an
  * arbitrary contiguous word range (start/end can fall mid-sentence) rendered

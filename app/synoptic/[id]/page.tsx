@@ -80,7 +80,7 @@ async function loadColumnData(passage: Passage, workspaceId: number): Promise<Sy
     initialParagraphBreakIds, initialCharacterRefs, initialSpeechSections,
     initialWordTagRefs, initialLineIndents, initialRstRelations, initialLineGroups,
     initialWordArrows, initialWordFormatting, initialSceneBreaks,
-    initialLineAnnotations, initialTextCriticalMarks,
+    initialLineAnnotations, initialPoetryNotations, initialTextCriticalMarks,
   } = editingData;
   const { bookSceneBreaks, bookMaxVerses } = bookWideData;
 
@@ -139,6 +139,7 @@ async function loadColumnData(passage: Passage, workspaceId: number): Promise<Sy
       initialWordFormatting,
       initialSceneBreaks,
       initialLineAnnotations,
+      initialPoetryNotations,
       bookSceneBreaks,
       bookMaxVerses,
       ultBaseVerses,

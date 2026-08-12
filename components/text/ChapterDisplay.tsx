@@ -3,7 +3,9 @@
 import { useMemo, useState, useEffect, useRef, useCallback, useTransition } from "react";
 import { getMtToKjvInstructions, getKjvVerseLabel } from "@/lib/versification/mt-kjv-mapping";
 import { useRouter, useSearchParams } from "next/navigation";
-import type { Word, Character, CharacterRef, SpeechSection, WordTag, WordTagRef, RstRelation, WordArrow, LineAnnotation, Passage, SynopticWordMark, LineGroup } from "@/lib/db/schema";
+import type { Word, Character, CharacterRef, SpeechSection, WordTag, WordTagRef, RstRelation, WordArrow, LineAnnotation, PoetryNotation, Passage, SynopticWordMark, LineGroup } from "@/lib/db/schema";
+import { usePoetryNotations } from "@/lib/hooks/usePoetryNotations";
+import { POETRY_PRINCIPLE_LABELS, POETRY_PRINCIPLE_GLYPHS, POETRY_COLORS, type PoetryPrinciple } from "@/lib/poetry/constants";
 import { useSynopticCategories } from "@/lib/hooks/useSynopticCategories";
 import SynopticCategoryManager from "@/components/synoptic/SynopticCategoryManager";
 import type { Translation, TranslationVerse, TranslationFootnote } from "@/lib/db/schema";
@@ -119,6 +121,7 @@ interface ChapterDisplayProps {
   initialWordFormatting: { wordId: string; isBold: boolean; isItalic: boolean; textColor: string | null }[];
   initialSceneBreaks: { wordId: string; heading: string | null; level: number; verse: number; outOfSequence: boolean; extendedThrough: number | null; thematic: boolean; thematicLetter: string | null; transitional: boolean }[];
   initialLineAnnotations: LineAnnotation[];
+  initialPoetryNotations: PoetryNotation[];
   // `bookId` disambiguates which book each break belongs to — required for
   // cross-book passages where two books can share raw chapter numbers.
   bookSceneBreaks: { wordId: string; heading: string | null; level: number; chapter: number; verse: number; positionInVerse: number; extendedThrough: number | null; thematic: boolean; thematicLetter: string | null; transitional: boolean; bookId: number }[];
@@ -262,6 +265,7 @@ export default function ChapterDisplay({
   initialWordFormatting,
   initialSceneBreaks,
   initialLineAnnotations,
+  initialPoetryNotations,
   bookSceneBreaks,
   bookMaxVerses,
   ultBaseVerses = [],
@@ -747,6 +751,11 @@ export default function ChapterDisplay({
 
   // Line-group bracket color-by-level panel (local to ChapterDisplay — not part of the hook)
   const [showLineGroupColors, setShowLineGroupColors] = useState(false);
+  // Which feature occupies the shared right-side margin column — clause labels
+  // or poetry notation (Balance/Imbalance + Symmetry) — never both at once.
+  // Explicit (not derived) so toggling one off doesn't also hide the other's
+  // already-saved marks; entering either edit mode below sets this to match.
+  const [panelDisplayMode, setPanelDisplayMode] = useState<"annotations" | "poetry">("annotations");
 
   // ── Word arrows (hook) ────────────────────────────────────────────────────
   const {
@@ -770,9 +779,16 @@ export default function ChapterDisplay({
   const [editingBold, setEditingBold]     = useState(false);
   const [editingItalic, setEditingItalic] = useState(false);
   const [editingTextColor, setEditingTextColor] = useState(false);
-  const [activeTextColor, setActiveTextColor] = useState(
-    () => readLocal("structura:activeTextColor", "#DC2626")
-  );
+  // Starts at the SSR-safe default and syncs from localStorage post-mount
+  // (rather than reading it in the useState initializer) — this value renders
+  // directly into an inline style on first paint (the "A" toolbar button), so
+  // reading localStorage during the client's hydration render would produce a
+  // color that mismatches whatever the server rendered, triggering a
+  // hydration-mismatch warning for any user with a previously-saved color.
+  const [activeTextColor, setActiveTextColor] = useState("#DC2626");
+  useEffect(() => {
+    setActiveTextColor(readLocal("structura:activeTextColor", "#DC2626"));
+  }, []);
   function updateActiveTextColor(color: string) {
     setActiveTextColor(color);
     writeLocal("structura:activeTextColor", color);
@@ -1064,6 +1080,169 @@ export default function ChapterDisplay({
     getChapterForWord,
     paragraphFirstWordIds,
   });
+
+  // ── Poetry notation (Gestalt) hook ────────────────────────────────────────
+  const {
+    poetryNotations,
+    editingPoetryNotation, setEditingPoetryNotation,
+    activePrinciple, setActivePrinciple,
+    activeBalanceSubtype, setActiveBalanceSubtype,
+    activeImbalanceDirection, setActiveImbalanceDirection,
+    activeClosureSubtype, setActiveClosureSubtype,
+    editingNotationId, setEditingNotationId,
+    symmetryLineA,
+    similarityStart,
+    clearPending: clearPoetryPending,
+    handleWordClick: handlePoetryWordClick,
+    handleLineClick: handlePoetryLineClick,
+    handleSymmetryLineClick,
+    handleGraphemeClick,
+    handleClosureWordClick,
+    handleClosureLineClick,
+    handleUpdateNote: handleUpdatePoetryNote,
+    handleDeleteNotation: handleDeletePoetryNotation,
+  } = usePoetryNotations({
+    initialPoetryNotations,
+    resolveWordSource,
+    wordIndexMap,
+  });
+
+  /** Dispatches a word click to the right poetry-notation handler for the
+   *  currently active principle, given an explicit wordId + the line
+   *  ("source paragraph segment") it belongs to. `wordId` may be a source
+   *  Word.wordId or a translation `tv:ABBR:...` token id — both are valid
+   *  anchors for every principle except Similarity, which is handled
+   *  separately via onGraphemeClick and bypasses word-level selection. */
+  function handlePoetryWordSelectByIds(wordId: string, segFirstWordId: string) {
+    switch (activePrinciple) {
+      case "continuation":
+      case "requiredness":
+        handlePoetryWordClick(wordId);
+        return;
+      case "balance":
+        handlePoetryLineClick(segFirstWordId);
+        return;
+      case "symmetry":
+        handleSymmetryLineClick(segFirstWordId);
+        return;
+      case "closure":
+        if (activeClosureSubtype === "weak") handleClosureWordClick(wordId);
+        else handleClosureLineClick(segFirstWordId);
+        return;
+      case "similarity":
+        // Handled via onGraphemeClick — a plain word click does nothing.
+        return;
+    }
+  }
+
+  // Per-word map of continuation/requiredness marks, keyed by wordId.
+  const poetryWordMarkMap = useMemo(() => {
+    const map = new Map<string, { continuation?: PoetryNotation; requiredness?: PoetryNotation }>();
+    for (const n of poetryNotations) {
+      if (n.principle !== "continuation" && n.principle !== "requiredness") continue;
+      const entry = map.get(n.startWordId) ?? {};
+      if (n.principle === "continuation") entry.continuation = n;
+      else entry.requiredness = n;
+      map.set(n.startWordId, entry);
+    }
+    return map;
+  }, [poetryNotations]);
+
+  // Words covered by a "closure — weak" range (inclusive, chapter-wide order).
+  const poetryClosureWeakSet = useMemo(() => {
+    const set = new Set<string>();
+    for (const n of poetryNotations) {
+      if (n.principle !== "closure" || n.subtype !== "weak" || !n.endWordId) continue;
+      const lo = wordIndexMap.get(n.startWordId);
+      const hi = wordIndexMap.get(n.endWordId);
+      if (lo === undefined || hi === undefined) continue;
+      const [from, to] = lo <= hi ? [lo, hi] : [hi, lo];
+      for (let i = from; i <= to; i++) { const w = words[i]; if (w) set.add(w.wordId); }
+    }
+    return set;
+  }, [poetryNotations, wordIndexMap, words]);
+
+  // Last word of every segment marked "closure — complete".
+  const segLastWordId = useMemo(() => {
+    const map = new Map<string, string>();
+    let curSeg: string | null = null;
+    for (const w of words) {
+      const seg = wordToParaStart.get(w.wordId) ?? w.wordId;
+      if (seg !== curSeg) curSeg = seg;
+      map.set(curSeg, w.wordId);
+    }
+    return map;
+  }, [words, wordToParaStart]);
+  const poetryClosureCompleteSet = useMemo(() => {
+    const set = new Set<string>();
+    for (const n of poetryNotations) {
+      if (n.principle !== "closure" || n.subtype !== "complete") continue;
+      const lastId = segLastWordId.get(n.startWordId);
+      if (lastId) set.add(lastId);
+    }
+    return set;
+  }, [poetryNotations, segLastWordId]);
+
+  // Balance/Imbalance — one mark per line, keyed by segFirstWordId.
+  const balanceMarkBySegment = useMemo(() => {
+    const map = new Map<string, PoetryNotation>();
+    for (const n of poetryNotations) {
+      if (n.principle === "balance") map.set(n.startWordId, n);
+    }
+    return map;
+  }, [poetryNotations]);
+
+  // Symmetry — marks touching a line, keyed by segFirstWordId; role = which
+  // end of the pair this line is (start = upper ▽, end = lower △).
+  const symmetryMarksBySegment = useMemo(() => {
+    const map = new Map<string, { mark: PoetryNotation; role: "start" | "end" }[]>();
+    for (const n of poetryNotations) {
+      if (n.principle !== "symmetry") continue;
+      if (!map.has(n.startWordId)) map.set(n.startWordId, []);
+      map.get(n.startWordId)!.push({ mark: n, role: "start" });
+      if (n.endWordId) {
+        if (!map.has(n.endWordId)) map.set(n.endWordId, []);
+        map.get(n.endWordId)!.push({ mark: n, role: "end" });
+      }
+    }
+    return map;
+  }, [poetryNotations]);
+
+  // Similarity — saved marks, resolved to the local grapheme range they cover
+  // in each word they touch (a mark's start/end word may be the same word, or
+  // two adjacent words in the same line).
+  const similarityMarkByWord = useMemo(() => {
+    const map = new Map<string, { mark: PoetryNotation; startIdx: number; endIdx: number }>();
+    for (const n of poetryNotations) {
+      if (n.principle !== "similarity" || n.startGraphemeIndex == null) continue;
+      if (!n.endWordId || n.startWordId === n.endWordId) {
+        map.set(n.startWordId, { mark: n, startIdx: n.startGraphemeIndex, endIdx: n.endGraphemeIndex ?? n.startGraphemeIndex });
+        continue;
+      }
+      // Spans 2+ words: start word gets [startIdx..end-of-word] (Infinity is
+      // clamped to the word's own length by renderGraphemesWithSimilarityHighlight
+      // via Array.slice, which tolerates an out-of-range end index).
+      map.set(n.startWordId, { mark: n, startIdx: n.startGraphemeIndex, endIdx: 9999 });
+      if (n.endGraphemeIndex != null) {
+        map.set(n.endWordId, { mark: n, startIdx: 0, endIdx: n.endGraphemeIndex });
+      }
+    }
+    return map;
+  }, [poetryNotations]);
+
+  // The mark (if any) currently open for note-editing, resolved to the single
+  // word its popover should anchor to.
+  const openPoetryNoteMarkByWord = useMemo(() => {
+    const map = new Map<string, PoetryNotation>();
+    if (editingNotationId == null) return map;
+    const mark = poetryNotations.find((n) => n.id === editingNotationId);
+    if (mark && (mark.principle === "continuation" || mark.principle === "requiredness" || mark.principle === "similarity" || (mark.principle === "closure" && mark.subtype === "weak"))) {
+      map.set(mark.startWordId, mark);
+    }
+    return map;
+  }, [poetryNotations, editingNotationId]);
+
+  const pendingSimilarityAnchor = similarityStart;
 
   // Nesting tree + per-line vertical-spacing overrides, recomputed whenever
   // the groups or the segment order changes.
@@ -2208,6 +2387,10 @@ export default function ChapterDisplay({
   }
 
   function handleSelectWord(word: Word, shiftHeld = false) {
+    if (editingPoetryNotation) {
+      handlePoetryWordSelectByIds(word.wordId, wordToParaStart.get(word.wordId) ?? word.wordId);
+      return;
+    }
     if (editingWordCompare) {
       handleToggleWordCompareMark(word);
       return;
@@ -4566,7 +4749,7 @@ export default function ChapterDisplay({
   //   refs, speech, arrows, wordTags, paragraph
   // Each lists everything it is COMPATIBLE with — i.e., everything except the
   // other annotation-editing modes.
-  const NON_ANNOTATION = ["paragraph", "scenes", "annotations", "indents", "rst", "lineGroups"] as const;
+  const NON_ANNOTATION = ["paragraph", "scenes", "annotations", "indents", "rst", "lineGroups", "poetry"] as const;
   const COMPAT: Record<string, string[]> = {
     paragraph:   ["indents"],
     indents:     ["paragraph", "speech", "rst", "lineGroups"],
@@ -4579,6 +4762,7 @@ export default function ChapterDisplay({
     arrows:      [...NON_ANNOTATION],
     scenes:      [],
     annotations: [],
+    poetry:      [],
     refs:        ["annotations", "indents", "rst"],
     wordTags:    ["indents", "rst"],
     wordCompare: [],
@@ -4588,6 +4772,7 @@ export default function ChapterDisplay({
     if (!keep.has("paragraph"))   setEditingParagraphs(false);
     if (!keep.has("scenes"))      setEditingScenes(false);
     if (!keep.has("annotations")) { setEditingAnnotations(false); setAnnotRangeStart(null); setAnnotRangeEnd(null); setEditingAnnotationId(null); }
+    if (!keep.has("poetry"))      { setEditingPoetryNotation(false); clearPoetryPending(); }
     if (!keep.has("refs"))        { setEditingRefs(false); setRefRangeStart(null); }
     if (!keep.has("speech"))      { setEditingSpeech(false); setSpeechRangeStart(null); }
     if (!keep.has("wordTags"))    { setEditingWordTags(false); setWordTagRangeStart(null); }
@@ -5321,7 +5506,7 @@ export default function ChapterDisplay({
               {toolbarVis.annotations && <button
                 disabled={editingWordTags}
                 onClick={() => {
-                  if (!editingAnnotations) deactivateIncompatible("annotations");
+                  if (!editingAnnotations) { deactivateIncompatible("annotations"); setPanelDisplayMode("annotations"); }
                   else setEditingAnnotationId(null);
                   setEditingAnnotations((v) => !v);
                 }}
@@ -5338,6 +5523,78 @@ export default function ChapterDisplay({
               >
                 ≡
               </button>}
+
+              {/* Poetry notation (Gestalt) mode */}
+              {toolbarVis.poetry && <button
+                disabled={editingWordTags}
+                onClick={() => {
+                  if (!editingPoetryNotation) { deactivateIncompatible("poetry"); setPanelDisplayMode("poetry"); }
+                  setEditingPoetryNotation((v) => !v);
+                }}
+                data-tip="Poetry notation (Gestalt)"
+                className={[
+                  "px-3 py-1.5 rounded text-[13px] leading-none font-medium transition-colors",
+                  editingPoetryNotation
+                    ? "bg-orange-500 text-white"
+                    : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
+                  "disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-stone-100 dark:disabled:hover:bg-stone-800",
+                ].join(" ")}
+              >
+                ◈
+              </button>}
+              {!editingPoetryNotation && !editingAnnotations && (lineAnnotations.length > 0 || poetryNotations.length > 0) && (
+                <button
+                  type="button"
+                  onClick={() => setPanelDisplayMode((m) => (m === "annotations" ? "poetry" : "annotations"))}
+                  data-tip="Switch the margin panel between clause labels and poetry notation"
+                  className="px-2 py-1.5 rounded text-[11px] font-medium bg-stone-100 dark:bg-stone-800 text-stone-500 dark:text-stone-400 hover:bg-stone-200 dark:hover:bg-stone-700"
+                >
+                  {panelDisplayMode === "annotations" ? "≡→◈" : "◈→≡"}
+                </button>
+              )}
+              {toolbarVis.poetry && editingPoetryNotation && (
+                <div className="flex items-center gap-1 pl-1 border-l border-stone-300 dark:border-stone-600">
+                  {(Object.keys(POETRY_PRINCIPLE_LABELS) as PoetryPrinciple[]).map((p) => (
+                    <button
+                      key={p}
+                      type="button"
+                      onClick={() => { setActivePrinciple(p); clearPoetryPending(); }}
+                      title={POETRY_PRINCIPLE_LABELS[p]}
+                      className={[
+                        "px-2 py-1 rounded text-[13px] font-medium leading-none transition-colors",
+                        activePrinciple === p ? "text-white" : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
+                      ].join(" ")}
+                      style={activePrinciple === p ? { backgroundColor: POETRY_COLORS[p] } : undefined}
+                    >
+                      {POETRY_PRINCIPLE_GLYPHS[p]}
+                    </button>
+                  ))}
+                  {activePrinciple === "balance" && (
+                    <span className="flex items-center gap-1 pl-1">
+                      <button type="button" onClick={() => setActiveBalanceSubtype("balance")}
+                        className={`px-1.5 py-1 rounded text-[11px] ${activeBalanceSubtype === "balance" ? "bg-sky-500 text-white" : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300"}`}>=</button>
+                      <button type="button" onClick={() => setActiveBalanceSubtype("imbalance")}
+                        className={`px-1.5 py-1 rounded text-[11px] ${activeBalanceSubtype === "imbalance" ? "bg-sky-500 text-white" : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300"}`}>◁▷</button>
+                      {activeBalanceSubtype === "imbalance" && (
+                        <>
+                          <button type="button" onClick={() => setActiveImbalanceDirection("left")}
+                            className={`px-1.5 py-1 rounded text-[11px] ${activeImbalanceDirection === "left" ? "bg-sky-500 text-white" : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300"}`}>◁</button>
+                          <button type="button" onClick={() => setActiveImbalanceDirection("right")}
+                            className={`px-1.5 py-1 rounded text-[11px] ${activeImbalanceDirection === "right" ? "bg-sky-500 text-white" : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300"}`}>▷</button>
+                        </>
+                      )}
+                    </span>
+                  )}
+                  {activePrinciple === "closure" && (
+                    <span className="flex items-center gap-1 pl-1">
+                      <button type="button" onClick={() => setActiveClosureSubtype("weak")}
+                        className={`px-1.5 py-1 rounded text-[11px] ${activeClosureSubtype === "weak" ? "bg-purple-500 text-white" : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300"}`}>weak</button>
+                      <button type="button" onClick={() => setActiveClosureSubtype("complete")}
+                        className={`px-1.5 py-1 rounded text-[11px] ${activeClosureSubtype === "complete" ? "bg-purple-500 text-white" : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300"}`}>complete</button>
+                    </span>
+                  )}
+                </div>
+              )}
 
               {/* Word arrow mode */}
               {toolbarVis.arrows && <button
@@ -6361,7 +6618,29 @@ export default function ChapterDisplay({
                 onDeleteAnnotation={handleDeleteAnnotation}
                 onUpdateAnnotation={handleUpdateAnnotation}
                 onExpandAnnotationRange={handleExpandAnnotationRange}
-                showAnnotationCol={editingAnnotations || lineAnnotations.length > 0}
+                showAnnotationCol={panelDisplayMode === "annotations" && (editingAnnotations || lineAnnotations.length > 0)}
+                showPoetryCol={panelDisplayMode === "poetry" && (editingPoetryNotation || balanceMarkBySegment.size > 0 || symmetryMarksBySegment.size > 0)}
+                editingPoetryNotation={editingPoetryNotation}
+                balanceMarkBySegment={balanceMarkBySegment}
+                symmetryMarksBySegment={symmetryMarksBySegment}
+                symmetryLineA={symmetryLineA}
+                onSelectPoetryLine={(segId) => {
+                  if (activePrinciple === "symmetry") handleSymmetryLineClick(segId);
+                  else if (activePrinciple === "balance") handlePoetryLineClick(segId);
+                }}
+                onSelectPoetryWord={handlePoetryWordSelectByIds}
+                poetryWordMarkMap={poetryWordMarkMap}
+                poetryClosureWeakSet={poetryClosureWeakSet}
+                poetryClosureCompleteSet={poetryClosureCompleteSet}
+                similarityMarkByWord={similarityMarkByWord}
+                editingPoetrySimilarity={editingPoetryNotation && activePrinciple === "similarity"}
+                pendingSimilarityAnchor={pendingSimilarityAnchor}
+                onGraphemeClick={handleGraphemeClick}
+                onClickSimilarityMark={(markId) => setEditingNotationId(markId)}
+                openPoetryNoteMarkByWord={openPoetryNoteMarkByWord}
+                onSavePoetryNote={handleUpdatePoetryNote}
+                onDeletePoetryMark={handleDeletePoetryNotation}
+                onClosePoetryNote={() => setEditingNotationId(null)}
                 tcMarkMap={tcMarkMap}
                 editingTc={editingTc}
                 onTcMarkWord={handleTcMarkLxxWord}

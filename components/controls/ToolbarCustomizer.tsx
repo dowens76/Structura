@@ -30,6 +30,7 @@ export interface ToolbarVisibility {
   translations: boolean;
   wordCompare: boolean;
   tc: boolean;
+  poetry: boolean;
 }
 
 export const DEFAULT_TOOLBAR_VIS: ToolbarVisibility = {
@@ -38,7 +39,7 @@ export const DEFAULT_TOOLBAR_VIS: ToolbarVisibility = {
   rst: true, lineGroups: true, arrows: true, bold: true, italic: true, textColor: true,
   refs: true, speech: true, wordTags: true, clear: true,
   notes: true, search: true, bible: true, intertextual: true, translations: true,
-  wordCompare: true, tc: true,
+  wordCompare: true, tc: true, poetry: true,
 };
 
 /**
@@ -55,7 +56,7 @@ export const SYNOPTIC_DEFAULT_TOOLBAR_VIS: ToolbarVisibility = {
   rst: false, lineGroups: false, arrows: false, bold: false, italic: false, textColor: false,
   refs: false, speech: false, wordTags: false, clear: false,
   notes: false, search: false, bible: false, intertextual: false, translations: false,
-  wordCompare: true, tc: false,
+  wordCompare: true, tc: false, poetry: false,
 };
 
 interface Props {
@@ -90,6 +91,7 @@ const SECTIONS: { label: string; items: { key: keyof ToolbarVisibility; label: s
       { key: "rst",         label: "↳ Clause Relationships" },
       { key: "lineGroups",  label: "⌐ Line Groups (poetry)" },
       { key: "annotations", label: "≡ Clause/Paragraph labels" },
+      { key: "poetry",      label: "◈ Poetry notation (Gestalt)" },
       { key: "arrows",      label: "↷ Arrows" },
       { key: "tc",          label: "TC Text Critical markup" },
     ],

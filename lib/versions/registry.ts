@@ -1,5 +1,5 @@
 /**
- * The 12 chapter-scoped markup tables that a "version" can hold an
+ * The 13 chapter-scoped markup tables that a "version" can hold an
  * independent copy of. Drives the checkbox lists in the Create/Manage
  * version dialogs and the generic same-workspace copy in
  * lib/db/queries.ts's copyVersionAnnotations(). Every table listed here must
@@ -27,6 +27,7 @@ import {
   lineAnnotations,
   wordFormatting,
   textCriticalMarks,
+  poetryNotations,
 } from "@/lib/db/user-schema";
 import { VERSIONABLE_FEATURE_LABELS } from "./featureLabels";
 
@@ -57,6 +58,7 @@ const TABLES_BY_KEY: Record<string, VersionableTable> = {
   lineAnnotations,
   wordFormatting,
   textCriticalMarks,
+  poetryNotations,
 };
 
 export const VERSIONABLE_FEATURES: VersionableFeature[] = VERSIONABLE_FEATURE_LABELS.map(({ key, label }) => ({

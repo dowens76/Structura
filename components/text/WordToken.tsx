@@ -7,6 +7,11 @@ import { POS_COLORS, CONSTITUENT_LABELS } from "@/lib/morphology/types";
 import { getPosKey, matchesColorRule, type ColorRule } from "@/lib/morphology/colorRules";
 import ParseTooltip from "./ParseTooltip";
 import hebrewLemmas from "@/lib/data/hebrew-lemmas.json";
+import type { PoetryNotation } from "@/lib/db/schema";
+import { POETRY_COLORS } from "@/lib/poetry/constants";
+import { renderClickableGraphemes, renderGraphemesWithSimilarityHighlight } from "@/lib/poetry/graphemeRender";
+import PoetryNotePopover from "./PoetryNotePopover";
+import PoetryArrowIcon from "./PoetryArrowIcon";
 
 interface WordTokenProps {
   word: Word;
@@ -63,6 +68,32 @@ interface WordTokenProps {
   // True when this word belongs to a saved grouping — its own value is
   // hidden since VerseDisplay renders one centered label over the whole group.
   suppressDatasetValueDisplay?: boolean;
+
+  // ── Poetry notation (Gestalt) ────────────────────────────────────────────
+  /** Continuation mark anchored to this exact word, if any (orange ↓ below). */
+  poetryMarkContinuation?: PoetryNotation | null;
+  /** Requiredness mark anchored to this exact word, if any (gray → above). */
+  poetryMarkRequiredness?: PoetryNotation | null;
+  /** True when this word falls inside a "closure — weak" range (purple underline). */
+  poetryClosureWeak?: boolean;
+  /** True when this word is the LAST word of a line marked "closure — complete"
+   *  (purple vertical bar at the line's trailing edge). */
+  poetryClosureComplete?: boolean;
+  /** id of the poetry-notation mark whose note popover is currently open, if it anchors to this word. */
+  openPoetryNoteMark?: PoetryNotation | null;
+  onSavePoetryNote?: (id: number, note: string | null) => void;
+  onDeletePoetryMark?: (id: number) => void;
+  onClosePoetryNote?: () => void;
+  /** True only while editing mode is active AND the "similarity" sub-tool is selected —
+   *  switches this word's text to individually-clickable grapheme spans. */
+  editingPoetrySimilarity?: boolean;
+  /** The pending (not-yet-committed) similarity selection anchor, if it's in this word. */
+  pendingSimilarityAnchor?: { wordId: string; graphemeIndex: number } | null;
+  onGraphemeClick?: (wordId: string, graphemeIndex: number, shiftHeld: boolean) => void;
+  /** A saved Similarity mark that touches this word (read mode), with the local
+   *  grapheme index range (within this word's core text) it covers here. */
+  similarityMark?: { mark: PoetryNotation; startIdx: number; endIdx: number } | null;
+  onClickSimilarityMark?: (markId: number) => void;
 }
 
 /** Split surface text into leading punctuation, core word, and trailing punctuation.
@@ -479,6 +510,19 @@ export default function WordToken({
   isPendingGroupMember,
   onToggleDatasetGroupMember,
   suppressDatasetValueDisplay,
+  poetryMarkContinuation,
+  poetryMarkRequiredness,
+  poetryClosureWeak,
+  poetryClosureComplete,
+  openPoetryNoteMark,
+  onSavePoetryNote,
+  onDeletePoetryMark,
+  onClosePoetryNote,
+  editingPoetrySimilarity,
+  pendingSimilarityAnchor,
+  onGraphemeClick,
+  similarityMark,
+  onClickSimilarityMark,
 }: WordTokenProps) {
   const [hovering, setHovering] = useState(false);
   const [tooltipBelow, setTooltipBelow] = useState(false);
@@ -555,7 +599,15 @@ export default function WordToken({
     borderRadius: "3px",
   } : {};
 
-  const style: React.CSSProperties = { ...colorStyle, ...underlineStyle, ...formattingStyle, ...tcStyle, ...synopticMarkStyle };
+  // ── Poetry notation: Closure (weak) underline — same mechanism as tcStyle's overline. ──
+  const poetryClosureStyle: React.CSSProperties = poetryClosureWeak ? {
+    textDecorationLine:      "underline",
+    textDecorationStyle:     "solid",
+    textDecorationColor:     POETRY_COLORS.closure,
+    textDecorationThickness: "2.5px",
+  } : {};
+
+  const style: React.CSSProperties = { ...colorStyle, ...underlineStyle, ...formattingStyle, ...tcStyle, ...synopticMarkStyle, ...poetryClosureStyle };
 
   const isInterlinear = displayMode === "interlinear";
 
@@ -596,9 +648,62 @@ export default function WordToken({
     if (!showVowels)       displayText = displayText.replace(/[ְ-ׇֽֿׁׂׅׄ]/g, "");
   }
   const { leading, core, trailing } = splitPunctuation(displayText);
-  const coreContent = word.largeLetters
-    ? renderWithLargeLetters(core, word.largeLetters)
-    : core;
+  const coreContent = editingPoetrySimilarity
+    ? renderClickableGraphemes(
+        core,
+        word.wordId,
+        word.language,
+        pendingSimilarityAnchor?.wordId === word.wordId ? pendingSimilarityAnchor.graphemeIndex : null,
+        onGraphemeClick ?? (() => {})
+      )
+    : similarityMark
+      ? renderGraphemesWithSimilarityHighlight(
+          core,
+          word.language,
+          similarityMark.startIdx,
+          similarityMark.endIdx,
+          () => onClickSimilarityMark?.(similarityMark.mark.id)
+        )
+    : word.largeLetters
+      ? renderWithLargeLetters(core, word.largeLetters)
+      : core;
+
+  const poetryGlyphs = (
+    <>
+      {poetryMarkContinuation && (
+        <span
+          className="absolute left-1/2 -translate-x-1/2 top-full pointer-events-none select-none"
+          aria-hidden
+        >
+          <PoetryArrowIcon direction="down" color={POETRY_COLORS.continuation} />
+        </span>
+      )}
+      {poetryMarkRequiredness && (
+        <span
+          className="absolute left-1/2 -translate-x-1/2 bottom-full pointer-events-none select-none"
+          aria-hidden
+        >
+          <PoetryArrowIcon direction="right" color={POETRY_COLORS.requiredness} />
+        </span>
+      )}
+      {poetryClosureComplete && (
+        <span
+          className="absolute top-0 bottom-0 pointer-events-none select-none"
+          style={{ insetInlineEnd: "-3px", width: "2px", backgroundColor: POETRY_COLORS.closure }}
+          aria-hidden
+        />
+      )}
+      {openPoetryNoteMark && onSavePoetryNote && onDeletePoetryMark && onClosePoetryNote && (
+        <PoetryNotePopover
+          mark={openPoetryNoteMark}
+          color={POETRY_COLORS[(openPoetryNoteMark.principle as keyof typeof POETRY_COLORS)] ?? "#888"}
+          onSave={onSavePoetryNote}
+          onDelete={onDeletePoetryMark}
+          onClose={onClosePoetryNote}
+        />
+      )}
+    </>
+  );
 
   const content = (
     <>
@@ -615,6 +720,7 @@ export default function WordToken({
       >
         {coreContent}
         {showTooltip && !isEditing && <ParseTooltip word={word} flipped={tooltipBelow} useLinguisticTerms={useLinguisticTerms} />}
+        {poetryGlyphs}
       </span>
       {trailing}
     </>

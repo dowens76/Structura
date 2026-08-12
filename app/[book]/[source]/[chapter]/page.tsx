@@ -145,7 +145,7 @@ export default async function ChapterPage({ params, searchParams }: PageProps) {
     initialWordTagRefs: [], initialLineIndents: [], initialRstRelations: [],
     initialLineGroups: [],
     initialWordArrows: [], initialWordFormatting: [], initialSceneBreaks: [],
-    initialLineAnnotations: [], initialTextCriticalMarks: [],
+    initialLineAnnotations: [], initialPoetryNotations: [], initialTextCriticalMarks: [],
   };
   let initialCharacters: Awaited<ReturnType<typeof resolveVisibleCharacters>> = [];
   let initialWordTags: Awaited<ReturnType<typeof resolveVisibleWordTags>> = [];
@@ -432,6 +432,7 @@ export default async function ChapterPage({ params, searchParams }: PageProps) {
             initialWordFormatting={editingData.initialWordFormatting}
             initialSceneBreaks={editingData.initialSceneBreaks}
             initialLineAnnotations={editingData.initialLineAnnotations}
+            initialPoetryNotations={editingData.initialPoetryNotations}
             bookSceneBreaks={bookWideData.bookSceneBreaks}
             bookMaxVerses={bookWideData.bookMaxVerses}
             initialTranslationFootnotes={initialTranslationFootnotes}
