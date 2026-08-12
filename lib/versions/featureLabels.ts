@@ -1,5 +1,5 @@
 /**
- * Client-safe labels for the 13 versionable markup types — shared by
+ * Client-safe labels for the 14 versionable markup types — shared by
  * lib/versions/registry.ts (server, pairs each key with its Drizzle table)
  * and the version dialogs (client, render checkboxes from this list alone).
  * Keep in sync with VERSIONABLE_FEATURES in registry.ts — same keys, same order.
@@ -23,6 +23,7 @@ export const VERSIONABLE_FEATURE_LABELS: VersionableFeatureLabel[] = [
   { key: "wordFormatting", label: "Word formatting (bold/italic/color)" },
   { key: "textCriticalMarks", label: "Text-critical marks" },
   { key: "poetryNotations", label: "Poetry notation (Gestalt)" },
+  { key: "poetryLineBracketExclusions", label: "Poetry line bracket exclusions" },
 ];
 
 /**
@@ -37,4 +38,4 @@ export const VERSIONABLE_FEATURE_LABELS: VersionableFeatureLabel[] = [
  * version dialogs use this to force "Paragraph breaks" on whenever one of
  * these is selected.
  */
-export const FEATURES_REQUIRING_PARAGRAPH_BREAKS = ["lineAnnotations", "sceneBreaks", "poetryNotations"];
+export const FEATURES_REQUIRING_PARAGRAPH_BREAKS = ["lineAnnotations", "sceneBreaks", "poetryNotations", "poetryLineBracketExclusions"];

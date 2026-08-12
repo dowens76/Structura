@@ -272,18 +272,38 @@ interface VerseDisplayProps {
   symmetryMarksBySegment?: Map<string, { mark: PoetryNotation; role: "start" | "end" }[]>;
   /** The line currently pending as Symmetry's first click (highlighted while awaiting the second). */
   symmetryLineA?: string | null;
+  /** The word currently pending as Closure (weak)'s range start (highlighted,
+   *  same outline as a range-start word tag/speech selection, while awaiting
+   *  the shift-click that completes the range). */
+  closureRangeStart?: string | null;
   onSelectPoetryLine?: (segFirstWordId: string) => void;
   /** Word-anchored poetry click from a TRANSLATION token — wordId is a
    *  `tv:ABBR:...` id, segFirstWordId is the SOURCE line (paragraph segment)
-   *  the translation row belongs to (translations don't have their own
-   *  independent "line" identity for panel-anchored marks — see renderTvToken). */
-  onSelectPoetryWord?: (wordId: string, segFirstWordId: string) => void;
+   *  the translation row belongs to — used for Balance/Symmetry, which stay
+   *  source-anchored regardless of which pane is clicked (see renderTvToken).
+   *  tvSegFirstWordId, when supplied, is the translation's OWN line's first
+   *  word id (`tv:ABBR:...`) — used for Closure (complete) so a mark created
+   *  on translation text is anchored to and displays on that same text.
+   *  shiftHeld drives Closure (weak)'s range picking: click the first word,
+   *  shift-click the last. */
+  onSelectPoetryWord?: (wordId: string, segFirstWordId: string, tvSegFirstWordId?: string, shiftHeld?: boolean) => void;
   /** Word-anchored marks (continuation ↓ / requiredness →), keyed by wordId. */
   poetryWordMarkMap?: Map<string, { continuation?: PoetryNotation; requiredness?: PoetryNotation }>;
-  /** Words covered by a "closure — weak" range (purple underline). */
+  /** Words covered by a "closure — weak" range (purple underline), SOURCE text only. */
   poetryClosureWeakSet?: Set<string>;
-  /** Words that are the LAST word of a "closure — complete" line (purple end bar). */
+  /** Closure-weak ranges anchored on translation text, grouped by translation
+   *  abbreviation — each range gives inclusive (verse, wordIndex) bounds,
+   *  since translation text isn't tokenized until this component splits it
+   *  (so a Set of member ids, as poetryClosureWeakSet uses, can't be
+   *  precomputed by the caller). */
+  poetryClosureWeakRangesByAbbr?: Map<string, { book: string; chapter: number; loKey: number; hiKey: number }[]>;
+  /** Words that are the LAST word of a "closure — complete" line (purple end bar), SOURCE text only. */
   poetryClosureCompleteSet?: Set<string>;
+  /** Raw startWordId of every "closure — complete" mark (source or
+   *  translation). Translation rendering can't precompute its own segment's
+   *  LAST word here (see poetryClosureWeakRangesByAbbr) — instead it checks
+   *  whether ITS OWN segment's first word id is in this set. */
+  poetryClosureCompleteStartIds?: Set<string>;
   /** Saved Similarity marks touching a word (read mode), with the local grapheme range for that word. */
   similarityMarkByWord?: Map<string, { mark: PoetryNotation; startIdx: number; endIdx: number }>;
   /** True only while editing AND the "similarity" sub-tool is active. */
@@ -1413,11 +1433,14 @@ export default function VerseDisplay({
   balanceMarkBySegment,
   symmetryMarksBySegment,
   symmetryLineA = null,
+  closureRangeStart = null,
   onSelectPoetryLine,
   onSelectPoetryWord,
   poetryWordMarkMap,
   poetryClosureWeakSet,
+  poetryClosureWeakRangesByAbbr,
   poetryClosureCompleteSet,
+  poetryClosureCompleteStartIds,
   similarityMarkByWord,
   editingPoetrySimilarity = false,
   pendingSimilarityAnchor = null,
@@ -2259,8 +2282,36 @@ export default function VerseDisplay({
     return groups;
   }
 
+  // Word ids whose TRAILING space should carry the closure-weak underline —
+  // i.e. this word and the very next word in the run are both covered by the
+  // same "closure — weak" range, so the gap between them needs the line too
+  // (individual words already get it via WordToken's own poetryClosureWeak
+  // prop; this just fills in the gaps so the line reads as one continuous
+  // stroke instead of one dash per word). Computed over the run's full word
+  // list, independent of the charRef/tag grouping below, since a closure
+  // range has nothing to do with those groupings.
+  function computeClosureWeakConnectsNext(words: Word[]): Set<string> {
+    const set = new Set<string>();
+    if (!poetryClosureWeakSet) return set;
+    for (let i = 0; i < words.length - 1; i++) {
+      if (poetryClosureWeakSet.has(words[i].wordId) && poetryClosureWeakSet.has(words[i + 1].wordId)) {
+        set.add(words[i].wordId);
+      }
+    }
+    return set;
+  }
+
+  const closureWeakSpaceStyle: React.CSSProperties = {
+    textDecorationLine:      "underline",
+    textDecorationStyle:     "solid",
+    textDecorationColor:     POETRY_COLORS.closure,
+    textDecorationThickness: "7.5px",
+    textUnderlineOffset:     "0.35em",
+  };
+
   function renderWordGroups(words: Word[]): React.ReactNode {
     const groups = computeWordGroups(words);
+    const closureWeakConnectsNext = computeClosureWeakConnectsNext(words);
     const elements: React.ReactNode[] = [];
 
     groups.forEach((group, gi) => {
@@ -2329,6 +2380,12 @@ export default function VerseDisplay({
       const isGroupingCapableMode = isDatasetMode || isConstituentGroupMode;
 
       function renderWord(word: Word, wi: number): React.ReactNode {
+        // Merge in the closure-weak underline for this word's trailing space
+        // when it connects to the next word of the same range — on top of
+        // (not instead of) any char-ref underline the space already carries.
+        const wordSpaceStyle: React.CSSProperties | undefined = closureWeakConnectsNext.has(word.wordId)
+          ? { ...spaceUnderlineStyle, ...closureWeakSpaceStyle }
+          : spaceUnderlineStyle;
         const wordHasAtnach =
           showAtnachBreaks &&
           isHebrew &&
@@ -2375,7 +2432,7 @@ export default function VerseDisplay({
               characterMap={characterMap}
               editingRefs={editingRefs}
               editingSpeech={editingSpeech}
-              isRangeStart={word.wordId === speechRangeStartWordId || word.wordId === tagRangeStartWordId || word.wordId === wordCompareRangeStartWordId}
+              isRangeStart={word.wordId === speechRangeStartWordId || word.wordId === tagRangeStartWordId || word.wordId === wordCompareRangeStartWordId || word.wordId === closureRangeStart}
               highlightCharIds={highlightCharIds}
               synopticMarkColor={synopticWordMarkColorMap?.get(word.wordId) ?? null}
               editingWordCompare={editingWordCompare}
@@ -2431,8 +2488,8 @@ export default function VerseDisplay({
               />
             )}
             {!isLastInGroup && !endsWithMaqqef(word) && (
-              spaceUnderlineStyle
-                ? <span style={spaceUnderlineStyle}>{" "}</span>
+              wordSpaceStyle
+                ? <span style={wordSpaceStyle}>{" "}</span>
                 : " "
             )}
           </span>
@@ -2503,7 +2560,14 @@ export default function VerseDisplay({
           {inner}
         </span>
       );
-      if (gi < groups.length - 1 && !endsWithMaqqef(gWords[gWords.length - 1])) elements.push(" ");
+      if (gi < groups.length - 1 && !endsWithMaqqef(gWords[gWords.length - 1])) {
+        const lastWordOfGroup = gWords[gWords.length - 1];
+        elements.push(
+          closureWeakConnectsNext.has(lastWordOfGroup.wordId)
+            ? <span key={`sp-${gi}`} style={closureWeakSpaceStyle}>{" "}</span>
+            : " "
+        );
+      }
     });
 
     return elements;
@@ -3104,15 +3168,46 @@ export default function VerseDisplay({
                       const wordId = `tv:${abbr}:${book}.${chapter}.${verseNum}.${globalWi}`;
 
                       // ── Poetry notation (Gestalt) — same marks a source word can carry,
-                      // anchored here by the translation token's own tv: id. Line-anchored
-                      // marks (balance/symmetry/closure-complete) instead key off seg[0].wordId
-                      // (the SOURCE line this translation row renders inside) — see
-                      // onSelectPoetryWord below and renderPoetryColForSeg above.
+                      // anchored here by the translation token's own tv: id. Balance/Symmetry
+                      // instead key off seg[0].wordId (the SOURCE line this translation row
+                      // renders inside) — see onSelectPoetryWord below and renderPoetryColForSeg
+                      // above. Closure (weak and complete) is anchored to whichever text was
+                      // actually clicked, so it needs its own translation-side lookups: weak
+                      // checks this token's (verse, wordIndex) against saved ranges (translation
+                      // text isn't tokenized until here, so a member-id Set can't be
+                      // precomputed by the caller the way it is for source); complete checks
+                      // whether THIS tvSeg's own first word id was saved as a mark's start.
                       const tvPoetryContinuation = poetryWordMarkMap?.get(wordId)?.continuation ?? null;
                       const tvPoetryRequiredness = poetryWordMarkMap?.get(wordId)?.requiredness ?? null;
-                      const tvPoetryClosureWeak = poetryClosureWeakSet?.has(wordId) ?? false;
+                      const tvClosureWeakRanges = poetryClosureWeakRangesByAbbr?.get(abbr);
+                      const tvWeakKey = verseNum * 100000 + globalWi;
+                      const tvPoetryClosureWeak = tvClosureWeakRanges?.some(
+                        (r) => r.book === book && r.chapter === chapter && tvWeakKey >= r.loKey && tvWeakKey <= r.hiKey
+                      ) ?? false;
+                      // Does this token's TRAILING space also need the underline —
+                      // i.e. is the very next token (by verse/wordIndex, regardless of
+                      // tvSeg boundaries) covered too, so the line reads as one
+                      // continuous stroke instead of one dash per token.
+                      const tvNextWeakKey = tvWeakKey + 1;
+                      const tvPoetryClosureWeakConnectsNext = tvPoetryClosureWeak && (tvClosureWeakRanges?.some(
+                        (r) => r.book === book && r.chapter === chapter && tvNextWeakKey >= r.loKey && tvNextWeakKey <= r.hiKey
+                      ) ?? false);
+                      const tvSegFirstWordId = `tv:${abbr}:${book}.${chapter}.${verseNum}.${tvSeg.startIdx}`;
+                      const tvPoetryClosureComplete =
+                        localWi === tvSeg.tokens.length - 1 &&
+                        (poetryClosureCompleteStartIds?.has(tvSegFirstWordId) ?? false);
                       const tvSimilarityMark = similarityMarkByWord?.get(wordId) ?? null;
-                      const tvOpenPoetryNote = openPoetryNoteMarkByWord?.get(wordId) ?? null;
+                      // A closure-complete mark's map entry is keyed by its startWordId — this
+                      // tvSeg's FIRST word — but the visible end-bar (and thus where a click
+                      // should reopen the note) is the LAST word (tvPoetryClosureComplete,
+                      // above). Look it up by the segment's first id but only surface it at
+                      // that last-word position, mirroring the source-side remap in
+                      // ChapterDisplay's openPoetryNoteMarkByWord.
+                      const tvWordNoteRaw = openPoetryNoteMarkByWord?.get(wordId) ?? null;
+                      const tvOpenPoetryNote =
+                        tvWordNoteRaw && tvWordNoteRaw.principle === "closure" && tvWordNoteRaw.subtype === "complete"
+                          ? null
+                          : tvWordNoteRaw ?? (tvPoetryClosureComplete ? openPoetryNoteMarkByWord?.get(tvSegFirstWordId) ?? null : null);
                       // Thickness is 200% thicker than the baseline (2.5px -> 7.5px), matching WordToken's poetryClosureStyle.
                       const tvPoetryClosureStyle: React.CSSProperties = tvPoetryClosureWeak ? {
                         textDecorationLine:      "underline",
@@ -3217,14 +3312,18 @@ export default function VerseDisplay({
                                 ? { backgroundColor: tvDatasetHighlightBg, borderRadius: "3px" }
                                 : {};
 
-                      // Styled space: char-ref underline takes priority, then word-tag bg.
+                      // Styled space: char-ref underline takes priority, then word-tag bg,
+                      // then closure-weak (merged on top of either, not replacing it).
                       // Dataset grouping does NOT highlight the space between words.
-                      const tvSpaceStyle: React.CSSProperties | undefined =
+                      const tvSpaceStyleBase: React.CSSProperties | undefined =
                         sameCharAsNext && char1
                           ? { ...underlineStyle, whiteSpace: "pre" }
                           : sameTagAsNext && tagBgColor
                           ? { backgroundColor: tagBgColor, whiteSpace: "pre" }
                           : undefined;
+                      const tvSpaceStyle: React.CSSProperties | undefined = tvPoetryClosureWeakConnectsNext
+                        ? { ...tvSpaceStyleBase, ...tvPoetryClosureStyle, whiteSpace: "pre" }
+                        : tvSpaceStyleBase;
 
                       // Within a tvSeg, localWi > 0 could still have a break (defensive)
                       const isMidVerseBreak = localWi > 0 && paragraphBreakIds.has(wordId);
@@ -3257,10 +3356,10 @@ export default function VerseDisplay({
                         ? "cursor-crosshair rounded px-0.5 -mx-0.5 hover:bg-yellow-100 dark:hover:bg-yellow-900/40 transition-colors"
                         : undefined;
 
-                      const isTvRangeStart = wordId === tagRangeStartWordId;
+                      const isTvRangeStart = wordId === tagRangeStartWordId || wordId === closureRangeStart;
 
                       const handleClick = editingPoetryNotation && !editingPoetrySimilarity
-                        ? (e: React.MouseEvent) => { e.stopPropagation(); onSelectPoetryWord?.(wordId, seg[0].wordId); }
+                        ? (e: React.MouseEvent) => { e.stopPropagation(); onSelectPoetryWord?.(wordId, seg[0].wordId, tvSegFirstWordId, e.shiftKey); }
                         : editingArrows
                         ? () => onSelectArrowWordById?.(wordId)
                         : editingScenes
@@ -3428,6 +3527,15 @@ export default function VerseDisplay({
                             </sup>
                           )}
                           {tokTrail}
+                          {tvPoetryClosureComplete && (
+                            // Same "end bar" WordToken renders for a source line's closure —
+                            // complete mark, placed after this tvSeg's own last token instead.
+                            <span
+                              aria-hidden
+                              className="inline-block align-middle pointer-events-none select-none"
+                              style={{ width: "6px", height: "1.1em", backgroundColor: POETRY_COLORS.closure, marginInlineStart: "3px" }}
+                            />
+                          )}
                           {!isLastToken && (
                             tvSpaceStyle
                               ? (isTvDatasetMode ? (

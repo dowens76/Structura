@@ -57,6 +57,11 @@ export interface ChapterOverlaysProps {
   onSelectLineGroupGroup: (groupId: string) => void;
   onDeleteLineGroup: (groupId: string) => void;
   onRequiredLineGroupPad?: (pad: number) => void;
+  /** Poetry Notation tool's "bracket every poetic line" toggle — see
+   *  LineGroupOverlay's showAutoLineBrackets prop. */
+  showAutoLineBrackets?: boolean;
+  excludedLineIds?: Set<string>;
+  onToggleLineBracketExclusion?: (segFirstWordId: string) => void;
 
   // ── Shared layout refs ──────────────────────────────────────────────────────
   /** The scrollable content container — overlays render SVG inside this. */
@@ -103,6 +108,9 @@ export default function ChapterOverlays({
   onSelectLineGroupGroup,
   onDeleteLineGroup,
   onRequiredLineGroupPad,
+  showAutoLineBrackets = false,
+  excludedLineIds,
+  onToggleLineBracketExclusion,
   containerRef,
   layoutRef,
 }: ChapterOverlaysProps) {
@@ -156,6 +164,9 @@ export default function ChapterOverlays({
         onSelectSegment={onSelectLineGroupSegment}
         onSelectGroup={onSelectLineGroupGroup}
         onDeleteGroup={onDeleteLineGroup}
+        showAutoLineBrackets={showAutoLineBrackets}
+        excludedLineIds={excludedLineIds}
+        onToggleLineBracketExclusion={onToggleLineBracketExclusion}
         onRequiredSourcePad={onRequiredLineGroupPad}
       />
     </>

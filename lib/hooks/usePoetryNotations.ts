@@ -60,7 +60,7 @@ export interface UsePoetryNotationsReturn {
   handleLineClick: (segFirstWordId: string) => void;
   handleSymmetryLineClick: (segFirstWordId: string) => void;
   handleGraphemeClick: (wordId: string, graphemeIndex: number, shiftHeld: boolean, segFirstWordId: string) => void;
-  handleClosureWordClick: (wordId: string) => void;
+  handleClosureWordClick: (wordId: string, shiftHeld: boolean) => void;
   handleClosureLineClick: (segFirstWordId: string) => void;
 
   handleUpdateNote: (id: number, note: string | null) => Promise<void>;
@@ -234,7 +234,11 @@ export function usePoetryNotations({
   // wordIndexMap only resolves the former, so a covering-range search or an
   // ordering comparison that can't resolve both endpoints falls back to
   // exact-match / click-order rather than silently missing a match.
-  function handleClosureWordClick(wordId: string) {
+  // First click always anchors the pending start. From there, same as
+  // Similarity's grapheme-range picking: a plain click re-anchors the start
+  // to the newly clicked word, while a SHIFT-click completes the range —
+  // click the first word, shift-click the last.
+  function handleClosureWordClick(wordId: string, shiftHeld: boolean) {
     if (!closureRangeStart) {
       const covering = poetryNotations.find((n) => {
         if (n.principle !== "closure" || n.subtype !== "weak" || !n.endWordId) return false;
@@ -249,6 +253,10 @@ export function usePoetryNotations({
         setEditingNotationId(covering.id);
         return;
       }
+      setClosureRangeStart(wordId);
+      return;
+    }
+    if (!shiftHeld) {
       setClosureRangeStart(wordId);
       return;
     }

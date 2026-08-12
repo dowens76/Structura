@@ -3,7 +3,7 @@
 import { useMemo, useState, useEffect, useRef, useCallback, useTransition } from "react";
 import { getMtToKjvInstructions, getKjvVerseLabel } from "@/lib/versification/mt-kjv-mapping";
 import { useRouter, useSearchParams } from "next/navigation";
-import type { Word, Character, CharacterRef, SpeechSection, WordTag, WordTagRef, RstRelation, WordArrow, LineAnnotation, PoetryNotation, Passage, SynopticWordMark, LineGroup } from "@/lib/db/schema";
+import type { Word, Character, CharacterRef, SpeechSection, WordTag, WordTagRef, RstRelation, WordArrow, LineAnnotation, PoetryNotation, PoetryLineBracketExclusion, Passage, SynopticWordMark, LineGroup } from "@/lib/db/schema";
 import { usePoetryNotations } from "@/lib/hooks/usePoetryNotations";
 import { POETRY_PRINCIPLE_LABELS, POETRY_PRINCIPLE_GLYPHS, POETRY_COLORS, type PoetryPrinciple } from "@/lib/poetry/constants";
 import { useSynopticCategories } from "@/lib/hooks/useSynopticCategories";
@@ -65,6 +65,17 @@ function normalizeForSearch(text: string): string {
     .toLowerCase();
 }
 
+/** Parses a translation-token id (`tv:ABBR:Book.Chapter.Verse.WordIndex`) into
+ *  its parts, or returns null for a source Word.wordId (no `tv:` prefix). */
+function parseTvWordId(wordId: string): { abbr: string; book: string; chapter: number; verse: number; wi: number } | null {
+  if (!wordId.startsWith("tv:")) return null;
+  const [, abbr, ref] = wordId.split(":");
+  const parts = ref?.split(".") ?? [];
+  if (!abbr || parts.length !== 4) return null;
+  const [book, chapterStr, verseStr, wiStr] = parts;
+  return { abbr, book, chapter: parseInt(chapterStr, 10), verse: parseInt(verseStr, 10), wi: parseInt(wiStr, 10) };
+}
+
 /** Returns true if the word's surface text is entirely punctuation and should
  *  be skipped during character / word-tag selection. */
 function isPunctuationWord(word: Word): boolean {
@@ -122,6 +133,7 @@ interface ChapterDisplayProps {
   initialSceneBreaks: { wordId: string; heading: string | null; level: number; verse: number; outOfSequence: boolean; extendedThrough: number | null; thematic: boolean; thematicLetter: string | null; transitional: boolean }[];
   initialLineAnnotations: LineAnnotation[];
   initialPoetryNotations: PoetryNotation[];
+  initialPoetryLineBracketExclusions: PoetryLineBracketExclusion[];
   // `bookId` disambiguates which book each break belongs to — required for
   // cross-book passages where two books can share raw chapter numbers.
   bookSceneBreaks: { wordId: string; heading: string | null; level: number; chapter: number; verse: number; positionInVerse: number; extendedThrough: number | null; thematic: boolean; thematicLetter: string | null; transitional: boolean; bookId: number }[];
@@ -266,6 +278,7 @@ export default function ChapterDisplay({
   initialSceneBreaks,
   initialLineAnnotations,
   initialPoetryNotations,
+  initialPoetryLineBracketExclusions,
   bookSceneBreaks,
   bookMaxVerses,
   ultBaseVerses = [],
@@ -751,6 +764,11 @@ export default function ChapterDisplay({
 
   // Line-group bracket color-by-level panel (local to ChapterDisplay — not part of the hook)
   const [showLineGroupColors, setShowLineGroupColors] = useState(false);
+  // Poetry Notation's "bracket every poetic line" toggle — draws one level-1
+  // bracket per line automatically (no LineGroup rows involved), reusing
+  // LineGroupOverlay's own drawing code. Real user-created line groups nest
+  // outside these (shifted to level 2+) whenever this is on.
+  const [showPoetryLineBrackets, setShowPoetryLineBrackets] = useState(false);
   // Which feature occupies the shared right-side margin column — clause labels
   // or poetry notation (Balance/Imbalance + Symmetry) — never both at once.
   // Explicit (not derived) so toggling one off doesn't also hide the other's
@@ -1092,6 +1110,7 @@ export default function ChapterDisplay({
     editingNotationId, setEditingNotationId,
     symmetryLineA,
     similarityStart,
+    closureRangeStart,
     clearPending: clearPoetryPending,
     handleWordClick: handlePoetryWordClick,
     handleLineClick: handlePoetryLineClick,
@@ -1107,13 +1126,69 @@ export default function ChapterDisplay({
     wordIndexMap,
   });
 
+  // ── Poetry line bracket exclusions (superscriptions, etc.) ─────────────────
+  // Lines the "bracket every poetic line" auto-bracket toggle should skip —
+  // e.g. Psalm 29:1a ("A Psalm of David"), which isn't part of the poem's own
+  // line structure. Always keyed by the line's SOURCE segFirstWordId, even
+  // when toggled from a translation-mirrored bracket, since both represent
+  // the same line.
+  const [poetryLineBracketExclusions, setPoetryLineBracketExclusions] =
+    useState<PoetryLineBracketExclusion[]>(initialPoetryLineBracketExclusions);
+  const excludedLineIds = useMemo(
+    () => new Set(poetryLineBracketExclusions.map((e) => e.wordId)),
+    [poetryLineBracketExclusions]
+  );
+  async function handleToggleLineBracketExclusion(segFirstWordId: string) {
+    const existing = poetryLineBracketExclusions.find((e) => e.wordId === segFirstWordId);
+    const { textSource: source, book: exBook, chapter: exChapter } = resolveWordSource(segFirstWordId);
+    if (existing) {
+      setPoetryLineBracketExclusions((prev) => prev.filter((e) => e.wordId !== segFirstWordId));
+      try {
+        await fetch("/api/poetry-line-bracket-exclusions", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ wordId: segFirstWordId, book: exBook, chapter: exChapter }),
+        });
+      } catch {
+        setPoetryLineBracketExclusions((prev) => [...prev, existing]);
+      }
+      return;
+    }
+    const tempId = -Date.now();
+    const optimistic: PoetryLineBracketExclusion = {
+      id: tempId, workspaceId: 1, versionId: 0,
+      wordId: segFirstWordId, textSource: source, book: exBook, chapter: exChapter, createdAt: null,
+    };
+    setPoetryLineBracketExclusions((prev) => [...prev, optimistic]);
+    try {
+      const resp = await fetch("/api/poetry-line-bracket-exclusions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ wordId: segFirstWordId, book: exBook, chapter: exChapter, source }),
+      });
+      if (!resp.ok) throw new Error("save failed");
+      const { exclusion } = await resp.json();
+      setPoetryLineBracketExclusions((prev) => prev.map((e) => (e.id === tempId ? exclusion : e)));
+    } catch {
+      setPoetryLineBracketExclusions((prev) => prev.filter((e) => e.id !== tempId));
+    }
+  }
+
   /** Dispatches a word click to the right poetry-notation handler for the
    *  currently active principle, given an explicit wordId + the line
    *  ("source paragraph segment") it belongs to. `wordId` may be a source
    *  Word.wordId or a translation `tv:ABBR:...` token id — both are valid
    *  anchors for every principle except Similarity, which is handled
-   *  separately via onGraphemeClick and bypasses word-level selection. */
-  function handlePoetryWordSelectByIds(wordId: string, segFirstWordId: string) {
+   *  separately via onGraphemeClick and bypasses word-level selection.
+   *  `tvSegFirstWordId`, when supplied (translation clicks only), is the
+   *  translation's OWN line's first word id — Closure (complete) uses it
+   *  instead of segFirstWordId so a mark created on translation text is
+   *  anchored to (and later displays on) that same text, rather than always
+   *  falling back to the source line like Balance/Symmetry intentionally do.
+   *  `shiftHeld` drives Closure (weak)'s range picking: click the first
+   *  word, shift-click the last — a plain click re-anchors the pending
+   *  start instead, same as Similarity's grapheme-range picking. */
+  function handlePoetryWordSelectByIds(wordId: string, segFirstWordId: string, tvSegFirstWordId?: string, shiftHeld = false) {
     switch (activePrinciple) {
       case "continuation":
       case "requiredness":
@@ -1126,8 +1201,8 @@ export default function ChapterDisplay({
         handleSymmetryLineClick(segFirstWordId);
         return;
       case "closure":
-        if (activeClosureSubtype === "weak") handleClosureWordClick(wordId);
-        else handleClosureLineClick(segFirstWordId);
+        if (activeClosureSubtype === "weak") handleClosureWordClick(wordId, shiftHeld);
+        else handleClosureLineClick(tvSegFirstWordId ?? segFirstWordId);
         return;
       case "similarity":
         // Handled via onGraphemeClick — a plain word click does nothing.
@@ -1182,6 +1257,44 @@ export default function ChapterDisplay({
     }
     return set;
   }, [poetryNotations, segLastWordId]);
+
+  // Closure-weak ranges anchored on TRANSLATION text, grouped by translation
+  // abbreviation. wordIndexMap (used by poetryClosureWeakSet above) only
+  // resolves source Word ids, so a translation-anchored range can't be
+  // expanded into a Set of member ids here — translation text isn't
+  // tokenized until VerseDisplay splits it. Instead each range is reduced to
+  // inclusive (verse, wordIndex) bounds, and VerseDisplay checks its own
+  // token's position against these bounds at render time.
+  const poetryClosureWeakRangesByAbbr = useMemo(() => {
+    const map = new Map<string, { book: string; chapter: number; loKey: number; hiKey: number }[]>();
+    for (const n of poetryNotations) {
+      if (n.principle !== "closure" || n.subtype !== "weak" || !n.endWordId) continue;
+      const start = parseTvWordId(n.startWordId);
+      const end = parseTvWordId(n.endWordId);
+      if (!start || !end) continue;
+      if (start.abbr !== end.abbr || start.book !== end.book || start.chapter !== end.chapter) continue;
+      const key = (v: number, wi: number) => v * 100000 + wi;
+      const a = key(start.verse, start.wi);
+      const b = key(end.verse, end.wi);
+      const [loKey, hiKey] = a <= b ? [a, b] : [b, a];
+      const arr = map.get(start.abbr) ?? [];
+      arr.push({ book: start.book, chapter: start.chapter, loKey, hiKey });
+      map.set(start.abbr, arr);
+    }
+    return map;
+  }, [poetryNotations]);
+
+  // Raw startWordId of every "closure — complete" mark, source or
+  // translation. Translation rendering can't precompute its segment's LAST
+  // word here (same tokenization gap as above) — VerseDisplay instead checks
+  // whether ITS OWN segment's first word id was saved as a mark's start.
+  const poetryClosureCompleteStartIds = useMemo(() => {
+    const set = new Set<string>();
+    for (const n of poetryNotations) {
+      if (n.principle === "closure" && n.subtype === "complete") set.add(n.startWordId);
+    }
+    return set;
+  }, [poetryNotations]);
 
   // Balance/Imbalance — one mark per line, keyed by segFirstWordId.
   const balanceMarkBySegment = useMemo(() => {
@@ -2399,7 +2512,7 @@ export default function ChapterDisplay({
 
   function handleSelectWord(word: Word, shiftHeld = false) {
     if (editingPoetryNotation) {
-      handlePoetryWordSelectByIds(word.wordId, wordToParaStart.get(word.wordId) ?? word.wordId);
+      handlePoetryWordSelectByIds(word.wordId, wordToParaStart.get(word.wordId) ?? word.wordId, undefined, shiftHeld);
       return;
     }
     if (editingWordCompare) {
@@ -4783,7 +4896,7 @@ export default function ChapterDisplay({
     if (!keep.has("paragraph"))   setEditingParagraphs(false);
     if (!keep.has("scenes"))      setEditingScenes(false);
     if (!keep.has("annotations")) { setEditingAnnotations(false); setAnnotRangeStart(null); setAnnotRangeEnd(null); setEditingAnnotationId(null); }
-    if (!keep.has("poetry"))      { setEditingPoetryNotation(false); clearPoetryPending(); }
+    if (!keep.has("poetry"))      { setEditingPoetryNotation(false); clearPoetryPending(); setShowPoetryLineBrackets(false); }
     if (!keep.has("refs"))        { setEditingRefs(false); setRefRangeStart(null); }
     if (!keep.has("speech"))      { setEditingSpeech(false); setSpeechRangeStart(null); }
     if (!keep.has("wordTags"))    { setEditingWordTags(false); setWordTagRangeStart(null); }
@@ -5063,6 +5176,9 @@ export default function ChapterDisplay({
             onSelectLineGroupGroup={handleSelectLineGroupGroup}
             onDeleteLineGroup={handleDeleteLineGroup}
             onRequiredLineGroupPad={setLineGroupSourcePad}
+            showAutoLineBrackets={editingPoetryNotation && showPoetryLineBrackets}
+            excludedLineIds={excludedLineIds}
+            onToggleLineBracketExclusion={handleToggleLineBracketExclusion}
             containerRef={textContainerRef}
             layoutRef={outerRef}
           />
@@ -5539,8 +5655,10 @@ export default function ChapterDisplay({
               {toolbarVis.poetry && <button
                 disabled={editingWordTags}
                 onClick={() => {
-                  if (!editingPoetryNotation) { deactivateIncompatible("poetry"); setPanelDisplayMode("poetry"); }
-                  setEditingPoetryNotation((v) => !v);
+                  const entering = !editingPoetryNotation;
+                  if (entering) { deactivateIncompatible("poetry"); setPanelDisplayMode("poetry"); }
+                  else setShowPoetryLineBrackets(false);
+                  setEditingPoetryNotation(entering);
                 }}
                 data-tip="Poetry notation (Gestalt)"
                 className={[
@@ -5553,6 +5671,21 @@ export default function ChapterDisplay({
               >
                 ◈
               </button>}
+              {toolbarVis.poetry && editingPoetryNotation && (
+                <button
+                  type="button"
+                  onClick={() => setShowPoetryLineBrackets((v) => !v)}
+                  data-tip="Show a bracket for every poetic line (level 1 — real line groups nest outside it)"
+                  className={[
+                    "px-3 py-1.5 rounded text-[13px] font-medium transition-colors",
+                    showPoetryLineBrackets
+                      ? "bg-amber-500 text-white"
+                      : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
+                  ].join(" ")}
+                >
+                  ⌐¹
+                </button>
+              )}
               {!editingPoetryNotation && !editingAnnotations && (lineAnnotations.length > 0 || poetryNotations.length > 0) && (
                 <button
                   type="button"
@@ -6635,6 +6768,7 @@ export default function ChapterDisplay({
                 balanceMarkBySegment={balanceMarkBySegment}
                 symmetryMarksBySegment={symmetryMarksBySegment}
                 symmetryLineA={symmetryLineA}
+                closureRangeStart={closureRangeStart}
                 onSelectPoetryLine={(segId) => {
                   if (activePrinciple === "symmetry") handleSymmetryLineClick(segId);
                   else if (activePrinciple === "balance") handlePoetryLineClick(segId);
@@ -6642,7 +6776,9 @@ export default function ChapterDisplay({
                 onSelectPoetryWord={handlePoetryWordSelectByIds}
                 poetryWordMarkMap={poetryWordMarkMap}
                 poetryClosureWeakSet={poetryClosureWeakSet}
+                poetryClosureWeakRangesByAbbr={poetryClosureWeakRangesByAbbr}
                 poetryClosureCompleteSet={poetryClosureCompleteSet}
+                poetryClosureCompleteStartIds={poetryClosureCompleteStartIds}
                 similarityMarkByWord={similarityMarkByWord}
                 editingPoetrySimilarity={editingPoetryNotation && activePrinciple === "similarity"}
                 pendingSimilarityAnchor={pendingSimilarityAnchor}

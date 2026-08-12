@@ -24,8 +24,22 @@ interface BracketNode {
   isTrans: boolean;
   isGroup: boolean; // false = ungrouped leaf (selector dot only, no bracket)
   /** Nesting level (1 = innermost, a group of only plain lines). Only
-   *  meaningful when isGroup is true — matches d3-hierarchy's node.height. */
+   *  meaningful when isGroup is true — matches d3-hierarchy's node.height,
+   *  shifted by +1 when showAutoLineBrackets reserves level 1 for the
+   *  automatic per-line brackets. */
   level: number;
+  /** True for the automatic "one bracket per poetic line" nodes (see
+   *  showAutoLineBrackets) — always level 1. These have their own click
+   *  behavior (toggle exclusion) instead of the real-group interactions
+   *  (select/delete/connector-dot), since they aren't backed by a LineGroup
+   *  DB row. */
+  isAuto?: boolean;
+  /** The plain segFirstWordId an auto-bracket node represents (its `id` is
+   *  suffixed with "__auto" to stay unique in the node list). */
+  segId?: string;
+  /** True when this line is in excludedLineIds — rendered as a faint dashed
+   *  "ghost" bracket (still clickable, to re-include) instead of a solid one. */
+  isExcluded?: boolean;
 }
 
 export interface Props {
@@ -42,6 +56,18 @@ export interface Props {
   onSelectSegment: (wordId: string) => void;
   onSelectGroup: (groupId: string) => void;
   onDeleteGroup: (groupId: string) => void;
+  /** When true, draws one small bracket per entry in paragraphFirstWordIds
+   *  automatically (no LineGroup DB row, not user-created) at level 1, and
+   *  shifts every real group's bracket outward by one level so it nests
+   *  outside these — used by the Poetry Notation tool's "bracket every
+   *  poetic line" toggle. */
+  showAutoLineBrackets?: boolean;
+  /** Lines (segFirstWordIds) to render as excluded — e.g. superscriptions
+   *  like Psalm 29:1a — when showAutoLineBrackets is on. */
+  excludedLineIds?: Set<string>;
+  /** Fired when the user clicks an auto-bracket (included or excluded) to
+   *  toggle that line's exclusion. */
+  onToggleLineBracketExclusion?: (segFirstWordId: string) => void;
   layoutRef?: RefObject<HTMLDivElement | null>;
   /** Fired whenever the minimum column gap (px) needed between the verse-label
    *  column and the source-text column changes — mirrors RstRelationOverlay's
@@ -62,6 +88,9 @@ export default function LineGroupOverlay({
   onSelectSegment,
   onSelectGroup,
   onDeleteGroup,
+  showAutoLineBrackets = false,
+  excludedLineIds,
+  onToggleLineBracketExclusion,
   layoutRef,
   onRequiredSourcePad,
 }: Props) {
@@ -79,15 +108,16 @@ export default function LineGroupOverlay({
   );
 
   // ── Required gutter (based on tree depth) ────────────────────────────────
+  const extraLevel = showAutoLineBrackets ? 1 : 0;
   const [requiredLtrGutter, requiredHebGutter, requiredSourcePad] = useMemo(() => {
     const h = hierarchy(tree, (n: LineGroupNode) => n.children);
-    const depth = Math.max(h.height, 1);
+    const depth = Math.max(h.height, 1) + extraLevel;
     const needed = LEAF_MARGIN + depth * LEVEL_WIDTH + TICK_LEN + 8;
-    const sourcePad = groups.length > 0
+    const sourcePad = (groups.length > 0 || showAutoLineBrackets)
       ? Math.max(0, LEAF_MARGIN + (depth - 1) * LEVEL_WIDTH + TICK_LEN + 8)
       : 0;
     return [Math.max(GUTTER_MIN, needed), needed, sourcePad];
-  }, [tree, groups.length]);
+  }, [tree, groups.length, extraLevel, showAutoLineBrackets]);
 
   useEffect(() => {
     onRequiredSourcePad?.(requiredSourcePad);
@@ -115,13 +145,16 @@ export default function LineGroupOverlay({
   const allSegIds = [
     ...new Set([
       ...groups.map(g => g.memberId).filter(id => paragraphFirstWordIds.includes(id)),
-      ...(editing ? paragraphFirstWordIds : []),
+      ...(editing || showAutoLineBrackets ? paragraphFirstWordIds : []),
     ]),
   ];
 
   const layout = useCallback((posArg: Map<string, SegPos>): BracketNode[] => {
     const hier = hierarchy(tree, (n: LineGroupNode) => n.children);
-    const maxDepth = Math.max(hier.height, 1);
+    // Reserves the innermost slot (level 1) for the automatic per-line
+    // brackets below, pushing every real group's position AND color level
+    // outward by one so it visually nests outside them.
+    const maxDepth = Math.max(hier.height, 1) + extraLevel;
 
     let refLeftX = Infinity, refRightX = -Infinity;
     for (const pos of posArg.values()) {
@@ -181,7 +214,7 @@ export default function LineGroupOverlay({
           x = (isHebrew && hasLabelBound) ? Math.min(raw, hebrewLabelBound - 4) : raw;
         }
       }
-      out.push({ id: d.id, x, yTop, yBottom, isTrans: false, isGroup: d.type === "group", level: hNode.height });
+      out.push({ id: d.id, x, yTop, yBottom, isTrans: false, isGroup: d.type === "group", level: hNode.height + extraLevel });
 
       // ── Translation mirror node ─────────────────────────────────────────
       if (hasTransMeasured) {
@@ -192,13 +225,43 @@ export default function LineGroupOverlay({
         }
         if (txAll.length) {
           const tx = d.type === "segment" ? txAll[0] - LEAF_MARGIN : transXFn(hNode.depth);
-          out.push({ id: d.id, x: tx, yTop: yTopTrans, yBottom: yBottomTrans, isTrans: true, isGroup: d.type === "group", level: hNode.height });
+          out.push({ id: d.id, x: tx, yTop: yTopTrans, yBottom: yBottomTrans, isTrans: true, isGroup: d.type === "group", level: hNode.height + extraLevel });
         }
       }
     });
 
+    // ── Automatic "one bracket per poetic line" nodes (level 1) ────────────
+    // Always at the innermost slot (same base offset a lone leaf's selector
+    // dot already uses) — real groups were shifted outward above to make
+    // room. Mirrored onto the translation column too, same as real groups.
+    if (showAutoLineBrackets) {
+      for (const segId of paragraphFirstWordIds) {
+        const pos = posArg.get(segId);
+        if (!pos) continue;
+        const isExcluded = excludedLineIds?.has(segId) ?? false;
+        const raw = isHebrew ? pos.rightX + LEAF_MARGIN : pos.leftX - LEAF_MARGIN;
+        const x = (isHebrew && hasLabelBound) ? Math.min(raw, hebrewLabelBound - 4) : raw;
+        out.push({ id: `${segId}__auto`, segId, x, yTop: pos.top, yBottom: pos.bottom, isTrans: false, isGroup: true, level: 1, isAuto: true, isExcluded });
+
+        if (pos.transLeftX !== undefined) {
+          out.push({
+            id: `${segId}__auto`,
+            segId,
+            x: pos.transLeftX - LEAF_MARGIN,
+            yTop: pos.transTop ?? pos.top,
+            yBottom: pos.transBottom ?? pos.bottom,
+            isTrans: true,
+            isGroup: true,
+            level: 1,
+            isAuto: true,
+            isExcluded,
+          });
+        }
+      }
+    }
+
     return out;
-  }, [tree, isHebrew, hasTranslation]);
+  }, [tree, isHebrew, hasTranslation, showAutoLineBrackets, extraLevel, paragraphFirstWordIds, excludedLineIds]);
 
   const scheduleRemeasure = useCallback(() => {
     if (frameRef.current) cancelAnimationFrame(frameRef.current);
@@ -293,8 +356,42 @@ export default function LineGroupOverlay({
         const ticksLeft = isHebrew && !b.isTrans;
         const tickDx = ticksLeft ? -TICK_LEN : TICK_LEN;
         const pathD = `M ${b.x + tickDx},${b.yTop} H ${b.x} V ${b.yBottom} H ${b.x + tickDx}`;
+
+        if (b.isAuto) {
+          const strokeColor = b.isExcluded ? "#9CA3AF" : getColor(1);
+          return (
+            <g key={`${b.id}-${b.isTrans ? 1 : 0}`}>
+              <path
+                d={pathD}
+                fill="none"
+                stroke={strokeColor}
+                strokeWidth={1.5}
+                strokeDasharray={b.isExcluded ? "3,3" : undefined}
+                opacity={b.isTrans ? (b.isExcluded ? 0.35 : 0.55) : (b.isExcluded ? 0.45 : 0.85)}
+                style={{ pointerEvents: "none" }}
+              />
+              {onToggleLineBracketExclusion && b.segId && (
+                <path
+                  d={pathD}
+                  fill="none"
+                  stroke="transparent"
+                  strokeWidth={10}
+                  style={{ pointerEvents: "all", cursor: "pointer" }}
+                  onClick={(e) => { e.stopPropagation(); onToggleLineBracketExclusion(b.segId!); }}
+                >
+                  <title>
+                    {b.isExcluded
+                      ? "Click to include this line in auto-brackets"
+                      : "Click to exclude this line (e.g. a superscription) from auto-brackets"}
+                  </title>
+                </path>
+              )}
+            </g>
+          );
+        }
+
         const isHov = hoveredGroup === b.id;
-        const isInteractive = editing && !b.isTrans;
+        const isInteractive = editing && !b.isTrans && !b.isAuto;
         const isSelected = b.id === selectedSegAGroupId;
         const midY = (b.yTop + b.yBottom) / 2;
         // Outside the bracket stroke (opposite the tick direction, away from
@@ -359,7 +456,10 @@ export default function LineGroupOverlay({
           if (!pos) return [];
           const isSelected = wordId === selectedSegA && !selectedSegAGroupId;
           const dotY = pos.top + (pos.bottom - pos.top) / 2;
-          const srcDotX = isHebrew ? pos.rightX + LEAF_MARGIN : pos.leftX - LEAF_MARGIN;
+          // Shifted outward by one level when auto line-brackets occupy the
+          // innermost slot, so the selector dot doesn't sit on top of it.
+          const dotOffset = LEAF_MARGIN + extraLevel * LEVEL_WIDTH;
+          const srcDotX = isHebrew ? pos.rightX + dotOffset : pos.leftX - dotOffset;
           const dots: React.ReactElement[] = [];
           if (editing) {
             dots.push(

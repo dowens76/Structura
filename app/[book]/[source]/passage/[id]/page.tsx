@@ -175,7 +175,7 @@ export default async function PassagePage({ params, searchParams }: PageProps) {
     initialParagraphBreakIds, initialCharacterRefs, initialSpeechSections,
     initialWordTagRefs, initialLineIndents, initialRstRelations, initialLineGroups,
     initialWordArrows, initialWordFormatting, initialSceneBreaks,
-    initialLineAnnotations, initialPoetryNotations, initialTextCriticalMarks,
+    initialLineAnnotations, initialPoetryNotations, initialPoetryLineBracketExclusions, initialTextCriticalMarks,
   } = editingData;
 
   // Book-wide scene breaks/max-verses, merged across 1 or 2 books. Chapters
@@ -369,6 +369,7 @@ export default async function PassagePage({ params, searchParams }: PageProps) {
           initialSceneBreaks={initialSceneBreaks}
           initialLineAnnotations={initialLineAnnotations}
           initialPoetryNotations={initialPoetryNotations}
+          initialPoetryLineBracketExclusions={initialPoetryLineBracketExclusions}
           bookSceneBreaks={allBookSceneBreaks}
           bookMaxVerses={mergedBookMaxVerses}
           initialTranslationFootnotes={initialTranslationFootnotes}

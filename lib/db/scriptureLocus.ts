@@ -19,6 +19,7 @@ import {
   getChapterSceneBreaks,
   getChapterLineAnnotations,
   getChapterPoetryNotations,
+  getChapterPoetryLineBracketExclusions,
   getChapterTextCriticalMarks,
   getChapterTranslationFootnotes,
   getTranslationVerses,
@@ -36,8 +37,8 @@ export interface ChapterLocus {
 /**
  * Per-chapter editing data (paragraph breaks, character refs, speech
  * sections, word-tag refs, line indents, RST relations, word arrows, word
- * formatting, scene breaks, line annotations, poetry notations,
- * text-critical marks), flattened across every locus.
+ * formatting, scene breaks, line annotations, poetry notations, poetry line
+ * bracket exclusions, text-critical marks), flattened across every locus.
  */
 export async function getScriptureLocusEditingData(
   loci: ChapterLocus[],
@@ -61,6 +62,7 @@ export async function getScriptureLocusEditingData(
         getChapterSceneBreaks(book, chapter, workspaceId, versionId),
         getChapterLineAnnotations(book, chapter, textSource, workspaceId, versionId),
         getChapterPoetryNotations(book, chapter, textSource, workspaceId, versionId),
+        getChapterPoetryLineBracketExclusions(book, chapter, textSource, workspaceId, versionId),
       ]);
     })
   );
@@ -85,6 +87,7 @@ export async function getScriptureLocusEditingData(
     initialSceneBreaks:       perChapterResults.flatMap(([,,,,,,,,, sb]) => sb),
     initialLineAnnotations:   perChapterResults.flatMap(([,,,,,,,,,, la]) => la),
     initialPoetryNotations:   perChapterResults.flatMap(([,,,,,,,,,,, pn]) => pn),
+    initialPoetryLineBracketExclusions: perChapterResults.flatMap(([,,,,,,,,,,,, plbe]) => plbe),
     initialTextCriticalMarks,
   };
 }

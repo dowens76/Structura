@@ -505,6 +505,36 @@ export const poetryNotations = sqliteTable(
 export type PoetryNotation = typeof poetryNotations.$inferSelect;
 
 /**
+ * Lines excluded from the Poetry Notation tool's "bracket every poetic line"
+ * auto-bracket toggle (LineGroupOverlay's showAutoLineBrackets) — e.g. a
+ * superscription like Psalm 29:1a ("A Psalm of David"), which isn't really
+ * part of the poem's line structure and shouldn't get a level-1 bracket.
+ * Presence of a row = excluded; there's nothing else to store, so this is a
+ * plain marker table (toggled by insert/delete, not updated).
+ */
+export const poetryLineBracketExclusions = sqliteTable(
+  "poetry_line_bracket_exclusions",
+  {
+    id:          integer("id").primaryKey({ autoIncrement: true }),
+    workspaceId: integer("workspace_id").notNull().default(1)
+                   .references(() => workspaces.id, { onDelete: "cascade" }),
+    versionId:   integer("version_id").notNull()
+                   .references(() => versions.id, { onDelete: "cascade" }),
+    /** A line's segFirstWordId (a paragraphFirstWordIds entry). */
+    wordId:      text("word_id").notNull(),
+    textSource:  text("text_source").notNull(),
+    book:        text("book").notNull(),
+    chapter:     integer("chapter").notNull(),
+    createdAt:   text("created_at").$defaultFn(() => new Date().toISOString()),
+  },
+  (t) => [
+    uniqueIndex("plbe_ws_ver_word_idx").on(t.workspaceId, t.versionId, t.wordId),
+    index("plbe_book_ch_src_idx").on(t.book, t.chapter, t.textSource),
+  ]
+);
+export type PoetryLineBracketExclusion = typeof poetryLineBracketExclusions.$inferSelect;
+
+/**
  * Word-level "Synoptic comparison" marks — unlike lineAnnotations (which snap
  * to whole paragraph segments and render as a margin badge), these are an
  * arbitrary contiguous word range (start/end can fall mid-sentence) rendered

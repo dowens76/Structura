@@ -741,7 +741,7 @@ function _migrateUserDbInner(sqlite: Database.Database): void {
       translations TEXT    NOT NULL DEFAULT '[]',
       created_at   INTEGER NOT NULL DEFAULT 0
     );
-    CREATE INDEX IF NOT EXISTS bookmarks_ws_idx ON bookmarks(workspace_id);
+    CREATE INDEX IF NOT EXISTS bookmarks_workspace_idx ON bookmarks(workspace_id);
 
     CREATE TABLE IF NOT EXISTS notes (
       id           INTEGER PRIMARY KEY AUTOINCREMENT,

@@ -5,8 +5,8 @@ import type { LookupMaps } from "./index";
 import { books, words } from "./source-schema";
 import { lexiconEntries } from "./lexica-schema";
 import type { Word, WordRow } from "./source-schema";
-import { translations, translationVerses, paragraphBreaks, paragraphHeadings, characters, characterRefs, speechSections, wordTags, wordTagRefs, lineIndents, sceneBreaks, passages, rstRelations, lineGroups, wordArrows, wordFormatting, lineAnnotations, poetryNotations, bookGroupings, appSettings, translationFootnotes, translationVersions, workspaces, users, textCriticalMarks, notes, intertextualLinks, synopticSets, synopticWordMarks, constituentLabels, transliterationFormats, wordDatasets, wordDatasetEntries, wordDatasetLabelColors, versions, activeVersionSelections } from "./user-schema";
-import type { Book, Translation, TranslationVerse, Character, CharacterRef, SpeechSection, WordTag, WordTagRef, Passage, RstRelation, LineGroup, WordArrow, LineAnnotation, PoetryNotation, BookGrouping, TranslationFootnote, TranslationVersion, IntertextualLink, SynopticSet, SynopticWordMark, Version } from "./schema";
+import { translations, translationVerses, paragraphBreaks, paragraphHeadings, characters, characterRefs, speechSections, wordTags, wordTagRefs, lineIndents, sceneBreaks, passages, rstRelations, lineGroups, wordArrows, wordFormatting, lineAnnotations, poetryNotations, poetryLineBracketExclusions, bookGroupings, appSettings, translationFootnotes, translationVersions, workspaces, users, textCriticalMarks, notes, intertextualLinks, synopticSets, synopticWordMarks, constituentLabels, transliterationFormats, wordDatasets, wordDatasetEntries, wordDatasetLabelColors, versions, activeVersionSelections } from "./user-schema";
+import type { Book, Translation, TranslationVerse, Character, CharacterRef, SpeechSection, WordTag, WordTagRef, Passage, RstRelation, LineGroup, WordArrow, LineAnnotation, PoetryNotation, PoetryLineBracketExclusion, BookGrouping, TranslationFootnote, TranslationVersion, IntertextualLink, SynopticSet, SynopticWordMark, Version } from "./schema";
 import { VERSIONABLE_FEATURES } from "@/lib/versions/registry";
 import type { TextSource, Testament } from "@/lib/morphology/types";
 
@@ -2330,6 +2330,63 @@ export async function updatePoetryNotation(
 /** Delete a poetry notation mark by id. */
 export async function deletePoetryNotation(id: number): Promise<void> {
   await userDb.delete(poetryNotations).where(eq(poetryNotations.id, id));
+}
+
+// ── Poetry Line Bracket Exclusions (Poetry Notation's auto-bracket toggle) ────
+
+/** Returns all excluded-line markers for a chapter. */
+export async function getChapterPoetryLineBracketExclusions(
+  book: string,
+  chapter: number,
+  textSource: string,
+  workspaceId: number,
+  versionId: number
+): Promise<PoetryLineBracketExclusion[]> {
+  return userDb
+    .select()
+    .from(poetryLineBracketExclusions)
+    .where(
+      and(
+        eq(poetryLineBracketExclusions.workspaceId, workspaceId),
+        eq(poetryLineBracketExclusions.versionId, versionId),
+        eq(poetryLineBracketExclusions.book, book),
+        eq(poetryLineBracketExclusions.chapter, chapter),
+        eq(poetryLineBracketExclusions.textSource, textSource)
+      )
+    );
+}
+
+/** Marks a line as excluded from auto-brackets (e.g. a superscription). */
+export async function createPoetryLineBracketExclusion(fields: {
+  wordId: string;
+  textSource: string;
+  book: string;
+  chapter: number;
+  workspaceId: number;
+  versionId: number;
+}): Promise<PoetryLineBracketExclusion> {
+  const [row] = await userDb
+    .insert(poetryLineBracketExclusions)
+    .values(fields)
+    .returning();
+  return row;
+}
+
+/** Removes a line's exclusion marker (re-includes it in auto-brackets). */
+export async function deletePoetryLineBracketExclusionByWord(
+  workspaceId: number,
+  versionId: number,
+  wordId: string
+): Promise<void> {
+  await userDb
+    .delete(poetryLineBracketExclusions)
+    .where(
+      and(
+        eq(poetryLineBracketExclusions.workspaceId, workspaceId),
+        eq(poetryLineBracketExclusions.versionId, versionId),
+        eq(poetryLineBracketExclusions.wordId, wordId)
+      )
+    );
 }
 
 // ── Synoptic Word Marks (word-level comparison marking) ──────────────────────
