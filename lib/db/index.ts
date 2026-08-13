@@ -663,6 +663,44 @@ function _migrateUserDbInner(sqlite: Database.Database): void {
   if (!wfmtCols.includes("letter_colors"))
     try { sqlite.exec("ALTER TABLE word_formatting ADD COLUMN letter_colors TEXT"); } catch { /* already exists */ }
 
+  // Poetry Notation tool tables — added after some installed apps' user.db
+  // was already created from an older template, so a packaged app that
+  // never re-copies the template (first-run-only) needs these backfilled
+  // here or every chapter load throws "no such table: poetry_notations".
+  sqlite.exec(`
+    CREATE TABLE IF NOT EXISTS poetry_notations (
+      id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+      workspace_id          INTEGER NOT NULL DEFAULT 1 REFERENCES workspaces(id) ON DELETE CASCADE,
+      version_id            INTEGER NOT NULL REFERENCES versions(id) ON DELETE CASCADE,
+      principle             TEXT    NOT NULL,
+      subtype               TEXT,
+      direction             TEXT,
+      start_word_id         TEXT    NOT NULL,
+      end_word_id           TEXT,
+      start_grapheme_index  INTEGER,
+      end_grapheme_index    INTEGER,
+      note                  TEXT,
+      text_source           TEXT    NOT NULL,
+      book                  TEXT    NOT NULL,
+      chapter               INTEGER NOT NULL,
+      created_at            TEXT    DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now'))
+    );
+    CREATE INDEX IF NOT EXISTS pn_book_ch_src_idx ON poetry_notations(book, chapter, text_source);
+
+    CREATE TABLE IF NOT EXISTS poetry_line_bracket_exclusions (
+      id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+      workspace_id          INTEGER NOT NULL DEFAULT 1 REFERENCES workspaces(id) ON DELETE CASCADE,
+      version_id            INTEGER NOT NULL REFERENCES versions(id) ON DELETE CASCADE,
+      word_id               TEXT    NOT NULL,
+      text_source           TEXT    NOT NULL,
+      book                  TEXT    NOT NULL,
+      chapter               INTEGER NOT NULL,
+      created_at            TEXT    DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now'))
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS plbe_ws_ver_word_idx ON poetry_line_bracket_exclusions(workspace_id, version_id, word_id);
+    CREATE INDEX IF NOT EXISTS plbe_book_ch_src_idx ON poetry_line_bracket_exclusions(book, chapter, text_source);
+  `);
+
   sqlite.exec(`
     CREATE TABLE IF NOT EXISTS app_settings (
       key   TEXT PRIMARY KEY,
