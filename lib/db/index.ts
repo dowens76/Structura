@@ -660,6 +660,8 @@ function _migrateUserDbInner(sqlite: Database.Database): void {
     try { sqlite.exec("ALTER TABLE word_formatting ADD COLUMN is_small_caps INTEGER NOT NULL DEFAULT 0"); } catch { /* already exists */ }
   if (!wfmtCols.includes("text_color"))
     try { sqlite.exec("ALTER TABLE word_formatting ADD COLUMN text_color TEXT"); } catch { /* already exists */ }
+  if (!wfmtCols.includes("letter_colors"))
+    try { sqlite.exec("ALTER TABLE word_formatting ADD COLUMN letter_colors TEXT"); } catch { /* already exists */ }
 
   sqlite.exec(`
     CREATE TABLE IF NOT EXISTS app_settings (
