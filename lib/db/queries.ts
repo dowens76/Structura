@@ -2117,43 +2117,51 @@ export async function getChapterWordFormatting(
   chapter: number,
   workspaceId: number,
   versionId: number
-): Promise<{ wordId: string; isBold: boolean; isItalic: boolean; textColor: string | null }[]> {
-  return userDb
+): Promise<{ wordId: string; isBold: boolean; isItalic: boolean; textColor: string | null; letterColors: Record<number, string> | null }[]> {
+  const rows = await userDb
     .select({
       wordId: wordFormatting.wordId,
       isBold: wordFormatting.isBold,
       isItalic: wordFormatting.isItalic,
       textColor: wordFormatting.textColor,
+      letterColors: wordFormatting.letterColors,
     })
     .from(wordFormatting)
     .where(and(eq(wordFormatting.workspaceId, workspaceId), eq(wordFormatting.versionId, versionId), eq(wordFormatting.book, book), eq(wordFormatting.chapter, chapter)));
+  return rows.map((r) => ({
+    ...r,
+    letterColors: r.letterColors ? JSON.parse(r.letterColors) as Record<number, string> : null,
+  }));
 }
 
 /**
  * Upsert bold/italic/color formatting for a word.
- * If isBold and isItalic are both false and textColor is null, the record is
- * deleted (reset to no formatting).
+ * If isBold and isItalic are both false, textColor is null, and letterColors
+ * is empty/null, the record is deleted (reset to no formatting).
  */
 export async function setWordFormatting(
   wordId: string,
   isBold: boolean,
   isItalic: boolean,
   textColor: string | null,
+  letterColors: Record<number, string> | null,
   textSource: string,
   book: string,
   chapter: number,
   workspaceId: number,
   versionId: number
 ): Promise<void> {
-  if (!isBold && !isItalic && !textColor) {
+  const hasLetterColors = !!letterColors && Object.keys(letterColors).length > 0;
+  const letterColorsJson = hasLetterColors ? JSON.stringify(letterColors) : null;
+  if (!isBold && !isItalic && !textColor && !hasLetterColors) {
     await userDb.delete(wordFormatting).where(
       and(eq(wordFormatting.workspaceId, workspaceId), eq(wordFormatting.versionId, versionId), eq(wordFormatting.wordId, wordId))
     );
   } else {
     await userDb
       .insert(wordFormatting)
-      .values({ wordId, isBold, isItalic, textColor, textSource, book, chapter, workspaceId, versionId })
-      .onConflictDoUpdate({ target: [wordFormatting.workspaceId, wordFormatting.versionId, wordFormatting.wordId], set: { isBold, isItalic, textColor } });
+      .values({ wordId, isBold, isItalic, textColor, letterColors: letterColorsJson, textSource, book, chapter, workspaceId, versionId })
+      .onConflictDoUpdate({ target: [wordFormatting.workspaceId, wordFormatting.versionId, wordFormatting.wordId], set: { isBold, isItalic, textColor, letterColors: letterColorsJson } });
   }
 }
 

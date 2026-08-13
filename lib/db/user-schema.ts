@@ -642,6 +642,9 @@ export const wordFormatting = sqliteTable(
     isSmallCaps:   integer("is_small_caps", { mode: "boolean" }).notNull().default(false),
     /** Hex color (e.g. "#DC2626") applied to the word's text, or null for the default color. */
     textColor:     text("text_color"),
+    /** JSON-encoded map of grapheme index → hex color for per-letter color overrides
+     *  within the word (translation text only), or null when no letters are individually colored. */
+    letterColors:  text("letter_colors"),
     textSource:  text("text_source").notNull(),
     book:        text("book").notNull(),
     chapter:     integer("chapter").notNull(),

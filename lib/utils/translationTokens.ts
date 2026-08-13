@@ -3,6 +3,12 @@
 // formatting ref id (`tv:ABBR:BOOK.CH.V.POS`) embeds this exact tokenization's
 // word position. Diverging would silently misalign every existing ref.
 
+/** Punctuation excluded from per-letter text-color selection (translation
+ *  text) — parentheses, brackets, commas, semicolons, colons, and periods.
+ *  Shared between VerseDisplay's letter-click rendering and ChapterDisplay's
+ *  range-commit filtering so a selected range never colors these marks. */
+export const TEXT_COLOR_EXCLUDED_PUNCTUATION = /[()[\].,;:]/;
+
 /** Encode USFM inline markers as per-token prefixes so word-level annotations
  *  work. e.g. "\\nd the LORD\\nd*" → "ND:the ND:LORD" */
 export function encodeUsfmTokens(raw: string): string {

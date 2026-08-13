@@ -12,6 +12,7 @@ import { useSynopticCategories } from "@/lib/hooks/useSynopticCategories";
 import SynopticCategoryManager from "@/components/synoptic/SynopticCategoryManager";
 import type { Translation, TranslationVerse, TranslationFootnote } from "@/lib/db/schema";
 import type { DisplayMode, GrammarFilterState, TranslationTextEntry, InterlinearSubMode } from "@/lib/morphology/types";
+import { TEXT_COLOR_EXCLUDED_PUNCTUATION } from "@/lib/utils/translationTokens";
 import VerseDisplay from "./VerseDisplay";
 import FindBar from "./FindBar";
 import MorphologyPanel from "./MorphologyPanel";
@@ -20,7 +21,7 @@ import DisplayModeToggle from "@/components/controls/DisplayModeToggle";
 import InterlinearSubModePicker from "@/components/controls/InterlinearSubModePicker";
 import ColorRulePanel from "@/components/controls/ColorRulePanel";
 import CharacterPanel from "@/components/controls/CharacterPanel";
-import WordTagPanel from "@/components/controls/WordTagPanel";
+import WordTagPanel, { TAG_PALETTE } from "@/components/controls/WordTagPanel";
 import ChapterOverlays from "./ChapterOverlays";
 import ClearAnnotationsDialog, { type ClearCategory } from "@/components/controls/ClearAnnotationsDialog";
 import TranslationPicker from "@/components/controls/TranslationPicker";
@@ -120,7 +121,7 @@ interface ChapterDisplayProps {
   initialTvRstRelations?: RstRelation[];
   initialLineGroups: LineGroup[];
   initialWordArrows: WordArrow[];
-  initialWordFormatting: { wordId: string; isBold: boolean; isItalic: boolean; textColor: string | null }[];
+  initialWordFormatting: { wordId: string; isBold: boolean; isItalic: boolean; textColor: string | null; letterColors: Record<number, string> | null }[];
   initialSceneBreaks: { wordId: string; heading: string | null; level: number; verse: number; outOfSequence: boolean; extendedThrough: number | null; thematic: boolean; thematicLetter: string | null; transitional: boolean }[];
   initialLineAnnotations: LineAnnotation[];
   initialPoetryNotations: PoetryNotation[];
@@ -782,12 +783,33 @@ export default function ChapterDisplay({
   });
 
   // ── Word formatting (bold / italic / color) state ─────────────────────────
-  const [wordFormattingMap, setWordFormattingMap] = useState<Map<string, { isBold: boolean; isItalic: boolean; textColor: string | null }>>(
-    () => new Map(initialWordFormatting.map((f) => [f.wordId, { isBold: f.isBold, isItalic: f.isItalic, textColor: f.textColor }]))
+  const [wordFormattingMap, setWordFormattingMap] = useState<Map<string, { isBold: boolean; isItalic: boolean; textColor: string | null; letterColors: Record<number, string> | null }>>(
+    () => new Map(initialWordFormatting.map((f) => [f.wordId, { isBold: f.isBold, isItalic: f.isItalic, textColor: f.textColor, letterColors: f.letterColors }]))
   );
   const [editingBold, setEditingBold]     = useState(false);
   const [editingItalic, setEditingItalic] = useState(false);
   const [editingTextColor, setEditingTextColor] = useState(false);
+  // Text-color letter-level selection: while editingTextColor, a translation
+  // word's letters are always individually clickable. A plain click colors
+  // the whole word (same as before); a shift-click anchors a letter, and a
+  // second shift-click on the same word colors the whole span between them
+  // (a "series") — decided per-click from the click event's own shiftKey,
+  // not a separately-tracked held-key state (which can miss a keyup between
+  // two quick clicks and silently drop the second click's commit). The
+  // keyup listener below just clears a lingering pending anchor visually if
+  // the user releases Shift without a second click.
+  const [textColorLetterAnchor, setTextColorLetterAnchor] = useState<{ wordId: string; graphemeIndex: number; coreText: string } | null>(null);
+  useEffect(() => {
+    if (!editingTextColor) {
+      setTextColorLetterAnchor(null);
+      return;
+    }
+    function onKeyUp(e: KeyboardEvent) {
+      if (e.key === "Shift") setTextColorLetterAnchor(null);
+    }
+    window.addEventListener("keyup", onKeyUp);
+    return () => window.removeEventListener("keyup", onKeyUp);
+  }, [editingTextColor]);
   // Starts at the SSR-safe default and syncs from localStorage post-mount
   // (rather than reading it in the useState initializer) — this value renders
   // directly into an inline style on first paint (the "A" toolbar button), so
@@ -4261,7 +4283,7 @@ export default function ChapterDisplay({
   // Core toggle — shared by source words (source = textSource) and translation
   // words (source = translation abbreviation, e.g. "ESV").
   async function handleToggleFormattingById(wordId: string, source: string) {
-    const existing = wordFormattingMap.get(wordId) ?? { isBold: false, isItalic: false, textColor: null };
+    const existing = wordFormattingMap.get(wordId) ?? { isBold: false, isItalic: false, textColor: null, letterColors: null };
     const nextBold   = editingBold   ? !existing.isBold   : existing.isBold;
     const nextItalic = editingItalic ? !existing.isItalic : existing.isItalic;
     // Color isn't a plain boolean toggle: clicking a word that already has the
@@ -4271,25 +4293,27 @@ export default function ChapterDisplay({
     const nextColor  = editingTextColor
       ? (existing.textColor === activeTextColor ? null : activeTextColor)
       : existing.textColor;
+    // A whole-word color click supersedes any per-letter overrides on this word.
+    const nextLetterColors = editingTextColor ? null : existing.letterColors;
 
     // Optimistic update
     setWordFormattingMap((prev) => {
       const next = new Map(prev);
-      if (!nextBold && !nextItalic && !nextColor) next.delete(wordId);
-      else next.set(wordId, { isBold: nextBold, isItalic: nextItalic, textColor: nextColor });
+      if (!nextBold && !nextItalic && !nextColor && !nextLetterColors) next.delete(wordId);
+      else next.set(wordId, { isBold: nextBold, isItalic: nextItalic, textColor: nextColor, letterColors: nextLetterColors });
       return next;
     });
     try {
       await fetch("/api/word-formatting", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ wordId, isBold: nextBold, isItalic: nextItalic, textColor: nextColor, textSource: source, ...getWordLocation(wordId) }),
+        body: JSON.stringify({ wordId, isBold: nextBold, isItalic: nextItalic, textColor: nextColor, letterColors: nextLetterColors, textSource: source, ...getWordLocation(wordId) }),
       });
     } catch {
       // Rollback on error
       setWordFormattingMap((prev) => {
         const next = new Map(prev);
-        if (!existing.isBold && !existing.isItalic && !existing.textColor) next.delete(wordId);
+        if (!existing.isBold && !existing.isItalic && !existing.textColor && !existing.letterColors) next.delete(wordId);
         else next.set(wordId, existing);
         return next;
       });
@@ -4298,6 +4322,139 @@ export default function ChapterDisplay({
 
   async function handleToggleWordFormatting(word: Word) {
     return handleToggleFormattingById(word.wordId, textSource);
+  }
+
+  function coreTextGraphemes(coreText: string): string[] {
+    const segmenter = new Intl.Segmenter(undefined, { granularity: "grapheme" });
+    return [...segmenter.segment(coreText)].map((s) => s.segment);
+  }
+
+  // `hi` may exceed the cluster count (callers pass Infinity to mean "through
+  // the end of the word"), so it's clamped before sizing the array.
+  function nonPunctuationIndices(clusters: string[], lo: number, hi: number): number[] {
+    const clampedHi = Math.min(hi, clusters.length - 1);
+    return Array.from({ length: Math.max(0, clampedHi - lo + 1) }, (_, i) => lo + i)
+      .filter((idx) => idx >= 0 && idx < clusters.length && !TEXT_COLOR_EXCLUDED_PUNCTUATION.test(clusters[idx]));
+  }
+
+  // ── Text-color letter click (translation word) — a plain click colors the
+  // whole word (same as clicking anywhere else in it); a shift-click anchors
+  // a grapheme, and a second shift-click commits a range between them. When
+  // the two clicks land in the same word, the range is a letter span within
+  // it; when they land in different words, the range covers every word in
+  // between (each colored in full) plus the partial spans in the two
+  // boundary words. Punctuation (parentheses, brackets, commas, semicolons,
+  // colons, periods) is excluded even when it falls between the two clicks.
+  function handleTextColorGraphemeClick(wordId: string, graphemeIndex: number, source: string, coreText: string, shiftHeld: boolean) {
+    if (!shiftHeld) {
+      setTextColorLetterAnchor(null);
+      handleToggleFormattingById(wordId, source);
+      return;
+    }
+    if (!textColorLetterAnchor) {
+      setTextColorLetterAnchor({ wordId, graphemeIndex, coreText });
+      return;
+    }
+    if (textColorLetterAnchor.wordId === wordId) {
+      const [lo, hi] = textColorLetterAnchor.graphemeIndex <= graphemeIndex
+        ? [textColorLetterAnchor.graphemeIndex, graphemeIndex]
+        : [graphemeIndex, textColorLetterAnchor.graphemeIndex];
+      setTextColorLetterAnchor(null);
+      const indices = nonPunctuationIndices(coreTextGraphemes(coreText), lo, hi);
+      if (indices.length === 0) return;
+      applyLetterColorRange(wordId, indices, source);
+      return;
+    }
+
+    // Different word — resolve chapter order to find everything in between.
+    // If order can't be resolved (e.g. the two words aren't both in this
+    // translation's list), just re-anchor to the new click rather than
+    // silently guessing at a range.
+    const tvList = tvWordIdLists.get(source) ?? [];
+    const anchorPos = tvList.indexOf(textColorLetterAnchor.wordId);
+    const clickPos = tvList.indexOf(wordId);
+    const anchor = textColorLetterAnchor;
+    setTextColorLetterAnchor(null);
+    if (anchorPos === -1 || clickPos === -1) {
+      setTextColorLetterAnchor({ wordId, graphemeIndex, coreText });
+      return;
+    }
+
+    const [firstWordId, firstIdx, firstCoreText, lastWordId, lastIdx, lastCoreText] = anchorPos <= clickPos
+      ? [anchor.wordId, anchor.graphemeIndex, anchor.coreText, wordId, graphemeIndex, coreText]
+      : [wordId, graphemeIndex, coreText, anchor.wordId, anchor.graphemeIndex, anchor.coreText];
+
+    const firstIndices = nonPunctuationIndices(coreTextGraphemes(firstCoreText), firstIdx, Infinity);
+    if (firstIndices.length > 0) applyLetterColorRange(firstWordId, firstIndices, source);
+
+    const lastIndices = nonPunctuationIndices(coreTextGraphemes(lastCoreText), 0, lastIdx);
+    if (lastIndices.length > 0) applyLetterColorRange(lastWordId, lastIndices, source);
+
+    const [lo, hi] = [Math.min(anchorPos, clickPos), Math.max(anchorPos, clickPos)];
+    for (const midWordId of tvList.slice(lo + 1, hi)) {
+      applyWholeWordColor(midWordId, source);
+    }
+  }
+
+  async function applyWholeWordColor(wordId: string, source: string) {
+    const existing = wordFormattingMap.get(wordId) ?? { isBold: false, isItalic: false, textColor: null, letterColors: null };
+    if (existing.textColor === activeTextColor) return;
+    const next = { ...existing, textColor: activeTextColor };
+    setWordFormattingMap((prev) => {
+      const map = new Map(prev);
+      map.set(wordId, next);
+      return map;
+    });
+    try {
+      await fetch("/api/word-formatting", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ wordId, isBold: next.isBold, isItalic: next.isItalic, textColor: next.textColor, letterColors: next.letterColors, textSource: source, ...getWordLocation(wordId) }),
+      });
+    } catch {
+      setWordFormattingMap((prev) => {
+        const map = new Map(prev);
+        if (existing.isBold || existing.isItalic || existing.textColor || existing.letterColors) map.set(wordId, existing);
+        else map.delete(wordId);
+        return map;
+      });
+    }
+  }
+
+  async function applyLetterColorRange(wordId: string, indices: number[], source: string) {
+    const existing = wordFormattingMap.get(wordId) ?? { isBold: false, isItalic: false, textColor: null, letterColors: null };
+    const currentLetterColors = existing.letterColors ?? {};
+    // Clicking a range that's already entirely the active color removes it
+    // (mirrors the whole-word "click again to undo" behavior); otherwise the
+    // whole range is set (or replaced) to the active color.
+    const allActive = indices.every((idx) => currentLetterColors[idx] === activeTextColor);
+    const nextLetterColorsObj: Record<number, string> = { ...currentLetterColors };
+    for (const idx of indices) {
+      if (allActive) delete nextLetterColorsObj[idx];
+      else nextLetterColorsObj[idx] = activeTextColor;
+    }
+    const nextLetterColors = Object.keys(nextLetterColorsObj).length > 0 ? nextLetterColorsObj : null;
+
+    setWordFormattingMap((prev) => {
+      const next = new Map(prev);
+      if (!existing.isBold && !existing.isItalic && !existing.textColor && !nextLetterColors) next.delete(wordId);
+      else next.set(wordId, { ...existing, letterColors: nextLetterColors });
+      return next;
+    });
+    try {
+      await fetch("/api/word-formatting", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ wordId, isBold: existing.isBold, isItalic: existing.isItalic, textColor: existing.textColor, letterColors: nextLetterColors, textSource: source, ...getWordLocation(wordId) }),
+      });
+    } catch {
+      setWordFormattingMap((prev) => {
+        const next = new Map(prev);
+        if (!existing.isBold && !existing.isItalic && !existing.textColor && !existing.letterColors) next.delete(wordId);
+        else next.set(wordId, existing);
+        return next;
+      });
+    }
   }
 
   // ── Text Critical Mark handlers ────────────────────────────────────────────
@@ -5760,13 +5917,22 @@ export default function ChapterDisplay({
                 A
               </button>}
               {toolbarVis.textColor && editingTextColor && (
-                <input
-                  type="color"
-                  value={activeTextColor}
-                  onChange={(e) => updateActiveTextColor(e.target.value)}
-                  data-tip={t("toolbar.titleTextColorPicker")}
-                  className="w-7 h-7 rounded cursor-pointer border border-[var(--border)] bg-transparent p-0.5"
-                />
+                <div className="flex flex-wrap items-center gap-1" style={{ maxWidth: "9rem" }} data-tip={t("toolbar.titleTextColorPicker")}>
+                  {TAG_PALETTE.map((c) => (
+                    <button
+                      key={c}
+                      type="button"
+                      onClick={() => updateActiveTextColor(c)}
+                      title={c}
+                      className="w-4 h-4 rounded-full transition-transform hover:scale-110 shrink-0"
+                      style={{
+                        backgroundColor: c,
+                        outline: activeTextColor === c ? `2px solid ${c}` : "1px solid var(--border)",
+                        outlineOffset: "1px",
+                      }}
+                    />
+                  ))}
+                </div>
               )}
 
               {/* Text Critical markup mode */}
@@ -6647,6 +6813,9 @@ export default function ChapterDisplay({
                 onSetSegmentTvIndent={handleSetTvIndent}
                 wordFormattingMap={wordFormattingMap}
                 editingFormatting={editingBold || editingItalic || editingTextColor}
+                editingTextColor={editingTextColor}
+                textColorLetterAnchor={textColorLetterAnchor}
+                onTextColorGraphemeClick={handleTextColorGraphemeClick}
                 interlinearSubMode={interlinearSubMode}
                 constituentLabelMap={constituentLabelMap}
                 constituentGroupMap={constituentGroupMap}

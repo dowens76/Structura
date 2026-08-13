@@ -11,7 +11,7 @@ import type { DisplayMode, GrammarFilterState, TranslationTextEntry, Interlinear
 import type { ColorRule } from "@/lib/morphology/colorRules";
 import { PLOT_ELEMENTS, ANNOTATION_PALETTE, getPlotElement, getAnnotationColor } from "@/lib/utils/annotations";
 import { resolvedDatasetColor } from "@/lib/utils/datasetColors";
-import { encodeUsfmTokens, decodeUsfmToken, tokenizeTranslationText } from "@/lib/utils/translationTokens";
+import { encodeUsfmTokens, decodeUsfmToken, tokenizeTranslationText, TEXT_COLOR_EXCLUDED_PUNCTUATION } from "@/lib/utils/translationTokens";
 import { wordFallsInPassageRange } from "@/lib/utils/passageRange";
 import { analyzeHebrewLine } from "@/lib/phonology/hebrew-syllables";
 
@@ -204,8 +204,17 @@ interface VerseDisplayProps {
   onSetSegmentIndent: (paraStartWordId: string, level: number) => void;
   onSetSegmentTvIndent?: (paraStartWordId: string, level: number) => void;
   // Bold / italic / color formatting
-  wordFormattingMap?: Map<string, { isBold: boolean; isItalic: boolean; textColor: string | null }>;
+  wordFormattingMap?: Map<string, { isBold: boolean; isItalic: boolean; textColor: string | null; letterColors: Record<number, string> | null }>;
   editingFormatting?: boolean;
+  // Text-color letter-level selection (translation text only) — while
+  // editingTextColor, translation words render as individually-clickable
+  // letters; a plain click on any letter colors the whole word (same as
+  // before), while a shift-click anchors/commits a letter range, per the
+  // click's own e.shiftKey (not a separately-tracked held-key state, which
+  // is prone to missing a keyup between two quick clicks).
+  editingTextColor?: boolean;
+  textColorLetterAnchor?: { wordId: string; graphemeIndex: number } | null;
+  onTextColorGraphemeClick?: (wordId: string, graphemeIndex: number, textSource: string, coreText: string, shiftHeld: boolean) => void;
   // Text critical markup
   tcMarkMap?: Map<string, string>;
   editingTc?: boolean;
@@ -428,6 +437,75 @@ function ColorPalette({
       ))}
     </div>
   );
+}
+
+/**
+ * Read-mode rendering of a translation word carrying per-letter color
+ * overrides — wraps each colored grapheme in its own inline-color span,
+ * leaving uncolored graphemes as plain text (inheriting the word's own
+ * color, if any).
+ */
+function renderGraphemesWithLetterColors(
+  text: string,
+  language: string,
+  letterColors: Record<number, string>
+): React.ReactNode {
+  const segmenter = new Intl.Segmenter(language === "hebrew" ? "he" : "en", { granularity: "grapheme" });
+  const clusters = [...segmenter.segment(text)].map((s) => s.segment);
+  return clusters.map((cluster, i) =>
+    letterColors[i] && !TEXT_COLOR_EXCLUDED_PUNCTUATION.test(cluster)
+      ? <span key={i} style={{ color: letterColors[i] }}>{cluster}</span>
+      : cluster
+  );
+}
+
+/**
+ * Text-color letter-selection edit mode: same clickable-grapheme spans as
+ * renderClickableGraphemes, but also reflects any already-applied per-letter
+ * colors inline — so a color picked mid-selection (while Shift is still
+ * held for a further range) shows immediately instead of only appearing
+ * after Shift is released.
+ */
+function renderClickableGraphemesWithColors(
+  text: string,
+  wordId: string,
+  language: string,
+  pendingIdx: number | null,
+  letterColors: Record<number, string> | null,
+  onClick: (wordId: string, graphemeIndex: number, shiftHeld: boolean) => void
+): React.ReactNode {
+  const segmenter = new Intl.Segmenter(language === "hebrew" ? "he" : "en", { granularity: "grapheme" });
+  const clusters = [...segmenter.segment(text)].map((s) => s.segment);
+  return clusters.map((cluster, i) => {
+    // Punctuation is never a valid selection target — render it as plain,
+    // non-interactive text so it can't become an anchor/endpoint and never
+    // gets colored, even when it falls between two selected letters. (A
+    // click here still bubbles up to the word's own click handler, so it
+    // behaves like clicking anywhere else in the word.)
+    if (TEXT_COLOR_EXCLUDED_PUNCTUATION.test(cluster)) {
+      return <span key={i}>{cluster}</span>;
+    }
+    const color = letterColors?.[i];
+    return (
+      <span
+        key={i}
+        data-grapheme-idx={i}
+        className={[
+          "cursor-pointer rounded-sm",
+          pendingIdx === i
+            ? "outline outline-2"
+            : "hover:bg-yellow-200/60 dark:hover:bg-yellow-800/40",
+        ].join(" ")}
+        style={{
+          ...(color ? { color } : {}),
+          ...(pendingIdx === i ? { outlineColor: POETRY_COLORS.similarity, backgroundColor: `${POETRY_COLORS.similarity}55` } : {}),
+        }}
+        onClick={(e) => { e.stopPropagation(); onClick(wordId, i, e.shiftKey); }}
+      >
+        {cluster}
+      </span>
+    );
+  });
 }
 
 /** Displays one annotation at a segment — full badge at start, continuation bar at middle/end. */
@@ -1340,8 +1418,11 @@ export default function VerseDisplay({
   editingIndents,
   onSetSegmentIndent,
   onSetSegmentTvIndent,
-  wordFormattingMap = new Map() as Map<string, { isBold: boolean; isItalic: boolean; textColor: string | null }>,
+  wordFormattingMap = new Map() as Map<string, { isBold: boolean; isItalic: boolean; textColor: string | null; letterColors: Record<number, string> | null }>,
   editingFormatting = false,
+  editingTextColor = false,
+  textColorLetterAnchor = null,
+  onTextColorGraphemeClick,
   tcMarkMap,
   editingTc = false,
   onTcMarkWord,
@@ -3381,6 +3462,11 @@ export default function VerseDisplay({
                       // Poetry Similarity: swap to per-letter clickable spans while editing,
                       // or a read-mode highlight if a saved mark touches this token —
                       // otherwise fall through to the normal inline-markup rendering.
+                      // Text color: while editingTextColor, this word's letters are always
+                      // individually clickable (see onTextColorGraphemeClick) — a plain
+                      // click colors the whole word, a shift-click anchors/commits a letter
+                      // range; otherwise, a word already carrying per-letter color
+                      // overrides renders those inline.
                       const tvCoreContent = tvSimilarityMark
                         ? renderGraphemesWithSimilarityHighlight(
                             tokCore,
@@ -3398,7 +3484,18 @@ export default function VerseDisplay({
                               pendingSimilarityAnchor?.wordId === wordId ? pendingSimilarityAnchor.graphemeIndex : null,
                               (wid, idx, shiftHeld) => onGraphemeClick?.(wid, idx, shiftHeld, seg[0].wordId)
                             )
-                          : renderInlineMarked(tokCore);
+                          : editingTextColor
+                          ? renderClickableGraphemesWithColors(
+                              tokCore,
+                              wordId,
+                              tvLanguage ?? "",
+                              textColorLetterAnchor?.wordId === wordId ? textColorLetterAnchor.graphemeIndex : null,
+                              tvFormatting?.letterColors ?? null,
+                              (wid, idx, shiftHeld) => onTextColorGraphemeClick?.(wid, idx, abbr, tokCore, shiftHeld)
+                            )
+                          : tvFormatting?.letterColors
+                            ? renderGraphemesWithLetterColors(tokCore, tvLanguage ?? "", tvFormatting.letterColors)
+                            : renderInlineMarked(tokCore);
 
                       const node = (
                         <span key={globalWi}>
