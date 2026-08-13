@@ -51,6 +51,7 @@ export interface UsePoetryNotationsReturn {
   setEditingNotationId: Dispatch<SetStateAction<number | null>>;
 
   symmetryLineA: string | null;
+  balanceLineA: string | null;
   similarityStart: GraphemeAnchor | null;
   closureRangeStart: string | null;
   requirednessRangeStart: string | null;
@@ -86,12 +87,14 @@ export function usePoetryNotations({
   const [editingNotationId, setEditingNotationId] = useState<number | null>(null);
 
   const [symmetryLineA, setSymmetryLineA] = useState<string | null>(null);
+  const [balanceLineA, setBalanceLineA] = useState<string | null>(null);
   const [similarityStart, setSimilarityStart] = useState<GraphemeAnchor | null>(null);
   const [closureRangeStart, setClosureRangeStart] = useState<string | null>(null);
   const [requirednessRangeStart, setRequirednessRangeStart] = useState<string | null>(null);
 
   function clearPending() {
     setSymmetryLineA(null);
+    setBalanceLineA(null);
     setSimilarityStart(null);
     setClosureRangeStart(null);
     setRequirednessRangeStart(null);
@@ -156,18 +159,35 @@ export function usePoetryNotations({
     createNotation({ principle: activePrinciple, startWordId: wordId });
   }
 
-  // ── Balance/Imbalance — one mark per line ──────────────────────────────────
+  // ── Balance/Imbalance — two-line, mirrors Symmetry's click-order-preserved
+  // pair picking. A mark's "=" renders vertically centered between the two
+  // lines' text areas, with a bracket spanning from the top of the earlier
+  // line to the bottom of the later one (see PoetryMarginOverlay) — so a click on
+  // EITHER line of an existing pair reopens it for editing. ─────────────────
   function handleLineClick(segFirstWordId: string) {
-    const existing = findWordMark("balance", segFirstWordId);
+    const existing = poetryNotations.find(
+      (n) => n.principle === "balance" && (n.startWordId === segFirstWordId || n.endWordId === segFirstWordId)
+    );
     if (existing) {
       setEditingNotationId(existing.id);
       return;
     }
+    if (!balanceLineA) {
+      setBalanceLineA(segFirstWordId);
+      return;
+    }
+    if (segFirstWordId === balanceLineA) {
+      setBalanceLineA(null);
+      return;
+    }
+    const a = balanceLineA;
+    setBalanceLineA(null);
     createNotation({
       principle: "balance",
       subtype: activeBalanceSubtype,
       direction: activeBalanceSubtype === "imbalance" ? activeImbalanceDirection : null,
-      startWordId: segFirstWordId,
+      startWordId: a,
+      endWordId: segFirstWordId,
     });
   }
 
@@ -244,7 +264,10 @@ export function usePoetryNotations({
   // First click always anchors the pending start. From there, same as
   // Similarity's grapheme-range picking: a plain click re-anchors the start
   // to the newly clicked word, while a SHIFT-click completes the range —
-  // click the first word, shift-click the last.
+  // click the first word, shift-click the last. Clicking the SAME word again
+  // (with or without shift) also completes the selection, as a single-word
+  // range — a second plain click on the pending start no longer re-anchors
+  // it to itself (a no-op the user had no way to escape from without shift).
   function handleClosureWordClick(wordId: string, shiftHeld: boolean) {
     if (!closureRangeStart) {
       const covering = poetryNotations.find((n) => {
@@ -261,6 +284,11 @@ export function usePoetryNotations({
         return;
       }
       setClosureRangeStart(wordId);
+      return;
+    }
+    if (wordId === closureRangeStart) {
+      setClosureRangeStart(null);
+      createNotation({ principle: "closure", subtype: "weak", startWordId: wordId, endWordId: wordId });
       return;
     }
     if (!shiftHeld) {
@@ -369,6 +397,7 @@ export function usePoetryNotations({
     editingNotationId,
     setEditingNotationId,
     symmetryLineA,
+    balanceLineA,
     similarityStart,
     closureRangeStart,
     requirednessRangeStart,

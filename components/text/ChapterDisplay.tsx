@@ -6,6 +6,8 @@ import { useRouter, useSearchParams } from "next/navigation";
 import type { Word, Character, CharacterRef, SpeechSection, WordTag, WordTagRef, RstRelation, WordArrow, LineAnnotation, PoetryNotation, PoetryLineBracketExclusion, Passage, SynopticWordMark, LineGroup } from "@/lib/db/schema";
 import { usePoetryNotations } from "@/lib/hooks/usePoetryNotations";
 import { POETRY_PRINCIPLE_LABELS, POETRY_PRINCIPLE_GLYPHS, POETRY_COLORS, type PoetryPrinciple } from "@/lib/poetry/constants";
+import { derivePoetryDisplayMaps } from "@/lib/poetry/derivePoetryDisplayMaps";
+import { computePoetryAnchorLayout, computePoetrySpacingMap, POETRY_STACK_STEP_PX, POETRY_STACK_BASE_PX } from "@/lib/poetry/computePoetryAnchorLayout";
 import { useSynopticCategories } from "@/lib/hooks/useSynopticCategories";
 import SynopticCategoryManager from "@/components/synoptic/SynopticCategoryManager";
 import type { Translation, TranslationVerse, TranslationFootnote } from "@/lib/db/schema";
@@ -63,17 +65,6 @@ function normalizeForSearch(text: string): string {
     .replace(/[̀-ͯ]/g, "")  // Greek/Latin combining diacritics
     .replace(/\//g, "")               // OSHB morpheme separators
     .toLowerCase();
-}
-
-/** Parses a translation-token id (`tv:ABBR:Book.Chapter.Verse.WordIndex`) into
- *  its parts, or returns null for a source Word.wordId (no `tv:` prefix). */
-function parseTvWordId(wordId: string): { abbr: string; book: string; chapter: number; verse: number; wi: number } | null {
-  if (!wordId.startsWith("tv:")) return null;
-  const [, abbr, ref] = wordId.split(":");
-  const parts = ref?.split(".") ?? [];
-  if (!abbr || parts.length !== 4) return null;
-  const [book, chapterStr, verseStr, wiStr] = parts;
-  return { abbr, book, chapter: parseInt(chapterStr, 10), verse: parseInt(verseStr, 10), wi: parseInt(wiStr, 10) };
 }
 
 /** Returns true if the word's surface text is entirely punctuation and should
@@ -1110,6 +1101,7 @@ export default function ChapterDisplay({
     activeRequirednessSubtype, setActiveRequirednessSubtype,
     editingNotationId, setEditingNotationId,
     symmetryLineA,
+    balanceLineA,
     similarityStart,
     closureRangeStart,
     requirednessRangeStart,
@@ -1201,10 +1193,10 @@ export default function ChapterDisplay({
         else handlePoetryWordClick(wordId);
         return;
       case "balance":
-        handlePoetryLineClick(segFirstWordId);
-        return;
       case "symmetry":
-        handleSymmetryLineClick(segFirstWordId);
+        // Both are picked entirely via the anchor-point dots in the margin
+        // now (PoetryMarginOverlay) — a plain word click does nothing, same
+        // as Similarity below.
         return;
       case "closure":
         if (activeClosureSubtype === "weak") handleClosureWordClick(wordId, shiftHeld);
@@ -1216,196 +1208,30 @@ export default function ChapterDisplay({
     }
   }
 
-  // Per-word map of continuation/requiredness (arrow-subtype only) marks, keyed by wordId.
-  const poetryWordMarkMap = useMemo(() => {
-    const map = new Map<string, { continuation?: PoetryNotation; requiredness?: PoetryNotation }>();
-    for (const n of poetryNotations) {
-      if (n.principle !== "continuation" && n.principle !== "requiredness") continue;
-      if (n.principle === "requiredness" && n.subtype === "underline") continue;
-      const entry = map.get(n.startWordId) ?? {};
-      if (n.principle === "continuation") entry.continuation = n;
-      else entry.requiredness = n;
-      map.set(n.startWordId, entry);
-    }
-    return map;
-  }, [poetryNotations]);
-
-  // Words covered by a "requiredness — underline" range (inclusive, chapter-wide order).
-  // Mirrors poetryClosureWeakSet below.
-  const poetryRequirednessUnderlineSet = useMemo(() => {
-    const set = new Set<string>();
-    for (const n of poetryNotations) {
-      if (n.principle !== "requiredness" || n.subtype !== "underline" || !n.endWordId) continue;
-      if (n.startWordId === n.endWordId) { set.add(n.startWordId); continue; }
-      const lo = wordIndexMap.get(n.startWordId);
-      const hi = wordIndexMap.get(n.endWordId);
-      if (lo === undefined || hi === undefined) {
-        set.add(n.startWordId);
-        set.add(n.endWordId);
-        continue;
-      }
-      const [from, to] = lo <= hi ? [lo, hi] : [hi, lo];
-      for (let i = from; i <= to; i++) { const w = words[i]; if (w) set.add(w.wordId); }
-    }
-    return set;
-  }, [poetryNotations, wordIndexMap, words]);
-
-  // Requiredness-underline ranges anchored on TRANSLATION text, grouped by
-  // translation abbreviation — mirrors poetryClosureWeakRangesByAbbr below.
-  const poetryRequirednessUnderlineRangesByAbbr = useMemo(() => {
-    const map = new Map<string, { book: string; chapter: number; loKey: number; hiKey: number }[]>();
-    for (const n of poetryNotations) {
-      if (n.principle !== "requiredness" || n.subtype !== "underline" || !n.endWordId) continue;
-      const start = parseTvWordId(n.startWordId);
-      const end = parseTvWordId(n.endWordId);
-      if (!start || !end) continue;
-      if (start.abbr !== end.abbr || start.book !== end.book || start.chapter !== end.chapter) continue;
-      const key = (v: number, wi: number) => v * 100000 + wi;
-      const a = key(start.verse, start.wi);
-      const b = key(end.verse, end.wi);
-      const [loKey, hiKey] = a <= b ? [a, b] : [b, a];
-      const arr = map.get(start.abbr) ?? [];
-      arr.push({ book: start.book, chapter: start.chapter, loKey, hiKey });
-      map.set(start.abbr, arr);
-    }
-    return map;
-  }, [poetryNotations]);
-
-  // Words covered by a "closure — weak" range (inclusive, chapter-wide order).
-  const poetryClosureWeakSet = useMemo(() => {
-    const set = new Set<string>();
-    for (const n of poetryNotations) {
-      if (n.principle !== "closure" || n.subtype !== "weak" || !n.endWordId) continue;
-      if (n.startWordId === n.endWordId) { set.add(n.startWordId); continue; }
-      const lo = wordIndexMap.get(n.startWordId);
-      const hi = wordIndexMap.get(n.endWordId);
-      if (lo === undefined || hi === undefined) {
-        // wordIndexMap only resolves source Word ids — a translation-anchored
-        // (tv:ABBR:...) endpoint can't be positioned in it, so the "words
-        // strictly between" can't be computed here. Mark just the two
-        // endpoints rather than silently dropping the mark's underline
-        // entirely, which made translation-anchored ranges invisible (and
-        // therefore unclickable/undeletable).
-        set.add(n.startWordId);
-        set.add(n.endWordId);
-        continue;
-      }
-      const [from, to] = lo <= hi ? [lo, hi] : [hi, lo];
-      for (let i = from; i <= to; i++) { const w = words[i]; if (w) set.add(w.wordId); }
-    }
-    return set;
-  }, [poetryNotations, wordIndexMap, words]);
-
-  // Last word of every segment marked "closure — complete".
-  const segLastWordId = useMemo(() => {
-    const map = new Map<string, string>();
-    let curSeg: string | null = null;
-    for (const w of words) {
-      const seg = wordToParaStart.get(w.wordId) ?? w.wordId;
-      if (seg !== curSeg) curSeg = seg;
-      map.set(curSeg, w.wordId);
-    }
-    return map;
-  }, [words, wordToParaStart]);
-  const poetryClosureCompleteSet = useMemo(() => {
-    const set = new Set<string>();
-    for (const n of poetryNotations) {
-      if (n.principle !== "closure" || n.subtype !== "complete") continue;
-      const lastId = segLastWordId.get(n.startWordId);
-      if (lastId) set.add(lastId);
-    }
-    return set;
-  }, [poetryNotations, segLastWordId]);
-
-  // Closure-weak ranges anchored on TRANSLATION text, grouped by translation
-  // abbreviation. wordIndexMap (used by poetryClosureWeakSet above) only
-  // resolves source Word ids, so a translation-anchored range can't be
-  // expanded into a Set of member ids here — translation text isn't
-  // tokenized until VerseDisplay splits it. Instead each range is reduced to
-  // inclusive (verse, wordIndex) bounds, and VerseDisplay checks its own
-  // token's position against these bounds at render time.
-  const poetryClosureWeakRangesByAbbr = useMemo(() => {
-    const map = new Map<string, { book: string; chapter: number; loKey: number; hiKey: number }[]>();
-    for (const n of poetryNotations) {
-      if (n.principle !== "closure" || n.subtype !== "weak" || !n.endWordId) continue;
-      const start = parseTvWordId(n.startWordId);
-      const end = parseTvWordId(n.endWordId);
-      if (!start || !end) continue;
-      if (start.abbr !== end.abbr || start.book !== end.book || start.chapter !== end.chapter) continue;
-      const key = (v: number, wi: number) => v * 100000 + wi;
-      const a = key(start.verse, start.wi);
-      const b = key(end.verse, end.wi);
-      const [loKey, hiKey] = a <= b ? [a, b] : [b, a];
-      const arr = map.get(start.abbr) ?? [];
-      arr.push({ book: start.book, chapter: start.chapter, loKey, hiKey });
-      map.set(start.abbr, arr);
-    }
-    return map;
-  }, [poetryNotations]);
-
-  // Raw startWordId of every "closure — complete" mark, source or
-  // translation. Translation rendering can't precompute its segment's LAST
-  // word here (same tokenization gap as above) — VerseDisplay instead checks
-  // whether ITS OWN segment's first word id was saved as a mark's start.
-  const poetryClosureCompleteStartIds = useMemo(() => {
-    const set = new Set<string>();
-    for (const n of poetryNotations) {
-      if (n.principle === "closure" && n.subtype === "complete") set.add(n.startWordId);
-    }
-    return set;
-  }, [poetryNotations]);
-
-  // Balance/Imbalance — one mark per line, keyed by segFirstWordId.
-  const balanceMarkBySegment = useMemo(() => {
-    const map = new Map<string, PoetryNotation>();
-    for (const n of poetryNotations) {
-      if (n.principle === "balance") map.set(n.startWordId, n);
-    }
-    return map;
-  }, [poetryNotations]);
-
-  // Symmetry — marks touching a line, keyed by segFirstWordId; role = which
-  // end of the pair this line is (start = upper ▽, end = lower △).
-  const symmetryMarksBySegment = useMemo(() => {
-    const map = new Map<string, { mark: PoetryNotation; role: "start" | "end" }[]>();
-    for (const n of poetryNotations) {
-      if (n.principle !== "symmetry") continue;
-      if (!map.has(n.startWordId)) map.set(n.startWordId, []);
-      map.get(n.startWordId)!.push({ mark: n, role: "start" });
-      if (n.endWordId) {
-        if (!map.has(n.endWordId)) map.set(n.endWordId, []);
-        map.get(n.endWordId)!.push({ mark: n, role: "end" });
-      }
-    }
-    return map;
-  }, [poetryNotations]);
-
-  // Similarity — saved marks, resolved to the local grapheme range they cover
-  // in each word they touch (a mark's start/end word may be the same word, or
-  // two adjacent words in the same line).
-  const similarityMarkByWord = useMemo(() => {
-    const map = new Map<string, { mark: PoetryNotation; startIdx: number; endIdx: number }>();
-    for (const n of poetryNotations) {
-      if (n.principle !== "similarity" || n.startGraphemeIndex == null) continue;
-      if (!n.endWordId || n.startWordId === n.endWordId) {
-        map.set(n.startWordId, { mark: n, startIdx: n.startGraphemeIndex, endIdx: n.endGraphemeIndex ?? n.startGraphemeIndex });
-        continue;
-      }
-      // Spans 2+ words: start word gets [startIdx..end-of-word] (Infinity is
-      // clamped to the word's own length by renderGraphemesWithSimilarityHighlight
-      // via Array.slice, which tolerates an out-of-range end index).
-      map.set(n.startWordId, { mark: n, startIdx: n.startGraphemeIndex, endIdx: 9999 });
-      if (n.endGraphemeIndex != null) {
-        map.set(n.endWordId, { mark: n, startIdx: 0, endIdx: n.endGraphemeIndex });
-      }
-    }
-    return map;
-  }, [poetryNotations]);
+  // Every read-side lookup map/set the poetry marks need for rendering —
+  // shared with ExportTextView's read-only rendering via derivePoetryDisplayMaps
+  // so the two views can't drift out of sync on this fairly intricate derivation.
+  const {
+    poetryWordMarkMap,
+    poetryRequirednessUnderlineSet,
+    poetryRequirednessUnderlineRangesByAbbr,
+    poetryClosureWeakSet,
+    segLastWordId,
+    poetryClosureCompleteSet,
+    poetryClosureWeakRangesByAbbr,
+    poetryClosureCompleteStartIds,
+    balanceMarks,
+    symmetryMarks,
+    similarityMarkByWord,
+  } = useMemo(
+    () => derivePoetryDisplayMaps(poetryNotations, words, wordToParaStart, wordIndexMap),
+    [poetryNotations, words, wordToParaStart, wordIndexMap]
+  );
 
   // The mark (if any) currently open for note-editing, resolved to the single
   // word its popover should anchor to. Balance/Symmetry are excluded — those
-  // are deleted via their always-visible panel badge (PoetryLineBadge's own
-  // "x" button in VerseDisplay), not this word-anchored popover. Every other
+  // carry their own always-visible delete/note UI (PoetryMarginOverlay's label,
+  // PoetryLineBadge for Symmetry), not this word-anchored popover. Every other
   // principle (including "closure — complete", which was previously and
   // wrongly excluded here — the only way to delete it was this popover, so it
   // was undeletable) opens here so its Delete button is reachable.
@@ -1434,10 +1260,30 @@ export default function ChapterDisplay({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [lineGroups, paragraphFirstWordIds.join(",")]
   );
-  const lineSpacingMap = useMemo(
+  const lineGroupSpacingMap = useMemo(
     () => computeLineSpacing(lineGroupTree, paragraphFirstWordIds),
     [lineGroupTree, paragraphFirstWordIds]
   );
+  // Extra vertical room for rows where a Balance/Symmetry anchor stack would
+  // otherwise be crowded — additive space instead of ever widening the
+  // margin horizontally, per request. Merged with LineGroups' own spacing
+  // needs by taking whichever wants more room at a given row.
+  const poetryAnchorLayout = useMemo(
+    () => computePoetryAnchorLayout(balanceMarks, symmetryMarks, paragraphFirstWordIds),
+    [balanceMarks, symmetryMarks, paragraphFirstWordIds]
+  );
+  const poetrySpacingMap = useMemo(
+    () => computePoetrySpacingMap(poetryAnchorLayout, paragraphFirstWordIds, POETRY_STACK_STEP_PX, POETRY_STACK_BASE_PX),
+    [poetryAnchorLayout, paragraphFirstWordIds]
+  );
+  const lineSpacingMap = useMemo(() => {
+    if (poetrySpacingMap.size === 0) return lineGroupSpacingMap;
+    const merged = new Map(lineGroupSpacingMap);
+    for (const [key, val] of poetrySpacingMap) {
+      merged.set(key, Math.max(val, merged.get(key) ?? 0));
+    }
+    return merged;
+  }, [lineGroupSpacingMap, poetrySpacingMap]);
 
   // ── Annotation coverage map ───────────────────────────────────────────────
   // Maps each paragraph-segment first-word-id to the annotations that cover it,
@@ -5238,6 +5084,24 @@ export default function ChapterDisplay({
             showAutoLineBrackets={showPoetryLineBrackets}
             excludedLineIds={excludedLineIds}
             onToggleLineBracketExclusion={editingPoetryNotation ? handleToggleLineBracketExclusion : undefined}
+            balanceMarks={balanceMarks}
+            symmetryMarks={symmetryMarks}
+            editingPoetryNotation={editingPoetryNotation}
+            activePrinciple={activePrinciple}
+            pendingPoetryAnchor={
+              activePrinciple === "symmetry" ? symmetryLineA
+              : activePrinciple === "balance" ? balanceLineA
+              : null
+            }
+            onSelectPoetryAnchor={(anchorId) => {
+              if (activePrinciple === "symmetry") handleSymmetryLineClick(anchorId);
+              else if (activePrinciple === "balance") handlePoetryLineClick(anchorId);
+            }}
+            openPoetryNotationId={editingNotationId}
+            onOpenPoetryNotation={setEditingNotationId}
+            onDeletePoetryMark={handleDeletePoetryNotation}
+            onSavePoetryNote={handleUpdatePoetryNote}
+            poetryRemeasureKey={panelDisplayMode}
             containerRef={textContainerRef}
             layoutRef={outerRef}
           />
@@ -6830,18 +6694,10 @@ export default function ChapterDisplay({
                 onUpdateAnnotation={handleUpdateAnnotation}
                 onExpandAnnotationRange={handleExpandAnnotationRange}
                 showAnnotationCol={panelDisplayMode === "annotations" && (editingAnnotations || lineAnnotations.length > 0)}
-                showPoetryCol={panelDisplayMode === "poetry" && (editingPoetryNotation || showPoetryLineBrackets || balanceMarkBySegment.size > 0 || symmetryMarksBySegment.size > 0)}
+                showPoetryCol={panelDisplayMode === "poetry" && (editingPoetryNotation || balanceMarks.length > 0 || symmetryMarks.length > 0)}
                 editingPoetryNotation={editingPoetryNotation}
-                showPoetryLineBrackets={showPoetryLineBrackets}
-                balanceMarkBySegment={balanceMarkBySegment}
-                symmetryMarksBySegment={symmetryMarksBySegment}
-                symmetryLineA={symmetryLineA}
                 closureRangeStart={closureRangeStart}
                 requirednessRangeStart={requirednessRangeStart}
-                onSelectPoetryLine={(segId) => {
-                  if (activePrinciple === "symmetry") handleSymmetryLineClick(segId);
-                  else if (activePrinciple === "balance") handlePoetryLineClick(segId);
-                }}
                 onSelectPoetryWord={handlePoetryWordSelectByIds}
                 poetryWordMarkMap={poetryWordMarkMap}
                 poetryRequirednessUnderlineSet={poetryRequirednessUnderlineSet}

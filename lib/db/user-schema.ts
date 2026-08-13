@@ -475,7 +475,7 @@ export const lineAnnotations = sqliteTable(
  * columns stay null for a given row:
  *   continuation                : startWordId only (word-anchored)
  *   requiredness                : subtype null|"arrow" (startWordId only, word-anchored) | "underline" (startWordId/endWordId = arbitrary word range, not segment-snapped, same as closure "weak")
- *   balance                     : startWordId = a paragraphFirstWordIds entry (line-anchored); subtype "balance"|"imbalance"; direction "left"|"right" (imbalance only)
+ *   balance                     : startWordId/endWordId = two paragraphFirstWordIds entries (bracket spans from the top of the earlier line to the bottom of the later one, "=" centered between); subtype "balance"|"imbalance"; direction "left"|"right" (imbalance only)
  *   symmetry                    : startWordId/endWordId = two paragraphFirstWordIds entries, in click order (upper/lower triangle)
  *   similarity                  : startWordId/startGraphemeIndex .. endWordId/endGraphemeIndex (letter range, may span adjacent words in one line)
  *   closure                     : subtype "weak" (startWordId/endWordId = arbitrary word range, not segment-snapped) | "complete" (startWordId = a line's segFirstWordId, endWordId null)

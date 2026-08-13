@@ -12,7 +12,8 @@ import type { RefObject } from "react";
 import RstRelationOverlay from "./RstRelationOverlay";
 import WordArrowOverlay from "./WordArrowOverlay";
 import LineGroupOverlay from "./LineGroupOverlay";
-import type { RstRelation, WordArrow, RstCustomType, LineGroup } from "@/lib/db/schema";
+import PoetryMarginOverlay from "./PoetryMarginOverlay";
+import type { RstRelation, WordArrow, RstCustomType, LineGroup, PoetryNotation } from "@/lib/db/schema";
 import type { ArrowPatch } from "@/lib/hooks/useWordArrows";
 
 export interface ChapterOverlaysProps {
@@ -63,6 +64,21 @@ export interface ChapterOverlaysProps {
   excludedLineIds?: Set<string>;
   onToggleLineBracketExclusion?: (segFirstWordId: string) => void;
 
+  // ── Balance/Imbalance + Symmetry margin overlay ──────────────────────────────
+  balanceMarks: PoetryNotation[];
+  symmetryMarks: PoetryNotation[];
+  editingPoetryNotation?: boolean;
+  activePrinciple: string;
+  pendingPoetryAnchor: string | null;
+  onSelectPoetryAnchor?: (anchorId: string) => void;
+  openPoetryNotationId: number | null;
+  onOpenPoetryNotation: (id: number | null) => void;
+  onDeletePoetryMark?: (id: number) => void;
+  onSavePoetryNote?: (id: number, note: string | null) => void;
+  /** Forces PoetryMarginOverlay to re-measure — pass something that changes when
+   *  its `[data-poetry-col]` anchor's visibility could have (e.g. panelDisplayMode). */
+  poetryRemeasureKey?: string | number;
+
   // ── Shared layout refs ──────────────────────────────────────────────────────
   /** The scrollable content container — overlays render SVG inside this. */
   containerRef: RefObject<HTMLDivElement | null>;
@@ -111,6 +127,17 @@ export default function ChapterOverlays({
   showAutoLineBrackets = false,
   excludedLineIds,
   onToggleLineBracketExclusion,
+  balanceMarks,
+  symmetryMarks,
+  editingPoetryNotation = false,
+  activePrinciple,
+  pendingPoetryAnchor,
+  onSelectPoetryAnchor,
+  openPoetryNotationId,
+  onOpenPoetryNotation,
+  onDeletePoetryMark,
+  onSavePoetryNote,
+  poetryRemeasureKey,
   containerRef,
   layoutRef,
 }: ChapterOverlaysProps) {
@@ -168,6 +195,21 @@ export default function ChapterOverlays({
         excludedLineIds={excludedLineIds}
         onToggleLineBracketExclusion={onToggleLineBracketExclusion}
         onRequiredSourcePad={onRequiredLineGroupPad}
+      />
+      <PoetryMarginOverlay
+        balanceMarks={balanceMarks}
+        symmetryMarks={symmetryMarks}
+        containerRef={containerRef}
+        paragraphFirstWordIds={paragraphFirstWordIds}
+        editing={editingPoetryNotation}
+        activePrinciple={activePrinciple}
+        pendingAnchor={pendingPoetryAnchor}
+        onSelectAnchor={onSelectPoetryAnchor}
+        openNotationId={openPoetryNotationId}
+        onOpenNotation={onOpenPoetryNotation}
+        onDeleteMark={onDeletePoetryMark}
+        onSaveNote={onSavePoetryNote}
+        remeasureKey={poetryRemeasureKey}
       />
     </>
   );

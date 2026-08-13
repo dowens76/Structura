@@ -15,6 +15,11 @@ const LEVEL_WIDTH  = 10;  // px per nesting depth level
 const LEAF_MARGIN   = 7;  // px between a line's text edge and its innermost bracket
 const TICK_LEN      = 4;  // px — length of the bracket's top/bottom end-caps
 const GUTTER_MIN    = 24; // px — minimum gutter reserved even with no groups yet
+// Half the vertical gap always left between one auto-bracket and the next —
+// insetting both ends guarantees separation even when two lines' measured
+// top/bottom touch (or their brackets round to the same pixel), so adjacent
+// "one bracket per poetic line" strokes never visually merge into one.
+const AUTO_BRACKET_VGAP_HALF = 1.5;
 
 interface BracketNode {
   id: string;
@@ -243,19 +248,29 @@ export default function LineGroupOverlay({
     if (showAutoLineBrackets) {
       const autoX = srcXFn(maxDepth - 1);
       const autoTransX = hasTransMeasured ? transXFn(maxDepth - 1) : undefined;
+      // Inset each bracket's own top/bottom by half the gap so two adjacent
+      // lines' brackets always end up AUTO_BRACKET_VGAP_HALF*2 apart, even
+      // when the lines' measured bounds touch exactly. Clamped so a very
+      // short line's bracket can't invert (yTop crossing past yBottom).
+      const inset = (top: number, bottom: number): [number, number] => {
+        const mid = (top + bottom) / 2;
+        return [Math.min(mid, top + AUTO_BRACKET_VGAP_HALF), Math.max(mid, bottom - AUTO_BRACKET_VGAP_HALF)];
+      };
       for (const segId of paragraphFirstWordIds) {
         const pos = posArg.get(segId);
         if (!pos) continue;
         const isExcluded = excludedLineIds?.has(segId) ?? false;
-        out.push({ id: `${segId}__auto`, segId, x: autoX, yTop: pos.top, yBottom: pos.bottom, isTrans: false, isGroup: true, level: 1, isAuto: true, isExcluded });
+        const [srcTop, srcBottom] = inset(pos.top, pos.bottom);
+        out.push({ id: `${segId}__auto`, segId, x: autoX, yTop: srcTop, yBottom: srcBottom, isTrans: false, isGroup: true, level: 1, isAuto: true, isExcluded });
 
         if (pos.transLeftX !== undefined && autoTransX !== undefined) {
+          const [transTop, transBottom] = inset(pos.transTop ?? pos.top, pos.transBottom ?? pos.bottom);
           out.push({
             id: `${segId}__auto`,
             segId,
             x: autoTransX,
-            yTop: pos.transTop ?? pos.top,
-            yBottom: pos.transBottom ?? pos.bottom,
+            yTop: transTop,
+            yBottom: transBottom,
             isTrans: true,
             isGroup: true,
             level: 1,

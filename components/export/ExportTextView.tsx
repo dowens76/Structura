@@ -4,7 +4,7 @@ import { useMemo, useRef, useState, useEffect } from "react";
 import type {
   Word, Character, CharacterRef, SpeechSection,
   WordTag, WordTagRef, WordArrow, LineAnnotation, RstRelation, RstCustomType, LineGroup,
-  TranslationFootnote,
+  TranslationFootnote, PoetryNotation,
 } from "@/lib/db/schema";
 import type { TranslationTextEntry, DisplayMode, InterlinearSubMode } from "@/lib/morphology/types";
 import type { Translation, TranslationVerse } from "@/lib/db/schema";
@@ -12,11 +12,14 @@ import VerseDisplay from "@/components/text/VerseDisplay";
 import WordArrowOverlay from "@/components/text/WordArrowOverlay";
 import RstRelationOverlay from "@/components/text/RstRelationOverlay";
 import LineGroupOverlay from "@/components/text/LineGroupOverlay";
+import PoetryMarginOverlay from "@/components/text/PoetryMarginOverlay";
+import { computePoetryAnchorLayout, computePoetrySpacingMap, POETRY_STACK_STEP_PX, POETRY_STACK_BASE_PX } from "@/lib/poetry/computePoetryAnchorLayout";
 import { buildLineGroupTree } from "@/lib/lineGroups/buildLineGroupTree";
 import { computeLineSpacing } from "@/lib/lineGroups/computeLineSpacing";
 import { defaultColorForLevel } from "@/lib/lineGroups/colors";
 import { RELATIONSHIP_TYPES } from "@/lib/morphology/clauseRelationships";
 import type { RstTypeEntry } from "@/lib/morphology/clauseRelationships";
+import { derivePoetryDisplayMaps } from "@/lib/poetry/derivePoetryDisplayMaps";
 
 interface Props {
   words: Word[];
@@ -39,6 +42,7 @@ interface Props {
   lineAnnotations: LineAnnotation[];
   rstRelations: RstRelation[];
   lineGroups: LineGroup[];
+  poetryNotations: PoetryNotation[];
   // Interlinear mode — mirrors whatever the live chapter view currently has
   // displayed (see lib/export/interlinearExportData.ts), so the exported PDF
   // shows the same lemma/Strong's/morph/translit/constituent/dataset labels
@@ -77,6 +81,7 @@ export default function ExportTextView({
   lineAnnotations,
   rstRelations,
   lineGroups,
+  poetryNotations,
   displayMode = "clean",
   interlinearSubMode = "lemma",
   constituentLabelMap = new Map(),
@@ -185,6 +190,28 @@ export default function ExportTextView({
     [wordFormatting]
   );
 
+  // ── Poetry Notation (Gestalt) — chapter-wide word order + derived display
+  // maps, mirroring ChapterDisplay so the export view shows every mark. ──
+  const wordIndexMap = useMemo(
+    () => new Map(words.map((w, i) => [w.wordId, i])),
+    [words]
+  );
+  const {
+    poetryWordMarkMap,
+    poetryRequirednessUnderlineSet,
+    poetryRequirednessUnderlineRangesByAbbr,
+    poetryClosureWeakSet,
+    poetryClosureCompleteSet,
+    poetryClosureWeakRangesByAbbr,
+    poetryClosureCompleteStartIds,
+    balanceMarks,
+    symmetryMarks,
+    similarityMarkByWord,
+  } = useMemo(
+    () => derivePoetryDisplayMaps(poetryNotations, words, wordToParaStart, wordIndexMap),
+    [poetryNotations, words, wordToParaStart, wordIndexMap]
+  );
+
   const sceneBreakMap = useMemo(() => {
     const m = new Map<string, Array<{ heading: string | null; level: number; verse: number; outOfSequence: boolean; extendedThrough: number | null; thematic: boolean; thematicLetter: string | null; transitional: boolean }>>();
     for (const sb of sceneBreaks) {
@@ -211,10 +238,26 @@ export default function ExportTextView({
     () => buildLineGroupTree(lineGroups, paragraphFirstWordIds),
     [lineGroups, paragraphFirstWordIds]
   );
-  const lineSpacingMap = useMemo(
+  const lineGroupSpacingMap = useMemo(
     () => computeLineSpacing(lineGroupTree, paragraphFirstWordIds),
     [lineGroupTree, paragraphFirstWordIds]
   );
+  const poetryAnchorLayout = useMemo(
+    () => computePoetryAnchorLayout(balanceMarks, symmetryMarks, paragraphFirstWordIds),
+    [balanceMarks, symmetryMarks, paragraphFirstWordIds]
+  );
+  const poetrySpacingMap = useMemo(
+    () => computePoetrySpacingMap(poetryAnchorLayout, paragraphFirstWordIds, POETRY_STACK_STEP_PX, POETRY_STACK_BASE_PX),
+    [poetryAnchorLayout, paragraphFirstWordIds]
+  );
+  const lineSpacingMap = useMemo(() => {
+    if (poetrySpacingMap.size === 0) return lineGroupSpacingMap;
+    const merged = new Map(lineGroupSpacingMap);
+    for (const [key, val] of poetrySpacingMap) {
+      merged.set(key, Math.max(val, merged.get(key) ?? 0));
+    }
+    return merged;
+  }, [lineGroupSpacingMap, poetrySpacingMap]);
 
   // ── Annotation coverage map (mirrors ChapterDisplay logic) ───────────────
   type SegAnnotationEntry = { annotation: LineAnnotation; isStart: boolean; isEnd: boolean };
@@ -271,7 +314,7 @@ export default function ExportTextView({
       const verses = translationVerseData[t.id] ?? [];
       for (const v of verses) {
         if (!map.has(v.verse)) map.set(v.verse, []);
-        map.get(v.verse)!.push({ abbr: t.abbreviation, text: v.text, translationId: t.id });
+        map.get(v.verse)!.push({ abbr: t.abbreviation, text: v.text, translationId: t.id, language: t.language });
       }
     }
     return map;
@@ -329,6 +372,17 @@ export default function ExportTextView({
           onSelectSegment={noop}
           onSelectGroup={noop}
           onDeleteGroup={noop}
+        />
+        <PoetryMarginOverlay
+          balanceMarks={balanceMarks}
+          symmetryMarks={symmetryMarks}
+          containerRef={containerRef}
+          paragraphFirstWordIds={paragraphFirstWordIds}
+          editing={false}
+          activePrinciple=""
+          pendingAnchor={null}
+          openNotationId={null}
+          onOpenNotation={noop}
         />
 
         {verseNums.map((verseNum) => {
@@ -413,6 +467,15 @@ export default function ExportTextView({
               rstSourcePad={Math.max(rstRelations.length > 0 ? 48 : 0, lineGroups.length > 0 ? 32 : 0)}
               lineSpacingMap={lineSpacingMap}
               translationFootnotes={verseFootnotes}
+              showPoetryCol={symmetryMarks.length > 0 || balanceMarks.length > 0}
+              poetryWordMarkMap={poetryWordMarkMap}
+              poetryRequirednessUnderlineSet={poetryRequirednessUnderlineSet}
+              poetryRequirednessUnderlineRangesByAbbr={poetryRequirednessUnderlineRangesByAbbr}
+              poetryClosureWeakSet={poetryClosureWeakSet}
+              poetryClosureWeakRangesByAbbr={poetryClosureWeakRangesByAbbr}
+              poetryClosureCompleteSet={poetryClosureCompleteSet}
+              poetryClosureCompleteStartIds={poetryClosureCompleteStartIds}
+              similarityMarkByWord={similarityMarkByWord}
             />
           );
         })}

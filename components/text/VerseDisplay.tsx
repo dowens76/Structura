@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import type { Word, CharacterRef, Character, SpeechSection, WordTag, WordTagRef, LineAnnotation, PoetryNotation, TranslationFootnote } from "@/lib/db/schema";
-import { POETRY_COLORS, balanceGlyph, type BalanceSubtype, type ImbalanceDirection } from "@/lib/poetry/constants";
+import { POETRY_COLORS } from "@/lib/poetry/constants";
 import { renderClickableGraphemes, renderGraphemesWithSimilarityHighlight } from "@/lib/poetry/graphemeRender";
 import PoetryNotePopover from "./PoetryNotePopover";
 import PoetryArrowIcon from "./PoetryArrowIcon";
@@ -268,33 +268,21 @@ interface VerseDisplayProps {
   onExpandAnnotationRange?: (id: number, direction: "expand-start" | "shrink-start" | "expand-end" | "shrink-end") => void;
   showAnnotationCol?: boolean;
   // Poetry notation (Gestalt: continuation/balance/requiredness/symmetry/similarity/closure)
+  // Balance/Imbalance and Symmetry render entirely via PoetryMarginOverlay (a
+  // sibling of this component) now — showPoetryCol just reserves this row's
+  // spacer width for it; see renderPoetryColForSeg.
   showPoetryCol?: boolean;
   editingPoetryNotation?: boolean;
-  /** True while the "bracket every poetic line" auto-brackets are on — keeps
-   *  every line's poetry column reserved (even lines with no Balance/Symmetry
-   *  mark) so the shared margin's width stays constant whether or not Poetry
-   *  Notation editing itself is active, since toggling that column's presence
-   *  on/off reflows the whole row and shifts LineGroupOverlay's measured
-   *  bracket positions out from under the (now edit-mode-independent) auto
-   *  brackets. */
-  showPoetryLineBrackets?: boolean;
-  /** Balance/Imbalance mark for a line (segment), keyed by segFirstWordId. */
-  balanceMarkBySegment?: Map<string, PoetryNotation>;
-  /** Symmetry marks touching a line, keyed by segFirstWordId — "start" = upper ▼, "end" = lower ▲. */
-  symmetryMarksBySegment?: Map<string, { mark: PoetryNotation; role: "start" | "end" }[]>;
-  /** The line currently pending as Symmetry's first click (highlighted while awaiting the second). */
-  symmetryLineA?: string | null;
   /** The word currently pending as Requiredness (underline)'s range start (highlighted while awaiting the shift-click end). */
   requirednessRangeStart?: string | null;
   /** The word currently pending as Closure (weak)'s range start (highlighted,
    *  same outline as a range-start word tag/speech selection, while awaiting
    *  the shift-click that completes the range). */
   closureRangeStart?: string | null;
-  onSelectPoetryLine?: (segFirstWordId: string) => void;
   /** Word-anchored poetry click from a TRANSLATION token — wordId is a
    *  `tv:ABBR:...` id, segFirstWordId is the SOURCE line (paragraph segment)
-   *  the translation row belongs to — used for Balance/Symmetry, which stay
-   *  source-anchored regardless of which pane is clicked (see renderTvToken).
+   *  the translation row belongs to. Balance/Symmetry no longer react to this
+   *  at all (both are picked entirely via PoetryMarginOverlay's anchor dots).
    *  tvSegFirstWordId, when supplied, is the translation's OWN line's first
    *  word id (`tv:ABBR:...`) — used for Closure (complete) so a mark created
    *  on translation text is anchored to and displays on that same text.
@@ -445,57 +433,6 @@ function ColorPalette({
 /** Displays one annotation at a segment — full badge at start, continuation bar at middle/end. */
 function toSubscript(n: number): string {
   return String(n).split("").map((c) => "₀₁₂₃₄₅₆₇₈₉"[parseInt(c)]).join("");
-}
-
-/**
- * One poetry-notation mark badge in the shared right-panel column — used for
- * both Balance/Imbalance (one mark per line) and Symmetry (▼ start / ▲ end).
- * The note field is always-visible and editable inline, matching how
- * lineAnnotations.description is shown for clause labels, rather than a
- * click-to-open popover (see AnnotBadge above for that alternate pattern,
- * used for the word/letter-anchored marks in WordToken instead).
- */
-function PoetryLineBadge({
-  mark,
-  glyph,
-  color,
-  glyphFontSize = "0.875rem",
-  onSaveNote,
-  onDeleteMark,
-}: {
-  mark: PoetryNotation;
-  glyph: string;
-  color: string;
-  /** Overrides the glyph's font-size (defaults to text-sm's 0.875rem) — Symmetry's
-   *  triangles render at 2x this (see call site) per user request. */
-  glyphFontSize?: string;
-  onSaveNote?: (id: number, note: string | null) => void;
-  onDeleteMark?: (id: number) => void;
-}) {
-  const [draft, setDraft] = useState(mark.note ?? "");
-  return (
-    <div className="flex flex-col gap-0.5" onClick={(e) => e.stopPropagation()}>
-      <div className="flex items-center gap-1">
-        <span className="font-bold leading-none" style={{ color, fontSize: glyphFontSize }}>{glyph}</span>
-        <button
-          type="button"
-          className="text-[10px] text-stone-400 hover:text-red-500 ml-auto"
-          onClick={() => onDeleteMark?.(mark.id)}
-          title="Delete"
-        >
-          ×
-        </button>
-      </div>
-      <input
-        type="text"
-        className="text-[10px] bg-transparent border-b border-transparent focus:border-stone-300 dark:focus:border-stone-600 outline-none"
-        placeholder="Note"
-        value={draft}
-        onChange={(e) => setDraft(e.target.value)}
-        onBlur={() => { if (draft !== (mark.note ?? "")) onSaveNote?.(mark.id, draft.trim() || null); }}
-      />
-    </div>
-  );
 }
 
 function AnnotBadge({
@@ -1023,12 +960,16 @@ function AnnotBadge({
           </div>
         )}
       </div>
-      {/* In edit mode show the single-segment +/- at the bottom */}
+      {/* In edit mode show the single-segment +/- at the bottom. stopPropagation lives on the
+          button itself (not this row) — the row previously carried it, which silently swallowed
+          any click landing on the row's own label/padding instead of the button, blocking the
+          badge's own "click to edit" (its onClick sits on this same outer container) from ever
+          firing for a click that missed the tiny "+" target. */}
       {editingAnnotations && isEnd && onAdjustRange && (
-        <div className="flex items-center gap-0.5 px-1.5 pb-1" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center gap-0.5 px-1.5 pb-1">
           <span className="text-[9px] text-stone-400 dark:text-stone-500 mr-0.5">end:</span>
           <button type="button" title="Expand: include the next segment"
-            onClick={() => onAdjustRange(annotation.id, "expand-end")}
+            onClick={(e) => { e.stopPropagation(); onAdjustRange(annotation.id, "expand-end"); }}
             className="text-[9px] px-1 py-0 rounded bg-stone-200 dark:bg-stone-700 text-stone-500 dark:text-stone-400 hover:bg-stone-300 dark:hover:bg-stone-600 leading-4">+</button>
         </div>
       )}
@@ -1453,13 +1394,8 @@ export default function VerseDisplay({
   showAnnotationCol = false,
   showPoetryCol = false,
   editingPoetryNotation = false,
-  showPoetryLineBrackets = false,
-  balanceMarkBySegment,
-  symmetryMarksBySegment,
-  symmetryLineA = null,
   closureRangeStart = null,
   requirednessRangeStart = null,
-  onSelectPoetryLine,
   onSelectPoetryWord,
   poetryWordMarkMap,
   poetryRequirednessUnderlineSet,
@@ -2110,82 +2046,23 @@ export default function VerseDisplay({
     );
   }
 
-  // ── Poetry notation column renderer ───────────────────────────────────────
+  // ── Poetry notation column spacer ─────────────────────────────────────────
   // Shares the same margin space as the clause-label column above — only one
   // of the two is ever shown at once (showAnnotationCol / showPoetryCol are
-  // mutually exclusive, driven by ChapterDisplay's panelDisplayMode). Only
-  // Balance/Imbalance and Symmetry render here; the other four principles
-  // render inline on the words themselves (see WordToken.tsx).
+  // mutually exclusive, driven by ChapterDisplay's panelDisplayMode). Purely a
+  // spacer now — Balance/Imbalance and Symmetry both render entirely via
+  // PoetryMarginOverlay (a sibling of this component), which needs this div's
+  // on-screen position (via data-poetry-col) as its X reference but owns all
+  // the actual bracket/dot/glyph drawing and click handling itself, since an
+  // anchor point (and therefore a mark) can now land in the gap BETWEEN two
+  // lines, not just on one — something a per-segment column can't represent.
   function renderPoetryColForSeg(segFirstWordId: string): React.ReactNode {
     if (!showPoetryCol) return null;
-
-    const balanceMark = balanceMarkBySegment?.get(segFirstWordId);
-    const symMarks = symmetryMarksBySegment?.get(segFirstWordId) ?? [];
-    const isPendingSymmetryA = symmetryLineA === segFirstWordId;
-    if (!balanceMark && symMarks.length === 0 && !editingPoetryNotation && !showPoetryLineBrackets) return null;
-
     return (
       <div
-        className={[
-          presentationMode ? "w-72" : "w-48",
-          "flex-none pl-3 self-stretch flex flex-row gap-2",
-          editingPoetryNotation
-            ? "cursor-pointer hover:bg-sky-50 dark:hover:bg-sky-950/20 rounded transition-colors"
-            : "",
-          isPendingSymmetryA ? "ring-1 ring-inset ring-green-400/60 rounded" : "",
-        ].filter(Boolean).join(" ")}
-        onClick={
-          editingPoetryNotation
-            ? (e) => { e.stopPropagation(); onSelectPoetryLine?.(segFirstWordId); }
-            : undefined
-        }
-      >
-        {/* Symmetry first — ▼ (start) pinned to the top of the line's space,
-           ▲ (end) pinned to the bottom of it. Solid triangles at 2x the
-           normal badge-glyph size, per user request. */}
-        {symMarks.length > 0 && (
-          <div className="flex-1 min-w-0 flex flex-col justify-between gap-1.5">
-            <div className="flex flex-col gap-1.5">
-              {symMarks.filter((m) => m.role === "start").map(({ mark }) => (
-                <PoetryLineBadge
-                  key={mark.id}
-                  mark={mark}
-                  glyph="▼"
-                  color={POETRY_COLORS.symmetry}
-                  glyphFontSize="1.75rem"
-                  onSaveNote={onSavePoetryNote}
-                  onDeleteMark={onDeletePoetryMark}
-                />
-              ))}
-            </div>
-            <div className="flex flex-col gap-1.5">
-              {symMarks.filter((m) => m.role === "end").map(({ mark }) => (
-                <PoetryLineBadge
-                  key={mark.id}
-                  mark={mark}
-                  glyph="▲"
-                  color={POETRY_COLORS.symmetry}
-                  glyphFontSize="1.75rem"
-                  onSaveNote={onSavePoetryNote}
-                  onDeleteMark={onDeletePoetryMark}
-                />
-              ))}
-            </div>
-          </div>
-        )}
-        {/* Balance — to the right of Symmetry, vertically centered in the line's space. */}
-        {balanceMark && (
-          <div className="flex-1 min-w-0 flex flex-col justify-center">
-            <PoetryLineBadge
-              mark={balanceMark}
-              glyph={balanceGlyph(balanceMark.subtype as BalanceSubtype | null, balanceMark.direction as ImbalanceDirection | null)}
-              color={POETRY_COLORS.balance}
-              onSaveNote={onSavePoetryNote}
-              onDeleteMark={onDeletePoetryMark}
-            />
-          </div>
-        )}
-      </div>
+        data-poetry-col={segFirstWordId}
+        className={[presentationMode ? "w-72" : "w-48", "flex-none self-stretch"].join(" ")}
+      />
     );
   }
 
@@ -3935,10 +3812,19 @@ export default function VerseDisplay({
           </>
         );
 
+        // Line-group / Poetry-anchor spacing override — same mechanism as the
+        // no-translation layout above (see its comment); this with-translation
+        // layout previously had no equivalent, so a mark needing extra room here
+        // (e.g. a stacked Balance/Symmetry anchor) silently had nowhere to put it.
+        const lineSpacingOverride = si > 0 && !suppressSeparator
+          ? lineSpacingMap?.get(seg[0].wordId)
+          : undefined;
+
         const gridStyle: React.CSSProperties = {
           gridTemplateColumns: hideSourceText ? "auto 1fr" : "1fr auto 1fr",
+          ...(lineSpacingOverride !== undefined ? { marginTop: lineSpacingOverride } : {}),
         };
-        const gridClass = `grid items-start${editingSpeech ? " cursor-crosshair" : ""}${editingAnnotations ? " cursor-pointer" : ""}`;
+        const gridClass = `grid items-start${editingSpeech ? " cursor-crosshair" : ""}${editingAnnotations ? " cursor-pointer" : ""}${si > 0 && !suppressSeparator && lineSpacingOverride === undefined ? " mt-1" : ""}`;
 
         return (
           // data-rst-seg is used by RstRelationOverlay to measure segment position
