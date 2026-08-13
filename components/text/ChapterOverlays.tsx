@@ -75,6 +75,9 @@ export interface ChapterOverlaysProps {
   onOpenPoetryNotation: (id: number | null) => void;
   onDeletePoetryMark?: (id: number) => void;
   onSavePoetryNote?: (id: number, note: string | null) => void;
+  /** Shows a small note-indicator badge on Balance/Symmetry glyphs whose mark
+   *  has a note — mirrors the same toggle applied to word-anchored marks. */
+  showPoetryNotes?: boolean;
   /** Forces PoetryMarginOverlay to re-measure — pass something that changes when
    *  its `[data-poetry-col]` anchor's visibility could have (e.g. panelDisplayMode). */
   poetryRemeasureKey?: string | number;
@@ -137,6 +140,7 @@ export default function ChapterOverlays({
   onOpenPoetryNotation,
   onDeletePoetryMark,
   onSavePoetryNote,
+  showPoetryNotes = false,
   poetryRemeasureKey,
   containerRef,
   layoutRef,
@@ -209,6 +213,7 @@ export default function ChapterOverlays({
         onOpenNotation={onOpenPoetryNotation}
         onDeleteMark={onDeletePoetryMark}
         onSaveNote={onSavePoetryNote}
+        showNotes={showPoetryNotes}
         remeasureKey={poetryRemeasureKey}
       />
     </>

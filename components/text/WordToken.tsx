@@ -81,6 +81,11 @@ interface WordTokenProps {
   /** True when this word is the LAST word of a line marked "closure — complete"
    *  (purple vertical bar at the line's trailing edge). */
   poetryClosureComplete?: boolean;
+  /** True when the "show poetry notes" toggle is on AND a mark anchored to
+   *  this word has a note — renders a small note-indicator badge. */
+  showPoetryNote?: boolean;
+  /** The note text itself, shown as the badge's hover tooltip. */
+  poetryNoteText?: string | null;
   /** id of the poetry-notation mark whose note popover is currently open, if it anchors to this word. */
   openPoetryNoteMark?: PoetryNotation | null;
   onSavePoetryNote?: (id: number, note: string | null) => void;
@@ -517,6 +522,8 @@ export default function WordToken({
   poetryRequirednessUnderline,
   poetryClosureWeak,
   poetryClosureComplete,
+  showPoetryNote,
+  poetryNoteText,
   openPoetryNoteMark,
   onSavePoetryNote,
   onDeletePoetryMark,
@@ -761,6 +768,14 @@ export default function WordToken({
         {poetryGlyphs}
       </span>
       {trailing}
+      {showPoetryNote && poetryNoteText && (
+        // Rendered in normal inline flow, right after the word (and any
+        // trailing punctuation), so the note is readable without hovering —
+        // same placement rationale as poetryClosureComplete's bar below.
+        <span className="inline align-middle select-none whitespace-normal text-[10px] italic leading-tight px-1 py-0.5 rounded mx-0.5 bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300">
+          {poetryNoteText}
+        </span>
+      )}
       {poetryClosureComplete && (
         // Rendered in normal inline flow AFTER the trailing punctuation (e.g. sof
         // pasuq ׃) rather than absolutely positioned against the core word span,

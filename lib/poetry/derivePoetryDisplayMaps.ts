@@ -23,6 +23,10 @@ export interface PoetryDisplayMaps {
   balanceMarks: PoetryNotation[];
   symmetryMarks: PoetryNotation[];
   similarityMarkByWord: Map<string, { mark: PoetryNotation; startIdx: number; endIdx: number }>;
+  /** Every mark that carries a note, keyed by its startWordId — one lookup
+   *  shared across all 6 principles (each anchors a real rendered word there,
+   *  even the line/range-based ones), used to show a note indicator badge. */
+  poetryNoteMap: Map<string, string>;
 }
 
 /**
@@ -162,6 +166,28 @@ export function derivePoetryDisplayMaps(
     }
   }
 
+  // Note indicator lookup — every mark with a non-empty note, keyed by the
+  // LAST word it touches (a real rendered word for all 6 principles): for a
+  // single-word mark that's startWordId itself; for a range (closure — weak,
+  // requiredness — underline, a two-word similarity span), endWordId is
+  // always the chapter-later of the two (see handleClosureWordClick /
+  // handleRequirednessWordClick / handleGraphemeClick's ordering), so the
+  // note reads right after the series it covers rather than before it;
+  // closure — complete stores startWordId as the line's FIRST word but
+  // visibly renders on the line's LAST word, so it resolves through
+  // segLastWordId the same way its edit-popover anchor already does.
+  const poetryNoteMap = new Map<string, string>();
+  for (const n of poetryNotations) {
+    if (!n.note || !n.note.trim()) continue;
+    const anchorWordId =
+      n.principle === "closure" && n.subtype === "complete"
+        ? segLastWordId.get(n.startWordId) ?? n.startWordId
+        : n.endWordId && n.endWordId !== n.startWordId
+          ? n.endWordId
+          : n.startWordId;
+    poetryNoteMap.set(anchorWordId, n.note);
+  }
+
   return {
     poetryWordMarkMap,
     poetryRequirednessUnderlineSet,
@@ -174,5 +200,6 @@ export function derivePoetryDisplayMaps(
     balanceMarks,
     symmetryMarks,
     similarityMarkByWord,
+    poetryNoteMap,
   };
 }

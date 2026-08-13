@@ -321,6 +321,11 @@ interface VerseDisplayProps {
   poetryClosureCompleteStartIds?: Set<string>;
   /** Saved Similarity marks touching a word (read mode), with the local grapheme range for that word. */
   similarityMarkByWord?: Map<string, { mark: PoetryNotation; startIdx: number; endIdx: number }>;
+  /** Toggle: shows a small note-indicator badge on any word anchoring a
+   *  Poetry Notation mark that has a note — works in read mode too. */
+  showPoetryNotes?: boolean;
+  /** Every mark with a note, keyed by its startWordId. */
+  poetryNoteMap?: Map<string, string>;
   /** True only while editing AND the "similarity" sub-tool is active. */
   editingPoetrySimilarity?: boolean;
   pendingSimilarityAnchor?: { wordId: string; graphemeIndex: number } | null;
@@ -1486,6 +1491,8 @@ export default function VerseDisplay({
   poetryClosureCompleteSet,
   poetryClosureCompleteStartIds,
   similarityMarkByWord,
+  showPoetryNotes = false,
+  poetryNoteMap,
   editingPoetrySimilarity = false,
   pendingSimilarityAnchor = null,
   onGraphemeClick,
@@ -2475,6 +2482,8 @@ export default function VerseDisplay({
               poetryRequirednessUnderline={poetryRequirednessUnderlineSet?.has(word.wordId) ?? false}
               poetryClosureWeak={poetryClosureWeakSet?.has(word.wordId) ?? false}
               poetryClosureComplete={poetryClosureCompleteSet?.has(word.wordId) ?? false}
+              showPoetryNote={showPoetryNotes && !!poetryNoteMap?.has(word.wordId)}
+              poetryNoteText={poetryNoteMap?.get(word.wordId) ?? null}
               openPoetryNoteMark={openPoetryNoteMarkByWord?.get(word.wordId) ?? null}
               onSavePoetryNote={onSavePoetryNote}
               onDeletePoetryMark={onDeletePoetryMark}
@@ -3177,6 +3186,7 @@ export default function VerseDisplay({
                       // whether THIS tvSeg's own first word id was saved as a mark's start.
                       const tvPoetryContinuation = poetryWordMarkMap?.get(wordId)?.continuation ?? null;
                       const tvPoetryRequiredness = poetryWordMarkMap?.get(wordId)?.requiredness ?? null;
+                      const tvPoetryNoteText = showPoetryNotes ? poetryNoteMap?.get(wordId) ?? null : null;
                       const tvClosureWeakRanges = poetryClosureWeakRangesByAbbr?.get(abbr);
                       const tvWeakKey = verseNum * 100000 + globalWi;
                       const tvPoetryClosureWeak = tvClosureWeakRanges?.some(
@@ -3580,6 +3590,13 @@ export default function VerseDisplay({
                             </sup>
                           )}
                           {tokTrail}
+                          {tvPoetryNoteText && (
+                            // Rendered in normal inline flow right after the token, same
+                            // placement rationale as tvPoetryClosureComplete's bar below.
+                            <span className="inline align-middle select-none whitespace-normal text-[10px] italic leading-tight px-1 py-0.5 rounded mx-0.5 bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300">
+                              {tvPoetryNoteText}
+                            </span>
+                          )}
                           {tvPoetryClosureComplete && (
                             // Same "end bar" WordToken renders for a source line's closure —
                             // complete mark, placed after this tvSeg's own last token instead.

@@ -39,6 +39,10 @@ export interface Props {
   onOpenNotation: (id: number | null) => void;
   onDeleteMark?: (id: number) => void;
   onSaveNote?: (id: number, note: string | null) => void;
+  /** Shows a small dot on any glyph whose mark has a note — the note itself
+   *  was always available via the glyph's native hover tooltip, but with no
+   *  visual cue, so it was practically undiscoverable. */
+  showNotes?: boolean;
   /** Forces a re-measure when something outside this component's own props
    *  changed the `[data-poetry-col]` anchor's visibility (e.g. a margin-panel
    *  toggle) — a value-only trigger like this is more reliable than the
@@ -71,6 +75,7 @@ export default function PoetryMarginOverlay({
   onOpenNotation,
   onDeleteMark,
   onSaveNote,
+  showNotes = false,
   remeasureKey,
 }: Props) {
   const [svgH, setSvgH] = useState(0);
@@ -247,6 +252,7 @@ export default function PoetryMarginOverlay({
               onClose={() => onOpenNotation(null)}
               onDelete={onDeleteMark}
               onSave={onSaveNote}
+              showNotes={showNotes}
             />
           );
         });
@@ -256,27 +262,37 @@ export default function PoetryMarginOverlay({
 }
 
 function PoetryGlyph({
-  x, y, glyph, color, mark, editing, open, onOpen, onClose, onDelete, onSave,
+  x, y, glyph, color, mark, editing, open, onOpen, onClose, onDelete, onSave, showNotes,
 }: {
   x: number; y: number; glyph: string; color: string; mark: PoetryNotation;
   editing: boolean; open: boolean;
   onOpen: () => void; onClose: () => void;
   onDelete?: (id: number) => void;
   onSave?: (id: number, note: string | null) => void;
+  showNotes?: boolean;
 }) {
+  const noteText = mark.note?.trim() || null;
   return (
     <div
-      className="absolute z-20"
+      className="absolute z-20 flex items-center gap-1"
       style={{ left: x, top: y, transform: "translateY(-50%)" }}
     >
       <span
-        className={["font-bold leading-none", editing ? "cursor-pointer" : ""].join(" ")}
+        className={["font-bold leading-none shrink-0", editing ? "cursor-pointer" : ""].join(" ")}
         style={{ color, fontSize: GLYPH_FONT_SIZE }}
         onClick={editing ? (e) => { e.stopPropagation(); onOpen(); } : undefined}
-        title={mark.note ?? undefined}
+        title={!showNotes ? (mark.note ?? undefined) : undefined}
       >
         {glyph}
       </span>
+      {showNotes && noteText && (
+        <span
+          className="text-[10px] italic leading-tight px-1 py-0.5 rounded bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300"
+          style={{ maxWidth: 160 }}
+        >
+          {noteText}
+        </span>
+      )}
       {open && editing && onDelete && onSave && (
         <PoetryNotePopover mark={mark} color={color} onSave={onSave} onDelete={onDelete} onClose={onClose} />
       )}

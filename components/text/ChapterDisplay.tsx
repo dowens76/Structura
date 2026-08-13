@@ -761,6 +761,11 @@ export default function ChapterDisplay({
   // LineGroupOverlay's own drawing code. Real user-created line groups nest
   // outside these (shifted to level 2+) whenever this is on.
   const [showPoetryLineBrackets, setShowPoetryLineBrackets] = useState(false);
+  // Reveals a small note-indicator badge on any word/glyph anchoring a Poetry
+  // Notation mark that has a note — works in read mode too, not just while
+  // actively editing marks, since that's the point (casual reading, not
+  // just authoring).
+  const [showPoetryNotes, setShowPoetryNotes] = useState(false);
   // Which feature occupies the shared right-side margin column — clause labels
   // or poetry notation (Balance/Imbalance + Symmetry) — never both at once.
   // Explicit (not derived) so toggling one off doesn't also hide the other's
@@ -1245,6 +1250,7 @@ export default function ChapterDisplay({
     balanceMarks,
     symmetryMarks,
     similarityMarkByWord,
+    poetryNoteMap,
   } = useMemo(
     () => derivePoetryDisplayMaps(poetryNotations, words, wordToParaStart, wordIndexMap),
     [poetryNotations, words, wordToParaStart, wordIndexMap]
@@ -5258,6 +5264,7 @@ export default function ChapterDisplay({
             onOpenPoetryNotation={setEditingNotationId}
             onDeletePoetryMark={handleDeletePoetryNotation}
             onSavePoetryNote={handleUpdatePoetryNote}
+            showPoetryNotes={showPoetryNotes}
             poetryRemeasureKey={panelDisplayMode}
             containerRef={textContainerRef}
             layoutRef={outerRef}
@@ -5773,6 +5780,21 @@ export default function ChapterDisplay({
                   className="px-2 py-1.5 rounded text-[11px] font-medium bg-stone-100 dark:bg-stone-800 text-stone-500 dark:text-stone-400 hover:bg-stone-200 dark:hover:bg-stone-700"
                 >
                   {panelDisplayMode === "annotations" ? "≡→◈" : "◈→≡"}
+                </button>
+              )}
+              {toolbarVis.poetry && poetryNoteMap.size > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setShowPoetryNotes((v) => !v)}
+                  data-tip={showPoetryNotes ? "Hide poetry notation notes" : "Show poetry notation notes"}
+                  className={[
+                    "px-3 py-1.5 rounded text-[13px] font-medium transition-colors",
+                    showPoetryNotes
+                      ? "bg-amber-500 text-white"
+                      : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
+                  ].join(" ")}
+                >
+                  📝
                 </button>
               )}
               {toolbarVis.poetry && editingPoetryNotation && (
@@ -6876,6 +6898,8 @@ export default function ChapterDisplay({
                 poetryClosureCompleteSet={poetryClosureCompleteSet}
                 poetryClosureCompleteStartIds={poetryClosureCompleteStartIds}
                 similarityMarkByWord={similarityMarkByWord}
+                showPoetryNotes={showPoetryNotes}
+                poetryNoteMap={poetryNoteMap}
                 editingPoetrySimilarity={editingPoetryNotation && activePrinciple === "similarity"}
                 pendingSimilarityAnchor={pendingSimilarityAnchor}
                 onGraphemeClick={handleGraphemeClick}
