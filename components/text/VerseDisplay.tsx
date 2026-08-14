@@ -3528,7 +3528,24 @@ export default function VerseDisplay({
                               )}
                             </>
                           )}
-                          {tokLead}
+                          {tokLead && (
+                            isTvDatasetMode ? (
+                              // Same alignment issue as tvSpaceStyle below: a bare
+                              // punctuation string sibling to a .word-interlinear block
+                              // inherits its vertical-align:bottom baseline and renders
+                              // on the label row instead of the text row. Wrap it in the
+                              // same word/label column structure with a hidden label-row
+                              // placeholder so it lines up with the translation text.
+                              <span className="word-interlinear">
+                                <span>{tokLead}</span>
+                                <span className="relative">
+                                  <span className="word-parse rounded px-0.5" aria-hidden="true" style={{ fontSize: "0.72em", visibility: "hidden" }}>·</span>
+                                </span>
+                              </span>
+                            ) : (
+                              tokLead
+                            )
+                          )}
                           <span className={isTvDatasetMode ? "word-interlinear" : undefined}>
                             <span
                               data-word-id={wordId}
@@ -3589,7 +3606,18 @@ export default function VerseDisplay({
                               {fnLetter}
                             </sup>
                           )}
-                          {tokTrail}
+                          {tokTrail && (
+                            isTvDatasetMode ? (
+                              <span className="word-interlinear">
+                                <span>{tokTrail}</span>
+                                <span className="relative">
+                                  <span className="word-parse rounded px-0.5" aria-hidden="true" style={{ fontSize: "0.72em", visibility: "hidden" }}>·</span>
+                                </span>
+                              </span>
+                            ) : (
+                              tokTrail
+                            )
+                          )}
                           {tvPoetryNoteText && (
                             // Rendered in normal inline flow right after the token, same
                             // placement rationale as tvPoetryClosureComplete's bar below.
@@ -3619,7 +3647,9 @@ export default function VerseDisplay({
                                   // highlight stays confined to the text row.
                                   <span className="word-interlinear">
                                     <span style={tvSpaceStyle}>{" "}</span>
-                                    <span className="word-parse" aria-hidden="true" style={{ visibility: "hidden" }}>·</span>
+                                    <span className="relative">
+                                      <span className="word-parse rounded px-0.5" aria-hidden="true" style={{ fontSize: "0.72em", visibility: "hidden" }}>·</span>
+                                    </span>
                                   </span>
                                 ) : (
                                   <span style={tvSpaceStyle}>{" "}</span>
