@@ -167,18 +167,23 @@ export function derivePoetryDisplayMaps(
   }
 
   // Note indicator lookup — every mark with a non-empty note, keyed by the
-  // LAST word it touches (a real rendered word for all 6 principles): for a
-  // single-word mark that's startWordId itself; for a range (closure — weak,
-  // requiredness — underline, a two-word similarity span), endWordId is
-  // always the chapter-later of the two (see handleClosureWordClick /
-  // handleRequirednessWordClick / handleGraphemeClick's ordering), so the
-  // note reads right after the series it covers rather than before it;
-  // closure — complete stores startWordId as the line's FIRST word but
-  // visibly renders on the line's LAST word, so it resolves through
-  // segLastWordId the same way its edit-popover anchor already does.
+  // LAST word it touches, for inline display alongside the source/translation
+  // text: for a single-word mark that's startWordId itself; for a range
+  // (closure — weak, requiredness — underline, a two-word similarity span),
+  // endWordId is always the chapter-later of the two (see
+  // handleClosureWordClick / handleRequirednessWordClick /
+  // handleGraphemeClick's ordering), so the note reads right after the
+  // series it covers rather than before it; closure — complete stores
+  // startWordId as the line's FIRST word but visibly renders on the line's
+  // LAST word, so it resolves through segLastWordId the same way its
+  // edit-popover anchor already does. Balance/Symmetry are excluded — their
+  // startWordId/endWordId are LINE anchors (not real word-level marks), and
+  // their notes already display in the right-side margin overlay via that
+  // glyph's own tooltip; including them here would show the same note twice.
   const poetryNoteMap = new Map<string, string>();
   for (const n of poetryNotations) {
     if (!n.note || !n.note.trim()) continue;
+    if (n.principle === "balance" || n.principle === "symmetry") continue;
     const anchorWordId =
       n.principle === "closure" && n.subtype === "complete"
         ? segLastWordId.get(n.startWordId) ?? n.startWordId
