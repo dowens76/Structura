@@ -5,7 +5,7 @@ import type { PoetryNotation } from "@/lib/db/schema";
 import { measureSegments, type SegPos } from "./measureSegments";
 import { isGapAnchor, gapBelowLineId } from "@/lib/poetry/anchorPoints";
 import { computePoetryAnchorLayout, stackOffsets, POETRY_STACK_STEP_PX, type PoetryAnchorLayout } from "@/lib/poetry/computePoetryAnchorLayout";
-import { balanceGlyph, POETRY_COLORS, type BalanceSubtype, type ImbalanceDirection } from "@/lib/poetry/constants";
+import { balanceGlyph, darkenColor, POETRY_COLORS, type BalanceSubtype, type ImbalanceDirection } from "@/lib/poetry/constants";
 import PoetryNotePopover from "./PoetryNotePopover";
 
 // ── Layout constants — all within the EXISTING poetry column's own width,
@@ -16,6 +16,17 @@ const ANCHOR_GAP       = 10; // px between the bracket lane and the anchor-dot c
 const GLYPH_GAP        = 14; // px between the anchor dot and where stacked glyphs render
 const DOT_R            = 3.5; // matches RstRelationOverlay/LineGroupOverlay's leaf-selector dots
 const GLYPH_FONT_SIZE  = "1.75rem";
+// Symmetry inner-repeat glyphs (see isInnerRepeat) render 20% smaller than
+// the outer glyph — every inner repeat at a given anchor shares this same
+// size regardless of how many there are, rather than shrinking further with
+// each additional occurrence.
+const INNER_GLYPH_FONT_SIZE = "1.4rem";
+// Fixed width the glyph <span> is centered within (text-align: center) —
+// wide enough for the outer (largest) glyph. Without this, a left-aligned
+// smaller inner glyph would sit visually left-of-center relative to a
+// stacked outer glyph above/below it, since a smaller character in a
+// same-left-edge box is narrower and its own center sits further left.
+const GLYPH_BOX_W = 24; // px
 // Inset each bracket's own top/bottom by this much, toward its own center —
 // guarantees a small visible gap between two brackets that share an anchor
 // (one's bottom sitting exactly where another's top starts) or otherwise
@@ -236,7 +247,12 @@ export default function PoetryMarginOverlay({
           const glyph = occ.type === "balance"
             ? balanceGlyph(occ.mark.subtype as BalanceSubtype | null, occ.mark.direction as ImbalanceDirection | null)
             : occ.role === "start" ? "▼" : "▲";
-          const color = occ.type === "balance" ? POETRY_COLORS.balance : POETRY_COLORS.symmetry;
+          const baseColor = occ.type === "balance" ? POETRY_COLORS.balance : POETRY_COLORS.symmetry;
+          // Symmetry applied more than once to the same line: repeats beyond
+          // the first render smaller and darker so they read as nested inside
+          // the original rather than as clutter.
+          const color = occ.isInnerRepeat ? darkenColor(baseColor, 0.25) : baseColor;
+          const fontSize = occ.isInnerRepeat ? INNER_GLYPH_FONT_SIZE : GLYPH_FONT_SIZE;
           const key = `${occ.type}-${occ.mark.id}-${occ.role ?? ""}`;
           return (
             <PoetryGlyph
@@ -245,6 +261,7 @@ export default function PoetryMarginOverlay({
               y={y + offsets[i]}
               glyph={glyph}
               color={color}
+              fontSize={fontSize}
               mark={occ.mark}
               editing={editing}
               open={openNotationId === occ.mark.id}
@@ -262,9 +279,9 @@ export default function PoetryMarginOverlay({
 }
 
 function PoetryGlyph({
-  x, y, glyph, color, mark, editing, open, onOpen, onClose, onDelete, onSave, showNotes,
+  x, y, glyph, color, fontSize = GLYPH_FONT_SIZE, mark, editing, open, onOpen, onClose, onDelete, onSave, showNotes,
 }: {
-  x: number; y: number; glyph: string; color: string; mark: PoetryNotation;
+  x: number; y: number; glyph: string; color: string; fontSize?: string; mark: PoetryNotation;
   editing: boolean; open: boolean;
   onOpen: () => void; onClose: () => void;
   onDelete?: (id: number) => void;
@@ -278,8 +295,8 @@ function PoetryGlyph({
       style={{ left: x, top: y, transform: "translateY(-50%)" }}
     >
       <span
-        className={["font-bold leading-none shrink-0", editing ? "cursor-pointer" : ""].join(" ")}
-        style={{ color, fontSize: GLYPH_FONT_SIZE }}
+        className={["font-bold leading-none shrink-0 inline-block text-center", editing ? "cursor-pointer" : ""].join(" ")}
+        style={{ color, fontSize, width: GLYPH_BOX_W }}
         onClick={editing ? (e) => { e.stopPropagation(); onOpen(); } : undefined}
         title={!showNotes ? (mark.note ?? undefined) : undefined}
       >

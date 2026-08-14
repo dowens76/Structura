@@ -49,3 +49,14 @@ export function balanceGlyph(subtype: BalanceSubtype | null | undefined, directi
   if (subtype === "imbalance") return direction === "left" ? "◁" : "▷";
   return "=";
 }
+
+/** Darkens a "#RRGGBB" color by `amount` (0-1 fraction of each channel to
+ *  remove) — used for Symmetry's inner-repeat glyphs so a line with the same
+ *  mark applied more than once reads as nested rather than duplicated. */
+export function darkenColor(hex: string, amount: number): string {
+  const n = parseInt(hex.slice(1), 16);
+  const r = Math.round(((n >> 16) & 0xff) * (1 - amount));
+  const g = Math.round(((n >> 8) & 0xff) * (1 - amount));
+  const b = Math.round((n & 0xff) * (1 - amount));
+  return `#${((1 << 24) | (r << 16) | (g << 8) | b).toString(16).slice(1)}`;
+}

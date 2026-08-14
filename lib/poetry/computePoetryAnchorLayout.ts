@@ -15,6 +15,13 @@ export interface AnchorOccurrence {
   mark: PoetryNotation;
   /** Symmetry only — which end of its pair this anchor is. */
   role?: "start" | "end";
+  /** Symmetry only — true when this occurrence's mark is a repeat (Symmetry
+   *  applied more than once, reusing one of its own anchors from an
+   *  earlier-created mark). Set per MARK, so both the start and end
+   *  triangles of a repeat mark carry it together, not just whichever end
+   *  collided. Rendered smaller/darker so repeats read as nested inside the
+   *  original rather than as visual clutter. */
+  isInnerRepeat?: boolean;
 }
 
 export interface BalanceBracket {
@@ -72,9 +79,35 @@ export function computePoetryAnchorLayout(
     balanceBrackets.push({ mark, topAnchor, bottomAnchor, midAnchor });
   }
 
+  // Symmetry applied more than once to the same line: whichever mark is
+  // first (in creation order) to claim a given start or end anchor is the
+  // original there; a later mark that reuses either of its own two anchors
+  // is an inner repeat as a WHOLE mark, so both of its triangles — not just
+  // whichever end happened to collide — render smaller/darker together as
+  // one matched pair, rather than one triangle staying full-size while its
+  // partner shrinks.
+  const claimedStartAnchors = new Set<string>();
+  const claimedEndAnchors = new Set<string>();
+  const innerRepeatMarkIds = new Set<number>();
   for (const mark of symmetryMarks) {
-    if (anchorIndex.has(mark.startWordId)) pushOcc(mark.startWordId, { type: "symmetry", mark, role: "start" });
-    if (mark.endWordId && anchorIndex.has(mark.endWordId)) pushOcc(mark.endWordId, { type: "symmetry", mark, role: "end" });
+    const hasStart = anchorIndex.has(mark.startWordId);
+    const hasEnd = !!mark.endWordId && anchorIndex.has(mark.endWordId);
+    let isInner = false;
+    if (hasStart) {
+      if (claimedStartAnchors.has(mark.startWordId)) isInner = true;
+      claimedStartAnchors.add(mark.startWordId);
+    }
+    if (hasEnd) {
+      if (claimedEndAnchors.has(mark.endWordId!)) isInner = true;
+      claimedEndAnchors.add(mark.endWordId!);
+    }
+    if (isInner) innerRepeatMarkIds.add(mark.id);
+  }
+
+  for (const mark of symmetryMarks) {
+    const isInnerRepeat = innerRepeatMarkIds.has(mark.id);
+    if (anchorIndex.has(mark.startWordId)) pushOcc(mark.startWordId, { type: "symmetry", mark, role: "start", isInnerRepeat });
+    if (mark.endWordId && anchorIndex.has(mark.endWordId)) pushOcc(mark.endWordId, { type: "symmetry", mark, role: "end", isInnerRepeat });
   }
 
   for (const [anchorId, occs] of occurrencesByAnchor) {
