@@ -3209,6 +3209,18 @@ export default function VerseDisplay({
                       const tvPoetryRequirednessUnderlineConnectsNext = tvPoetryRequirednessUnderline && (tvRequirednessRanges?.some(
                         (r) => r.book === book && r.chapter === chapter && tvNextWeakKey >= r.loKey && tvNextWeakKey <= r.hiKey
                       ) ?? false);
+                      // Mirror image of ConnectsNext, checked against the PRECEDING token —
+                      // in dataset mode each token gets its own margined .word-interlinear
+                      // box (see tvWordInterlinearMarginStyle below), so a continuous
+                      // underline needs BOTH sides of a connected boundary to drop their
+                      // touching margin, not just the earlier token's trailing side.
+                      const tvPrevWeakKey = tvWeakKey - 1;
+                      const tvPoetryClosureWeakConnectsPrev = tvPoetryClosureWeak && (tvClosureWeakRanges?.some(
+                        (r) => r.book === book && r.chapter === chapter && tvPrevWeakKey >= r.loKey && tvPrevWeakKey <= r.hiKey
+                      ) ?? false);
+                      const tvPoetryRequirednessUnderlineConnectsPrev = tvPoetryRequirednessUnderline && (tvRequirednessRanges?.some(
+                        (r) => r.book === book && r.chapter === chapter && tvPrevWeakKey >= r.loKey && tvPrevWeakKey <= r.hiKey
+                      ) ?? false);
                       const tvSegFirstWordId = `tv:${abbr}:${book}.${chapter}.${verseNum}.${tvSeg.startIdx}`;
                       const tvPoetryClosureComplete =
                         localWi === tvSeg.tokens.length - 1 &&
@@ -3258,6 +3270,26 @@ export default function VerseDisplay({
                         paddingBottom: "10px",
                       } : {};
                       const tvBothPoetryUnderlinesConnectNext = tvPoetryClosureWeakConnectsNext && tvPoetryRequirednessUnderlineConnectsNext;
+
+                      // In dataset mode, every token (word/punctuation/space) gets wrapped
+                      // in its own .word-interlinear box, which carries a 0.15em left/right
+                      // margin (app/globals.css). text-decoration/background-image can't
+                      // paint into a margin, so a closure/requiredness line that's supposed
+                      // to run continuously across a word boundary gets a visible gap at
+                      // every boundary. Drop the touching margin on whichever side(s) of
+                      // this word's box actually continue the line — the space token
+                      // between two connected words is unconditionally zero-margined below
+                      // (VerseDisplay.tsx tvSpaceStyle rendering), so zeroing just the two
+                      // word-side margins here closes the gap on both ends of that space.
+                      const tvPoetryConnectsPrev = tvPoetryClosureWeakConnectsPrev || tvPoetryRequirednessUnderlineConnectsPrev;
+                      const tvPoetryConnectsNext = tvPoetryClosureWeakConnectsNext || tvPoetryRequirednessUnderlineConnectsNext;
+                      const tvWordInterlinearMarginStyle: React.CSSProperties | undefined =
+                        isTvDatasetMode && (tvPoetryConnectsPrev || tvPoetryConnectsNext)
+                          ? {
+                              marginLeft:  tvPoetryConnectsPrev ? 0 : undefined,
+                              marginRight: tvPoetryConnectsNext ? 0 : undefined,
+                            }
+                          : undefined;
 
                       const ref = characterRefMap.get(wordId);
                       const char1 = ref ? resolveCharacter(ref.character1Id) : null;
@@ -3538,7 +3570,17 @@ export default function VerseDisplay({
                               // placeholder so it lines up with the translation text.
                               <span className="word-interlinear">
                                 <span>{tokLead}</span>
-                                <span className="relative">
+                                {/* width:0/overflow:hidden keeps this row's real (padded,
+                                    non-zero) content width from setting the flex column's
+                                    own width — .word-interlinear centers its rows, so
+                                    without this a narrower row above (a single punctuation
+                                    glyph, closure bar, etc.) gets centered inside the wider
+                                    column this placeholder would otherwise dictate, leaving
+                                    unpainted slivers on both sides even when neighboring
+                                    .word-interlinear boxes' margins are zeroed to touch —
+                                    breaking a continuous poetry underline into a dashed one
+                                    at every such token. */}
+                                <span className="relative" style={{ width: 0, overflow: "hidden" }}>
                                   <span className="word-parse rounded px-0.5" aria-hidden="true" style={{ fontSize: "0.72em", visibility: "hidden" }}>·</span>
                                 </span>
                               </span>
@@ -3546,47 +3588,58 @@ export default function VerseDisplay({
                               tokLead
                             )
                           )}
-                          <span className={isTvDatasetMode ? "word-interlinear" : undefined}>
-                            <span
-                              data-word-id={wordId}
-                              style={{ position: "relative", ...underlineStyle, ...tvBgStyle, ...tvFormattingStyle, ...usfmStyle, ...tvPoetryRequirednessStyle, ...tvPoetryClosureStyle, ...tvPoetryDualUnderlineStyle }}
-                              className={[
-                                tokenClassName,
-                                usfmClassName,
-                                isTvRangeStart ? "outline outline-2 outline-violet-400 bg-violet-100 dark:bg-violet-900/40" : "",
-                                isAnchorMoveTarget ? "cursor-crosshair hover:ring-1 hover:ring-sky-400 hover:rounded-sm" : "",
-                              ].filter(Boolean).join(" ")}
-                              onClick={isAnchorMoveTarget
-                                ? (e) => { e.stopPropagation(); onMoveFootnoteAnchor?.(anchorMoveFootnote!.id, globalWi); }
-                                : handleClick}
-                              title={isAnchorMoveTarget ? "Click to place footnote anchor here" : undefined}
-                            >
-                              {tvCoreContent}
-                              {tvPoetryContinuation && (
-                                <span
-                                  className="absolute left-1/2 -translate-x-1/2 top-full pointer-events-none select-none"
-                                  aria-hidden
-                                >
-                                  <PoetryArrowIcon direction="down" color={POETRY_COLORS.continuation} />
-                                </span>
-                              )}
-                              {tvPoetryRequiredness && (
-                                <span
-                                  className="absolute left-1/2 -translate-x-1/2 bottom-full pointer-events-none select-none"
-                                  aria-hidden
-                                >
-                                  <PoetryArrowIcon direction="right" color={POETRY_COLORS.requiredness} />
-                                </span>
-                              )}
-                              {tvOpenPoetryNote && onSavePoetryNote && onDeletePoetryMark && onClosePoetryNote && (
-                                <PoetryNotePopover
-                                  mark={tvOpenPoetryNote}
-                                  color={POETRY_COLORS[(tvOpenPoetryNote.principle as keyof typeof POETRY_COLORS)] ?? "#888"}
-                                  onSave={onSavePoetryNote}
-                                  onDelete={onDeletePoetryMark}
-                                  onClose={onClosePoetryNote}
-                                />
-                              )}
+                          <span className={isTvDatasetMode ? "word-interlinear" : undefined} style={tvWordInterlinearMarginStyle}>
+                            {/* Nested wrapper (mirrors TranslationDatasetLabel's own
+                                `.relative` wrapper for row 2): in dataset mode this
+                                bare span — not the styled data-word-id span — is the
+                                direct flex child of .word-interlinear, so it's the one
+                                that gets flex-blockified. The styled span stays a plain
+                                nested inline element, so tvPoetryDualUnderlineStyle's
+                                paddingBottom paints its stripes (as it always could)
+                                without inflating the flex item's box height and pushing
+                                the row upward against vertical-align:bottom. */}
+                            <span>
+                              <span
+                                data-word-id={wordId}
+                                style={{ position: "relative", ...underlineStyle, ...tvBgStyle, ...tvFormattingStyle, ...usfmStyle, ...tvPoetryRequirednessStyle, ...tvPoetryClosureStyle, ...tvPoetryDualUnderlineStyle }}
+                                className={[
+                                  tokenClassName,
+                                  usfmClassName,
+                                  isTvRangeStart ? "outline outline-2 outline-violet-400 bg-violet-100 dark:bg-violet-900/40" : "",
+                                  isAnchorMoveTarget ? "cursor-crosshair hover:ring-1 hover:ring-sky-400 hover:rounded-sm" : "",
+                                ].filter(Boolean).join(" ")}
+                                onClick={isAnchorMoveTarget
+                                  ? (e) => { e.stopPropagation(); onMoveFootnoteAnchor?.(anchorMoveFootnote!.id, globalWi); }
+                                  : handleClick}
+                                title={isAnchorMoveTarget ? "Click to place footnote anchor here" : undefined}
+                              >
+                                {tvCoreContent}
+                                {tvPoetryContinuation && (
+                                  <span
+                                    className="absolute left-1/2 -translate-x-1/2 top-full pointer-events-none select-none"
+                                    aria-hidden
+                                  >
+                                    <PoetryArrowIcon direction="down" color={POETRY_COLORS.continuation} />
+                                  </span>
+                                )}
+                                {tvPoetryRequiredness && (
+                                  <span
+                                    className="absolute left-1/2 -translate-x-1/2 bottom-full pointer-events-none select-none"
+                                    aria-hidden
+                                  >
+                                    <PoetryArrowIcon direction="right" color={POETRY_COLORS.requiredness} />
+                                  </span>
+                                )}
+                                {tvOpenPoetryNote && onSavePoetryNote && onDeletePoetryMark && onClosePoetryNote && (
+                                  <PoetryNotePopover
+                                    mark={tvOpenPoetryNote}
+                                    color={POETRY_COLORS[(tvOpenPoetryNote.principle as keyof typeof POETRY_COLORS)] ?? "#888"}
+                                    onSave={onSavePoetryNote}
+                                    onDelete={onDeletePoetryMark}
+                                    onClose={onClosePoetryNote}
+                                  />
+                                )}
+                              </span>
                             </span>
                             {isTvDatasetMode && (
                               <TranslationDatasetLabel
@@ -3610,7 +3663,17 @@ export default function VerseDisplay({
                             isTvDatasetMode ? (
                               <span className="word-interlinear">
                                 <span>{tokTrail}</span>
-                                <span className="relative">
+                                {/* width:0/overflow:hidden keeps this row's real (padded,
+                                    non-zero) content width from setting the flex column's
+                                    own width — .word-interlinear centers its rows, so
+                                    without this a narrower row above (a single punctuation
+                                    glyph, closure bar, etc.) gets centered inside the wider
+                                    column this placeholder would otherwise dictate, leaving
+                                    unpainted slivers on both sides even when neighboring
+                                    .word-interlinear boxes' margins are zeroed to touch —
+                                    breaking a continuous poetry underline into a dashed one
+                                    at every such token. */}
+                                <span className="relative" style={{ width: 0, overflow: "hidden" }}>
                                   <span className="word-parse rounded px-0.5" aria-hidden="true" style={{ fontSize: "0.72em", visibility: "hidden" }}>·</span>
                                 </span>
                               </span>
@@ -3621,18 +3684,67 @@ export default function VerseDisplay({
                           {tvPoetryNoteText && (
                             // Rendered in normal inline flow right after the token, same
                             // placement rationale as tvPoetryClosureComplete's bar below.
-                            <span className="inline align-middle select-none whitespace-normal text-[10px] italic leading-tight px-1 py-0.5 rounded mx-0.5 bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300">
-                              {tvPoetryNoteText}
-                            </span>
+                            // In dataset mode it's a bare sibling next to a
+                            // vertical-align:bottom .word-interlinear column, so (like
+                            // tokLead/tokTrail) it's wrapped in the same word/label
+                            // column structure to keep it on the text row.
+                            isTvDatasetMode ? (
+                              <span className="word-interlinear">
+                                <span className="inline align-middle select-none whitespace-normal text-[10px] italic leading-tight px-1 py-0.5 rounded mx-0.5 bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300">
+                                  {tvPoetryNoteText}
+                                </span>
+                                {/* width:0/overflow:hidden keeps this row's real (padded,
+                                    non-zero) content width from setting the flex column's
+                                    own width — .word-interlinear centers its rows, so
+                                    without this a narrower row above (a single punctuation
+                                    glyph, closure bar, etc.) gets centered inside the wider
+                                    column this placeholder would otherwise dictate, leaving
+                                    unpainted slivers on both sides even when neighboring
+                                    .word-interlinear boxes' margins are zeroed to touch —
+                                    breaking a continuous poetry underline into a dashed one
+                                    at every such token. */}
+                                <span className="relative" style={{ width: 0, overflow: "hidden" }}>
+                                  <span className="word-parse rounded px-0.5" aria-hidden="true" style={{ fontSize: "0.72em", visibility: "hidden" }}>·</span>
+                                </span>
+                              </span>
+                            ) : (
+                              <span className="inline align-middle select-none whitespace-normal text-[10px] italic leading-tight px-1 py-0.5 rounded mx-0.5 bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300">
+                                {tvPoetryNoteText}
+                              </span>
+                            )
                           )}
                           {tvPoetryClosureComplete && (
                             // Same "end bar" WordToken renders for a source line's closure —
                             // complete mark, placed after this tvSeg's own last token instead.
-                            <span
-                              aria-hidden
-                              className="inline-block align-middle pointer-events-none select-none"
-                              style={{ width: "6px", height: "1.1em", backgroundColor: POETRY_COLORS.closure, marginInlineStart: "3px" }}
-                            />
+                            // Same dataset-mode wrapping as tvPoetryNoteText above.
+                            isTvDatasetMode ? (
+                              <span className="word-interlinear">
+                                <span
+                                  aria-hidden
+                                  className="inline-block align-middle pointer-events-none select-none"
+                                  style={{ width: "6px", height: "1.265em", backgroundColor: POETRY_COLORS.closure, marginInlineStart: "3px" }}
+                                />
+                                {/* width:0/overflow:hidden keeps this row's real (padded,
+                                    non-zero) content width from setting the flex column's
+                                    own width — .word-interlinear centers its rows, so
+                                    without this a narrower row above (a single punctuation
+                                    glyph, closure bar, etc.) gets centered inside the wider
+                                    column this placeholder would otherwise dictate, leaving
+                                    unpainted slivers on both sides even when neighboring
+                                    .word-interlinear boxes' margins are zeroed to touch —
+                                    breaking a continuous poetry underline into a dashed one
+                                    at every such token. */}
+                                <span className="relative" style={{ width: 0, overflow: "hidden" }}>
+                                  <span className="word-parse rounded px-0.5" aria-hidden="true" style={{ fontSize: "0.72em", visibility: "hidden" }}>·</span>
+                                </span>
+                              </span>
+                            ) : (
+                              <span
+                                aria-hidden
+                                className="inline-block align-middle pointer-events-none select-none"
+                                style={{ width: "6px", height: "1.265em", backgroundColor: POETRY_COLORS.closure, marginInlineStart: "3px" }}
+                              />
+                            )
                           )}
                           {!isLastToken && (
                             tvSpaceStyle
@@ -3644,10 +3756,29 @@ export default function VerseDisplay({
                                   // on the label line instead of the text line. Wrap it in the
                                   // same word/label column structure (with a hidden label-row
                                   // placeholder) so it aligns like every other token and its
-                                  // highlight stays confined to the text row.
-                                  <span className="word-interlinear">
-                                    <span style={tvSpaceStyle}>{" "}</span>
-                                    <span className="relative">
+                                  // highlight stays confined to the text row. When the space
+                                  // is carrying a connecting closure/requiredness underline,
+                                  // also zero out .word-interlinear's own left/right margin
+                                  // (same reasoning as tvWordInterlinearMarginStyle above) so
+                                  // its stroke touches both neighboring words with no gap, and
+                                  // nest the styled span one level deeper so the dual-underline
+                                  // paddingBottom doesn't inflate this box's flex-item height
+                                  // (same reasoning as the word span's own nesting above).
+                                  <span
+                                    className="word-interlinear"
+                                    style={tvPoetryConnectsNext ? { marginLeft: 0, marginRight: 0 } : undefined}
+                                  >
+                                    <span>
+                                      <span style={tvSpaceStyle}>{" "}</span>
+                                    </span>
+                                    {/* Same width:0/overflow:hidden fix as the other hidden
+                                        label-row placeholders — a single space glyph is
+                                        narrower than this padded "·" placeholder, so without
+                                        it align-items:center on .word-interlinear centers the
+                                        space's painted underline/gradient inside a wider
+                                        column, leaving a visible sliver of unpainted gap on
+                                        each side even with the wrapper's own margins zeroed. */}
+                                    <span className="relative" style={{ width: 0, overflow: "hidden" }}>
                                       <span className="word-parse rounded px-0.5" aria-hidden="true" style={{ fontSize: "0.72em", visibility: "hidden" }}>·</span>
                                     </span>
                                   </span>

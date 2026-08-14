@@ -784,7 +784,7 @@ export default function WordToken({
         <span
           aria-hidden
           className="inline-block align-middle pointer-events-none select-none"
-          style={{ width: "6px", height: "1.1em", backgroundColor: POETRY_COLORS.closure, marginInlineStart: "3px" }}
+          style={{ width: "6px", height: "1.265em", backgroundColor: POETRY_COLORS.closure, marginInlineStart: "3px" }}
         />
       )}
     </>
