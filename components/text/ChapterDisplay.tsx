@@ -5782,7 +5782,7 @@ export default function ChapterDisplay({
                   {panelDisplayMode === "annotations" ? "≡→◈" : "◈→≡"}
                 </button>
               )}
-              {toolbarVis.poetry && poetryNoteMap.size > 0 && (
+              {toolbarVis.poetry && (
                 <button
                   type="button"
                   onClick={() => setShowPoetryNotes((v) => !v)}
