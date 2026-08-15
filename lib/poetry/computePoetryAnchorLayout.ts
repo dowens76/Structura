@@ -22,6 +22,14 @@ export interface AnchorOccurrence {
    *  collided. Rendered smaller/darker so repeats read as nested inside the
    *  original rather than as visual clutter. */
   isInnerRepeat?: boolean;
+  /** Symmetry only — shared by both triangles of the same mark, so its pair
+   *  is identifiable at a glance. Assigned by first occurrence in reading
+   *  order (whichever of the mark's two anchors comes first in the
+   *  paragraph); ties — two marks first touching the very same anchor —
+   *  go to the outer set before the inner one. Recalculated on every
+   *  layout pass, so it shifts as marks are added/removed/repositioned
+   *  rather than being a stored, permanent id. */
+  pairNumber?: number;
 }
 
 export interface BalanceBracket {
@@ -79,40 +87,82 @@ export function computePoetryAnchorLayout(
     balanceBrackets.push({ mark, topAnchor, bottomAnchor, midAnchor });
   }
 
-  // Symmetry applied more than once to the same line: whichever mark is
-  // first (in creation order) to claim a given start or end anchor is the
-  // original there; a later mark that reuses either of its own two anchors
-  // is an inner repeat as a WHOLE mark, so both of its triangles — not just
-  // whichever end happened to collide — render smaller/darker together as
-  // one matched pair, rather than one triangle staying full-size while its
-  // partner shrinks.
-  const claimedStartAnchors = new Set<string>();
-  const claimedEndAnchors = new Set<string>();
-  const innerRepeatMarkIds = new Set<number>();
+  // Nesting: any Symmetry mark whose own span falls entirely within another
+  // mark's span is an inner repeat, whether or not the two actually share
+  // an anchor point — a pair fully "inside" a bigger one reads as nested
+  // regardless of whether their triangles ever stack together. This is a
+  // property of the two sets' actual positions, not of which was
+  // created/placed first. Set per MARK, so both of a repeat mark's
+  // triangles — not just whichever end happened to collide — render
+  // smaller/darker together as one matched pair.
+  const markSpan = new Map<number, number>();
+  const markRange = new Map<number, { lo: number; hi: number }>();
   for (const mark of symmetryMarks) {
-    const hasStart = anchorIndex.has(mark.startWordId);
-    const hasEnd = !!mark.endWordId && anchorIndex.has(mark.endWordId);
-    let isInner = false;
-    if (hasStart) {
-      if (claimedStartAnchors.has(mark.startWordId)) isInner = true;
-      claimedStartAnchors.add(mark.startWordId);
+    const ia = anchorIndex.get(mark.startWordId);
+    const ib = mark.endWordId ? anchorIndex.get(mark.endWordId) : undefined;
+    if (ia !== undefined && ib !== undefined) {
+      markSpan.set(mark.id, Math.abs(ib - ia));
+      markRange.set(mark.id, { lo: Math.min(ia, ib), hi: Math.max(ia, ib) });
     }
-    if (hasEnd) {
-      if (claimedEndAnchors.has(mark.endWordId!)) isInner = true;
-      claimedEndAnchors.add(mark.endWordId!);
-    }
-    if (isInner) innerRepeatMarkIds.add(mark.id);
   }
+
+  const ranges = [...markRange.entries()];
+  const innerRepeatMarkIds = new Set<number>();
+  for (const [bId, b] of ranges) {
+    const isContained = ranges.some(([aId, a]) => {
+      if (aId === bId) return false;
+      const contains = a.lo <= b.lo && a.hi >= b.hi;
+      const strictlyLarger = a.lo < b.lo || a.hi > b.hi;
+      return contains && strictlyLarger;
+    });
+    if (isContained) innerRepeatMarkIds.add(bId);
+  }
+
+  // Pair numbers: ordered by each mark's earliest anchor in reading order
+  // (whichever of its start/end comes first — role doesn't determine this,
+  // since click-order rather than position decides which is "start"). Ties
+  // — two marks whose earliest touch is the very same anchor — resolve the
+  // same way the size/color nesting does: outer before inner, then by
+  // larger span, then by id, so the ordering is fully deterministic.
+  const markFirstIndex = new Map<number, number>();
+  for (const mark of symmetryMarks) {
+    const ia = anchorIndex.get(mark.startWordId);
+    const ib = mark.endWordId ? anchorIndex.get(mark.endWordId) : undefined;
+    const indices = [ia, ib].filter((v): v is number => v !== undefined);
+    if (indices.length) markFirstIndex.set(mark.id, Math.min(...indices));
+  }
+  const pairNumberByMarkId = new Map<number, number>();
+  symmetryMarks
+    .filter((m) => markFirstIndex.has(m.id))
+    .sort((a, b) => {
+      const byFirstIndex = markFirstIndex.get(a.id)! - markFirstIndex.get(b.id)!;
+      if (byFirstIndex !== 0) return byFirstIndex;
+      const aInner = innerRepeatMarkIds.has(a.id);
+      const bInner = innerRepeatMarkIds.has(b.id);
+      if (aInner !== bInner) return aInner ? 1 : -1;
+      const bySpan = (markSpan.get(b.id) ?? -1) - (markSpan.get(a.id) ?? -1);
+      if (bySpan !== 0) return bySpan;
+      return a.id - b.id;
+    })
+    .forEach((mark, i) => pairNumberByMarkId.set(mark.id, i + 1));
 
   for (const mark of symmetryMarks) {
     const isInnerRepeat = innerRepeatMarkIds.has(mark.id);
-    if (anchorIndex.has(mark.startWordId)) pushOcc(mark.startWordId, { type: "symmetry", mark, role: "start", isInnerRepeat });
-    if (mark.endWordId && anchorIndex.has(mark.endWordId)) pushOcc(mark.endWordId, { type: "symmetry", mark, role: "end", isInnerRepeat });
+    const pairNumber = pairNumberByMarkId.get(mark.id);
+    if (anchorIndex.has(mark.startWordId)) pushOcc(mark.startWordId, { type: "symmetry", mark, role: "start", isInnerRepeat, pairNumber });
+    if (mark.endWordId && anchorIndex.has(mark.endWordId)) pushOcc(mark.endWordId, { type: "symmetry", mark, role: "end", isInnerRepeat, pairNumber });
   }
 
+  // Outer sets stack before inner ones within their own start/end group —
+  // a property of the two sets' actual nesting, not of which was created
+  // first — so a later-created outer pair doesn't end up buried beneath an
+  // earlier-created inner one it actually encloses. Array#sort is a stable
+  // sort, so ties (equal outer/inner-ness) keep their original relative order.
+  const outerFirst = (a: AnchorOccurrence, b: AnchorOccurrence) => Number(!!a.isInnerRepeat) - Number(!!b.isInnerRepeat);
+
   for (const [anchorId, occs] of occurrencesByAnchor) {
-    const starts = occs.filter((o) => o.type === "symmetry" && o.role === "start");
-    const ends = occs.filter((o) => o.type === "symmetry" && o.role === "end");
+    const starts = occs.filter((o) => o.type === "symmetry" && o.role === "start").sort(outerFirst);
+    const ends = occs.filter((o) => o.type === "symmetry" && o.role === "end").sort(outerFirst);
     const others = occs.filter((o) => o.type !== "symmetry");
     occurrencesByAnchor.set(anchorId, [...starts, ...others, ...ends]);
   }

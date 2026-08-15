@@ -262,6 +262,7 @@ export default function PoetryMarginOverlay({
               glyph={glyph}
               color={color}
               fontSize={fontSize}
+              pairNumber={occ.type === "symmetry" ? occ.pairNumber : undefined}
               mark={occ.mark}
               editing={editing}
               open={openNotationId === occ.mark.id}
@@ -279,9 +280,9 @@ export default function PoetryMarginOverlay({
 }
 
 function PoetryGlyph({
-  x, y, glyph, color, fontSize = GLYPH_FONT_SIZE, mark, editing, open, onOpen, onClose, onDelete, onSave, showNotes,
+  x, y, glyph, color, fontSize = GLYPH_FONT_SIZE, pairNumber, mark, editing, open, onOpen, onClose, onDelete, onSave, showNotes,
 }: {
-  x: number; y: number; glyph: string; color: string; fontSize?: string; mark: PoetryNotation;
+  x: number; y: number; glyph: string; color: string; fontSize?: string; pairNumber?: number; mark: PoetryNotation;
   editing: boolean; open: boolean;
   onOpen: () => void; onClose: () => void;
   onDelete?: (id: number) => void;
@@ -302,6 +303,14 @@ function PoetryGlyph({
       >
         {glyph}
       </span>
+      {pairNumber != null && (
+        // Same number on both triangles of a Symmetry pair, so which one
+        // matches which is identifiable at a glance — not part of the glyph
+        // click target, so it doesn't shift the existing note-open behavior.
+        <span className="text-[10px] font-bold leading-none shrink-0" style={{ color }}>
+          {pairNumber}
+        </span>
+      )}
       {showNotes && noteText && (
         <span
           className="text-[10px] italic leading-tight px-1 py-0.5 rounded bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300"
