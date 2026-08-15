@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useEffect, useRef, useCallback, useTransition } from "react";
+import { Fragment, useMemo, useState, useEffect, useRef, useCallback, useTransition } from "react";
 import { getMtToKjvInstructions, getKjvVerseLabel } from "@/lib/versification/mt-kjv-mapping";
 import { useRouter, useSearchParams } from "next/navigation";
 import type { Word, Character, CharacterRef, SpeechSection, WordTag, WordTagRef, RstRelation, WordArrow, LineAnnotation, PoetryNotation, PoetryLineBracketExclusion, Passage, SynopticWordMark, LineGroup } from "@/lib/db/schema";
@@ -5800,52 +5800,56 @@ export default function ChapterDisplay({
               {toolbarVis.poetry && editingPoetryNotation && (
                 <div className="flex items-center gap-1 pl-1 border-l border-stone-300 dark:border-stone-600">
                   {(Object.keys(POETRY_PRINCIPLE_LABELS) as PoetryPrinciple[]).map((p) => (
-                    <button
-                      key={p}
-                      type="button"
-                      onClick={() => { setActivePrinciple(p); clearPoetryPending(); }}
-                      title={POETRY_PRINCIPLE_LABELS[p]}
-                      className={[
-                        "px-2 py-1 rounded text-[13px] font-medium leading-none transition-colors",
-                        activePrinciple === p ? "text-white" : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
-                      ].join(" ")}
-                      style={activePrinciple === p ? { backgroundColor: POETRY_COLORS[p] } : undefined}
-                    >
-                      {POETRY_PRINCIPLE_GLYPHS[p]}
-                    </button>
-                  ))}
-                  {activePrinciple === "balance" && (
-                    <span className="flex items-center gap-1 pl-1">
-                      <button type="button" onClick={() => setActiveBalanceSubtype("balance")}
-                        className={`px-1.5 py-1 rounded text-[11px] ${activeBalanceSubtype === "balance" ? "bg-sky-500 text-white" : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300"}`}>=</button>
-                      <button type="button" onClick={() => setActiveBalanceSubtype("imbalance")}
-                        className={`px-1.5 py-1 rounded text-[11px] ${activeBalanceSubtype === "imbalance" ? "bg-sky-500 text-white" : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300"}`}>◁▷</button>
-                      {activeBalanceSubtype === "imbalance" && (
-                        <>
-                          <button type="button" onClick={() => setActiveImbalanceDirection("left")}
-                            className={`px-1.5 py-1 rounded text-[11px] ${activeImbalanceDirection === "left" ? "bg-sky-500 text-white" : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300"}`}>◁</button>
-                          <button type="button" onClick={() => setActiveImbalanceDirection("right")}
-                            className={`px-1.5 py-1 rounded text-[11px] ${activeImbalanceDirection === "right" ? "bg-sky-500 text-white" : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300"}`}>▷</button>
-                        </>
+                    <Fragment key={p}>
+                      <button
+                        type="button"
+                        onClick={() => { setActivePrinciple(p); clearPoetryPending(); }}
+                        title={POETRY_PRINCIPLE_LABELS[p]}
+                        className={[
+                          "px-2 py-1 rounded text-[13px] font-medium leading-none transition-colors",
+                          activePrinciple === p ? "text-white" : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
+                        ].join(" ")}
+                        style={activePrinciple === p ? { backgroundColor: POETRY_COLORS[p] } : undefined}
+                      >
+                        {POETRY_PRINCIPLE_GLYPHS[p]}
+                      </button>
+                      {/* Each principle's subtype buttons render immediately to the
+                          right of ITS OWN toggle (not at the end of the whole row),
+                          so they land next to whichever toggle is actually active. */}
+                      {p === "balance" && activePrinciple === "balance" && (
+                        <span className="flex items-center gap-1 pl-1">
+                          <button type="button" onClick={() => setActiveBalanceSubtype("balance")}
+                            className={`px-1.5 py-1 rounded text-[11px] ${activeBalanceSubtype === "balance" ? "bg-sky-500 text-white" : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300"}`}>=</button>
+                          <button type="button" onClick={() => setActiveBalanceSubtype("imbalance")}
+                            className={`px-1.5 py-1 rounded text-[11px] ${activeBalanceSubtype === "imbalance" ? "bg-sky-500 text-white" : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300"}`}>◁▷</button>
+                          {activeBalanceSubtype === "imbalance" && (
+                            <>
+                              <button type="button" onClick={() => setActiveImbalanceDirection("left")}
+                                className={`px-1.5 py-1 rounded text-[11px] ${activeImbalanceDirection === "left" ? "bg-sky-500 text-white" : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300"}`}>◁</button>
+                              <button type="button" onClick={() => setActiveImbalanceDirection("right")}
+                                className={`px-1.5 py-1 rounded text-[11px] ${activeImbalanceDirection === "right" ? "bg-sky-500 text-white" : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300"}`}>▷</button>
+                            </>
+                          )}
+                        </span>
                       )}
-                    </span>
-                  )}
-                  {activePrinciple === "closure" && (
-                    <span className="flex items-center gap-1 pl-1">
-                      <button type="button" onClick={() => setActiveClosureSubtype("weak")}
-                        className={`px-1.5 py-1 rounded text-[11px] ${activeClosureSubtype === "weak" ? "bg-purple-500 text-white" : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300"}`}>weak</button>
-                      <button type="button" onClick={() => setActiveClosureSubtype("complete")}
-                        className={`px-1.5 py-1 rounded text-[11px] ${activeClosureSubtype === "complete" ? "bg-purple-500 text-white" : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300"}`}>complete</button>
-                    </span>
-                  )}
-                  {activePrinciple === "requiredness" && (
-                    <span className="flex items-center gap-1 pl-1">
-                      <button type="button" onClick={() => setActiveRequirednessSubtype("arrow")}
-                        className={`px-1.5 py-1 rounded text-[11px] ${activeRequirednessSubtype === "arrow" ? "bg-gray-500 text-white" : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300"}`}>arrow</button>
-                      <button type="button" onClick={() => setActiveRequirednessSubtype("underline")}
-                        className={`px-1.5 py-1 rounded text-[11px] ${activeRequirednessSubtype === "underline" ? "bg-gray-500 text-white" : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300"}`}>underline</button>
-                    </span>
-                  )}
+                      {p === "requiredness" && activePrinciple === "requiredness" && (
+                        <span className="flex items-center gap-1 pl-1">
+                          <button type="button" onClick={() => setActiveRequirednessSubtype("arrow")}
+                            className={`px-1.5 py-1 rounded text-[11px] ${activeRequirednessSubtype === "arrow" ? "bg-gray-500 text-white" : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300"}`}>arrow</button>
+                          <button type="button" onClick={() => setActiveRequirednessSubtype("underline")}
+                            className={`px-1.5 py-1 rounded text-[11px] ${activeRequirednessSubtype === "underline" ? "bg-gray-500 text-white" : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300"}`}>underline</button>
+                        </span>
+                      )}
+                      {p === "closure" && activePrinciple === "closure" && (
+                        <span className="flex items-center gap-1 pl-1">
+                          <button type="button" onClick={() => setActiveClosureSubtype("weak")}
+                            className={`px-1.5 py-1 rounded text-[11px] ${activeClosureSubtype === "weak" ? "bg-purple-500 text-white" : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300"}`}>weak</button>
+                          <button type="button" onClick={() => setActiveClosureSubtype("complete")}
+                            className={`px-1.5 py-1 rounded text-[11px] ${activeClosureSubtype === "complete" ? "bg-purple-500 text-white" : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300"}`}>complete</button>
+                        </span>
+                      )}
+                    </Fragment>
+                  ))}
                 </div>
               )}
 
