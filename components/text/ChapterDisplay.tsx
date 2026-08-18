@@ -6868,6 +6868,18 @@ export default function ChapterDisplay({
         <div
           className={`py-6 flex-1 ${hasActiveTranslations ? "" : "max-w-3xl mx-auto w-full"}`}
           onClick={editingRst && (rstSegA || rstSegAGroupId) ? () => { setRstSegA(null); setRstSegAGroupId(null); setRstSegB(null); setShowRstPicker(false); } : undefined}
+          onMouseDown={(e) => {
+            // Shift-click drives every range-selection affordance in this view
+            // (character refs, word tags, poetry marks, translation compare, …).
+            // Without this, the browser's native "shift-click extends text
+            // selection" behavior fires at the same time, visibly highlighting
+            // a swath of page text alongside the intended app-level selection.
+            // Exempt real text-entry fields so shift-click still extends the
+            // caret selection there as normal.
+            if (e.shiftKey && !(e.target as HTMLElement).closest('input, textarea, [contenteditable="true"]')) {
+              e.preventDefault();
+            }
+          }}
           style={{
             // Synoptic View's narrow columns need every bit of width for
             // text, so its verse-number gutter sits much closer to the edge.
