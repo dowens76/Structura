@@ -759,7 +759,7 @@ export default function WordToken({
           {isHebrew ? (
             <>
               <span data-requiredness-arrow>
-                <PoetryArrowIcon direction="right" color={POETRY_COLORS.requiredness} />
+                <PoetryArrowIcon direction="left" color={POETRY_COLORS.requiredness} />
               </span>
               <PoetryArrowIcon direction="down" color={POETRY_COLORS.continuation} />
             </>
@@ -788,7 +788,7 @@ export default function WordToken({
               aria-hidden
               data-requiredness-arrow
             >
-              <PoetryArrowIcon direction="right" color={POETRY_COLORS.requiredness} />
+              <PoetryArrowIcon direction={isHebrew ? "left" : "right"} color={POETRY_COLORS.requiredness} />
             </span>
           )}
         </>

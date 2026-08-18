@@ -3666,7 +3666,7 @@ export default function VerseDisplay({
                                     {tvLanguage === "hebrew" ? (
                                       <>
                                         <span data-requiredness-arrow>
-                                          <PoetryArrowIcon direction="right" color={POETRY_COLORS.requiredness} />
+                                          <PoetryArrowIcon direction="left" color={POETRY_COLORS.requiredness} />
                                         </span>
                                         <PoetryArrowIcon direction="down" color={POETRY_COLORS.continuation} />
                                       </>
@@ -3695,7 +3695,7 @@ export default function VerseDisplay({
                                         aria-hidden
                                         data-requiredness-arrow
                                       >
-                                        <PoetryArrowIcon direction="right" color={POETRY_COLORS.requiredness} />
+                                        <PoetryArrowIcon direction={tvLanguage === "hebrew" ? "left" : "right"} color={POETRY_COLORS.requiredness} />
                                       </span>
                                     )}
                                   </>
