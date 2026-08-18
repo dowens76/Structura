@@ -36,6 +36,12 @@ export interface UseWordArrowsReturn {
   handleSelectArrowWordById: (wordId: string) => Promise<void>;
   handleDeleteWordArrow: (id: number) => Promise<void>;
   handleUpdateWordArrow: (id: number, patch: ArrowPatch) => Promise<void>;
+  /** Creates an arrow directly between two known endpoints, bypassing the
+   *  two-click `arrowFromWordId` flow — used by Similarity's "Add word"
+   *  chaining to auto-connect consecutive group members on Save.
+   *  `similarityGroupId` tags the arrow so a later per-word delete in that
+   *  flow can find and remove just the arrows touching a given word. */
+  createDirectArrow: (fromWordId: string, toWordId: string, chapter: number, similarityGroupId: number, color?: string) => Promise<WordArrow | null>;
 }
 
 export function useWordArrows({
@@ -74,6 +80,22 @@ export function useWordArrows({
     setArrowFromWordId(null);
   }
 
+  async function createDirectArrow(fromWordId: string, toWordId: string, chapter: number, similarityGroupId: number, color?: string): Promise<WordArrow | null> {
+    try {
+      const resp = await fetch("/api/word-arrows", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fromWordId, toWordId, book, chapter, source: textSource, similarityGroupId, color }),
+      });
+      if (!resp.ok) return null;
+      const { arrow } = await resp.json();
+      setWordArrowsState((prev) => [...prev, arrow]);
+      return arrow;
+    } catch {
+      return null;
+    }
+  }
+
   async function handleDeleteWordArrow(id: number) {
     await fetch("/api/word-arrows", {
       method: "DELETE",
@@ -103,5 +125,6 @@ export function useWordArrows({
     handleSelectArrowWordById,
     handleDeleteWordArrow,
     handleUpdateWordArrow,
+    createDirectArrow,
   };
 }

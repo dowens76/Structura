@@ -26,12 +26,12 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const workspaceId = await getActiveWorkspaceId();
   const body = await req.json();
-  const { fromWordId, toWordId, book, chapter, source, label } = body;
+  const { fromWordId, toWordId, book, chapter, source, label, similarityGroupId, color } = body;
   if (!fromWordId || !toWordId || !book || !chapter || !source)
     return NextResponse.json({ error: "Missing fields" }, { status: 400 });
   const versionId = await getActiveVersionId(workspaceId, book, Number(chapter));
   const arrow = await createWordArrow(
-    fromWordId, toWordId, book, Number(chapter), source, workspaceId, versionId, label ?? undefined
+    fromWordId, toWordId, book, Number(chapter), source, workspaceId, versionId, label ?? undefined, similarityGroupId ?? undefined, color ?? undefined
   );
   return NextResponse.json({ arrow });
 }

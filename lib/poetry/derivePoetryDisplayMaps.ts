@@ -23,6 +23,11 @@ export interface PoetryDisplayMaps {
   balanceMarks: PoetryNotation[];
   symmetryMarks: PoetryNotation[];
   similarityMarkByWord: Map<string, { mark: PoetryNotation; startIdx: number; endIdx: number }>;
+  /** Similarity "Add word" groups — groupId (a member's own id, see
+   *  poetryNotations.similarityGroupId) -> every current member, ordered by
+   *  id ascending (= creation order = "Word 1, Word 2, ..."). Marks with no
+   *  group don't appear here; callers fall back to `[mark]` for those. */
+  similarityGroupMembers: Map<number, PoetryNotation[]>;
   /** Every mark that carries a note, keyed by its startWordId — one lookup
    *  shared across all 6 principles (each anchors a real rendered word there,
    *  even the line/range-based ones), used to show a note indicator badge. */
@@ -166,6 +171,18 @@ export function derivePoetryDisplayMaps(
     }
   }
 
+  // Similarity "Add word" groups — group by similarityGroupId, ordered by id
+  // ascending. poetryNotations is already in insertion (id) order from the
+  // API, but sort explicitly since callers shouldn't depend on that.
+  const similarityGroupMembers = new Map<number, PoetryNotation[]>();
+  for (const n of poetryNotations) {
+    if (n.principle !== "similarity" || n.similarityGroupId == null) continue;
+    const arr = similarityGroupMembers.get(n.similarityGroupId);
+    if (arr) arr.push(n);
+    else similarityGroupMembers.set(n.similarityGroupId, [n]);
+  }
+  for (const members of similarityGroupMembers.values()) members.sort((a, b) => a.id - b.id);
+
   // Note indicator lookup — every mark with a non-empty note, keyed by the
   // LAST word it touches, for inline display alongside the source/translation
   // text: for a single-word mark that's startWordId itself; for a range
@@ -205,6 +222,7 @@ export function derivePoetryDisplayMaps(
     balanceMarks,
     symmetryMarks,
     similarityMarkByWord,
+    similarityGroupMembers,
     poetryNoteMap,
   };
 }

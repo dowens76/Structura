@@ -22,12 +22,12 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({ notations });
 }
 
-/** POST { principle, subtype?, direction?, startWordId, endWordId?, startGraphemeIndex?, endGraphemeIndex?, note?, book, chapter, source }
+/** POST { principle, subtype?, direction?, startWordId, endWordId?, startGraphemeIndex?, endGraphemeIndex?, similarityGroupId?, note?, book, chapter, source }
  *   → { notation: PoetryNotation } */
 export async function POST(req: NextRequest) {
   const workspaceId = await getActiveWorkspaceId();
   const body = await req.json();
-  const { principle, subtype, direction, startWordId, endWordId, startGraphemeIndex, endGraphemeIndex, note, book, chapter, source } = body;
+  const { principle, subtype, direction, startWordId, endWordId, startGraphemeIndex, endGraphemeIndex, similarityGroupId, note, book, chapter, source } = body;
   const versionId = await getActiveVersionId(workspaceId, book, chapter);
   const notation = await createPoetryNotation({
     principle,
@@ -37,6 +37,7 @@ export async function POST(req: NextRequest) {
     endWordId: endWordId ?? null,
     startGraphemeIndex: startGraphemeIndex ?? null,
     endGraphemeIndex: endGraphemeIndex ?? null,
+    similarityGroupId: similarityGroupId ?? null,
     note: note ?? null,
     textSource: source,
     book,
@@ -47,7 +48,7 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({ notation });
 }
 
-/** PATCH { id, note?, direction?, startWordId?, endWordId?, startGraphemeIndex?, endGraphemeIndex? } → { notation: PoetryNotation } */
+/** PATCH { id, note?, direction?, startWordId?, endWordId?, startGraphemeIndex?, endGraphemeIndex?, similarityGroupId? } → { notation: PoetryNotation } */
 export async function PATCH(req: NextRequest) {
   const body = await req.json();
   const { id, ...updates } = body as {
@@ -58,6 +59,7 @@ export async function PATCH(req: NextRequest) {
     endWordId?: string | null;
     startGraphemeIndex?: number | null;
     endGraphemeIndex?: number | null;
+    similarityGroupId?: number | null;
   };
   const notation = await updatePoetryNotation(id, updates);
   return NextResponse.json({ notation });

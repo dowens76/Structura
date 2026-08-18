@@ -2076,11 +2076,13 @@ export async function createWordArrow(
   textSource: string,
   workspaceId: number,
   versionId: number,
-  label?: string
+  label?: string,
+  similarityGroupId?: number,
+  color?: string
 ): Promise<WordArrow> {
   const [row] = await userDb
     .insert(wordArrows)
-    .values({ fromWordId, toWordId, book, chapter, textSource, workspaceId, versionId, label: label ?? null })
+    .values({ fromWordId, toWordId, book, chapter, textSource, workspaceId, versionId, label: label ?? null, similarityGroupId: similarityGroupId ?? null, color: color ?? null })
     .returning();
   return row;
 }
@@ -2300,6 +2302,7 @@ export async function createPoetryNotation(fields: {
   endWordId?: string | null;
   startGraphemeIndex?: number | null;
   endGraphemeIndex?: number | null;
+  similarityGroupId?: number | null;
   note?: string | null;
   textSource: string;
   book: string;
@@ -2317,6 +2320,7 @@ export async function createPoetryNotation(fields: {
       endWordId: fields.endWordId ?? null,
       startGraphemeIndex: fields.startGraphemeIndex ?? null,
       endGraphemeIndex: fields.endGraphemeIndex ?? null,
+      similarityGroupId: fields.similarityGroupId ?? null,
       note: fields.note ?? null,
       textSource: fields.textSource,
       book: fields.book,
@@ -2328,10 +2332,10 @@ export async function createPoetryNotation(fields: {
   return row;
 }
 
-/** Update fields of an existing poetry notation mark (note, direction, or its anchor range). */
+/** Update fields of an existing poetry notation mark (note, direction, its anchor range, or its Similarity group tag). */
 export async function updatePoetryNotation(
   id: number,
-  updates: Partial<Pick<PoetryNotation, "note" | "direction" | "startWordId" | "endWordId" | "startGraphemeIndex" | "endGraphemeIndex">>
+  updates: Partial<Pick<PoetryNotation, "note" | "direction" | "startWordId" | "endWordId" | "startGraphemeIndex" | "endGraphemeIndex" | "similarityGroupId">>
 ): Promise<PoetryNotation> {
   const [row] = await userDb
     .update(poetryNotations)

@@ -780,6 +780,7 @@ export default function ChapterDisplay({
     handleSelectArrowWordById,
     handleDeleteWordArrow,
     handleUpdateWordArrow,
+    createDirectArrow,
   } = useWordArrows({
     initialWordArrows,
     book,
@@ -1132,6 +1133,7 @@ export default function ChapterDisplay({
     similarityStart,
     closureRangeStart,
     requirednessRangeStart,
+    addingToSimilarityGroupId,
     clearPending: clearPoetryPending,
     handleWordClick: handlePoetryWordClick,
     handleLineClick: handlePoetryLineClick,
@@ -1140,7 +1142,10 @@ export default function ChapterDisplay({
     handleClosureWordClick,
     handleClosureLineClick,
     handleRequirednessWordClick,
+    handleStartAddWordToGroup,
     handleUpdateNote: handleUpdatePoetryNote,
+    handleSaveSimilarityNote,
+    handleUngroupMark,
     handleDeleteNotation: handleDeletePoetryNotation,
   } = usePoetryNotations({
     initialPoetryNotations,
@@ -1250,6 +1255,7 @@ export default function ChapterDisplay({
     balanceMarks,
     symmetryMarks,
     similarityMarkByWord,
+    similarityGroupMembers,
     poetryNoteMap,
   } = useMemo(
     () => derivePoetryDisplayMaps(poetryNotations, words, wordToParaStart, wordIndexMap),
@@ -1278,6 +1284,116 @@ export default function ChapterDisplay({
     map.set(anchorWordId, mark);
     return map;
   }, [poetryNotations, editingNotationId, segLastWordId]);
+
+  // Similarity's open mark, resolved to its full current group (or just
+  // itself, ungrouped) — keyed the same way as openPoetryNoteMarkByWord so
+  // each WordToken/VerseDisplay token can look up "is this my open mark, and
+  // if so what's its group" in one place.
+  const openPoetryNoteGroupMembersByWord = useMemo(() => {
+    const map = new Map<string, PoetryNotation[]>();
+    for (const [wordId, mark] of openPoetryNoteMarkByWord) {
+      if (mark.principle !== "similarity") continue;
+      const members = mark.similarityGroupId != null
+        ? similarityGroupMembers.get(mark.similarityGroupId) ?? [mark]
+        : [mark];
+      map.set(wordId, members);
+    }
+    return map;
+  }, [openPoetryNoteMarkByWord, similarityGroupMembers]);
+
+  // True when any word in `arr` connects `a` and `b`, in either direction —
+  // regardless of which group (if any) drew it, so we never draw a visible
+  // duplicate over an arrow that's already there.
+  function wordsAlreadyConnected(a: string, b: string): boolean {
+    return wordArrowsState.some(
+      (arr) => (arr.fromWordId === a && arr.toWordId === b) || (arr.fromWordId === b && arr.toWordId === a)
+    );
+  }
+
+  // Fills in any missing consecutive connecting arrow across an ordered
+  // group (word 1 -> word 2 -> word 3 -> ...), skipping any pair that's
+  // already connected so this is safe to call repeatedly (Save, "Restore
+  // arrow", and the mid-chain reconnect on delete all share this). Every
+  // arrow it draws is yellow, per Similarity's own arrow color.
+  async function ensureSimilarityGroupArrows(members: PoetryNotation[], groupId: number) {
+    if (members.length < 2) return;
+    const chapter = getChapterForWord(members[0].startWordId);
+    for (let i = 0; i < members.length - 1; i++) {
+      const a = members[i].startWordId;
+      const b = members[i + 1].startWordId;
+      if (!wordsAlreadyConnected(a, b)) await createDirectArrow(a, b, chapter, groupId, POETRY_COLORS.similarity);
+    }
+  }
+
+  // Save writes the note to every current group member, then restores any
+  // missing connecting arrow.
+  async function handleSaveSimilarityGroup(mark: PoetryNotation, note: string | null) {
+    const members = mark.similarityGroupId != null
+      ? similarityGroupMembers.get(mark.similarityGroupId) ?? [mark]
+      : [mark];
+    await handleSaveSimilarityNote(members.map((m) => m.id), note);
+    if (mark.similarityGroupId != null) await ensureSimilarityGroupArrows(members, mark.similarityGroupId);
+  }
+
+  // "Restore arrow" — same arrow-filling step as Save, without touching the
+  // note, for when a user has manually deleted one of the group's connecting
+  // arrows (via the Word Arrow tool's own delete button) and wants it back.
+  async function handleRestoreSimilarityArrows(mark: PoetryNotation) {
+    if (mark.similarityGroupId == null) return;
+    const members = similarityGroupMembers.get(mark.similarityGroupId) ?? [mark];
+    await ensureSimilarityGroupArrows(members, mark.similarityGroupId);
+  }
+
+  // Deletes just the one mark (not its whole group), then cleans up after
+  // it: any arrow this group auto-drew that touched the deleted word; if the
+  // deleted word had both a previous and a next member in the chain (i.e. it
+  // was a middle word, not the first or last), immediately redraws the
+  // bridging arrow between them, as if it were being created fresh, rather
+  // than leaving a gap until the next Save; and — if that leaves exactly one
+  // member — ungroups it, so a later "Add word" on it starts a clean new
+  // group instead of silently reusing a stale id.
+  async function handleDeleteSimilarityWord(mark: PoetryNotation) {
+    const groupId = mark.similarityGroupId;
+    if (groupId == null) {
+      await handleDeletePoetryNotation(mark.id);
+      return;
+    }
+    const members = similarityGroupMembers.get(groupId) ?? [mark];
+    const idx = members.findIndex((m) => m.id === mark.id);
+    const prev = idx > 0 ? members[idx - 1] : null;
+    const next = idx >= 0 && idx < members.length - 1 ? members[idx + 1] : null;
+
+    await handleDeletePoetryNotation(mark.id);
+    const touchingArrows = wordArrowsState.filter(
+      (arr) => arr.similarityGroupId === groupId && (arr.fromWordId === mark.startWordId || arr.toWordId === mark.startWordId)
+    );
+    await Promise.all(touchingArrows.map((arr) => handleDeleteWordArrow(arr.id)));
+    if (prev && next) {
+      const chapter = getChapterForWord(prev.startWordId);
+      if (!wordsAlreadyConnected(prev.startWordId, next.startWordId)) {
+        await createDirectArrow(prev.startWordId, next.startWordId, chapter, groupId, POETRY_COLORS.similarity);
+      }
+    }
+    const remaining = members.filter((m) => m.id !== mark.id);
+    if (remaining.length === 1) await handleUngroupMark(remaining[0].id);
+  }
+
+  // Whether the open mark's group is missing a connecting arrow somewhere
+  // along its chain — e.g. the user manually deleted one via the Word Arrow
+  // tool. Drives SimilarityNotePopover's "Restore arrow" button; keyed the
+  // same way as openPoetryNoteGroupMembersByWord.
+  const openPoetryNoteHasMissingArrowByWord = useMemo(() => {
+    const map = new Map<string, boolean>();
+    for (const [wordId, members] of openPoetryNoteGroupMembersByWord) {
+      let missing = false;
+      for (let i = 0; i < members.length - 1; i++) {
+        if (!wordsAlreadyConnected(members[i].startWordId, members[i + 1].startWordId)) { missing = true; break; }
+      }
+      map.set(wordId, missing);
+    }
+    return map;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openPoetryNoteGroupMembersByWord, wordArrowsState]);
 
   const pendingSimilarityAnchor = similarityStart;
 
@@ -6909,9 +7025,15 @@ export default function ChapterDisplay({
                 onGraphemeClick={handleGraphemeClick}
                 onClickSimilarityMark={(markId) => setEditingNotationId(markId)}
                 openPoetryNoteMarkByWord={openPoetryNoteMarkByWord}
+                openPoetryNoteGroupMembersByWord={openPoetryNoteGroupMembersByWord}
+                openPoetryNoteHasMissingArrowByWord={openPoetryNoteHasMissingArrowByWord}
                 onSavePoetryNote={handleUpdatePoetryNote}
                 onDeletePoetryMark={handleDeletePoetryNotation}
                 onClosePoetryNote={() => setEditingNotationId(null)}
+                onAddWordToSimilarityGroup={handleStartAddWordToGroup}
+                onSaveSimilarityGroup={handleSaveSimilarityGroup}
+                onDeleteSimilarityWord={handleDeleteSimilarityWord}
+                onRestoreSimilarityArrows={handleRestoreSimilarityArrows}
                 tcMarkMap={tcMarkMap}
                 editingTc={editingTc}
                 onTcMarkWord={handleTcMarkLxxWord}

@@ -654,6 +654,8 @@ function _migrateUserDbInner(sqlite: Database.Database): void {
   if (!waCols.includes("midpoint_dy"))  try { sqlite.exec("ALTER TABLE word_arrows ADD COLUMN midpoint_dy REAL");  } catch { /* already exists */ }
   if (!waCols.includes("midpoint2_dx")) try { sqlite.exec("ALTER TABLE word_arrows ADD COLUMN midpoint2_dx REAL"); } catch { /* already exists */ }
   if (!waCols.includes("midpoint2_dy")) try { sqlite.exec("ALTER TABLE word_arrows ADD COLUMN midpoint2_dy REAL"); } catch { /* already exists */ }
+  if (!waCols.includes("similarity_group_id")) try { sqlite.exec("ALTER TABLE word_arrows ADD COLUMN similarity_group_id INTEGER"); } catch { /* already exists */ }
+  try { sqlite.exec("CREATE INDEX IF NOT EXISTS wa_similarity_group_idx ON word_arrows(similarity_group_id)"); } catch { /* already exists */ }
 
   const wfmtCols = (sqlite.prepare("PRAGMA table_info(word_formatting)").all() as { name: string }[]).map(r => r.name);
   if (!wfmtCols.includes("is_small_caps"))
@@ -679,6 +681,7 @@ function _migrateUserDbInner(sqlite: Database.Database): void {
       end_word_id           TEXT,
       start_grapheme_index  INTEGER,
       end_grapheme_index    INTEGER,
+      similarity_group_id   INTEGER,
       note                  TEXT,
       text_source           TEXT    NOT NULL,
       book                  TEXT    NOT NULL,
@@ -700,6 +703,10 @@ function _migrateUserDbInner(sqlite: Database.Database): void {
     CREATE UNIQUE INDEX IF NOT EXISTS plbe_ws_ver_word_idx ON poetry_line_bracket_exclusions(workspace_id, version_id, word_id);
     CREATE INDEX IF NOT EXISTS plbe_book_ch_src_idx ON poetry_line_bracket_exclusions(book, chapter, text_source);
   `);
+
+  const pnCols = (sqlite.prepare("PRAGMA table_info(poetry_notations)").all() as { name: string }[]).map(r => r.name);
+  if (!pnCols.includes("similarity_group_id")) try { sqlite.exec("ALTER TABLE poetry_notations ADD COLUMN similarity_group_id INTEGER"); } catch { /* already exists */ }
+  try { sqlite.exec("CREATE INDEX IF NOT EXISTS pn_similarity_group_idx ON poetry_notations(similarity_group_id)"); } catch { /* already exists */ }
 
   sqlite.exec(`
     CREATE TABLE IF NOT EXISTS app_settings (

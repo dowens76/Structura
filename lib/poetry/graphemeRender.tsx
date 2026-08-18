@@ -62,6 +62,7 @@ export function renderGraphemesWithSimilarityHighlight(
     <>
       {before}
       <span
+        data-similarity-highlight="true"
         className={interactive ? "cursor-pointer rounded-full px-0.5" : "rounded-full px-0.5"}
         style={{ backgroundColor: `${POETRY_COLORS.similarity}70` }}
         onClick={interactive ? (e) => { e.stopPropagation(); onClick(); } : undefined}

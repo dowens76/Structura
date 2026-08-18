@@ -55,6 +55,10 @@ export interface UsePoetryNotationsReturn {
   similarityStart: GraphemeAnchor | null;
   closureRangeStart: string | null;
   requirednessRangeStart: string | null;
+  /** Set by "Add word" in the Similarity note popover — the group id the
+   *  NEXT word/letter-range the user picks (anywhere in the chapter) should
+   *  be tagged with. Consumed and cleared by handleGraphemeClick. */
+  addingToSimilarityGroupId: number | null;
 
   /** Clears every pending (mid-selection) state — called when leaving poetry
    *  edit mode or switching which principle/sub-tool is active. */
@@ -67,8 +71,17 @@ export interface UsePoetryNotationsReturn {
   handleClosureWordClick: (wordId: string, shiftHeld: boolean) => void;
   handleClosureLineClick: (segFirstWordId: string) => void;
   handleRequirednessWordClick: (wordId: string, shiftHeld: boolean) => void;
+  /** "Add word" — starts (or resumes) a Similarity group so the next word/
+   *  letter-range the user picks gets tagged into it. Self-tags an
+   *  ungrouped mark with its own id as the group id the first time it's
+   *  called on it. */
+  handleStartAddWordToGroup: (mark: PoetryNotation) => void;
 
   handleUpdateNote: (id: number, note: string | null) => Promise<void>;
+  /** Writes the same note to every id in a Similarity group at once. */
+  handleSaveSimilarityNote: (memberIds: number[], note: string | null) => Promise<void>;
+  /** Clears a mark's similarityGroupId (auto-ungroup at 1 remaining member). */
+  handleUngroupMark: (id: number) => Promise<void>;
   handleDeleteNotation: (id: number) => Promise<void>;
 }
 
@@ -91,6 +104,7 @@ export function usePoetryNotations({
   const [similarityStart, setSimilarityStart] = useState<GraphemeAnchor | null>(null);
   const [closureRangeStart, setClosureRangeStart] = useState<string | null>(null);
   const [requirednessRangeStart, setRequirednessRangeStart] = useState<string | null>(null);
+  const [addingToSimilarityGroupId, setAddingToSimilarityGroupId] = useState<number | null>(null);
 
   function clearPending() {
     setSymmetryLineA(null);
@@ -98,6 +112,7 @@ export function usePoetryNotations({
     setSimilarityStart(null);
     setClosureRangeStart(null);
     setRequirednessRangeStart(null);
+    setAddingToSimilarityGroupId(null);
     setEditingNotationId(null);
   }
 
@@ -109,6 +124,7 @@ export function usePoetryNotations({
     endWordId?: string | null;
     startGraphemeIndex?: number | null;
     endGraphemeIndex?: number | null;
+    similarityGroupId?: number | null;
   }) {
     const { textSource, book, chapter } = resolveWordSource(fields.startWordId);
     const tempId = -Date.now();
@@ -123,6 +139,7 @@ export function usePoetryNotations({
       endWordId: fields.endWordId ?? null,
       startGraphemeIndex: fields.startGraphemeIndex ?? null,
       endGraphemeIndex: fields.endGraphemeIndex ?? null,
+      similarityGroupId: fields.similarityGroupId ?? null,
       note: null,
       textSource,
       book,
@@ -214,13 +231,20 @@ export function usePoetryNotations({
   // marks the WHOLE word (regardless of which letter it landed on), a
   // shift-click anchors a specific letter, and a second shift-click commits
   // the range between the two anchors — spanning as many letters as needed.
+  // If "Add word" set a pending group (addingToSimilarityGroupId), whichever
+  // mark THIS click produces is tagged into that group and the flag is
+  // consumed — one word/range added per "Add word" click, anywhere in the
+  // chapter (the same-line restriction below only governs a single mark's
+  // own two-letter-click range, not cross-group linking).
   function handleGraphemeClick(wordId: string, graphemeIndex: number, shiftHeld: boolean, segFirstWordId: string) {
     if (!shiftHeld) {
       setSimilarityStart(null);
+      const groupId = addingToSimilarityGroupId;
+      setAddingToSimilarityGroupId(null);
       // 9999 is this codebase's existing sentinel for "through the end of
       // the word" (see derivePoetryDisplayMaps.ts's cross-word span handling)
       // — rendering/lookup code already clamps it to the word's real length.
-      createNotation({ principle: "similarity", startWordId: wordId, endWordId: wordId, startGraphemeIndex: 0, endGraphemeIndex: 9999 });
+      createNotation({ principle: "similarity", startWordId: wordId, endWordId: wordId, startGraphemeIndex: 0, endGraphemeIndex: 9999, similarityGroupId: groupId });
       return;
     }
     if (!similarityStart) {
@@ -238,7 +262,9 @@ export function usePoetryNotations({
         ? [similarityStart.graphemeIndex, graphemeIndex]
         : [graphemeIndex, similarityStart.graphemeIndex];
       setSimilarityStart(null);
-      createNotation({ principle: "similarity", startWordId: wordId, endWordId: wordId, startGraphemeIndex: startIdx, endGraphemeIndex: endIdx });
+      const groupId = addingToSimilarityGroupId;
+      setAddingToSimilarityGroupId(null);
+      createNotation({ principle: "similarity", startWordId: wordId, endWordId: wordId, startGraphemeIndex: startIdx, endGraphemeIndex: endIdx, similarityGroupId: groupId });
       return;
     }
 
@@ -253,13 +279,32 @@ export function usePoetryNotations({
         ? [wordId, graphemeIndex, similarityStart.wordId, similarityStart.graphemeIndex]
         : [similarityStart.wordId, similarityStart.graphemeIndex, wordId, graphemeIndex];
     setSimilarityStart(null);
+    const groupId = addingToSimilarityGroupId;
+    setAddingToSimilarityGroupId(null);
     createNotation({
       principle: "similarity",
       startWordId,
       endWordId,
       startGraphemeIndex: startIdx,
       endGraphemeIndex: endIdx,
+      similarityGroupId: groupId,
     });
+  }
+
+  /** "Add word" — see UsePoetryNotationsReturn's doc comment. */
+  function handleStartAddWordToGroup(mark: PoetryNotation) {
+    if (mark.similarityGroupId != null) {
+      setAddingToSimilarityGroupId(mark.similarityGroupId);
+      return;
+    }
+    const groupId = mark.id;
+    setPoetryNotations((prev) => prev.map((n) => (n.id === mark.id ? { ...n, similarityGroupId: groupId } : n)));
+    setAddingToSimilarityGroupId(groupId);
+    fetch("/api/poetry-notations", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: mark.id, similarityGroupId: groupId }),
+    }).catch(() => { /* non-critical */ });
   }
 
   // ── Closure (weak) — arbitrary word range, chapter-ordered ─────────────────
@@ -371,6 +416,37 @@ export function usePoetryNotations({
     }
   }
 
+  /** Similarity "Add word" groups share one note across every member (so
+   *  deleting any single member never loses it) — writes `note` to each id
+   *  in `memberIds` in parallel, optimistically updating all of them locally
+   *  first. */
+  async function handleSaveSimilarityNote(memberIds: number[], note: string | null) {
+    const idSet = new Set(memberIds);
+    setPoetryNotations((prev) => prev.map((n) => (idSet.has(n.id) ? { ...n, note } : n)));
+    await Promise.all(memberIds.map((id) =>
+      fetch("/api/poetry-notations", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, note }),
+      }).catch(() => { /* non-critical */ })
+    ));
+  }
+
+  /** Clears a mark's similarityGroupId — used to auto-ungroup a Similarity
+   *  "group" that's been deleted down to a single remaining member. */
+  async function handleUngroupMark(id: number) {
+    setPoetryNotations((prev) => prev.map((n) => (n.id === id ? { ...n, similarityGroupId: null } : n)));
+    try {
+      await fetch("/api/poetry-notations", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, similarityGroupId: null }),
+      });
+    } catch {
+      // non-critical
+    }
+  }
+
   async function handleDeleteNotation(id: number) {
     setPoetryNotations((prev) => prev.filter((n) => n.id !== id));
     setEditingNotationId((prev) => (prev === id ? null : prev));
@@ -407,6 +483,7 @@ export function usePoetryNotations({
     similarityStart,
     closureRangeStart,
     requirednessRangeStart,
+    addingToSimilarityGroupId,
     clearPending,
     handleWordClick,
     handleLineClick,
@@ -415,7 +492,10 @@ export function usePoetryNotations({
     handleClosureWordClick,
     handleClosureLineClick,
     handleRequirednessWordClick,
+    handleStartAddWordToGroup,
     handleUpdateNote,
+    handleSaveSimilarityNote,
+    handleUngroupMark,
     handleDeleteNotation,
   };
 }

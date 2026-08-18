@@ -434,12 +434,20 @@ export const wordArrows = sqliteTable(
     midpointDy:  real("midpoint_dy"),
     midpoint2Dx: real("midpoint2_dx"),
     midpoint2Dy: real("midpoint2_dy"),
+    /** Set only on arrows auto-drawn by Similarity's "Add word" chaining
+     *  (see poetryNotations.similarityGroupId) — null for manually-drawn
+     *  arrows. Lets a per-word delete in that flow find and remove just the
+     *  arrow(s) touching the deleted word within that group. */
+    similarityGroupId: integer("similarity_group_id"),
     textSource:  text("text_source").notNull(),
     book:        text("book").notNull(),
     chapter:     integer("chapter").notNull(),
     createdAt:   text("created_at").$defaultFn(() => new Date().toISOString()),
   },
-  (t) => [index("wa_book_ch_src_idx").on(t.book, t.chapter, t.textSource)]
+  (t) => [
+    index("wa_book_ch_src_idx").on(t.book, t.chapter, t.textSource),
+    index("wa_similarity_group_idx").on(t.similarityGroupId),
+  ]
 );
 
 export const lineAnnotations = sqliteTable(
@@ -477,7 +485,7 @@ export const lineAnnotations = sqliteTable(
  *   requiredness                : subtype null|"arrow" (startWordId only, word-anchored) | "underline" (startWordId/endWordId = arbitrary word range, not segment-snapped, same as closure "weak")
  *   balance                     : startWordId/endWordId = two paragraphFirstWordIds entries (bracket spans from the top of the earlier line to the bottom of the later one, "=" centered between); subtype "balance"|"imbalance"; direction "left"|"right" (imbalance only)
  *   symmetry                    : startWordId/endWordId = two paragraphFirstWordIds entries, in click order (upper/lower triangle)
- *   similarity                  : startWordId/startGraphemeIndex .. endWordId/endGraphemeIndex (letter range, may span adjacent words in one line)
+ *   similarity                  : startWordId/startGraphemeIndex .. endWordId/endGraphemeIndex (letter range, may span adjacent words in one line); similarityGroupId optionally chains this mark to others anywhere in the chapter (see below)
  *   closure                     : subtype "weak" (startWordId/endWordId = arbitrary word range, not segment-snapped) | "complete" (startWordId = a line's segFirstWordId, endWordId null)
  */
 export const poetryNotations = sqliteTable(
@@ -495,13 +503,23 @@ export const poetryNotations = sqliteTable(
     endWordId:          text("end_word_id"),
     startGraphemeIndex: integer("start_grapheme_index"), // similarity only
     endGraphemeIndex:   integer("end_grapheme_index"),   // similarity only
+    /** Similarity only — chains this mark to others into one "Add word"
+     *  group, anywhere in the chapter. A stable tag, not a live FK: set to
+     *  the group's first member's own id when the group is created, and
+     *  stays that value even if that specific row is later deleted (the
+     *  other members just keep carrying the same tag). Every member's
+     *  `note` is kept in sync so deleting any one member never loses it. */
+    similarityGroupId:  integer("similarity_group_id"),
     note:               text("note"),
     textSource:         text("text_source").notNull(),
     book:               text("book").notNull(),
     chapter:            integer("chapter").notNull(),
     createdAt:          text("created_at").$defaultFn(() => new Date().toISOString()),
   },
-  (t) => [index("pn_book_ch_src_idx").on(t.book, t.chapter, t.textSource)]
+  (t) => [
+    index("pn_book_ch_src_idx").on(t.book, t.chapter, t.textSource),
+    index("pn_similarity_group_idx").on(t.similarityGroupId),
+  ]
 );
 export type PoetryNotation = typeof poetryNotations.$inferSelect;
 

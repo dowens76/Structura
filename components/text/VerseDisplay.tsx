@@ -5,6 +5,7 @@ import type { Word, CharacterRef, Character, SpeechSection, WordTag, WordTagRef,
 import { POETRY_COLORS } from "@/lib/poetry/constants";
 import { renderClickableGraphemes, renderGraphemesWithSimilarityHighlight } from "@/lib/poetry/graphemeRender";
 import PoetryNotePopover from "./PoetryNotePopover";
+import SimilarityNotePopover from "./SimilarityNotePopover";
 import PoetryArrowIcon from "./PoetryArrowIcon";
 import { renderUsfmText } from "@/lib/utils/usfm-renderer";
 import type { DisplayMode, GrammarFilterState, TranslationTextEntry, InterlinearSubMode } from "@/lib/morphology/types";
@@ -336,6 +337,23 @@ interface VerseDisplayProps {
   onSavePoetryNote?: (id: number, note: string | null) => void;
   onDeletePoetryMark?: (id: number) => void;
   onClosePoetryNote?: () => void;
+  /** Similarity only — the open mark's full current group (or just itself,
+   *  ungrouped), keyed the same way as openPoetryNoteMarkByWord. Drives
+   *  SimilarityNotePopover instead of the shared PoetryNotePopover. */
+  openPoetryNoteGroupMembersByWord?: Map<string, PoetryNotation[]>;
+  /** Similarity only — true when the open mark's group is missing a
+   *  connecting arrow somewhere along its chain (e.g. manually deleted via
+   *  the Word Arrow tool). Drives SimilarityNotePopover's "Restore arrow". */
+  openPoetryNoteHasMissingArrowByWord?: Map<string, boolean>;
+  /** "Add word" — starts (or resumes) a Similarity group from its popover. */
+  onAddWordToSimilarityGroup?: (mark: PoetryNotation) => void;
+  /** Saves a Similarity group's shared note and auto-draws any missing
+   *  connecting arrows between its members. */
+  onSaveSimilarityGroup?: (mark: PoetryNotation, note: string | null) => void;
+  /** Deletes just one word/range from a Similarity group (not the whole group). */
+  onDeleteSimilarityWord?: (mark: PoetryNotation) => void;
+  /** Redraws any missing connecting arrow(s) in the open mark's group. */
+  onRestoreSimilarityArrows?: (mark: PoetryNotation) => void;
   showAtnachBreaks?: boolean;
   /** Shows a stresses/syllables count column, aligned past the end of the
    *  Hebrew text, for each poetic line (paragraph-break-defined segment). */
@@ -1498,9 +1516,15 @@ export default function VerseDisplay({
   onGraphemeClick,
   onClickSimilarityMark,
   openPoetryNoteMarkByWord,
+  openPoetryNoteGroupMembersByWord,
+  openPoetryNoteHasMissingArrowByWord,
   onSavePoetryNote,
   onDeletePoetryMark,
   onClosePoetryNote,
+  onAddWordToSimilarityGroup,
+  onSaveSimilarityGroup,
+  onDeleteSimilarityWord,
+  onRestoreSimilarityArrows,
   onVerseClick,
   rstSourcePad = 0,
   lineSpacingMap,
@@ -2485,9 +2509,15 @@ export default function VerseDisplay({
               showPoetryNote={showPoetryNotes && !!poetryNoteMap?.has(word.wordId)}
               poetryNoteText={poetryNoteMap?.get(word.wordId) ?? null}
               openPoetryNoteMark={openPoetryNoteMarkByWord?.get(word.wordId) ?? null}
+              openPoetryNoteGroupMembers={openPoetryNoteGroupMembersByWord?.get(word.wordId) ?? null}
+              openPoetryNoteHasMissingArrow={openPoetryNoteHasMissingArrowByWord?.get(word.wordId) ?? false}
               onSavePoetryNote={onSavePoetryNote}
               onDeletePoetryMark={onDeletePoetryMark}
               onClosePoetryNote={onClosePoetryNote}
+              onAddWordToSimilarityGroup={onAddWordToSimilarityGroup}
+              onSaveSimilarityGroup={onSaveSimilarityGroup}
+              onDeleteSimilarityWord={onDeleteSimilarityWord}
+              onRestoreSimilarityArrows={onRestoreSimilarityArrows}
               editingPoetrySimilarity={editingPoetrySimilarity}
               pendingSimilarityAnchor={pendingSimilarityAnchor}
               onGraphemeClick={onGraphemeClick ? (wordId, idx, shiftHeld) => onGraphemeClick(wordId, idx, shiftHeld, wordToParaStart.get(wordId) ?? wordId) : undefined}
@@ -3237,6 +3267,10 @@ export default function VerseDisplay({
                         tvWordNoteRaw && tvWordNoteRaw.principle === "closure" && tvWordNoteRaw.subtype === "complete"
                           ? null
                           : tvWordNoteRaw ?? (tvPoetryClosureComplete ? openPoetryNoteMarkByWord?.get(tvSegFirstWordId) ?? null : null);
+                      // Similarity never hits the closure-complete remap above, so a direct
+                      // wordId lookup always matches whichever branch produced tvOpenPoetryNote.
+                      const tvOpenPoetryNoteGroupMembers = openPoetryNoteGroupMembersByWord?.get(wordId) ?? null;
+                      const tvOpenPoetryNoteHasMissingArrow = openPoetryNoteHasMissingArrowByWord?.get(wordId) ?? false;
                       // Thickness is 200% thicker than the baseline (2.5px -> 7.5px), matching WordToken's poetryClosureStyle.
                       // text-decoration can only draw one line per token, so when both marks land
                       // on the same token, that combination switches to two stacked background
@@ -3630,7 +3664,19 @@ export default function VerseDisplay({
                                     <PoetryArrowIcon direction="right" color={POETRY_COLORS.requiredness} />
                                   </span>
                                 )}
-                                {tvOpenPoetryNote && onSavePoetryNote && onDeletePoetryMark && onClosePoetryNote && (
+                                {tvOpenPoetryNote && tvOpenPoetryNote.principle === "similarity" && onClosePoetryNote
+                                  && onAddWordToSimilarityGroup && onSaveSimilarityGroup && onDeleteSimilarityWord ? (
+                                  <SimilarityNotePopover
+                                    mark={tvOpenPoetryNote}
+                                    groupMembers={tvOpenPoetryNoteGroupMembers ?? [tvOpenPoetryNote]}
+                                    hasMissingArrow={tvOpenPoetryNoteHasMissingArrow}
+                                    onAddWord={() => onAddWordToSimilarityGroup(tvOpenPoetryNote)}
+                                    onSave={(note) => onSaveSimilarityGroup(tvOpenPoetryNote, note)}
+                                    onDeleteWord={() => onDeleteSimilarityWord(tvOpenPoetryNote)}
+                                    onRestoreArrows={() => onRestoreSimilarityArrows?.(tvOpenPoetryNote)}
+                                    onClose={onClosePoetryNote}
+                                  />
+                                ) : tvOpenPoetryNote && onSavePoetryNote && onDeletePoetryMark && onClosePoetryNote && (
                                   <PoetryNotePopover
                                     mark={tvOpenPoetryNote}
                                     color={POETRY_COLORS[(tvOpenPoetryNote.principle as keyof typeof POETRY_COLORS)] ?? "#888"}

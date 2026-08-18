@@ -11,6 +11,7 @@ import type { PoetryNotation } from "@/lib/db/schema";
 import { POETRY_COLORS } from "@/lib/poetry/constants";
 import { renderClickableGraphemes, renderGraphemesWithSimilarityHighlight } from "@/lib/poetry/graphemeRender";
 import PoetryNotePopover from "./PoetryNotePopover";
+import SimilarityNotePopover from "./SimilarityNotePopover";
 import PoetryArrowIcon from "./PoetryArrowIcon";
 
 interface WordTokenProps {
@@ -91,6 +92,17 @@ interface WordTokenProps {
   onSavePoetryNote?: (id: number, note: string | null) => void;
   onDeletePoetryMark?: (id: number) => void;
   onClosePoetryNote?: () => void;
+  /** Similarity only — openPoetryNoteMark's full current group (or just
+   *  itself, ungrouped). Presence of this alongside a similarity
+   *  openPoetryNoteMark selects SimilarityNotePopover over PoetryNotePopover. */
+  openPoetryNoteGroupMembers?: PoetryNotation[] | null;
+  /** Similarity only — true when the open mark's group is missing a
+   *  connecting arrow somewhere along its chain. */
+  openPoetryNoteHasMissingArrow?: boolean;
+  onAddWordToSimilarityGroup?: (mark: PoetryNotation) => void;
+  onSaveSimilarityGroup?: (mark: PoetryNotation, note: string | null) => void;
+  onDeleteSimilarityWord?: (mark: PoetryNotation) => void;
+  onRestoreSimilarityArrows?: (mark: PoetryNotation) => void;
   /** True only while editing mode is active AND the "similarity" sub-tool is selected —
    *  switches this word's text to individually-clickable grapheme spans. */
   editingPoetrySimilarity?: boolean;
@@ -528,6 +540,12 @@ export default function WordToken({
   onSavePoetryNote,
   onDeletePoetryMark,
   onClosePoetryNote,
+  openPoetryNoteGroupMembers,
+  openPoetryNoteHasMissingArrow,
+  onAddWordToSimilarityGroup,
+  onSaveSimilarityGroup,
+  onDeleteSimilarityWord,
+  onRestoreSimilarityArrows,
   editingPoetrySimilarity,
   pendingSimilarityAnchor,
   onGraphemeClick,
@@ -738,7 +756,19 @@ export default function WordToken({
           <PoetryArrowIcon direction="right" color={POETRY_COLORS.requiredness} />
         </span>
       )}
-      {openPoetryNoteMark && onSavePoetryNote && onDeletePoetryMark && onClosePoetryNote && (
+      {openPoetryNoteMark && openPoetryNoteMark.principle === "similarity" && onClosePoetryNote
+        && onAddWordToSimilarityGroup && onSaveSimilarityGroup && onDeleteSimilarityWord ? (
+        <SimilarityNotePopover
+          mark={openPoetryNoteMark}
+          groupMembers={openPoetryNoteGroupMembers ?? [openPoetryNoteMark]}
+          hasMissingArrow={openPoetryNoteHasMissingArrow ?? false}
+          onAddWord={() => onAddWordToSimilarityGroup(openPoetryNoteMark)}
+          onSave={(note) => onSaveSimilarityGroup(openPoetryNoteMark, note)}
+          onDeleteWord={() => onDeleteSimilarityWord(openPoetryNoteMark)}
+          onRestoreArrows={() => onRestoreSimilarityArrows?.(openPoetryNoteMark)}
+          onClose={onClosePoetryNote}
+        />
+      ) : openPoetryNoteMark && onSavePoetryNote && onDeletePoetryMark && onClosePoetryNote && (
         <PoetryNotePopover
           mark={openPoetryNoteMark}
           color={POETRY_COLORS[(openPoetryNoteMark.principle as keyof typeof POETRY_COLORS)] ?? "#888"}

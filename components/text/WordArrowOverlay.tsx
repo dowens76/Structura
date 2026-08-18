@@ -86,10 +86,19 @@ function getWordRect(
   wordId: string,
   innerContainer: HTMLElement,
   outerContainer: HTMLElement,
+  /** When true (Similarity's auto-drawn arrows), anchor to the specific
+   *  highlighted letters within the word — [data-similarity-highlight],
+   *  rendered by renderGraphemesWithSimilarityHighlight — rather than the
+   *  word's own full box, falling back to the whole word if no highlight is
+   *  found there (e.g. its mark was since deleted). A whole-word Similarity
+   *  selection's highlight span already covers the entire word, so this
+   *  degrades to ordinary whole-word anchoring in that case automatically. */
+  preferHighlight = false,
 ): WordRect | null {
   const el = innerContainer.querySelector(`[data-word-id="${CSS.escape(wordId)}"]`);
   if (!el) return null;
-  const elRect = el.getBoundingClientRect();
+  const target = (preferHighlight && el.querySelector("[data-similarity-highlight]")) || el;
+  const elRect = target.getBoundingClientRect();
   const oRect  = outerContainer.getBoundingClientRect();
   return {
     x:      elRect.left - oRect.left + outerContainer.scrollLeft,
@@ -319,8 +328,9 @@ export default function WordArrowOverlay({
     setSvgHeight(outer.scrollHeight > outer.clientHeight ? outer.scrollHeight : outer.clientHeight);
     const newDrawn: DrawnArrow[] = [];
     for (const arrow of arrows) {
-      const fromR = getWordRect(arrow.fromWordId, container, outer);
-      const toR   = getWordRect(arrow.toWordId,   container, outer);
+      const preferHighlight = arrow.similarityGroupId != null;
+      const fromR = getWordRect(arrow.fromWordId, container, outer, preferHighlight);
+      const toR   = getWordRect(arrow.toWordId,   container, outer, preferHighlight);
       if (fromR && toR) {
         // For Hebrew arrows in the 3-column layout, find the source column's
         // right boundary so the gutter stays within the source area and doesn't
@@ -358,8 +368,9 @@ export default function WordArrowOverlay({
     svg.style.height = `${newHeight}px`;
 
     for (const arrow of arrowsRef.current) {
-      const fromR = getWordRect(arrow.fromWordId, container, outer);
-      const toR   = getWordRect(arrow.toWordId,   container, outer);
+      const preferHighlight = arrow.similarityGroupId != null;
+      const fromR = getWordRect(arrow.fromWordId, container, outer, preferHighlight);
+      const toR   = getWordRect(arrow.toWordId,   container, outer, preferHighlight);
       if (!fromR || !toR) continue;
 
       const fromBlockRight = isHebrew ? getSrcBlockRight(arrow.fromWordId, container, outer) : null;
