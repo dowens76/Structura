@@ -13,6 +13,7 @@ import RstRelationOverlay from "./RstRelationOverlay";
 import WordArrowOverlay from "./WordArrowOverlay";
 import LineGroupOverlay from "./LineGroupOverlay";
 import PoetryMarginOverlay from "./PoetryMarginOverlay";
+import RequirednessConnectorOverlay, { type RequirednessConnector } from "./RequirednessConnectorOverlay";
 import type { RstRelation, WordArrow, RstCustomType, LineGroup, PoetryNotation } from "@/lib/db/schema";
 import type { ArrowPatch } from "@/lib/hooks/useWordArrows";
 
@@ -63,6 +64,9 @@ export interface ChapterOverlaysProps {
   showAutoLineBrackets?: boolean;
   excludedLineIds?: Set<string>;
   onToggleLineBracketExclusion?: (segFirstWordId: string) => void;
+
+  // ── Requiredness connector overlay (arrow → resolved-phrase underline) ───────
+  poetryRequirednessConnectors: RequirednessConnector[];
 
   // ── Balance/Imbalance + Symmetry margin overlay ──────────────────────────────
   balanceMarks: PoetryNotation[];
@@ -130,6 +134,7 @@ export default function ChapterOverlays({
   showAutoLineBrackets = false,
   excludedLineIds,
   onToggleLineBracketExclusion,
+  poetryRequirednessConnectors,
   balanceMarks,
   symmetryMarks,
   editingPoetryNotation = false,
@@ -199,6 +204,12 @@ export default function ChapterOverlays({
         excludedLineIds={excludedLineIds}
         onToggleLineBracketExclusion={onToggleLineBracketExclusion}
         onRequiredSourcePad={onRequiredLineGroupPad}
+      />
+      <RequirednessConnectorOverlay
+        connectors={poetryRequirednessConnectors}
+        containerRef={containerRef}
+        layoutRef={layoutRef}
+        isHebrew={isHebrew}
       />
       <PoetryMarginOverlay
         balanceMarks={balanceMarks}

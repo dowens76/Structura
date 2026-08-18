@@ -289,6 +289,10 @@ interface VerseDisplayProps {
    *  same outline as a range-start word tag/speech selection, while awaiting
    *  the shift-click that completes the range). */
   closureRangeStart?: string | null;
+  /** The word currently anchoring Requiredness's resolved-range pick
+   *  (highlighted the same way, while awaiting an optional shift-click to
+   *  extend it into a phrase). */
+  requirednessResolvingStart?: string | null;
   /** Word-anchored poetry click from a TRANSLATION token — wordId is a
    *  `tv:ABBR:...` id, segFirstWordId is the SOURCE line (paragraph segment)
    *  the translation row belongs to. Balance/Symmetry no longer react to this
@@ -337,6 +341,9 @@ interface VerseDisplayProps {
   onSavePoetryNote?: (id: number, note: string | null) => void;
   onDeletePoetryMark?: (id: number) => void;
   onClosePoetryNote?: () => void;
+  /** Requiredness ("arrow") only — starts/cancels picking the mark's
+   *  resolved word/phrase, from the note popover's button. */
+  onSelectRequirednessResolving?: (mark: PoetryNotation) => void;
   /** Similarity only — the open mark's full current group (or just itself,
    *  ungrouped), keyed the same way as openPoetryNoteMarkByWord. Drives
    *  SimilarityNotePopover instead of the shared PoetryNotePopover. */
@@ -1500,6 +1507,7 @@ export default function VerseDisplay({
   editingPoetryNotation = false,
   closureRangeStart = null,
   requirednessRangeStart = null,
+  requirednessResolvingStart = null,
   onSelectPoetryWord,
   poetryWordMarkMap,
   poetryRequirednessUnderlineSet,
@@ -1521,6 +1529,7 @@ export default function VerseDisplay({
   onSavePoetryNote,
   onDeletePoetryMark,
   onClosePoetryNote,
+  onSelectRequirednessResolving,
   onAddWordToSimilarityGroup,
   onSaveSimilarityGroup,
   onDeleteSimilarityWord,
@@ -2474,7 +2483,7 @@ export default function VerseDisplay({
               characterMap={characterMap}
               editingRefs={editingRefs}
               editingSpeech={editingSpeech}
-              isRangeStart={word.wordId === speechRangeStartWordId || word.wordId === tagRangeStartWordId || word.wordId === wordCompareRangeStartWordId || word.wordId === closureRangeStart || word.wordId === requirednessRangeStart}
+              isRangeStart={word.wordId === speechRangeStartWordId || word.wordId === tagRangeStartWordId || word.wordId === wordCompareRangeStartWordId || word.wordId === closureRangeStart || word.wordId === requirednessRangeStart || word.wordId === requirednessResolvingStart}
               highlightCharIds={highlightCharIds}
               synopticMarkColor={synopticWordMarkColorMap?.get(word.wordId) ?? null}
               editingWordCompare={editingWordCompare}
@@ -2514,6 +2523,7 @@ export default function VerseDisplay({
               onSavePoetryNote={onSavePoetryNote}
               onDeletePoetryMark={onDeletePoetryMark}
               onClosePoetryNote={onClosePoetryNote}
+              onSelectRequirednessResolving={onSelectRequirednessResolving}
               onAddWordToSimilarityGroup={onAddWordToSimilarityGroup}
               onSaveSimilarityGroup={onSaveSimilarityGroup}
               onDeleteSimilarityWord={onDeleteSimilarityWord}
@@ -3468,7 +3478,7 @@ export default function VerseDisplay({
                         ? "cursor-crosshair rounded px-0.5 -mx-0.5 hover:bg-yellow-100 dark:hover:bg-yellow-900/40 transition-colors"
                         : undefined;
 
-                      const isTvRangeStart = wordId === tagRangeStartWordId || wordId === closureRangeStart || wordId === requirednessRangeStart;
+                      const isTvRangeStart = wordId === tagRangeStartWordId || wordId === closureRangeStart || wordId === requirednessRangeStart || wordId === requirednessResolvingStart;
 
                       const handleClick = editingPoetryNotation && !editingPoetrySimilarity
                         ? (e: React.MouseEvent) => { e.stopPropagation(); onSelectPoetryWord?.(wordId, seg[0].wordId, tvSegFirstWordId, e.shiftKey); }
@@ -3648,21 +3658,47 @@ export default function VerseDisplay({
                                 title={isAnchorMoveTarget ? "Click to place footnote anchor here" : undefined}
                               >
                                 {tvCoreContent}
-                                {tvPoetryContinuation && (
+                                {tvPoetryContinuation && tvPoetryRequiredness ? (
                                   <span
-                                    className="absolute left-1/2 -translate-x-1/2 top-full pointer-events-none select-none"
+                                    className="absolute left-1/2 -translate-x-1/2 top-full flex items-start gap-0.5 pointer-events-none select-none"
                                     aria-hidden
                                   >
-                                    <PoetryArrowIcon direction="down" color={POETRY_COLORS.continuation} />
+                                    {tvLanguage === "hebrew" ? (
+                                      <>
+                                        <span data-requiredness-arrow>
+                                          <PoetryArrowIcon direction="right" color={POETRY_COLORS.requiredness} />
+                                        </span>
+                                        <PoetryArrowIcon direction="down" color={POETRY_COLORS.continuation} />
+                                      </>
+                                    ) : (
+                                      <>
+                                        <PoetryArrowIcon direction="down" color={POETRY_COLORS.continuation} />
+                                        <span data-requiredness-arrow>
+                                          <PoetryArrowIcon direction="right" color={POETRY_COLORS.requiredness} />
+                                        </span>
+                                      </>
+                                    )}
                                   </span>
-                                )}
-                                {tvPoetryRequiredness && (
-                                  <span
-                                    className="absolute left-1/2 -translate-x-1/2 bottom-full pointer-events-none select-none"
-                                    aria-hidden
-                                  >
-                                    <PoetryArrowIcon direction="right" color={POETRY_COLORS.requiredness} />
-                                  </span>
+                                ) : (
+                                  <>
+                                    {tvPoetryContinuation && (
+                                      <span
+                                        className="absolute left-1/2 -translate-x-1/2 top-full pointer-events-none select-none"
+                                        aria-hidden
+                                      >
+                                        <PoetryArrowIcon direction="down" color={POETRY_COLORS.continuation} />
+                                      </span>
+                                    )}
+                                    {tvPoetryRequiredness && (
+                                      <span
+                                        className="absolute left-1/2 -translate-x-1/2 top-full pointer-events-none select-none"
+                                        aria-hidden
+                                        data-requiredness-arrow
+                                      >
+                                        <PoetryArrowIcon direction="right" color={POETRY_COLORS.requiredness} />
+                                      </span>
+                                    )}
+                                  </>
                                 )}
                                 {tvOpenPoetryNote && tvOpenPoetryNote.principle === "similarity" && onClosePoetryNote
                                   && onAddWordToSimilarityGroup && onSaveSimilarityGroup && onDeleteSimilarityWord ? (
@@ -3683,6 +3719,7 @@ export default function VerseDisplay({
                                     onSave={onSavePoetryNote}
                                     onDelete={onDeletePoetryMark}
                                     onClose={onClosePoetryNote}
+                                    onSelectResolvingPhrase={onSelectRequirednessResolving ? () => onSelectRequirednessResolving(tvOpenPoetryNote) : undefined}
                                   />
                                 )}
                               </span>

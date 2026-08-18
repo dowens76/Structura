@@ -9,7 +9,9 @@ export type PoetryPrinciple =
 export type BalanceSubtype = "balance" | "imbalance";
 export type ClosureSubtype = "weak" | "complete";
 export type ImbalanceDirection = "left" | "right";
-/** "arrow" (default/legacy, null subtype) = single-word gray → above the word;
+/** "arrow" (default/legacy, null subtype) = single-word gray → below the word
+ *  (optionally paired with a resolved word/phrase, connected by a dashed
+ *  leader line — see RequirednessConnectorOverlay);
  *  "underline" = arbitrary word range, gray underline (same range-picking UX as Closure — weak). */
 export type RequirednessSubtype = "arrow" | "underline";
 
@@ -24,6 +26,11 @@ export const POETRY_COLORS: Record<PoetryPrinciple | "imbalance", string> = {
   similarity:   "#FDE047", // yellow-300
   closure:      "#A855F7", // purple-500
 };
+
+/** Requiredness/Closure underline stroke thickness (text-decoration-thickness),
+ *  shared with RequirednessConnectorOverlay so its dashed leader-line stroke
+ *  (half this thickness) stays in sync with the underline it terminates at. */
+export const POETRY_UNDERLINE_THICKNESS_PX = 7.5;
 
 export const POETRY_PRINCIPLE_LABELS: Record<PoetryPrinciple, string> = {
   continuation: "Continuation",

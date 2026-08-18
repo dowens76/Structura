@@ -8,7 +8,7 @@ import { getPosKey, matchesColorRule, type ColorRule } from "@/lib/morphology/co
 import ParseTooltip from "./ParseTooltip";
 import hebrewLemmas from "@/lib/data/hebrew-lemmas.json";
 import type { PoetryNotation } from "@/lib/db/schema";
-import { POETRY_COLORS } from "@/lib/poetry/constants";
+import { POETRY_COLORS, POETRY_UNDERLINE_THICKNESS_PX } from "@/lib/poetry/constants";
 import { renderClickableGraphemes, renderGraphemesWithSimilarityHighlight } from "@/lib/poetry/graphemeRender";
 import PoetryNotePopover from "./PoetryNotePopover";
 import SimilarityNotePopover from "./SimilarityNotePopover";
@@ -92,6 +92,9 @@ interface WordTokenProps {
   onSavePoetryNote?: (id: number, note: string | null) => void;
   onDeletePoetryMark?: (id: number) => void;
   onClosePoetryNote?: () => void;
+  /** Requiredness ("arrow") only — starts/cancels picking the mark's
+   *  resolved word/phrase, from the note popover's button. */
+  onSelectRequirednessResolving?: (mark: PoetryNotation) => void;
   /** Similarity only — openPoetryNoteMark's full current group (or just
    *  itself, ungrouped). Presence of this alongside a similarity
    *  openPoetryNoteMark selects SimilarityNotePopover over PoetryNotePopover. */
@@ -540,6 +543,7 @@ export default function WordToken({
   onSavePoetryNote,
   onDeletePoetryMark,
   onClosePoetryNote,
+  onSelectRequirednessResolving,
   openPoetryNoteGroupMembers,
   openPoetryNoteHasMissingArrow,
   onAddWordToSimilarityGroup,
@@ -640,7 +644,6 @@ export default function WordToken({
   // with the glyphs) and renders both flush against each other with no gap, thinner than the
   // single-line baseline so the pair stays compact (Requiredness stacked directly above Closure). ──
   const bothPoetryUnderlinesActive = !!poetryClosureWeak && !!poetryRequirednessUnderline;
-  const POETRY_UNDERLINE_THICKNESS_PX = 7.5;
   const POETRY_UNDERLINE_BASE_OFFSET = "0.35em";
   const POETRY_DUAL_UNDERLINE_THICKNESS_PX = 4;
   const POETRY_DUAL_UNDERLINE_CLEARANCE_PX = isHebrew ? 4 : 2;
@@ -738,23 +741,57 @@ export default function WordToken({
       ? renderWithLargeLetters(core, word.largeLetters)
       : core;
 
+  // Requiredness renders BELOW the line, same as Continuation. When both
+  // marks land on the same word they'd otherwise overlap (both centered),
+  // so they sit side by side instead, vertically aligned (same top-full
+  // offset): Requiredness toward the "inside"/forward-reading direction —
+  // right of Continuation in LTR, left of Continuation in RTL — with the
+  // arrow itself tagged data-requiredness-arrow so
+  // RequirednessConnectorOverlay can anchor its dashed leader line to this
+  // exact glyph regardless of which layout branch rendered it.
   const poetryGlyphs = (
     <>
-      {poetryMarkContinuation && (
+      {poetryMarkContinuation && poetryMarkRequiredness ? (
         <span
-          className="absolute left-1/2 -translate-x-1/2 top-full pointer-events-none select-none"
+          className="absolute left-1/2 -translate-x-1/2 top-full flex items-start gap-0.5 pointer-events-none select-none"
           aria-hidden
         >
-          <PoetryArrowIcon direction="down" color={POETRY_COLORS.continuation} />
+          {isHebrew ? (
+            <>
+              <span data-requiredness-arrow>
+                <PoetryArrowIcon direction="right" color={POETRY_COLORS.requiredness} />
+              </span>
+              <PoetryArrowIcon direction="down" color={POETRY_COLORS.continuation} />
+            </>
+          ) : (
+            <>
+              <PoetryArrowIcon direction="down" color={POETRY_COLORS.continuation} />
+              <span data-requiredness-arrow>
+                <PoetryArrowIcon direction="right" color={POETRY_COLORS.requiredness} />
+              </span>
+            </>
+          )}
         </span>
-      )}
-      {poetryMarkRequiredness && (
-        <span
-          className="absolute left-1/2 -translate-x-1/2 bottom-full pointer-events-none select-none"
-          aria-hidden
-        >
-          <PoetryArrowIcon direction="right" color={POETRY_COLORS.requiredness} />
-        </span>
+      ) : (
+        <>
+          {poetryMarkContinuation && (
+            <span
+              className="absolute left-1/2 -translate-x-1/2 top-full pointer-events-none select-none"
+              aria-hidden
+            >
+              <PoetryArrowIcon direction="down" color={POETRY_COLORS.continuation} />
+            </span>
+          )}
+          {poetryMarkRequiredness && (
+            <span
+              className="absolute left-1/2 -translate-x-1/2 top-full pointer-events-none select-none"
+              aria-hidden
+              data-requiredness-arrow
+            >
+              <PoetryArrowIcon direction="right" color={POETRY_COLORS.requiredness} />
+            </span>
+          )}
+        </>
       )}
       {openPoetryNoteMark && openPoetryNoteMark.principle === "similarity" && onClosePoetryNote
         && onAddWordToSimilarityGroup && onSaveSimilarityGroup && onDeleteSimilarityWord ? (
@@ -775,6 +812,7 @@ export default function WordToken({
           onSave={onSavePoetryNote}
           onDelete={onDeletePoetryMark}
           onClose={onClosePoetryNote}
+          onSelectResolvingPhrase={onSelectRequirednessResolving ? () => onSelectRequirednessResolving(openPoetryNoteMark) : undefined}
         />
       )}
     </>

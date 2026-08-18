@@ -482,7 +482,7 @@ export const lineAnnotations = sqliteTable(
  * since every row shares the same versioning/CRUD shape; unused geometry
  * columns stay null for a given row:
  *   continuation                : startWordId only (word-anchored)
- *   requiredness                : subtype null|"arrow" (startWordId only, word-anchored) | "underline" (startWordId/endWordId = arbitrary word range, not segment-snapped, same as closure "weak")
+ *   requiredness                : subtype null|"arrow" (startWordId = the "requires" word; optionally resolvedStartWordId/resolvedEndWordId = the word/phrase that resolves it, arbitrary range not segment-snapped) | "underline" (startWordId/endWordId = arbitrary word range, not segment-snapped, same as closure "weak")
  *   balance                     : startWordId/endWordId = two paragraphFirstWordIds entries (bracket spans from the top of the earlier line to the bottom of the later one, "=" centered between); subtype "balance"|"imbalance"; direction "left"|"right" (imbalance only)
  *   symmetry                    : startWordId/endWordId = two paragraphFirstWordIds entries, in click order (upper/lower triangle)
  *   similarity                  : startWordId/startGraphemeIndex .. endWordId/endGraphemeIndex (letter range, may span adjacent words in one line); similarityGroupId optionally chains this mark to others anywhere in the chapter (see below)
@@ -503,6 +503,13 @@ export const poetryNotations = sqliteTable(
     endWordId:          text("end_word_id"),
     startGraphemeIndex: integer("start_grapheme_index"), // similarity only
     endGraphemeIndex:   integer("end_grapheme_index"),   // similarity only
+    /** Requiredness ("arrow" subtype) only — the word/phrase that resolves
+     *  what startWordId requires. An arbitrary word range (not segment-
+     *  snapped), same shape as endWordId's range use elsewhere; kept as its
+     *  own pair of columns rather than reusing endWordId so the "requires"
+     *  word (startWordId) and the "resolves" range stay unambiguous. */
+    resolvedStartWordId: text("resolved_start_word_id"),
+    resolvedEndWordId:   text("resolved_end_word_id"),
     /** Similarity only — chains this mark to others into one "Add word"
      *  group, anywhere in the chapter. A stable tag, not a live FK: set to
      *  the group's first member's own id when the group is created, and

@@ -55,6 +55,14 @@ export interface UsePoetryNotationsReturn {
   similarityStart: GraphemeAnchor | null;
   closureRangeStart: string | null;
   requirednessRangeStart: string | null;
+  /** id of the Requiredness ("arrow") mark currently awaiting a resolved
+   *  word/phrase pick — set by the note popover's "Select the word/phrase
+   *  that is required" button, consumed by handleRequirednessArrowClick. */
+  requirednessResolvingForId: number | null;
+  /** First click anchor within that pick (click again on the same word, or
+   *  shift-click a different word, to complete it — same range-picking UX
+   *  as Closure/Requiredness-underline). */
+  requirednessResolvingStart: string | null;
   /** Set by "Add word" in the Similarity note popover — the group id the
    *  NEXT word/letter-range the user picks (anywhere in the chapter) should
    *  be tagged with. Consumed and cleared by handleGraphemeClick. */
@@ -71,6 +79,16 @@ export interface UsePoetryNotationsReturn {
   handleClosureWordClick: (wordId: string, shiftHeld: boolean) => void;
   handleClosureLineClick: (segFirstWordId: string) => void;
   handleRequirednessWordClick: (wordId: string, shiftHeld: boolean) => void;
+  /** Requiredness ("arrow") — a plain click creates (or reopens) a single-
+   *  word mark immediately, same as Continuation. While a resolved-range
+   *  pick is pending (requirednessResolvingForId), clicks are routed to
+   *  that instead — see handleStartRequirednessResolving. */
+  handleRequirednessArrowClick: (wordId: string, shiftHeld: boolean) => void;
+  /** Starts (or, called again on the same mark, cancels) picking the
+   *  word/phrase that resolves `mark`'s requirement — triggered by the note
+   *  popover's "Select the word/phrase that is required" button. Closes the
+   *  popover so the text underneath is clickable. */
+  handleStartRequirednessResolving: (mark: PoetryNotation) => void;
   /** "Add word" — starts (or resumes) a Similarity group so the next word/
    *  letter-range the user picks gets tagged into it. Self-tags an
    *  ungrouped mark with its own id as the group id the first time it's
@@ -105,6 +123,9 @@ export function usePoetryNotations({
   const [closureRangeStart, setClosureRangeStart] = useState<string | null>(null);
   const [requirednessRangeStart, setRequirednessRangeStart] = useState<string | null>(null);
   const [addingToSimilarityGroupId, setAddingToSimilarityGroupId] = useState<number | null>(null);
+  // Requiredness ("arrow")'s resolved-range pick — see handleStartRequirednessResolving.
+  const [requirednessResolvingForId, setRequirednessResolvingForId] = useState<number | null>(null);
+  const [requirednessResolvingStart, setRequirednessResolvingStart] = useState<string | null>(null);
 
   function clearPending() {
     setSymmetryLineA(null);
@@ -113,6 +134,8 @@ export function usePoetryNotations({
     setClosureRangeStart(null);
     setRequirednessRangeStart(null);
     setAddingToSimilarityGroupId(null);
+    setRequirednessResolvingForId(null);
+    setRequirednessResolvingStart(null);
     setEditingNotationId(null);
   }
 
@@ -125,6 +148,8 @@ export function usePoetryNotations({
     startGraphemeIndex?: number | null;
     endGraphemeIndex?: number | null;
     similarityGroupId?: number | null;
+    resolvedStartWordId?: string | null;
+    resolvedEndWordId?: string | null;
   }) {
     const { textSource, book, chapter } = resolveWordSource(fields.startWordId);
     const tempId = -Date.now();
@@ -140,6 +165,8 @@ export function usePoetryNotations({
       startGraphemeIndex: fields.startGraphemeIndex ?? null,
       endGraphemeIndex: fields.endGraphemeIndex ?? null,
       similarityGroupId: fields.similarityGroupId ?? null,
+      resolvedStartWordId: fields.resolvedStartWordId ?? null,
+      resolvedEndWordId: fields.resolvedEndWordId ?? null,
       note: null,
       textSource,
       book,
@@ -174,6 +201,86 @@ export function usePoetryNotations({
       return;
     }
     createNotation({ principle: activePrinciple, startWordId: wordId });
+  }
+
+  // ── Requiredness ("arrow") — a plain click behaves exactly like
+  // Continuation's single-word anchor (create, or reopen for editing — any
+  // existing Requiredness mark on this word, EITHER subtype, so an old mark
+  // stays reachable/deletable no matter which of the arrow/underline
+  // toolbar buttons happens to be selected). The resolved-range pick is a
+  // SEPARATE, explicitly-entered mode (requirednessResolvingForId, started
+  // from the note popover's button below) — routed here first so it takes
+  // priority whenever it's active, but it never blocks a plain click when
+  // it isn't.
+  function handleRequirednessArrowClick(wordId: string, shiftHeld: boolean) {
+    if (requirednessResolvingForId !== null) {
+      handleRequirednessResolveClick(wordId, shiftHeld);
+      return;
+    }
+    const existing = findCoveringRequirednessMark(wordId);
+    if (existing) {
+      setEditingNotationId(existing.id);
+      return;
+    }
+    createNotation({ principle: "requiredness", startWordId: wordId });
+  }
+
+  /** See UsePoetryNotationsReturn's doc comment. */
+  function handleStartRequirednessResolving(mark: PoetryNotation) {
+    setRequirednessResolvingStart(null);
+    setRequirednessResolvingForId((prev) => (prev === mark.id ? null : mark.id));
+    // Close the popover so it doesn't sit on top of the word(s) being picked
+    // (it renders directly below its anchor word, which is often exactly
+    // where the resolved phrase is).
+    setEditingNotationId(null);
+  }
+
+  // Click-then-shift-click range picking for the resolved word/phrase, same
+  // UX as Closure/Requiredness-underline: a plain click (re)anchors the
+  // start, clicking the same word again or shift-clicking a different word
+  // completes it. Reopens the popover on completion so the user sees the
+  // result and can still edit/save the note.
+  function handleRequirednessResolveClick(wordId: string, shiftHeld: boolean) {
+    const markId = requirednessResolvingForId;
+    if (markId === null) return;
+    if (!requirednessResolvingStart) {
+      setRequirednessResolvingStart(wordId);
+      return;
+    }
+    function finish(resolvedStartWordId: string, resolvedEndWordId: string) {
+      setRequirednessResolvingForId(null);
+      setRequirednessResolvingStart(null);
+      handleSetRequirednessResolvedRange(markId!, resolvedStartWordId, resolvedEndWordId);
+    }
+    if (wordId === requirednessResolvingStart) {
+      finish(wordId, wordId);
+      return;
+    }
+    if (!shiftHeld) {
+      setRequirednessResolvingStart(wordId);
+      return;
+    }
+    const startPos = wordIndexMap.get(requirednessResolvingStart);
+    const endPos = wordIndexMap.get(wordId);
+    const [resolvedStartWordId, resolvedEndWordId] =
+      startPos !== undefined && endPos !== undefined && startPos > endPos
+        ? [wordId, requirednessResolvingStart]
+        : [requirednessResolvingStart, wordId];
+    finish(resolvedStartWordId, resolvedEndWordId);
+  }
+
+  async function handleSetRequirednessResolvedRange(id: number, resolvedStartWordId: string, resolvedEndWordId: string) {
+    setPoetryNotations((prev) => prev.map((n) => (n.id === id ? { ...n, resolvedStartWordId, resolvedEndWordId } : n)));
+    setEditingNotationId(id);
+    try {
+      await fetch("/api/poetry-notations", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, resolvedStartWordId, resolvedEndWordId }),
+      });
+    } catch {
+      // non-critical
+    }
   }
 
   // ── Balance/Imbalance — two-line, mirrors Symmetry's click-order-preserved
@@ -356,20 +463,42 @@ export function usePoetryNotations({
     createNotation({ principle: "closure", subtype: "weak", startWordId, endWordId });
   }
 
-  // ── Requiredness (underline) — arbitrary word range, chapter-ordered ───────
-  // Same range-picking UX as Closure (weak): first click anchors the pending
-  // start, a plain click re-anchors it, a SHIFT-click completes the range.
-  function handleRequirednessWordClick(wordId: string, shiftHeld: boolean) {
-    if (!requirednessRangeStart) {
-      const covering = poetryNotations.find((n) => {
-        if (n.principle !== "requiredness" || n.subtype !== "underline" || !n.endWordId) return false;
+  // Finds a Requiredness mark (either subtype) covering wordId — "underline"
+  // via its startWordId/endWordId range, "arrow" via its single startWordId
+  // or (once set) its resolvedStartWordId/resolvedEndWordId range. Shared by
+  // both click handlers below so a click always reaches an existing mark
+  // for editing/deleting regardless of which subtype the toolbar happens to
+  // have selected — the toolbar's arrow/underline toggle only decides what
+  // a click on BARE text creates, never which existing marks are reachable.
+  function findCoveringRequirednessMark(wordId: string): PoetryNotation | undefined {
+    return poetryNotations.find((n) => {
+      if (n.principle !== "requiredness") return false;
+      if (n.subtype === "underline") {
+        if (!n.endWordId) return false;
         if (n.startWordId === wordId || n.endWordId === wordId) return true;
         const lo = wordIndexMap.get(n.startWordId);
         const hi = wordIndexMap.get(n.endWordId);
         const pos = wordIndexMap.get(wordId);
         if (lo === undefined || hi === undefined || pos === undefined) return false;
         return pos >= Math.min(lo, hi) && pos <= Math.max(lo, hi);
-      });
+      }
+      if (n.startWordId === wordId) return true;
+      if (!n.resolvedStartWordId || !n.resolvedEndWordId) return false;
+      if (n.resolvedStartWordId === wordId || n.resolvedEndWordId === wordId) return true;
+      const lo = wordIndexMap.get(n.resolvedStartWordId);
+      const hi = wordIndexMap.get(n.resolvedEndWordId);
+      const pos = wordIndexMap.get(wordId);
+      if (lo === undefined || hi === undefined || pos === undefined) return false;
+      return pos >= Math.min(lo, hi) && pos <= Math.max(lo, hi);
+    });
+  }
+
+  // ── Requiredness (underline) — arbitrary word range, chapter-ordered ───────
+  // Same range-picking UX as Closure (weak): first click anchors the pending
+  // start, a plain click re-anchors it, a SHIFT-click completes the range.
+  function handleRequirednessWordClick(wordId: string, shiftHeld: boolean) {
+    if (!requirednessRangeStart) {
+      const covering = findCoveringRequirednessMark(wordId);
       if (covering) {
         setEditingNotationId(covering.id);
         return;
@@ -483,9 +612,13 @@ export function usePoetryNotations({
     similarityStart,
     closureRangeStart,
     requirednessRangeStart,
+    requirednessResolvingForId,
+    requirednessResolvingStart,
     addingToSimilarityGroupId,
     clearPending,
     handleWordClick,
+    handleRequirednessArrowClick,
+    handleStartRequirednessResolving,
     handleLineClick,
     handleSymmetryLineClick,
     handleGraphemeClick,

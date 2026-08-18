@@ -13,20 +13,36 @@ export default function PoetryNotePopover({
   onSave,
   onDelete,
   onClose,
+  onSelectResolvingPhrase,
 }: {
   mark: PoetryNotation;
   color: string;
   onSave: (id: number, note: string | null) => void;
   onDelete: (id: number) => void;
   onClose: () => void;
+  /** Requiredness ("arrow" subtype) only — starts (or, called again,
+   *  cancels) picking the word/phrase that resolves this mark's
+   *  requirement. Omitted for every other principle. */
+  onSelectResolvingPhrase?: () => void;
 }) {
   const [draft, setDraft] = useState(mark.note ?? "");
+  const isRequirednessArrow = mark.principle === "requiredness" && mark.subtype !== "underline";
+  const hasResolvedRange = !!(mark.resolvedStartWordId && mark.resolvedEndWordId);
   return (
     <span
       className="absolute z-30 top-full left-1/2 -translate-x-1/2 mt-1 w-48 rounded border bg-white dark:bg-stone-900 shadow-lg p-2 flex flex-col gap-1.5 not-italic font-normal text-left"
       style={{ borderColor: color }}
       onClick={(e) => e.stopPropagation()}
     >
+      {isRequirednessArrow && onSelectResolvingPhrase && (
+        <button
+          className="text-[10px] font-semibold leading-tight hover:underline text-left"
+          style={{ color }}
+          onClick={onSelectResolvingPhrase}
+        >
+          {hasResolvedRange ? "↺ Change required word/phrase" : "Select required word/phrase"}
+        </button>
+      )}
       <textarea
         className="w-full text-xs rounded border border-stone-300 dark:border-stone-600 bg-transparent p-1 resize-none"
         rows={2}

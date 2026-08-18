@@ -2303,6 +2303,8 @@ export async function createPoetryNotation(fields: {
   startGraphemeIndex?: number | null;
   endGraphemeIndex?: number | null;
   similarityGroupId?: number | null;
+  resolvedStartWordId?: string | null;
+  resolvedEndWordId?: string | null;
   note?: string | null;
   textSource: string;
   book: string;
@@ -2321,6 +2323,8 @@ export async function createPoetryNotation(fields: {
       startGraphemeIndex: fields.startGraphemeIndex ?? null,
       endGraphemeIndex: fields.endGraphemeIndex ?? null,
       similarityGroupId: fields.similarityGroupId ?? null,
+      resolvedStartWordId: fields.resolvedStartWordId ?? null,
+      resolvedEndWordId: fields.resolvedEndWordId ?? null,
       note: fields.note ?? null,
       textSource: fields.textSource,
       book: fields.book,
@@ -2335,7 +2339,7 @@ export async function createPoetryNotation(fields: {
 /** Update fields of an existing poetry notation mark (note, direction, its anchor range, or its Similarity group tag). */
 export async function updatePoetryNotation(
   id: number,
-  updates: Partial<Pick<PoetryNotation, "note" | "direction" | "startWordId" | "endWordId" | "startGraphemeIndex" | "endGraphemeIndex" | "similarityGroupId">>
+  updates: Partial<Pick<PoetryNotation, "note" | "direction" | "startWordId" | "endWordId" | "startGraphemeIndex" | "endGraphemeIndex" | "similarityGroupId" | "resolvedStartWordId" | "resolvedEndWordId">>
 ): Promise<PoetryNotation> {
   const [row] = await userDb
     .update(poetryNotations)

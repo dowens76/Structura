@@ -1133,9 +1133,13 @@ export default function ChapterDisplay({
     similarityStart,
     closureRangeStart,
     requirednessRangeStart,
+    requirednessResolvingForId,
+    requirednessResolvingStart,
     addingToSimilarityGroupId,
     clearPending: clearPoetryPending,
     handleWordClick: handlePoetryWordClick,
+    handleRequirednessArrowClick,
+    handleStartRequirednessResolving,
     handleLineClick: handlePoetryLineClick,
     handleSymmetryLineClick,
     handleGraphemeClick,
@@ -1216,13 +1220,21 @@ export default function ChapterDisplay({
    *  word, shift-click the last — a plain click re-anchors the pending
    *  start instead, same as Similarity's grapheme-range picking. */
   function handlePoetryWordSelectByIds(wordId: string, segFirstWordId: string, tvSegFirstWordId?: string, shiftHeld = false) {
+    // Requiredness's resolved-range pick (started from the note popover's
+    // button) takes priority over whatever principle/subtype happens to be
+    // selected in the toolbar — the user entered this mode explicitly and
+    // shouldn't need to also have "Requiredness" highlighted for it to work.
+    if (requirednessResolvingForId !== null) {
+      handleRequirednessArrowClick(wordId, shiftHeld);
+      return;
+    }
     switch (activePrinciple) {
       case "continuation":
         handlePoetryWordClick(wordId);
         return;
       case "requiredness":
         if (activeRequirednessSubtype === "underline") handleRequirednessWordClick(wordId, shiftHeld);
-        else handlePoetryWordClick(wordId);
+        else handleRequirednessArrowClick(wordId, shiftHeld);
         return;
       case "balance":
       case "symmetry":
@@ -1247,6 +1259,7 @@ export default function ChapterDisplay({
     poetryWordMarkMap,
     poetryRequirednessUnderlineSet,
     poetryRequirednessUnderlineRangesByAbbr,
+    poetryRequirednessConnectors,
     poetryClosureWeakSet,
     segLastWordId,
     poetryClosureCompleteSet,
@@ -5363,6 +5376,7 @@ export default function ChapterDisplay({
             showAutoLineBrackets={showPoetryLineBrackets}
             excludedLineIds={excludedLineIds}
             onToggleLineBracketExclusion={editingPoetryNotation ? handleToggleLineBracketExclusion : undefined}
+            poetryRequirednessConnectors={poetryRequirednessConnectors}
             balanceMarks={balanceMarks}
             symmetryMarks={symmetryMarks}
             editingPoetryNotation={editingPoetryNotation}
@@ -7009,6 +7023,7 @@ export default function ChapterDisplay({
                 editingPoetryNotation={editingPoetryNotation}
                 closureRangeStart={closureRangeStart}
                 requirednessRangeStart={requirednessRangeStart}
+                requirednessResolvingStart={requirednessResolvingStart}
                 onSelectPoetryWord={handlePoetryWordSelectByIds}
                 poetryWordMarkMap={poetryWordMarkMap}
                 poetryRequirednessUnderlineSet={poetryRequirednessUnderlineSet}
@@ -7030,6 +7045,7 @@ export default function ChapterDisplay({
                 onSavePoetryNote={handleUpdatePoetryNote}
                 onDeletePoetryMark={handleDeletePoetryNotation}
                 onClosePoetryNote={() => setEditingNotationId(null)}
+                onSelectRequirednessResolving={handleStartRequirednessResolving}
                 onAddWordToSimilarityGroup={handleStartAddWordToGroup}
                 onSaveSimilarityGroup={handleSaveSimilarityGroup}
                 onDeleteSimilarityWord={handleDeleteSimilarityWord}

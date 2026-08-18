@@ -15,6 +15,13 @@ export interface PoetryDisplayMaps {
   poetryWordMarkMap: Map<string, { continuation?: PoetryNotation; requiredness?: PoetryNotation }>;
   poetryRequirednessUnderlineSet: Set<string>;
   poetryRequirednessUnderlineRangesByAbbr: Map<string, { book: string; chapter: number; loKey: number; hiKey: number }[]>;
+  /** Requiredness ("arrow" subtype) marks that have a resolved word/phrase
+   *  set — one dashed connector per entry, drawn by
+   *  RequirednessConnectorOverlay from the requires-word's arrow glyph to
+   *  the near edge of the resolved range's (gray, requiredness-colored)
+   *  underline, which poetryRequirednessUnderlineSet/RangesByAbbr already
+   *  include these marks' resolved range in. */
+  poetryRequirednessConnectors: { id: number; requiresWordId: string; resolvedStartWordId: string; resolvedEndWordId: string }[];
   poetryClosureWeakSet: Set<string>;
   segLastWordId: Map<string, string>;
   poetryClosureCompleteSet: Set<string>;
@@ -59,30 +66,29 @@ export function derivePoetryDisplayMaps(
     poetryWordMarkMap.set(n.startWordId, entry);
   }
 
-  // Words covered by a "requiredness — underline" range (inclusive, chapter-wide order).
+  // Words covered by a "requiredness — underline" range (inclusive, chapter-wide
+  // order), OR by an "arrow" mark's resolved word/phrase range — both render
+  // the same solid gray underline, so they share one derivation.
   const poetryRequirednessUnderlineSet = new Set<string>();
-  for (const n of poetryNotations) {
-    if (n.principle !== "requiredness" || n.subtype !== "underline" || !n.endWordId) continue;
-    if (n.startWordId === n.endWordId) { poetryRequirednessUnderlineSet.add(n.startWordId); continue; }
-    const lo = wordIndexMap.get(n.startWordId);
-    const hi = wordIndexMap.get(n.endWordId);
-    if (lo === undefined || hi === undefined) {
-      poetryRequirednessUnderlineSet.add(n.startWordId);
-      poetryRequirednessUnderlineSet.add(n.endWordId);
-      continue;
-    }
-    const [from, to] = lo <= hi ? [lo, hi] : [hi, lo];
-    for (let i = from; i <= to; i++) { const w = words[i]; if (w) poetryRequirednessUnderlineSet.add(w.wordId); }
-  }
-
-  // Requiredness-underline ranges anchored on TRANSLATION text, grouped by translation abbreviation.
   const poetryRequirednessUnderlineRangesByAbbr = new Map<string, { book: string; chapter: number; loKey: number; hiKey: number }[]>();
-  for (const n of poetryNotations) {
-    if (n.principle !== "requiredness" || n.subtype !== "underline" || !n.endWordId) continue;
-    const start = parseTvWordId(n.startWordId);
-    const end = parseTvWordId(n.endWordId);
-    if (!start || !end) continue;
-    if (start.abbr !== end.abbr || start.book !== end.book || start.chapter !== end.chapter) continue;
+  function addRequirednessUnderlineRange(startWordId: string, endWordId: string) {
+    if (startWordId === endWordId) { poetryRequirednessUnderlineSet.add(startWordId); }
+    else {
+      const lo = wordIndexMap.get(startWordId);
+      const hi = wordIndexMap.get(endWordId);
+      if (lo === undefined || hi === undefined) {
+        poetryRequirednessUnderlineSet.add(startWordId);
+        poetryRequirednessUnderlineSet.add(endWordId);
+      } else {
+        const [from, to] = lo <= hi ? [lo, hi] : [hi, lo];
+        for (let i = from; i <= to; i++) { const w = words[i]; if (w) poetryRequirednessUnderlineSet.add(w.wordId); }
+      }
+    }
+
+    const start = parseTvWordId(startWordId);
+    const end = parseTvWordId(endWordId);
+    if (!start || !end) return;
+    if (start.abbr !== end.abbr || start.book !== end.book || start.chapter !== end.chapter) return;
     const key = (v: number, wi: number) => v * 100000 + wi;
     const a = key(start.verse, start.wi);
     const b = key(end.verse, end.wi);
@@ -90,6 +96,21 @@ export function derivePoetryDisplayMaps(
     const arr = poetryRequirednessUnderlineRangesByAbbr.get(start.abbr) ?? [];
     arr.push({ book: start.book, chapter: start.chapter, loKey, hiKey });
     poetryRequirednessUnderlineRangesByAbbr.set(start.abbr, arr);
+  }
+  for (const n of poetryNotations) {
+    if (n.principle !== "requiredness") continue;
+    if (n.subtype === "underline" && n.endWordId) addRequirednessUnderlineRange(n.startWordId, n.endWordId);
+    else if (n.resolvedStartWordId && n.resolvedEndWordId) addRequirednessUnderlineRange(n.resolvedStartWordId, n.resolvedEndWordId);
+  }
+
+  // Requiredness ("arrow") marks with a resolved range — one dashed connector
+  // per entry, see the PoetryDisplayMaps field doc above.
+  const poetryRequirednessConnectors: { id: number; requiresWordId: string; resolvedStartWordId: string; resolvedEndWordId: string }[] = [];
+  for (const n of poetryNotations) {
+    if (n.principle !== "requiredness" || n.subtype === "underline") continue;
+    if (n.resolvedStartWordId && n.resolvedEndWordId) {
+      poetryRequirednessConnectors.push({ id: n.id, requiresWordId: n.startWordId, resolvedStartWordId: n.resolvedStartWordId, resolvedEndWordId: n.resolvedEndWordId });
+    }
   }
 
   // Words covered by a "closure — weak" range (inclusive, chapter-wide order).
@@ -214,6 +235,7 @@ export function derivePoetryDisplayMaps(
     poetryWordMarkMap,
     poetryRequirednessUnderlineSet,
     poetryRequirednessUnderlineRangesByAbbr,
+    poetryRequirednessConnectors,
     poetryClosureWeakSet,
     segLastWordId,
     poetryClosureCompleteSet,

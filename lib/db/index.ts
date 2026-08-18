@@ -682,6 +682,8 @@ function _migrateUserDbInner(sqlite: Database.Database): void {
       start_grapheme_index  INTEGER,
       end_grapheme_index    INTEGER,
       similarity_group_id   INTEGER,
+      resolved_start_word_id TEXT,
+      resolved_end_word_id   TEXT,
       note                  TEXT,
       text_source           TEXT    NOT NULL,
       book                  TEXT    NOT NULL,
@@ -707,6 +709,9 @@ function _migrateUserDbInner(sqlite: Database.Database): void {
   const pnCols = (sqlite.prepare("PRAGMA table_info(poetry_notations)").all() as { name: string }[]).map(r => r.name);
   if (!pnCols.includes("similarity_group_id")) try { sqlite.exec("ALTER TABLE poetry_notations ADD COLUMN similarity_group_id INTEGER"); } catch { /* already exists */ }
   try { sqlite.exec("CREATE INDEX IF NOT EXISTS pn_similarity_group_idx ON poetry_notations(similarity_group_id)"); } catch { /* already exists */ }
+  // Requiredness ("arrow" subtype)'s resolved word/phrase — see user-schema.ts's doc comment.
+  if (!pnCols.includes("resolved_start_word_id")) try { sqlite.exec("ALTER TABLE poetry_notations ADD COLUMN resolved_start_word_id TEXT"); } catch { /* already exists */ }
+  if (!pnCols.includes("resolved_end_word_id"))   try { sqlite.exec("ALTER TABLE poetry_notations ADD COLUMN resolved_end_word_id TEXT"); } catch { /* already exists */ }
 
   sqlite.exec(`
     CREATE TABLE IF NOT EXISTS app_settings (

@@ -13,6 +13,7 @@ import WordArrowOverlay from "@/components/text/WordArrowOverlay";
 import RstRelationOverlay from "@/components/text/RstRelationOverlay";
 import LineGroupOverlay from "@/components/text/LineGroupOverlay";
 import PoetryMarginOverlay from "@/components/text/PoetryMarginOverlay";
+import RequirednessConnectorOverlay from "@/components/text/RequirednessConnectorOverlay";
 import { computePoetryAnchorLayout, computePoetrySpacingMap, POETRY_STACK_STEP_PX, POETRY_STACK_BASE_PX } from "@/lib/poetry/computePoetryAnchorLayout";
 import { buildLineGroupTree } from "@/lib/lineGroups/buildLineGroupTree";
 import { computeLineSpacing } from "@/lib/lineGroups/computeLineSpacing";
@@ -200,6 +201,7 @@ export default function ExportTextView({
     poetryWordMarkMap,
     poetryRequirednessUnderlineSet,
     poetryRequirednessUnderlineRangesByAbbr,
+    poetryRequirednessConnectors,
     poetryClosureWeakSet,
     poetryClosureCompleteSet,
     poetryClosureWeakRangesByAbbr,
@@ -372,6 +374,11 @@ export default function ExportTextView({
           onSelectSegment={noop}
           onSelectGroup={noop}
           onDeleteGroup={noop}
+        />
+        <RequirednessConnectorOverlay
+          connectors={poetryRequirednessConnectors}
+          containerRef={containerRef}
+          isHebrew={isHebrew}
         />
         <PoetryMarginOverlay
           balanceMarks={balanceMarks}
