@@ -92,8 +92,14 @@ export interface UsePoetryNotationsReturn {
   /** "Add word" — starts (or resumes) a Similarity group so the next word/
    *  letter-range the user picks gets tagged into it. Self-tags an
    *  ungrouped mark with its own id as the group id the first time it's
-   *  called on it. */
+   *  called on it. Closes the popover (same reasoning as
+   *  handleStartRequirednessResolving) so the word being picked is visible
+   *  and clickable, and the caller is expected to show a "click a word"
+   *  status chip while addingToSimilarityGroupId is set. */
   handleStartAddWordToGroup: (mark: PoetryNotation) => void;
+  /** Cancels a pending "Add word" pick without tagging anything — used by
+   *  the "click a word to add · Cancel" status chip. */
+  handleCancelAddWordToGroup: () => void;
 
   handleUpdateNote: (id: number, note: string | null) => Promise<void>;
   /** Writes the same note to every id in a Similarity group at once. */
@@ -400,6 +406,9 @@ export function usePoetryNotations({
 
   /** "Add word" — see UsePoetryNotationsReturn's doc comment. */
   function handleStartAddWordToGroup(mark: PoetryNotation) {
+    // Close the popover so it doesn't sit on top of the word(s) being picked
+    // — same reasoning as handleStartRequirednessResolving.
+    setEditingNotationId(null);
     if (mark.similarityGroupId != null) {
       setAddingToSimilarityGroupId(mark.similarityGroupId);
       return;
@@ -412,6 +421,11 @@ export function usePoetryNotations({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id: mark.id, similarityGroupId: groupId }),
     }).catch(() => { /* non-critical */ });
+  }
+
+  /** Cancels a pending "Add word" pick — see UsePoetryNotationsReturn's doc comment. */
+  function handleCancelAddWordToGroup() {
+    setAddingToSimilarityGroupId(null);
   }
 
   // ── Closure (weak) — arbitrary word range, chapter-ordered ─────────────────
@@ -626,6 +640,7 @@ export function usePoetryNotations({
     handleClosureLineClick,
     handleRequirednessWordClick,
     handleStartAddWordToGroup,
+    handleCancelAddWordToGroup,
     handleUpdateNote,
     handleSaveSimilarityNote,
     handleUngroupMark,

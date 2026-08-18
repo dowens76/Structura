@@ -1147,6 +1147,7 @@ export default function ChapterDisplay({
     handleClosureLineClick,
     handleRequirednessWordClick,
     handleStartAddWordToGroup,
+    handleCancelAddWordToGroup,
     handleUpdateNote: handleUpdatePoetryNote,
     handleSaveSimilarityNote,
     handleUngroupMark,
@@ -5981,6 +5982,15 @@ export default function ChapterDisplay({
                     </Fragment>
                   ))}
                 </div>
+              )}
+              {editingPoetryNotation && addingToSimilarityGroupId !== null && (
+                <button
+                  type="button"
+                  onClick={handleCancelAddWordToGroup}
+                  className="px-2.5 py-1.5 rounded text-[11px] font-medium transition-colors bg-sky-100 dark:bg-sky-900/40 text-sky-600 dark:text-sky-400 ring-1 ring-sky-400 animate-pulse"
+                >
+                  Click a word to add to the group · Cancel
+                </button>
               )}
 
               {/* Word arrow mode */}
