@@ -210,14 +210,20 @@ export function usePoetryNotations({
   // `wordId` is either a source Word.wordId or a `tv:ABBR:...` translation-
   // token id; `segFirstWordId` (always a source line id) is supplied by the
   // caller for both cases, since translation words don't resolve through
-  // wordToParaStart themselves.
+  // wordToParaStart themselves. Same click model as Text Color: a plain click
+  // marks the WHOLE word (regardless of which letter it landed on), a
+  // shift-click anchors a specific letter, and a second shift-click commits
+  // the range between the two anchors — spanning as many letters as needed.
   function handleGraphemeClick(wordId: string, graphemeIndex: number, shiftHeld: boolean, segFirstWordId: string) {
-    if (!similarityStart) {
-      setSimilarityStart({ wordId, graphemeIndex, segFirstWordId });
+    if (!shiftHeld) {
+      setSimilarityStart(null);
+      // 9999 is this codebase's existing sentinel for "through the end of
+      // the word" (see derivePoetryDisplayMaps.ts's cross-word span handling)
+      // — rendering/lookup code already clamps it to the word's real length.
+      createNotation({ principle: "similarity", startWordId: wordId, endWordId: wordId, startGraphemeIndex: 0, endGraphemeIndex: 9999 });
       return;
     }
-    if (!shiftHeld) {
-      // Plain click while a start is pending restarts the selection.
+    if (!similarityStart) {
       setSimilarityStart({ wordId, graphemeIndex, segFirstWordId });
       return;
     }
