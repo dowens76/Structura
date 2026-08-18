@@ -68,6 +68,13 @@ export default function CreateVersionDialog({ chapters, existingVersions, onClos
 
   const paragraphBreaksRequired = FEATURES_REQUIRING_PARAGRAPH_BREAKS.some((k) => checkedFeatures.has(k));
 
+  function selectAllFeatures() {
+    setCheckedFeatures(new Set(VERSIONABLE_FEATURE_LABELS.map((f) => f.key)));
+  }
+  function selectNoFeatures() {
+    setCheckedFeatures(new Set());
+  }
+
   async function handleCreate() {
     if (submitting) return;
     setSubmitting(true);
@@ -129,9 +136,30 @@ export default function CreateVersionDialog({ chapters, existingVersions, onClos
 
           {existingVersions.length > 0 && (
             <div className="space-y-2">
-              <label className="block text-xs font-medium" style={{ color: "var(--text-muted)" }}>
-                Copy markup from an existing version
-              </label>
+              <div className="flex items-center justify-between gap-2">
+                <label className="block text-xs font-medium" style={{ color: "var(--text-muted)" }}>
+                  Copy markup from an existing version
+                </label>
+                <span className="flex items-center gap-1.5 shrink-0">
+                  <button
+                    type="button"
+                    onClick={selectAllFeatures}
+                    className="text-xs underline-offset-2 hover:underline"
+                    style={{ color: "var(--text-muted)" }}
+                  >
+                    All
+                  </button>
+                  <span className="text-xs" style={{ color: "var(--text-muted)" }}>/</span>
+                  <button
+                    type="button"
+                    onClick={selectNoFeatures}
+                    className="text-xs underline-offset-2 hover:underline"
+                    style={{ color: "var(--text-muted)" }}
+                  >
+                    None
+                  </button>
+                </span>
+              </div>
               {existingVersions.length > 1 && (
                 <select
                   value={sourceVersionId ?? ""}

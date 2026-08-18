@@ -133,6 +133,13 @@ function VersionRowEditor({
 
   const paragraphBreaksRequired = FEATURES_REQUIRING_PARAGRAPH_BREAKS.some((k) => checkedFeatures.has(k));
 
+  function selectAllFeatures() {
+    setCheckedFeatures(new Set(VERSIONABLE_FEATURE_LABELS.map((f) => f.key)));
+  }
+  function selectNoFeatures() {
+    setCheckedFeatures(new Set());
+  }
+
   async function handleApplyCopy() {
     if (!copyFromId || checkedFeatures.size === 0 || copying) return;
     setCopying(true);
@@ -241,6 +248,25 @@ function VersionRowEditor({
               <option key={v.id} value={v.id}>{v.name}</option>
             ))}
           </select>
+          <div className="flex items-center justify-end gap-1.5">
+            <button
+              type="button"
+              onClick={selectAllFeatures}
+              className="text-xs underline-offset-2 hover:underline"
+              style={{ color: "var(--text-muted)" }}
+            >
+              All
+            </button>
+            <span className="text-xs" style={{ color: "var(--text-muted)" }}>/</span>
+            <button
+              type="button"
+              onClick={selectNoFeatures}
+              className="text-xs underline-offset-2 hover:underline"
+              style={{ color: "var(--text-muted)" }}
+            >
+              None
+            </button>
+          </div>
           <div className="space-y-1">
             {VERSIONABLE_FEATURE_LABELS.map(({ key, label }) => {
               const forced = key === "paragraphBreaks" && paragraphBreaksRequired;
