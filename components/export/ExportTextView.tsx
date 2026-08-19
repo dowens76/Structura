@@ -34,7 +34,10 @@ interface Props {
   wordTags: WordTag[];
   wordTagRefs: WordTagRef[];
   lineIndents: { wordId: string; indentLevel: number }[];
-  wordFormatting: { wordId: string; isBold: boolean; isItalic: boolean; textColor: string | null; letterColors: Record<number, string> | null }[];
+  wordFormatting: {
+    wordId: string; isBold: boolean; isItalic: boolean; isUnderline: boolean; textColor: string | null;
+    letterColors: Record<number, string> | null; letterBold: number[] | null; letterItalic: number[] | null; letterUnderline: number[] | null;
+  }[];
   sceneBreaks: { wordId: string; heading: string | null; level: number; verse: number; outOfSequence: boolean }[];
   availableTranslations: Translation[];
   translationVerseData: Record<number, TranslationVerse[]>;
@@ -187,7 +190,10 @@ export default function ExportTextView({
   }, [words, paragraphBreakIds]);
 
   const wordFormattingMap = useMemo(
-    () => new Map(wordFormatting.map((f) => [f.wordId, { isBold: f.isBold, isItalic: f.isItalic, textColor: f.textColor, letterColors: f.letterColors }])),
+    () => new Map(wordFormatting.map((f) => [f.wordId, {
+      isBold: f.isBold, isItalic: f.isItalic, isUnderline: f.isUnderline, textColor: f.textColor,
+      letterColors: f.letterColors, letterBold: f.letterBold, letterItalic: f.letterItalic, letterUnderline: f.letterUnderline,
+    }])),
     [wordFormatting]
   );
 

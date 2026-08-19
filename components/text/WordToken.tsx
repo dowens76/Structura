@@ -40,8 +40,8 @@ interface WordTokenProps {
   wordTagMap?: Map<number, WordTag>;
   editingWordTags?: boolean;
   highlightWordTagIds?: Set<number>;
-  // Bold / italic / color formatting
-  wordFormatting?: { isBold: boolean; isItalic: boolean; textColor: string | null } | null;
+  // Bold / italic / underline / color formatting
+  wordFormatting?: { isBold: boolean; isItalic: boolean; isUnderline: boolean; textColor: string | null } | null;
   editingFormatting?: boolean;
   // Text critical markup overline
   tcMark?: string | null;
@@ -605,10 +605,11 @@ export default function WordToken({
   // (Character highlight and word-tag ring are rendered by VerseDisplay's
   // group-wrapper approach so adjacent same-tagged words form a continuous box.)
 
-  // ── Bold / italic / color formatting ────────────────────────────────────────
+  // ── Bold / italic / underline / color formatting ────────────────────────────
   const formattingStyle: React.CSSProperties = {
     fontWeight: wordFormatting?.isBold ? "bold" : undefined,
     fontStyle:  wordFormatting?.isItalic ? "italic" : undefined,
+    textDecoration: wordFormatting?.isUnderline ? "underline" : undefined,
     color:      wordFormatting?.textColor ?? undefined,
   };
 

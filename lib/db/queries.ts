@@ -2113,40 +2113,61 @@ export async function updateWordArrow(
 
 // ── Word Formatting (chapter-scoped) ──────────────────────────────────────────
 
-/** Returns all bold/italic/color formatting entries for a chapter. */
+/** Returns all bold/italic/underline/color formatting entries for a chapter. */
 export async function getChapterWordFormatting(
   book: string,
   chapter: number,
   workspaceId: number,
   versionId: number
-): Promise<{ wordId: string; isBold: boolean; isItalic: boolean; textColor: string | null; letterColors: Record<number, string> | null }[]> {
+): Promise<{
+  wordId: string;
+  isBold: boolean;
+  isItalic: boolean;
+  isUnderline: boolean;
+  textColor: string | null;
+  letterColors: Record<number, string> | null;
+  letterBold: number[] | null;
+  letterItalic: number[] | null;
+  letterUnderline: number[] | null;
+}[]> {
   const rows = await userDb
     .select({
       wordId: wordFormatting.wordId,
       isBold: wordFormatting.isBold,
       isItalic: wordFormatting.isItalic,
+      isUnderline: wordFormatting.isUnderline,
       textColor: wordFormatting.textColor,
       letterColors: wordFormatting.letterColors,
+      letterBold: wordFormatting.letterBold,
+      letterItalic: wordFormatting.letterItalic,
+      letterUnderline: wordFormatting.letterUnderline,
     })
     .from(wordFormatting)
     .where(and(eq(wordFormatting.workspaceId, workspaceId), eq(wordFormatting.versionId, versionId), eq(wordFormatting.book, book), eq(wordFormatting.chapter, chapter)));
   return rows.map((r) => ({
     ...r,
     letterColors: r.letterColors ? JSON.parse(r.letterColors) as Record<number, string> : null,
+    letterBold: r.letterBold ? JSON.parse(r.letterBold) as number[] : null,
+    letterItalic: r.letterItalic ? JSON.parse(r.letterItalic) as number[] : null,
+    letterUnderline: r.letterUnderline ? JSON.parse(r.letterUnderline) as number[] : null,
   }));
 }
 
 /**
- * Upsert bold/italic/color formatting for a word.
- * If isBold and isItalic are both false, textColor is null, and letterColors
- * is empty/null, the record is deleted (reset to no formatting).
+ * Upsert bold/italic/underline/color formatting for a word.
+ * If isBold, isItalic, and isUnderline are all false, textColor is null, and
+ * every letter-level map is empty/null, the record is deleted (reset to no formatting).
  */
 export async function setWordFormatting(
   wordId: string,
   isBold: boolean,
   isItalic: boolean,
+  isUnderline: boolean,
   textColor: string | null,
   letterColors: Record<number, string> | null,
+  letterBold: number[] | null,
+  letterItalic: number[] | null,
+  letterUnderline: number[] | null,
   textSource: string,
   book: string,
   chapter: number,
@@ -2154,16 +2175,23 @@ export async function setWordFormatting(
   versionId: number
 ): Promise<void> {
   const hasLetterColors = !!letterColors && Object.keys(letterColors).length > 0;
+  const hasLetterBold = !!letterBold && letterBold.length > 0;
+  const hasLetterItalic = !!letterItalic && letterItalic.length > 0;
+  const hasLetterUnderline = !!letterUnderline && letterUnderline.length > 0;
   const letterColorsJson = hasLetterColors ? JSON.stringify(letterColors) : null;
-  if (!isBold && !isItalic && !textColor && !hasLetterColors) {
+  const letterBoldJson = hasLetterBold ? JSON.stringify(letterBold) : null;
+  const letterItalicJson = hasLetterItalic ? JSON.stringify(letterItalic) : null;
+  const letterUnderlineJson = hasLetterUnderline ? JSON.stringify(letterUnderline) : null;
+  if (!isBold && !isItalic && !isUnderline && !textColor && !hasLetterColors && !hasLetterBold && !hasLetterItalic && !hasLetterUnderline) {
     await userDb.delete(wordFormatting).where(
       and(eq(wordFormatting.workspaceId, workspaceId), eq(wordFormatting.versionId, versionId), eq(wordFormatting.wordId, wordId))
     );
   } else {
+    const values = { wordId, isBold, isItalic, isUnderline, textColor, letterColors: letterColorsJson, letterBold: letterBoldJson, letterItalic: letterItalicJson, letterUnderline: letterUnderlineJson, textSource, book, chapter, workspaceId, versionId };
     await userDb
       .insert(wordFormatting)
-      .values({ wordId, isBold, isItalic, textColor, letterColors: letterColorsJson, textSource, book, chapter, workspaceId, versionId })
-      .onConflictDoUpdate({ target: [wordFormatting.workspaceId, wordFormatting.versionId, wordFormatting.wordId], set: { isBold, isItalic, textColor, letterColors: letterColorsJson } });
+      .values(values)
+      .onConflictDoUpdate({ target: [wordFormatting.workspaceId, wordFormatting.versionId, wordFormatting.wordId], set: { isBold, isItalic, isUnderline, textColor, letterColors: letterColorsJson, letterBold: letterBoldJson, letterItalic: letterItalicJson, letterUnderline: letterUnderlineJson } });
   }
 }
 
