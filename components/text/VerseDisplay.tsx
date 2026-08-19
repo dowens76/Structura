@@ -372,6 +372,15 @@ interface VerseDisplayProps {
   /** Shows a stresses/syllables count column, aligned past the end of the
    *  Hebrew text, for each poetic line (paragraph-break-defined segment). */
   showSyllableStress?: boolean;
+  /** Reader-supplied overrides for the heuristic stress/syllable counts,
+   *  keyed by the line's (paragraph segment's) first wordId. A line absent
+   *  from the map falls back to the computed heuristic count. */
+  syllableStressOverrideMap?: Map<string, { stresses: number; syllables: number }>;
+  /** When true, the stress/syllable column becomes editable — each number
+   *  can be typed directly; changes save on blur. */
+  editingSyllableStress?: boolean;
+  onSetSyllableStressOverride?: (segWordId: string, stresses: number, syllables: number) => void;
+  onResetSyllableStressOverride?: (segWordId: string) => void;
   showVowels?: boolean;
   showCantillation?: boolean;
   /** Called when the user clicks a verse-number label; used to scroll the notes pane */
@@ -1595,6 +1604,10 @@ export default function VerseDisplay({
   presentationMode = false,
   showAtnachBreaks = false,
   showSyllableStress = false,
+  syllableStressOverrideMap,
+  editingSyllableStress = false,
+  onSetSyllableStressOverride,
+  onResetSyllableStressOverride,
   showVowels = true,
   showCantillation = true,
   translationFootnotes = [] as TranslationFootnote[],
@@ -2244,21 +2257,87 @@ export default function VerseDisplay({
 
   // ── Syllable/stress column renderer ──────────────────────────────────────
   // Renders a fixed-width column past the end of one poetic line's (paragraph
-  // segment's) Hebrew text, showing "stresses / syllables" for that line.
-  // Fixed width keeps the numbers aligned vertically across every line.
+  // segment's) Hebrew text, showing "stresses/syllables" for that line. Fixed
+  // width keeps the numbers aligned vertically across every line. A reader
+  // who disputes the heuristic count can override it — see editingSyllableStress
+  // below — which is stored keyed by this line's first wordId and takes
+  // precedence over the computed count everywhere it's displayed.
   function renderSyllableStressColForSeg(seg: Word[]): React.ReactNode {
     if (!showSyllableStress || !isHebrew) return null;
-    const { stresses, syllables } = analyzeHebrewLine(seg);
+    const segWordId = seg[0].wordId;
+    const override = syllableStressOverrideMap?.get(segWordId);
+    const computed = analyzeHebrewLine(seg);
+    const stresses = override?.stresses ?? computed.stresses;
+    const syllables = override?.syllables ?? computed.syllables;
     const labelPaddingTop = "var(--source-half-leading, calc(0.75 * var(--hebrew-font-size, 1.375rem)))";
+
+    if (editingSyllableStress) {
+      // Uncontrolled inputs (defaultValue only) — no need to echo keystrokes
+      // back through state while typing; the value is read straight off the
+      // DOM and committed to the parent (which persists it) on blur/Enter.
+      const commit = (e: React.FocusEvent<HTMLInputElement>) => {
+        const row = e.currentTarget.closest("[data-ss-row]");
+        const sInput = row?.querySelector<HTMLInputElement>("[data-ss-stresses]");
+        const yInput = row?.querySelector<HTMLInputElement>("[data-ss-syllables]");
+        const sVal = Math.max(0, parseInt(sInput?.value ?? "", 10) || 0);
+        const yVal = Math.max(0, parseInt(yInput?.value ?? "", 10) || 0);
+        onSetSyllableStressOverride?.(segWordId, sVal, yVal);
+      };
+      const inputClass = "w-7 text-sm font-mono tabular-nums text-right bg-transparent border-b border-violet-400 dark:border-violet-500 outline-none focus:border-violet-600 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none";
+      return (
+        <div
+          data-ss-row={segWordId}
+          className="flex-none pr-2 self-stretch flex flex-col items-end"
+          style={{ minWidth: "5.5rem" }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="flex items-center gap-0.5" style={{ paddingTop: labelPaddingTop }}>
+            <input
+              type="number"
+              min={0}
+              data-ss-stresses
+              defaultValue={stresses}
+              onBlur={commit}
+              onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); e.stopPropagation(); }}
+              className={inputClass}
+              title="Stresses"
+            />
+            <span className="opacity-50 text-sm">/</span>
+            <input
+              type="number"
+              min={0}
+              data-ss-syllables
+              defaultValue={syllables}
+              onBlur={commit}
+              onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); e.stopPropagation(); }}
+              className={inputClass}
+              title="Syllables"
+            />
+            {override && (
+              <button
+                type="button"
+                onClick={() => onResetSyllableStressOverride?.(segWordId)}
+                title="Reset to the computed count"
+                className="text-stone-400 hover:text-red-500 dark:hover:text-red-400 text-xs leading-none ml-0.5 shrink-0"
+              >↺</button>
+            )}
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div
         className="flex-none pr-2 self-stretch flex flex-col items-end"
         style={{ minWidth: "3.5rem" }}
       >
         <span
-          className="text-sm font-mono tabular-nums whitespace-nowrap text-stone-400 dark:text-stone-600"
+          className={[
+            "text-sm font-mono tabular-nums whitespace-nowrap",
+            override ? "text-violet-500 dark:text-violet-400" : "text-stone-400 dark:text-stone-600",
+          ].join(" ")}
           style={{ paddingTop: labelPaddingTop }}
-          title={`${stresses} stress${stresses === 1 ? "" : "es"} · ${syllables} syllable${syllables === 1 ? "" : "s"}`}
+          title={`${stresses} stress${stresses === 1 ? "" : "es"} · ${syllables} syllable${syllables === 1 ? "" : "s"}${override ? " (edited)" : ""}`}
         >
           {stresses}<span className="opacity-50 mx-0.5">/</span>{syllables}
         </span>

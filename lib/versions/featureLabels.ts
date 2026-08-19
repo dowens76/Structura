@@ -1,5 +1,5 @@
 /**
- * Client-safe labels for the 14 versionable markup types — shared by
+ * Client-safe labels for the 15 versionable markup types — shared by
  * lib/versions/registry.ts (server, pairs each key with its Drizzle table)
  * and the version dialogs (client, render checkboxes from this list alone).
  * Keep in sync with VERSIONABLE_FEATURES in registry.ts — same keys, same order.
@@ -15,6 +15,7 @@ export const VERSIONABLE_FEATURE_LABELS: VersionableFeatureLabel[] = [
   { key: "speechSections", label: "Speech sections" },
   { key: "wordTagRefs", label: "Word/concept tags" },
   { key: "lineIndents", label: "Line indents" },
+  { key: "syllableStressOverrides", label: "Syllable/stress overrides" },
   { key: "sceneBreaks", label: "Scene breaks / headings" },
   { key: "rstRelations", label: "Clause relationships" },
   { key: "lineGroups", label: "Line groups (poetry)" },
@@ -38,4 +39,4 @@ export const VERSIONABLE_FEATURE_LABELS: VersionableFeatureLabel[] = [
  * version dialogs use this to force "Paragraph breaks" on whenever one of
  * these is selected.
  */
-export const FEATURES_REQUIRING_PARAGRAPH_BREAKS = ["lineAnnotations", "sceneBreaks", "poetryNotations", "poetryLineBracketExclusions"];
+export const FEATURES_REQUIRING_PARAGRAPH_BREAKS = ["lineAnnotations", "sceneBreaks", "poetryNotations", "poetryLineBracketExclusions", "syllableStressOverrides"];

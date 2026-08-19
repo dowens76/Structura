@@ -117,6 +117,7 @@ interface ChapterDisplayProps {
   initialWordTags: WordTag[];
   initialWordTagRefs: WordTagRef[];
   initialLineIndents: { wordId: string; indentLevel: number }[];
+  initialSyllableStressOverrides: { wordId: string; stresses: number; syllables: number }[];
   initialRstRelations: RstRelation[];
   initialTvRstRelations?: RstRelation[];
   initialLineGroups: LineGroup[];
@@ -265,6 +266,7 @@ export default function ChapterDisplay({
   initialWordTags,
   initialWordTagRefs,
   initialLineIndents,
+  initialSyllableStressOverrides,
   initialRstRelations,
   initialTvRstRelations = [],
   initialLineGroups,
@@ -704,6 +706,15 @@ export default function ChapterDisplay({
   );
   const [indentsLinked, setIndentsLinked] = useState(true);
   const [editingIndents, setEditingIndents] = useState(false);
+
+  // ── Syllable/stress override state ──────────────────────────────────────────
+  // Reader-supplied corrections to the heuristic syllable/stress counter,
+  // keyed by the first wordId of the poetic line they apply to. Absent from
+  // the map → the line falls back to the computed heuristic count.
+  const [syllableStressOverrideMap, setSyllableStressOverrideMap] = useState<Map<string, { stresses: number; syllables: number }>>(
+    () => new Map(initialSyllableStressOverrides.map((o) => [o.wordId, { stresses: o.stresses, syllables: o.syllables }]))
+  );
+  const [editingSyllableStress, setEditingSyllableStress] = useState(false);
 
   // getChapterForWord resolves a wordId → chapter number, handling both regular
   // word IDs (via wordToChapter map, populated below once `words` is processed)
@@ -3881,6 +3892,57 @@ export default function ChapterDisplay({
     }
   }
 
+  // ── Syllable/stress override handlers ─────────────────────────────────────
+
+  async function handleSetSyllableStressOverride(segWordId: string, stresses: number, syllables: number) {
+    const { book: refBook, chapter: refChapter } = getWordLocation(segWordId);
+    const prev = syllableStressOverrideMap.get(segWordId);
+    const clamped = { stresses: Math.max(0, stresses), syllables: Math.max(0, syllables) };
+    setSyllableStressOverrideMap((prevMap) => {
+      const next = new Map(prevMap);
+      next.set(segWordId, clamped);
+      return next;
+    });
+    try {
+      await fetch("/api/syllable-stress-overrides", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ wordId: segWordId, ...clamped, textSource, book: refBook, chapter: refChapter }),
+      });
+    } catch {
+      setSyllableStressOverrideMap((prevMap) => {
+        const next = new Map(prevMap);
+        if (prev) next.set(segWordId, prev);
+        else next.delete(segWordId);
+        return next;
+      });
+    }
+  }
+
+  async function handleResetSyllableStressOverride(segWordId: string) {
+    const { book: refBook, chapter: refChapter } = getWordLocation(segWordId);
+    const prev = syllableStressOverrideMap.get(segWordId);
+    if (!prev) return;
+    setSyllableStressOverrideMap((prevMap) => {
+      const next = new Map(prevMap);
+      next.delete(segWordId);
+      return next;
+    });
+    try {
+      await fetch("/api/syllable-stress-overrides", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ wordId: segWordId, book: refBook, chapter: refChapter }),
+      });
+    } catch {
+      setSyllableStressOverrideMap((prevMap) => {
+        const next = new Map(prevMap);
+        next.set(segWordId, prev);
+        return next;
+      });
+    }
+  }
+
   async function handleUpdateCharacter(
     id: number,
     name: string,
@@ -5154,6 +5216,7 @@ export default function ChapterDisplay({
     if (!keep.has("speech"))      { setEditingSpeech(false); setSpeechRangeStart(null); }
     if (!keep.has("wordTags"))    { setEditingWordTags(false); setWordTagRangeStart(null); }
     if (!keep.has("indents"))     setEditingIndents(false);
+    if (!keep.has("syllableStress")) setEditingSyllableStress(false);
     if (!keep.has("rst"))         { setEditingRst(false); setRstSegA(null); setRstSegB(null); setShowRstPicker(false); setRstEditGroupId(null); }
     if (!keep.has("lineGroups"))  { setEditingLineGroups(false); setLineGroupSegA(null); setLineGroupSegAGroupId(null); setShowLineGroupColors(false); }
     if (!keep.has("arrows"))      { setEditingArrows(false); setArrowFromWordId(null); }
@@ -5701,13 +5764,19 @@ export default function ChapterDisplay({
               )}
 
               {/* Syllable/stress count column — Hebrew only. Each paragraph
-                  break defines a new poetic line; counts are recomputed live. */}
+                  break defines a new poetic line; counts are recomputed live
+                  unless the reader has overridden them (see the edit toggle
+                  below, which appears once this column is shown). */}
               {isHebrew && toolbarVis.syllableStress && (
                 <button
-                  onClick={() => setShowSyllableStress((v) => !v)}
+                  onClick={() => {
+                    const next = !showSyllableStress;
+                    setShowSyllableStress(next);
+                    if (!next) setEditingSyllableStress(false);
+                  }}
                   data-tip={showSyllableStress
-                    ? "Hide syllable/stress counts"
-                    : "Show syllable and stress counts per line (stresses / syllables)"}
+                    ? "Hide stress/syllable counts"
+                    : "Show stress and syllable counts per line (stresses/syllables)"}
                   className={[
                     "px-3 py-1.5 rounded text-[13px] font-medium transition-colors",
                     showSyllableStress
@@ -5715,7 +5784,30 @@ export default function ChapterDisplay({
                       : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
                   ].join(" ")}
                 >
-                  Syllables
+                  Stresses/Syllables
+                </button>
+              )}
+
+              {/* Edit toggle for the stress/syllable counts — only offered once the
+                  column above is visible. Changes save immediately as the reader
+                  edits each number; turning this off just exits the editing UI. */}
+              {isHebrew && toolbarVis.syllableStress && showSyllableStress && (
+                <button
+                  onClick={() => {
+                    if (!editingSyllableStress) deactivateIncompatible("syllableStress");
+                    setEditingSyllableStress((v) => !v);
+                  }}
+                  data-tip={editingSyllableStress
+                    ? "Done editing — changes are already saved"
+                    : "Edit the stress/syllable counts for each line"}
+                  className={[
+                    "px-2 py-1.5 rounded text-[13px] font-medium transition-colors",
+                    editingSyllableStress
+                      ? "bg-violet-600 text-white"
+                      : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
+                  ].join(" ")}
+                >
+                  ✎
                 </button>
               )}
 
@@ -7025,6 +7117,10 @@ export default function ChapterDisplay({
                 editingParagraphs={editingParagraphs}
                 showAtnachBreaks={showAtnachBreaks}
                 showSyllableStress={showSyllableStress}
+                syllableStressOverrideMap={syllableStressOverrideMap}
+                editingSyllableStress={editingSyllableStress}
+                onSetSyllableStressOverride={handleSetSyllableStressOverride}
+                onResetSyllableStressOverride={handleResetSyllableStressOverride}
                 showVowels={showVowels}
                 showCantillation={showCantillation}
                 characterRefMap={characterRefMap}

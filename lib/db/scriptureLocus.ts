@@ -12,6 +12,7 @@ import {
   getChapterSpeechSections,
   getChapterWordTagRefs,
   getChapterLineIndents,
+  getChapterSyllableStressOverrides,
   getChapterRstRelations,
   getChapterLineGroups,
   getChapterWordArrows,
@@ -36,9 +37,10 @@ export interface ChapterLocus {
 
 /**
  * Per-chapter editing data (paragraph breaks, character refs, speech
- * sections, word-tag refs, line indents, RST relations, word arrows, word
- * formatting, scene breaks, line annotations, poetry notations, poetry line
- * bracket exclusions, text-critical marks), flattened across every locus.
+ * sections, word-tag refs, line indents, syllable/stress overrides, RST
+ * relations, word arrows, word formatting, scene breaks, line annotations,
+ * poetry notations, poetry line bracket exclusions, text-critical marks),
+ * flattened across every locus.
  */
 export async function getScriptureLocusEditingData(
   loci: ChapterLocus[],
@@ -55,6 +57,7 @@ export async function getScriptureLocusEditingData(
         getChapterSpeechSections(book, chapter, textSource, workspaceId, versionId),
         getChapterWordTagRefs(book, chapter, workspaceId, versionId),
         getChapterLineIndents(book, chapter, workspaceId, versionId),
+        getChapterSyllableStressOverrides(book, chapter, workspaceId, versionId),
         getChapterRstRelations(book, chapter, textSource, workspaceId, versionId),
         getChapterLineGroups(book, chapter, textSource, workspaceId, versionId),
         getChapterWordArrows(book, chapter, textSource, workspaceId, versionId),
@@ -80,14 +83,15 @@ export async function getScriptureLocusEditingData(
     initialSpeechSections:    perChapterResults.flatMap(([,, s]) => s),
     initialWordTagRefs:       perChapterResults.flatMap(([,,, t]) => t),
     initialLineIndents:       perChapterResults.flatMap(([,,,, l]) => l),
-    initialRstRelations:      perChapterResults.flatMap(([,,,,, cr]) => cr),
-    initialLineGroups:        perChapterResults.flatMap(([,,,,,, lg]) => lg),
-    initialWordArrows:        perChapterResults.flatMap(([,,,,,,, wa]) => wa),
-    initialWordFormatting:    perChapterResults.flatMap(([,,,,,,,, wf]) => wf),
-    initialSceneBreaks:       perChapterResults.flatMap(([,,,,,,,,, sb]) => sb),
-    initialLineAnnotations:   perChapterResults.flatMap(([,,,,,,,,,, la]) => la),
-    initialPoetryNotations:   perChapterResults.flatMap(([,,,,,,,,,,, pn]) => pn),
-    initialPoetryLineBracketExclusions: perChapterResults.flatMap(([,,,,,,,,,,,, plbe]) => plbe),
+    initialSyllableStressOverrides: perChapterResults.flatMap(([,,,,, sso]) => sso),
+    initialRstRelations:      perChapterResults.flatMap(([,,,,,, cr]) => cr),
+    initialLineGroups:        perChapterResults.flatMap(([,,,,,,, lg]) => lg),
+    initialWordArrows:        perChapterResults.flatMap(([,,,,,,,, wa]) => wa),
+    initialWordFormatting:    perChapterResults.flatMap(([,,,,,,,,, wf]) => wf),
+    initialSceneBreaks:       perChapterResults.flatMap(([,,,,,,,,,, sb]) => sb),
+    initialLineAnnotations:   perChapterResults.flatMap(([,,,,,,,,,,, la]) => la),
+    initialPoetryNotations:   perChapterResults.flatMap(([,,,,,,,,,,,, pn]) => pn),
+    initialPoetryLineBracketExclusions: perChapterResults.flatMap(([,,,,,,,,,,,,, plbe]) => plbe),
     initialTextCriticalMarks,
   };
 }

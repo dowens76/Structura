@@ -279,6 +279,27 @@ export const lineIndents = sqliteTable(
   ]
 );
 
+export const syllableStressOverrides = sqliteTable(
+  "syllable_stress_overrides",
+  {
+    id:          integer("id").primaryKey({ autoIncrement: true }),
+    workspaceId: integer("workspace_id").notNull().default(1)
+                   .references(() => workspaces.id, { onDelete: "cascade" }),
+    versionId:   integer("version_id").notNull()
+                   .references(() => versions.id, { onDelete: "cascade" }),
+    wordId:      text("word_id").notNull(),
+    stresses:    integer("stresses").notNull(),
+    syllables:   integer("syllables").notNull(),
+    textSource:  text("text_source").notNull(),
+    book:        text("book").notNull(),
+    chapter:     integer("chapter").notNull(),
+  },
+  (t) => [
+    uniqueIndex("sso_ws_word_idx").on(t.workspaceId, t.versionId, t.wordId),
+    index("sso_book_ch_idx").on(t.book, t.chapter),
+  ]
+);
+
 export const sceneBreaks = sqliteTable(
   "scene_breaks",
   {
@@ -1067,6 +1088,7 @@ export type SpeechSection = typeof speechSections.$inferSelect;
 export type WordTag = typeof wordTags.$inferSelect;
 export type WordTagRef = typeof wordTagRefs.$inferSelect;
 export type LineIndent = typeof lineIndents.$inferSelect;
+export type SyllableStressOverride = typeof syllableStressOverrides.$inferSelect;
 export type SceneBreak = typeof sceneBreaks.$inferSelect;
 export type Passage = typeof passages.$inferSelect;
 export type RstRelation = typeof rstRelations.$inferSelect;

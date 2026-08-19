@@ -78,7 +78,7 @@ async function loadColumnData(passage: Passage, workspaceId: number): Promise<Sy
 
   const {
     initialParagraphBreakIds, initialCharacterRefs, initialSpeechSections,
-    initialWordTagRefs, initialLineIndents, initialRstRelations, initialLineGroups,
+    initialWordTagRefs, initialLineIndents, initialSyllableStressOverrides, initialRstRelations, initialLineGroups,
     initialWordArrows, initialWordFormatting, initialSceneBreaks,
     initialLineAnnotations, initialPoetryNotations, initialPoetryLineBracketExclusions, initialTextCriticalMarks,
   } = editingData;
@@ -133,6 +133,7 @@ async function loadColumnData(passage: Passage, workspaceId: number): Promise<Sy
       initialWordTags: wordTags,
       initialWordTagRefs,
       initialLineIndents,
+      initialSyllableStressOverrides,
       initialRstRelations,
       initialLineGroups,
       initialWordArrows,

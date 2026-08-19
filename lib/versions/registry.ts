@@ -1,5 +1,5 @@
 /**
- * The 14 chapter-scoped markup tables that a "version" can hold an
+ * The 15 chapter-scoped markup tables that a "version" can hold an
  * independent copy of. Drives the checkbox lists in the Create/Manage
  * version dialogs and the generic same-workspace copy in
  * lib/db/queries.ts's copyVersionAnnotations(). Every table listed here must
@@ -20,6 +20,7 @@ import {
   speechSections,
   wordTagRefs,
   lineIndents,
+  syllableStressOverrides,
   sceneBreaks,
   rstRelations,
   lineGroups,
@@ -52,6 +53,7 @@ const TABLES_BY_KEY: Record<string, VersionableTable> = {
   speechSections,
   wordTagRefs,
   lineIndents,
+  syllableStressOverrides,
   sceneBreaks,
   rstRelations,
   lineGroups,

@@ -5,7 +5,7 @@ import type { LookupMaps } from "./index";
 import { books, words } from "./source-schema";
 import { lexiconEntries } from "./lexica-schema";
 import type { Word, WordRow } from "./source-schema";
-import { translations, translationVerses, paragraphBreaks, paragraphHeadings, characters, characterRefs, speechSections, wordTags, wordTagRefs, lineIndents, sceneBreaks, passages, rstRelations, lineGroups, wordArrows, wordFormatting, lineAnnotations, poetryNotations, poetryLineBracketExclusions, bookGroupings, appSettings, translationFootnotes, translationVersions, workspaces, users, textCriticalMarks, notes, intertextualLinks, synopticSets, synopticWordMarks, constituentLabels, transliterationFormats, wordDatasets, wordDatasetEntries, wordDatasetLabelColors, versions, activeVersionSelections } from "./user-schema";
+import { translations, translationVerses, paragraphBreaks, paragraphHeadings, characters, characterRefs, speechSections, wordTags, wordTagRefs, lineIndents, syllableStressOverrides, sceneBreaks, passages, rstRelations, lineGroups, wordArrows, wordFormatting, lineAnnotations, poetryNotations, poetryLineBracketExclusions, bookGroupings, appSettings, translationFootnotes, translationVersions, workspaces, users, textCriticalMarks, notes, intertextualLinks, synopticSets, synopticWordMarks, constituentLabels, transliterationFormats, wordDatasets, wordDatasetEntries, wordDatasetLabelColors, versions, activeVersionSelections } from "./user-schema";
 import type { Book, Translation, TranslationVerse, Character, CharacterRef, SpeechSection, WordTag, WordTagRef, Passage, RstRelation, LineGroup, WordArrow, LineAnnotation, PoetryNotation, PoetryLineBracketExclusion, BookGrouping, TranslationFootnote, TranslationVersion, IntertextualLink, SynopticSet, SynopticWordMark, Version } from "./schema";
 import { VERSIONABLE_FEATURES } from "@/lib/versions/registry";
 import type { TextSource, Testament } from "@/lib/morphology/types";
@@ -1584,6 +1584,51 @@ export async function setLineIndent(
       .values({ wordId, indentLevel, textSource, book, chapter, workspaceId, versionId })
       .onConflictDoUpdate({ target: [lineIndents.workspaceId, lineIndents.versionId, lineIndents.wordId], set: { indentLevel } });
   }
+}
+
+// ── Syllable/Stress Overrides (chapter-scoped) ────────────────────────────────
+// Reader-supplied corrections to the heuristic syllable/stress counter, keyed
+// by the first wordId of the poetic line (paragraph segment) they apply to.
+
+/** Returns all syllable/stress overrides for a chapter. */
+export async function getChapterSyllableStressOverrides(
+  book: string,
+  chapter: number,
+  workspaceId: number,
+  versionId: number
+): Promise<{ wordId: string; stresses: number; syllables: number }[]> {
+  return userDb
+    .select({ wordId: syllableStressOverrides.wordId, stresses: syllableStressOverrides.stresses, syllables: syllableStressOverrides.syllables })
+    .from(syllableStressOverrides)
+    .where(and(eq(syllableStressOverrides.workspaceId, workspaceId), eq(syllableStressOverrides.versionId, versionId), eq(syllableStressOverrides.book, book), eq(syllableStressOverrides.chapter, chapter)));
+}
+
+/** Upsert a stress/syllable override for the poetic line starting at `wordId`. */
+export async function setSyllableStressOverride(
+  wordId: string,
+  stresses: number,
+  syllables: number,
+  textSource: string,
+  book: string,
+  chapter: number,
+  workspaceId: number,
+  versionId: number
+): Promise<void> {
+  await userDb
+    .insert(syllableStressOverrides)
+    .values({ wordId, stresses, syllables, textSource, book, chapter, workspaceId, versionId })
+    .onConflictDoUpdate({ target: [syllableStressOverrides.workspaceId, syllableStressOverrides.versionId, syllableStressOverrides.wordId], set: { stresses, syllables } });
+}
+
+/** Removes a stress/syllable override, reverting the line to the computed heuristic count. */
+export async function deleteSyllableStressOverride(
+  wordId: string,
+  workspaceId: number,
+  versionId: number
+): Promise<void> {
+  await userDb.delete(syllableStressOverrides).where(
+    and(eq(syllableStressOverrides.workspaceId, workspaceId), eq(syllableStressOverrides.versionId, versionId), eq(syllableStressOverrides.wordId, wordId))
+  );
 }
 
 // ── Passages ──────────────────────────────────────────────────────────────────

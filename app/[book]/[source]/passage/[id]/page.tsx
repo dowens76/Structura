@@ -173,7 +173,7 @@ export default async function PassagePage({ params, searchParams }: PageProps) {
 
   const {
     initialParagraphBreakIds, initialCharacterRefs, initialSpeechSections,
-    initialWordTagRefs, initialLineIndents, initialRstRelations, initialLineGroups,
+    initialWordTagRefs, initialLineIndents, initialSyllableStressOverrides, initialRstRelations, initialLineGroups,
     initialWordArrows, initialWordFormatting, initialSceneBreaks,
     initialLineAnnotations, initialPoetryNotations, initialPoetryLineBracketExclusions, initialTextCriticalMarks,
   } = editingData;
@@ -353,6 +353,7 @@ export default async function PassagePage({ params, searchParams }: PageProps) {
           initialWordTags={wordTags}
           initialWordTagRefs={initialWordTagRefs}
           initialLineIndents={initialLineIndents}
+          initialSyllableStressOverrides={initialSyllableStressOverrides}
           availableTranslations={availableTranslations}
           translationVerseData={translationVerseData}
           ultBaseVerses={ultBaseVerses}

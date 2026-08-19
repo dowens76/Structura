@@ -142,7 +142,7 @@ export default async function ChapterPage({ params, searchParams }: PageProps) {
   let availableTranslations: Awaited<ReturnType<typeof getTranslations>> = [];
   let editingData: Awaited<ReturnType<typeof getScriptureLocusEditingData>> = {
     initialParagraphBreakIds: [], initialCharacterRefs: [], initialSpeechSections: [],
-    initialWordTagRefs: [], initialLineIndents: [], initialRstRelations: [],
+    initialWordTagRefs: [], initialLineIndents: [], initialSyllableStressOverrides: [], initialRstRelations: [],
     initialLineGroups: [],
     initialWordArrows: [], initialWordFormatting: [], initialSceneBreaks: [],
     initialLineAnnotations: [], initialPoetryNotations: [], initialPoetryLineBracketExclusions: [], initialTextCriticalMarks: [],
@@ -425,6 +425,7 @@ export default async function ChapterPage({ params, searchParams }: PageProps) {
             initialWordTags={initialWordTags}
             initialWordTagRefs={editingData.initialWordTagRefs}
             initialLineIndents={editingData.initialLineIndents}
+            initialSyllableStressOverrides={editingData.initialSyllableStressOverrides}
             initialRstRelations={editingData.initialRstRelations}
             initialLineGroups={editingData.initialLineGroups}
             initialTvRstRelations={initialTvRstRelations}

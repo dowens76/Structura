@@ -87,7 +87,7 @@ const SECTIONS: { label: string; items: { key: keyof ToolbarVisibility; label: s
       { key: "paragraphs",  label: "¶ Paragraphs" },
       { key: "atnach",      label: "Show Atnach", hebrew: true },
       { key: "atnachInsert",label: "¶ at Atnach", hebrew: true },
-      { key: "syllableStress", label: "Syllable/Stress counts", hebrew: true },
+      { key: "syllableStress", label: "Stress/Syllable counts", hebrew: true },
       { key: "indents",     label: "⇥ Indents" },
       { key: "rst",         label: "↳ Clause Relationships" },
       { key: "lineGroups",  label: "⌐ Line Groups (poetry)" },
