@@ -641,14 +641,24 @@ function AnnotBadge({
   // change instead of silently discarding it. A no-op cancel via the "Cancel"
   // button first resets every draft to match `annotation`, so this finds no
   // diff and stays a true cancel in that case.
+  //
+  // isStart-only: a multi-segment annotation renders one AnnotBadge per
+  // segment, and `isEditing` is the same annotation-id-keyed boolean for all
+  // of them — but only the isStart instance has editable draft state (the
+  // continuation instances return early below, before ever rendering an
+  // editor, so their drafts stay frozen at mount-time values). Without this
+  // guard, saving the isStart instance flips `isEditing` false on every
+  // sibling instance too, and each one's effect fires computeUpdates()
+  // against its own stale, never-edited drafts — reverting the save that
+  // just happened.
   const wasEditingRef = useRef(isEditing);
   useEffect(() => {
-    if (wasEditingRef.current && !isEditing) {
+    if (isStart && wasEditingRef.current && !isEditing) {
       const updates = computeUpdates();
       if (Object.keys(updates).length > 0) onUpdate?.(annotation.id, updates);
     }
     wasEditingRef.current = isEditing;
-  }, [isEditing]);
+  }, [isEditing, isStart]);
 
   // Commit on outside click. This is a real DOM-containment check rather
   // than a blur/relatedTarget one: WebKit (the engine behind the Tauri
@@ -659,15 +669,23 @@ function AnnotBadge({
   // checking sidesteps that: the dropdown (and its "manage categories"
   // modal) are still true DOM descendants of the container despite being
   // visually position:fixed, so clicks inside them never count as "outside".
+  // isStart-only, same reason as the safety net above: a continuation
+  // instance shares `isEditing` with the isStart instance but never renders
+  // the editor JSX below, so `editorContainerRef` never attaches to
+  // anything and stays null. Without this guard, `null?.contains(...)` is
+  // always undefined/falsy, so every mousedown anywhere in the document —
+  // including clicks inside the isStart instance's own editor — reads as
+  // "outside" to the continuation instance and fires a premature, stale
+  // commitEdit() on the very first click after opening the editor.
   const editorContainerRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    if (!isEditing) return;
+    if (!isStart || !isEditing) return;
     const onDown = (e: MouseEvent) => {
       if (!editorContainerRef.current?.contains(e.target as Node)) commitEdit();
     };
     document.addEventListener("mousedown", onDown);
     return () => document.removeEventListener("mousedown", onDown);
-  }, [isEditing]);
+  }, [isEditing, isStart]);
 
   const color = getAnnotationColor(annotation.annotType, annotation.label, annotation.color);
 
@@ -891,14 +909,18 @@ function AnnotBadge({
           />
         </div>
 
-        {/* Colour palette — theme and desc annotations only */}
+        {/* Colour palette — theme and desc annotations only. Theme colour is
+            never locked here: picking a new one recolors every instance of
+            this theme (see PATCH /api/line-annotations), so editing in place
+            is the one legitimate way to change an established theme's colour. */}
         {draftAnnotType !== "plot" && (
-          <div className="px-1.5 pb-1">
-            <ColorPalette
-              value={draftColor}
-              onChange={setDraftColor}
-              locked={draftAnnotType === "theme" ? themeColorsByLabel?.has(draftThemeLabel) : false}
-            />
+          <div className="px-1.5 pb-1 flex flex-col gap-0.5">
+            <ColorPalette value={draftColor} onChange={setDraftColor} />
+            {draftAnnotType === "theme" && themeColorsByLabel?.has(draftThemeLabel) && draftColor !== themeColorsByLabel.get(draftThemeLabel) && (
+              <span className="text-[9px] text-amber-600 dark:text-amber-400">
+                Recolors every &ldquo;{draftThemeLabel}&rdquo; instance on save
+              </span>
+            )}
           </div>
         )}
 

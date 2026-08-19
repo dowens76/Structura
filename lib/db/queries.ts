@@ -2262,6 +2262,36 @@ export async function deleteLineAnnotation(id: number): Promise<void> {
   await userDb.delete(lineAnnotations).where(eq(lineAnnotations.id, id));
 }
 
+/**
+ * Recolor every "theme" annotation sharing the given label within the same
+ * workspace/version/book/textSource (all chapters), so that changing one
+ * instance's color keeps every other instance of that theme in sync. Returns
+ * the full set of updated rows.
+ */
+export async function updateThemeColorForLabel(
+  workspaceId: number,
+  versionId: number,
+  book: string,
+  textSource: string,
+  label: string,
+  color: string
+): Promise<LineAnnotation[]> {
+  return userDb
+    .update(lineAnnotations)
+    .set({ color })
+    .where(
+      and(
+        eq(lineAnnotations.workspaceId, workspaceId),
+        eq(lineAnnotations.versionId, versionId),
+        eq(lineAnnotations.book, book),
+        eq(lineAnnotations.textSource, textSource),
+        eq(lineAnnotations.annotType, "theme"),
+        eq(lineAnnotations.label, label)
+      )
+    )
+    .returning();
+}
+
 // ── Poetry Notations (Gestalt: continuation/balance/requiredness/symmetry/similarity/closure) ──
 
 /** Returns all poetry notation marks for a chapter, ordered by creation time. */

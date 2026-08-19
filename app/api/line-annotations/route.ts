@@ -3,6 +3,7 @@ import {
   getChapterLineAnnotations,
   createLineAnnotation,
   updateLineAnnotation,
+  updateThemeColorForLabel,
   deleteLineAnnotation,
 } from "@/lib/db/queries";
 import { getActiveWorkspaceId } from "@/lib/workspace";
@@ -48,7 +49,17 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({ annotation });
 }
 
-/** PATCH { id, annotType?, label?, commFunction?, color?, description?, outOfSequence?, startWordId?, endWordId? } → { annotation: LineAnnotation } */
+/**
+ * PATCH { id, annotType?, label?, commFunction?, color?, description?, outOfSequence?, startWordId?, endWordId? }
+ *   → { annotation: LineAnnotation, alsoRecolored?: LineAnnotation[] }
+ *
+ * When a "theme" annotation's color changes, every other instance of that
+ * theme (same workspace/version/book/textSource/label, any chapter) is
+ * recolored to match — themes are meant to carry one color across every
+ * instance, so this keeps that invariant true even after the color has
+ * already been picked once. `alsoRecolored` carries the other affected rows
+ * so callers can update any of them currently held in local state.
+ */
 export async function PATCH(req: NextRequest) {
   const body = await req.json();
   const { id, ...updates } = body as {
@@ -64,7 +75,21 @@ export async function PATCH(req: NextRequest) {
     endWordId?: string;
   };
   const annotation = await updateLineAnnotation(id, updates);
-  return NextResponse.json({ annotation });
+
+  let alsoRecolored: Awaited<ReturnType<typeof updateThemeColorForLabel>> = [];
+  if (updates.color && annotation.annotType === "theme") {
+    const recolored = await updateThemeColorForLabel(
+      annotation.workspaceId,
+      annotation.versionId,
+      annotation.book,
+      annotation.textSource,
+      annotation.label,
+      updates.color
+    );
+    alsoRecolored = recolored.filter((a) => a.id !== annotation.id);
+  }
+
+  return NextResponse.json({ annotation, alsoRecolored });
 }
 
 /** DELETE { id } → { success: true } */

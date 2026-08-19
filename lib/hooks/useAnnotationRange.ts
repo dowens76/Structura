@@ -186,11 +186,22 @@ export function useAnnotationRange({
   ) {
     setLineAnnotations((prev) => prev.map((a) => (a.id === id ? { ...a, ...updates } : a)));
     try {
-      await fetch("/api/line-annotations", {
+      const resp = await fetch("/api/line-annotations", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id, ...updates }),
       });
+      // Changing a theme's color recolors every other instance of that theme
+      // server-side; mirror those into any of them already loaded here.
+      if (resp.ok) {
+        const { alsoRecolored } = await resp.json() as { alsoRecolored?: LineAnnotation[] };
+        if (alsoRecolored?.length) {
+          const colorById = new Map(alsoRecolored.map((a) => [a.id, a.color]));
+          setLineAnnotations((prev) =>
+            prev.map((a) => (colorById.has(a.id) ? { ...a, color: colorById.get(a.id)! } : a))
+          );
+        }
+      }
     } catch {
       // non-critical
     }
