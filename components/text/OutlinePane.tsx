@@ -70,6 +70,21 @@ interface RawBreak {
   transitional?: boolean;
   /** Set to the continuation book's OSIS code for cross-book outline items. */
   bookCode?: string;
+  /** `${wordId}:${level}` as it was in the untouched prop data (current-chapter
+   *  items just reuse their own live key here). This never changes even after
+   *  a heading/level edit shifts the *displayed* key, so it's the stable
+   *  lookup key for `overrides` below — otherwise a second edit on an
+   *  already-edited item couldn't find its own prior override. */
+  rawKey: string;
+}
+
+/** Local, optimistic edits layered on top of the static book/continuation/predecessor
+ *  props (which only refetch on navigation) — keyed by RawBreak.rawKey. Current-chapter
+ *  items never need this; they're edited straight through live parent state instead. */
+interface BreakOverride {
+  heading?: string | null;
+  level?: number;
+  deleted?: boolean;
 }
 
 interface OutlinePaneProps {
@@ -83,6 +98,10 @@ interface OutlinePaneProps {
   sectionRanges: Map<string, SectionRangeForOutline>;
   onUpdateCurrentHeading: (wordId: string, level: number, heading: string) => void;
   onDeleteCurrentBreak: (wordId: string, level: number) => void;
+  /** Moves one current-chapter heading from its level to a new one (1-6), like the
+   *  "Change level" buttons in the in-text section-break editor. Used by the pane's
+   *  multi-select "increase/decrease indent" bulk action. */
+  onChangeCurrentLevel: (wordId: string, fromLevel: number, toLevel: number, verse: number) => void | Promise<void>;
   onClose: () => void;
   // ── Cross-book extension (state lives in ChapterDisplay) ──────────────────
   outlineExtended: boolean;
@@ -117,6 +136,7 @@ export default function OutlinePane({
   sectionRanges,
   onUpdateCurrentHeading,
   onDeleteCurrentBreak,
+  onChangeCurrentLevel,
   onClose,
   outlineExtended,
   onToggleExtended,
@@ -137,11 +157,46 @@ export default function OutlinePane({
   const { t } = useTranslation();
   const [editKey, setEditKey]       = useState<string | null>(null); // `${wordId}:${level}`
   const [editDraft, setEditDraft]   = useState("");
-  // Local overrides for headings edited in other chapters (persisted via API)
-  const [headingOverrides, setHeadingOverrides] = useState<Map<string, string | null>>(new Map());
-  // Keys deleted from other chapters (bookSceneBreaks is a static prop, so filter locally)
-  const [deletedKeys, setDeletedKeys] = useState<Set<string>>(new Set());
+  // Local edits (heading text, level, delete) for headings from other chapters/books —
+  // those come from static props that only refetch on navigation, so edits are applied
+  // here and persisted via direct API calls. Keyed by RawBreak.rawKey (see above).
+  const [overrides, setOverrides] = useState<Map<string, BreakOverride>>(new Map());
+
+  function patchOverride(rawKey: string, patch: BreakOverride) {
+    setOverrides((prev) => {
+      const next = new Map(prev);
+      next.set(rawKey, { ...next.get(rawKey), ...patch });
+      return next;
+    });
+  }
+
   const [copied, setCopied]         = useState(false);
+
+  // Multi-select "increase/decrease indent" mode — mirrors a word processor's
+  // Tab/Shift-Tab: select one or more headings, then shift each one's level
+  // up/down by one relative to its own current level.
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
+  // True while a bulk indent is running its sequential batch of requests
+  // (handleIndent below) — guards against a second click starting an
+  // overlapping batch that could interleave with the first and corrupt data.
+  const [applyingIndent, setApplyingIndent] = useState(false);
+
+  function toggleSelectMode() {
+    setSelectMode((v) => {
+      if (v) setSelectedKeys(new Set());
+      return !v;
+    });
+  }
+
+  function toggleSelected(key: string) {
+    setSelectedKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
 
   // Book-level notes
   const [bookNotesOpen, setBookNotesOpen] = useState(() => {
@@ -175,25 +230,49 @@ export default function OutlinePane({
 
   const INDENT_PX = 18;
 
+  // Applies any local override for a static (non-current) break, using its
+  // untouched wordId+level as the lookup key, and returns null if it's been
+  // deleted. `rawKey` is stamped onto the result so later edits (a second
+  // level shift, a heading edit, a delete) can keep finding this same slot.
+  function applyOverride(
+    b: { wordId: string; level: number; heading: string | null }
+  ): { wordId: string; level: number; heading: string | null; rawKey: string } | null {
+    const rawKey = `${b.wordId}:${b.level}`;
+    const ov = overrides.get(rawKey);
+    if (ov?.deleted) return null;
+    return {
+      wordId: b.wordId,
+      level: ov?.level ?? b.level,
+      heading: ov?.heading !== undefined ? ov.heading : b.heading,
+      rawKey,
+    };
+  }
+
   // Merge current-chapter live state with book-wide static data
   const sortedBreaks = useMemo<RawBreak[]>(() => {
     const list: RawBreak[] = [];
     if (outlinePredecessorShown) {
       for (const b of predecessorBreaks) {
-        list.push({ ...b, bookCode: predecessorBook ?? undefined });
+        const ov = applyOverride(b);
+        if (ov) list.push({ ...b, ...ov, bookCode: predecessorBook ?? undefined });
       }
     }
     for (const b of bookSceneBreaks) {
-      if (b.chapter !== chapter) list.push(b);
+      if (b.chapter !== chapter) {
+        const ov = applyOverride(b);
+        if (ov) list.push({ ...b, ...ov });
+      }
     }
     for (const [wordId, arr] of sceneBreakMap) {
       for (const br of arr) {
-        list.push({ wordId, chapter, verse: br.verse, positionInVerse: wordPositionMap.get(wordId) ?? 1, level: br.level, heading: br.heading, thematic: br.thematic, thematicLetter: br.thematicLetter, transitional: br.transitional });
+        const key = `${wordId}:${br.level}`;
+        list.push({ wordId, chapter, verse: br.verse, positionInVerse: wordPositionMap.get(wordId) ?? 1, level: br.level, heading: br.heading, thematic: br.thematic, thematicLetter: br.thematicLetter, transitional: br.transitional, rawKey: key });
       }
     }
     if (outlineExtended) {
       for (const b of continuationBreaks) {
-        list.push({ ...b, bookCode: continuationBook ?? undefined });
+        const ov = applyOverride(b);
+        if (ov) list.push({ ...b, ...ov, bookCode: continuationBook ?? undefined });
       }
     }
     list.sort((a, b) => {
@@ -207,7 +286,8 @@ export default function OutlinePane({
              a.level   - b.level;
     });
     return list;
-  }, [bookSceneBreaks, sceneBreakMap, chapter, outlineExtended, continuationBreaks, continuationBook, wordPositionMap, outlinePredecessorShown, predecessorBreaks, predecessorBook]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bookSceneBreaks, sceneBreakMap, chapter, outlineExtended, continuationBreaks, continuationBook, wordPositionMap, outlinePredecessorShown, predecessorBreaks, predecessorBook, overrides]);
 
   // Precompute per-verse sub-verse letters: for each (bookCode,chapter,verse), sort breaks by
   // positionInVerse and assign "" (pos 1) or "b","c",… (subsequent mid-verse positions).
@@ -271,9 +351,9 @@ export default function OutlinePane({
       }
       const key   = `${br.wordId}:${br.level}`;
       const range = sectionRanges.get(key);
-      const heading = headingOverrides.has(key)
-        ? headingOverrides.get(key) ?? null
-        : br.heading;
+      // br.heading already reflects any local override — applied earlier, in
+      // sortedBreaks, via applyOverride().
+      const heading = br.heading;
       const thematicIndent = br.thematic && br.thematicLetter
         ? (br.thematicLetter.toUpperCase().charCodeAt(0) - 65 + 1) * INDENT_PX
         : null;
@@ -307,13 +387,130 @@ export default function OutlinePane({
         thematicIndent,
       };
     });
-  }, [sortedBreaks, sectionRanges, headingOverrides, chapter, crossBookRangeKeys, continuationBook, breakLetterMap, passageChapters, book, outlinePredecessorShown, outlineExtended]);
+  }, [sortedBreaks, sectionRanges, chapter, crossBookRangeKeys, continuationBook, breakLetterMap, passageChapters, book, outlinePredecessorShown, outlineExtended]);
+
+  // Moves one non-current heading's level, mirroring what onChangeCurrentLevel
+  // does for a live current-chapter break: toggle the old level off, the new
+  // level on, then restore the heading text (the toggle endpoint only adds/
+  // removes bare breaks). Applied optimistically via `overrides`, rolled back
+  // on failure. Uses the item's own book/chapter (not the current-word lookup
+  // ChapterDisplay's handler relies on, which only knows the loaded chapter).
+  async function changeNonCurrentLevel(item: (typeof items)[number], toLevel: number) {
+    const fromLevel = item.level;
+    const heading = item.heading;
+    patchOverride(item.rawKey, { level: toLevel });
+    try {
+      const bookCode = item.bookCode ?? book;
+      await fetch("/api/scene-breaks", { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ wordId: item.wordId, book: bookCode, chapter: item.chapter, verse: item.verse, source: textSource, level: fromLevel }) });
+      await fetch("/api/scene-breaks", { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ wordId: item.wordId, book: bookCode, chapter: item.chapter, verse: item.verse, source: textSource, level: toLevel }) });
+      if (heading) {
+        await fetch("/api/scene-breaks", { method: "PATCH", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ wordId: item.wordId, book: bookCode, chapter: item.chapter, level: toLevel, heading }) });
+      }
+    } catch {
+      patchOverride(item.rawKey, { level: fromLevel });
+    }
+  }
+
+  // Shifts every selected heading's level by `delta` (±1), relative to each
+  // heading's own level — like Increase/Decrease Indent in a word processor.
+  // Headings already at the 1/6 boundary, or whose target level would collide
+  // with another break already on the same word (levels are unique per word),
+  // are silently skipped rather than blocking the rest of the batch. The
+  // selection is carried forward onto each item's new level so repeated
+  // clicks keep indenting the same headings further.
+  // True when `item` already has a heading nested one level deeper somewhere
+  // within its own section (i.e. before the next heading at item.level or
+  // shallower). Increasing item's indent to that same level would make it a
+  // sibling of its own child instead of that child's parent — silently
+  // flattening the hierarchy — so this is only meaningful (and only checked)
+  // for increases, never decreases: promoting a heading to a shallower level
+  // is the normal, always-valid word-processor operation.
+  // Shifts every selected heading's level by `delta` (±1), relative to each
+  // heading's own level — like Increase/Decrease Indent in a word processor.
+  //
+  // Collisions (same word already at that level, or a child heading already
+  // sitting at that level within the section) are only real blockers when the
+  // other break in question ISN'T also part of this same selection. If a
+  // parent and its child are selected together, the child moves out of the
+  // target level in the very same batch, so the parent doesn't actually
+  // collide with it — both should shift as a unit, preserving their relative
+  // nesting. `finalLevelOf` resolves this by using a selected item's proposed
+  // level instead of its current one when checking for collisions.
+  function handleIndent(delta: 1 | -1) {
+    if (applyingIndent) return;
+    const selected = items.filter((it) => selectedKeys.has(it.key));
+    if (selected.length === 0) return;
+
+    const proposedLevel = new Map<string, number>();
+    for (const item of selected) {
+      proposedLevel.set(item.key, Math.min(6, Math.max(1, item.level + delta)));
+    }
+    function finalLevelOf(it: (typeof items)[number]): number {
+      return proposedLevel.get(it.key) ?? it.level;
+    }
+
+    const targets: { item: (typeof items)[number]; to: number }[] = [];
+    for (const item of selected) {
+      const to = proposedLevel.get(item.key)!;
+      if (to === item.level) continue;
+
+      const wordCollision = items.some((it) => it !== item && it.wordId === item.wordId && finalLevelOf(it) === to);
+      if (wordCollision) continue;
+
+      if (delta === 1) {
+        const idx = items.indexOf(item);
+        let childCollision = false;
+        for (let i = idx + 1; i < items.length; i++) {
+          const it = items[i];
+          if ((it.bookCode ?? null) !== (item.bookCode ?? null)) break;
+          if (it.level <= item.level) break; // next heading at item's own level (or shallower) — item's section ends here
+          if (finalLevelOf(it) === to) { childCollision = true; break; }
+        }
+        if (childCollision) continue;
+      }
+
+      targets.push({ item, to });
+    }
+    if (targets.length === 0) return;
+
+    // Same-word moves are add/remove pairs at the DB level (toggle old level
+    // off, new level on), so a parent+child pair sharing a word — e.g. a
+    // heading and its very first subsection both starting on the same word —
+    // would race if fired concurrently: the parent could try to claim a
+    // level its child hasn't vacated yet. Processing deepest-level-first on
+    // increase (and shallowest-first on decrease) guarantees each level is
+    // vacated before anything else tries to claim it, so run the whole batch
+    // sequentially in that order rather than firing it all at once.
+    const ordered = [...targets].sort((a, b) =>
+      delta === 1 ? b.item.level - a.item.level : a.item.level - b.item.level
+    );
+    setApplyingIndent(true);
+    (async () => {
+      for (const { item, to } of ordered) {
+        if (item.isCurrent) await onChangeCurrentLevel(item.wordId, item.level, to, item.verse);
+        else await changeNonCurrentLevel(item, to);
+      }
+      setApplyingIndent(false);
+    })();
+
+    setSelectedKeys((prev) => {
+      const next = new Set(prev);
+      for (const { item, to } of targets) {
+        next.delete(item.key);
+        next.add(`${item.wordId}:${to}`);
+      }
+      return next;
+    });
+  }
 
   async function handleDelete(item: (typeof items)[number]) {
     if (item.isCurrent) {
       onDeleteCurrentBreak(item.wordId, item.level);
     } else {
-      setDeletedKeys((prev) => { const next = new Set(prev); next.add(item.key); return next; });
+      patchOverride(item.rawKey, { deleted: true });
       await fetch("/api/scene-breaks", {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
@@ -332,12 +529,7 @@ export default function OutlinePane({
     if (item.isCurrent) {
       onUpdateCurrentHeading(item.wordId, item.level, trimmed);
     } else {
-      // Optimistic local update
-      setHeadingOverrides((prev) => {
-        const next = new Map(prev);
-        next.set(item.key, trimmed || null);
-        return next;
-      });
+      patchOverride(item.rawKey, { heading: trimmed || null });
       await fetch("/api/scene-breaks", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -386,10 +578,21 @@ export default function OutlinePane({
         </h2>
         <div className="flex items-center gap-2">
           <button
+            onClick={toggleSelectMode}
+            disabled={items.length === 0}
+            className="text-xs px-2 py-1 rounded transition-colors disabled:opacity-40"
+            style={selectMode
+              ? { color: "#fff", backgroundColor: "var(--accent)" }
+              : { color: "var(--nav-fg-muted)", backgroundColor: "var(--nav-bg)" }}
+            title="Select headings to change their level (like Tab / Shift-Tab)"
+          >
+            {selectMode ? "Done" : "Select"}
+          </button>
+          <button
             onClick={copyOutline}
             disabled={items.length === 0}
             className="text-xs px-2 py-1 rounded transition-colors disabled:opacity-40"
-            style={{ color: "var(--text-muted)", backgroundColor: "var(--nav-bg)" }}
+            style={{ color: "var(--nav-fg-muted)", backgroundColor: "var(--nav-bg)" }}
             title="Copy outline as plain text"
           >
             {copied ? t("outlinePane.copied") : t("outlinePane.copy")}
@@ -404,6 +607,42 @@ export default function OutlinePane({
           </button>
         </div>
       </div>
+
+      {/* Select-mode action bar — increase/decrease indent for the selected headings */}
+      {selectMode && (
+        <div
+          className="shrink-0 px-4 py-2 border-b flex items-center gap-2"
+          style={{ borderColor: "var(--border)" }}
+        >
+          <span className="text-xs" style={{ color: "var(--text-muted)" }}>
+            {applyingIndent
+              ? "Applying…"
+              : selectedKeys.size === 0
+              ? "Select headings below…"
+              : `${selectedKeys.size} selected`}
+          </span>
+          <div className="flex items-center gap-1 ml-auto">
+            <button
+              onClick={() => handleIndent(-1)}
+              disabled={selectedKeys.size === 0 || applyingIndent}
+              className="text-xs px-2 py-1 rounded transition-colors disabled:opacity-30"
+              style={{ color: "var(--nav-fg-muted)", backgroundColor: "var(--nav-bg)" }}
+              title="Decrease indent (promote toward level 1)"
+            >
+              ⇤ Decrease
+            </button>
+            <button
+              onClick={() => handleIndent(1)}
+              disabled={selectedKeys.size === 0 || applyingIndent}
+              className="text-xs px-2 py-1 rounded transition-colors disabled:opacity-30"
+              style={{ color: "var(--nav-fg-muted)", backgroundColor: "var(--nav-bg)" }}
+              title="Increase indent (demote toward level 6)"
+            >
+              Increase ⇥
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* "Include [PredecessorBook]" toggle — only when a contiguous predecessor book exists */}
       {predecessorBook && onTogglePredecessorShown && (
@@ -473,7 +712,7 @@ export default function OutlinePane({
           </p>
         ) : (
           <ul className="space-y-0.5">
-            {items.filter(item => !deletedKeys.has(item.key)).map((item) => {
+            {items.map((item) => {
 
               const isEditing = editKey === item.key;
               const indentPx  = item.thematicIndent !== null ? item.thematicIndent : (item.level - 1) * INDENT_PX;
@@ -507,19 +746,35 @@ export default function OutlinePane({
                       />
                     </div>
                   ) : (
-                    <div className="group flex items-start gap-1.5 rounded px-1 py-0.5 hover:bg-stone-100 dark:hover:bg-stone-800/60 transition-colors">
+                    <div
+                      className="group flex items-start gap-1.5 rounded px-1 py-0.5 hover:bg-stone-100 dark:hover:bg-stone-800/60 transition-colors"
+                      style={selectMode && selectedKeys.has(item.key) ? { backgroundColor: "var(--accent-muted, rgba(99,102,241,0.12))" } : undefined}
+                      onClick={selectMode ? () => toggleSelected(item.key) : undefined}
+                    >
+                      {selectMode && (
+                        <span className="shrink-0 flex items-center" style={{ minHeight: "1.25rem" }}>
+                          <input
+                            type="checkbox"
+                            checked={selectedKeys.has(item.key)}
+                            onChange={() => toggleSelected(item.key)}
+                            onClick={(e) => e.stopPropagation()}
+                            className="rounded"
+                            title="Select this heading"
+                          />
+                        </span>
+                      )}
                       <span className="shrink-0 text-xs font-mono" style={{ color: "var(--text-muted)", minWidth: "1.5rem" }}>
                         {item.prefix}
                       </span>
                       {item.transitional && (
                         <span className="shrink-0 text-[10px] text-sky-500 dark:text-sky-400" title="Transitional (janus)">⇔</span>
                       )}
-                      {/* Heading text — click to edit; wraps instead of truncating when the pane is narrow */}
+                      {/* Heading text — click to edit (or, in select mode, click anywhere in the row to select); wraps instead of truncating when the pane is narrow */}
                       <span
-                        className={`flex-1 min-w-0 break-words cursor-pointer ${textSize}`}
+                        className={`flex-1 min-w-0 break-words ${selectMode ? "" : "cursor-pointer"} ${textSize}`}
                         style={{ color: "var(--foreground)", fontFamily: "Georgia, 'Times New Roman', serif" }}
-                        title="Click to edit heading"
-                        onClick={() => startEdit(item.key, item.heading)}
+                        title={selectMode ? undefined : "Click to edit heading"}
+                        onClick={selectMode ? undefined : () => startEdit(item.key, item.heading)}
                       >
                         {item.heading ?? <em style={{ color: "var(--text-muted)" }}>untitled</em>}
                       </span>
@@ -528,7 +783,7 @@ export default function OutlinePane({
                         <button
                           className="shrink-0 text-[10px] hover:underline"
                           style={{ color: "var(--text-muted)" }}
-                          onClick={() => scrollToVerse(item.chapter, item.verse)}
+                          onClick={(e) => { e.stopPropagation(); scrollToVerse(item.chapter, item.verse); }}
                           title={`Scroll to verse ${item.rangeStr}`}
                         >
                           {item.rangeStr}
@@ -539,13 +794,14 @@ export default function OutlinePane({
                           className="shrink-0 text-[10px] hover:underline"
                           style={{ color: "var(--text-muted)" }}
                           title={`Go to ${item.bookCode ? (OSIS_REF_BOOK_NAMES[item.bookCode] ?? item.bookCode) + " " : ""}chapter ${item.chapter}, verse ${item.verse}`}
+                          onClick={(e) => e.stopPropagation()}
                         >
                           {item.rangeStr}
                         </Link>
                       )}
                       {/* Delete button — visible on hover */}
                       <button
-                        onClick={() => handleDelete(item)}
+                        onClick={(e) => { e.stopPropagation(); handleDelete(item); }}
                         className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity rounded p-0.5 hover:bg-red-100 dark:hover:bg-red-900/40 hover:text-red-600 dark:hover:text-red-400"
                         style={{ color: "var(--text-muted)" }}
                         title="Delete section heading"

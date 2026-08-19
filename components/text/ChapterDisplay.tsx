@@ -7422,6 +7422,7 @@ export default function ChapterDisplay({
             sectionRanges={outlineExtended ? extendedSectionRanges : sectionRanges}
             onUpdateCurrentHeading={handleUpdateSceneHeading}
             onDeleteCurrentBreak={handleDeleteCurrentBreak}
+            onChangeCurrentLevel={handleChangeSceneBreakLevel}
             onClose={() => setOutlineOpen(false)}
             outlineExtended={outlineExtended}
             onToggleExtended={setOutlineExtended}
