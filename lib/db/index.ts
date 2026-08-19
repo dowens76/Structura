@@ -664,6 +664,14 @@ function _migrateUserDbInner(sqlite: Database.Database): void {
     try { sqlite.exec("ALTER TABLE word_formatting ADD COLUMN text_color TEXT"); } catch { /* already exists */ }
   if (!wfmtCols.includes("letter_colors"))
     try { sqlite.exec("ALTER TABLE word_formatting ADD COLUMN letter_colors TEXT"); } catch { /* already exists */ }
+  if (!wfmtCols.includes("is_underline"))
+    try { sqlite.exec("ALTER TABLE word_formatting ADD COLUMN is_underline INTEGER NOT NULL DEFAULT 0"); } catch { /* already exists */ }
+  if (!wfmtCols.includes("letter_bold"))
+    try { sqlite.exec("ALTER TABLE word_formatting ADD COLUMN letter_bold TEXT"); } catch { /* already exists */ }
+  if (!wfmtCols.includes("letter_italic"))
+    try { sqlite.exec("ALTER TABLE word_formatting ADD COLUMN letter_italic TEXT"); } catch { /* already exists */ }
+  if (!wfmtCols.includes("letter_underline"))
+    try { sqlite.exec("ALTER TABLE word_formatting ADD COLUMN letter_underline TEXT"); } catch { /* already exists */ }
 
   // Poetry Notation tool tables — added after some installed apps' user.db
   // was already created from an older template, so a packaged app that
