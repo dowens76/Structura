@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useRef } from "react";
 import Link from "next/link";
 import type { SectionRangeForOutline } from "@/lib/utils/outlineExport";
 import { generateOutline } from "@/lib/utils/outlineExport";
@@ -389,6 +389,75 @@ export default function OutlinePane({
     });
   }, [sortedBreaks, sectionRanges, chapter, crossBookRangeKeys, continuationBook, breakLetterMap, passageChapters, book, outlinePredecessorShown, outlineExtended]);
 
+  // ── Keep the pane scrolled to the section nearest the chapter/passage on
+  // screen ─────────────────────────────────────────────────────────────────
+  // The outline can run to hundreds of entries across a long book, so without
+  // this the reader has to manually hunt for their place every time they
+  // navigate. Prefer the first heading that actually starts in the current
+  // chapter(s); if this chapter opens no new heading of its own (the common
+  // case — most chapters continue the previous section), fall back to the
+  // last heading at or before it, i.e. the section the reader is currently
+  // inside. Only same-book items are eligible — continuation/predecessor
+  // entries never resolve as the target.
+  const scrollTargetKey = useMemo(() => {
+    const current = items.find((it) => it.isCurrent);
+    if (current) return current.key;
+    let nearest: (typeof items)[number] | null = null;
+    for (const it of items) {
+      if (it.bookCode) continue;
+      if (it.chapter <= chapter) nearest = it;
+      else break;
+    }
+    return nearest?.key ?? null;
+  }, [items, chapter]);
+
+  const outlineBodyRef = useRef<HTMLDivElement>(null);
+  const outlineItemRefs = useRef<Map<string, HTMLLIElement>>(new Map());
+
+  // The book-notes editor and the continuation/predecessor sections below the
+  // list all grow the scroll container asynchronously after first paint (the
+  // notes editor in particular mounts a placeholder, then swaps in the real
+  // TipTap editor once its own content fetch resolves), so a single centering
+  // pass right after mount ends up based on a too-short pre-load height. A
+  // ResizeObserver re-centers on every actual height change instead of
+  // guessing which prop flips mark "settled" — debounced so a burst of
+  // layout changes only triggers one adjustment, and capped at a few seconds
+  // so it stops before it could fight the reader's own later scrolling.
+  useEffect(() => {
+    if (!scrollTargetKey) return;
+    const container = outlineBodyRef.current;
+    if (!container) return;
+
+    function centerOnTarget() {
+      const target = outlineItemRefs.current.get(scrollTargetKey!);
+      if (!container || !target) return;
+      // target.offsetTop is relative to its nearest *positioned* ancestor,
+      // which here is a distant layout wrapper, not this (position: static)
+      // scroll container — so it can't be used directly.
+      // getBoundingClientRect() gives an accurate offset regardless of the
+      // positioning context in between.
+      const targetTop = target.getBoundingClientRect().top - container.getBoundingClientRect().top + container.scrollTop;
+      const centeredTop = targetTop - container.clientHeight / 2 + target.clientHeight / 2;
+      container.scrollTo({ top: Math.max(0, centeredTop), behavior: "smooth" });
+    }
+
+    centerOnTarget();
+
+    let settleTimer: ReturnType<typeof setTimeout> | null = null;
+    const observer = new ResizeObserver(() => {
+      if (settleTimer) clearTimeout(settleTimer);
+      settleTimer = setTimeout(centerOnTarget, 150);
+    });
+    observer.observe(container);
+    const stopWatching = setTimeout(() => observer.disconnect(), 3000);
+
+    return () => {
+      observer.disconnect();
+      clearTimeout(stopWatching);
+      if (settleTimer) clearTimeout(settleTimer);
+    };
+  }, [scrollTargetKey]);
+
   // Moves one non-current heading's level, mirroring what onChangeCurrentLevel
   // does for a live current-chapter break: toggle the old level off, the new
   // level on, then restore the heading text (the toggle endpoint only adds/
@@ -705,7 +774,10 @@ export default function OutlinePane({
       </div>
 
       {/* Body */}
-      <div className="flex-1 overflow-y-auto py-3 px-2">
+      {/* overflowAnchor: none — the browser's own scroll-anchoring would otherwise
+          fight the ResizeObserver-driven re-centering above as async content
+          (book notes, continuation/predecessor sections) grows this container. */}
+      <div ref={outlineBodyRef} className="flex-1 overflow-y-auto py-3 px-2" style={{ overflowAnchor: "none" }}>
         {items.length === 0 ? (
           <p className="text-sm px-2" style={{ color: "var(--text-muted)" }}>
             {t("outlinePane.noSectionBreaks")}
@@ -721,7 +793,14 @@ export default function OutlinePane({
                 : "text-xs";
 
               return (
-                <li key={item.key} style={{ paddingLeft: indentPx }}>
+                <li
+                  key={item.key}
+                  ref={(el) => {
+                    if (el) outlineItemRefs.current.set(item.key, el);
+                    else outlineItemRefs.current.delete(item.key);
+                  }}
+                  style={{ paddingLeft: indentPx }}
+                >
                   {isEditing ? (
                     <div className="flex items-center gap-1 py-0.5">
                       <span className="shrink-0 text-xs font-mono" style={{ color: "var(--text-muted)", minWidth: "1.5rem" }}>
