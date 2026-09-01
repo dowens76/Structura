@@ -143,7 +143,7 @@ export default async function ChapterPage({ params, searchParams }: PageProps) {
   // Skip all annotation fetching in parallel mode (read-only clean view).
   let availableTranslations: Awaited<ReturnType<typeof getTranslations>> = [];
   let editingData: Awaited<ReturnType<typeof getScriptureLocusEditingData>> = {
-    initialParagraphBreakIds: [], initialCharacterRefs: [], initialSpeechSections: [],
+    initialParagraphBreakIds: [], initialHorizontalLineIds: [], initialCharacterRefs: [], initialSpeechSections: [],
     initialWordTagRefs: [], initialLineIndents: [], initialSyllableStressOverrides: [], initialRstRelations: [],
     initialLineGroups: [],
     initialWordArrows: [], initialWordFormatting: [], initialSceneBreaks: [],
@@ -421,6 +421,7 @@ export default async function ChapterPage({ params, searchParams }: PageProps) {
             lxxTranslation={lxxTranslation}
             initialTextCriticalMarks={editingData.initialTextCriticalMarks}
             initialParagraphBreakIds={editingData.initialParagraphBreakIds}
+            initialHorizontalLineIds={editingData.initialHorizontalLineIds}
             initialCharacters={initialCharacters}
             initialCharacterRefs={editingData.initialCharacterRefs}
             initialSpeechSections={editingData.initialSpeechSections}

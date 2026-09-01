@@ -46,7 +46,7 @@ const REQUIRED_TABLES = [
 // Restored opportunistically when present, but not required — lets older
 // backups taken before this table existed still restore successfully.
 // Holds Zotero/api.bible credentials, font settings, hidden sources, etc.
-const OPTIONAL_TABLES = ["app_settings", "synoptic_sets", "synoptic_category_types", "synoptic_word_marks", "line_groups"];
+const OPTIONAL_TABLES = ["app_settings", "synoptic_sets", "synoptic_category_types", "synoptic_word_marks", "line_groups", "horizontal_lines"];
 
 // ── POST /api/backup ───────────────────────────────────────────────────────────
 // Accepts a multipart form upload of a .db file. Validates it is a Structura

@@ -1,0 +1,43 @@
+import { NextRequest, NextResponse } from "next/server";
+import { getChapterHorizontalLines, toggleHorizontalLine } from "@/lib/db/queries";
+import { getActiveWorkspaceId } from "@/lib/workspace";
+import { getActiveVersionId } from "@/lib/versions/activeVersion";
+
+export const dynamic = "force-dynamic";
+
+// GET /api/horizontal-lines?book=Gen&chapter=1
+export async function GET(request: NextRequest) {
+  const workspaceId = await getActiveWorkspaceId();
+  const { searchParams } = new URL(request.url);
+  const book = searchParams.get("book");
+  const chapter = parseInt(searchParams.get("chapter") ?? "", 10);
+
+  if (!book || isNaN(chapter)) {
+    return NextResponse.json({ error: "Missing params" }, { status: 400 });
+  }
+
+  const versionId = await getActiveVersionId(workspaceId, book, chapter);
+  const wordIds = await getChapterHorizontalLines(book, chapter, workspaceId, versionId);
+  return NextResponse.json({ wordIds });
+}
+
+// POST /api/horizontal-lines
+// Body: { wordId, book, chapter, source }
+export async function POST(request: NextRequest) {
+  const workspaceId = await getActiveWorkspaceId();
+  let body: { wordId?: string; book?: string; chapter?: number; source?: string };
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+  }
+
+  const { wordId, book, chapter, source } = body;
+  if (!wordId || !book || chapter == null || !source) {
+    return NextResponse.json({ error: "Missing fields" }, { status: 400 });
+  }
+
+  const versionId = await getActiveVersionId(workspaceId, book, chapter);
+  const result = await toggleHorizontalLine(wordId, book, chapter, source, workspaceId, versionId);
+  return NextResponse.json(result);
+}

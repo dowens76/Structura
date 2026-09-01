@@ -22,6 +22,10 @@ import { RELATIONSHIP_TYPES } from "@/lib/morphology/clauseRelationships";
 import type { RstTypeEntry } from "@/lib/morphology/clauseRelationships";
 import { derivePoetryDisplayMaps } from "@/lib/poetry/derivePoetryDisplayMaps";
 
+// Export view is read-only — no horizontal lines are ever toggled here, so a
+// single stable empty Set avoids allocating a new one on every render.
+const emptyStringSet = new Set<string>();
+
 interface Props {
   words: Word[];
   book: string;
@@ -444,6 +448,8 @@ export default function ExportTextView({
               useLinguisticTerms={false}
               paragraphBreakIds={paragraphBreakIds}
               editingParagraphs={false}
+              horizontalLineIds={emptyStringSet}
+              editingHorizontalLines={false}
               characterRefMap={characterRefMap}
               characterMap={characterMap}
               wordSpeechMap={wordSpeechMap}
@@ -457,6 +463,7 @@ export default function ExportTextView({
               chapter={chapter}
               onSelectTranslationWord={noop}
               onToggleTranslationParagraphBreak={noop}
+              onToggleTranslationHorizontalLine={noop}
               highlightCharIds={new Set()}
               onDeleteSpeechSection={noop}
               wordTagRefMap={wordTagRefMap}

@@ -5,7 +5,7 @@ import type { LookupMaps } from "./index";
 import { books, words } from "./source-schema";
 import { lexiconEntries } from "./lexica-schema";
 import type { Word, WordRow } from "./source-schema";
-import { translations, translationVerses, paragraphBreaks, paragraphHeadings, characters, characterRefs, speechSections, wordTags, wordTagRefs, lineIndents, syllableStressOverrides, sceneBreaks, passages, rstRelations, lineGroups, wordArrows, wordFormatting, lineAnnotations, poetryNotations, poetryLineBracketExclusions, bookGroupings, appSettings, translationFootnotes, translationVersions, workspaces, users, textCriticalMarks, notes, intertextualLinks, synopticSets, synopticWordMarks, constituentLabels, transliterationFormats, wordDatasets, wordDatasetEntries, wordDatasetLabelColors, versions, activeVersionSelections } from "./user-schema";
+import { translations, translationVerses, paragraphBreaks, horizontalLines, paragraphHeadings, characters, characterRefs, speechSections, wordTags, wordTagRefs, lineIndents, syllableStressOverrides, sceneBreaks, passages, rstRelations, lineGroups, wordArrows, wordFormatting, lineAnnotations, poetryNotations, poetryLineBracketExclusions, bookGroupings, appSettings, translationFootnotes, translationVersions, workspaces, users, textCriticalMarks, notes, intertextualLinks, synopticSets, synopticWordMarks, constituentLabels, transliterationFormats, wordDatasets, wordDatasetEntries, wordDatasetLabelColors, versions, activeVersionSelections } from "./user-schema";
 import type { Book, Translation, TranslationVerse, Character, CharacterRef, SpeechSection, WordTag, WordTagRef, Passage, RstRelation, LineGroup, WordArrow, LineAnnotation, PoetryNotation, PoetryLineBracketExclusion, BookGrouping, TranslationFootnote, TranslationVersion, IntertextualLink, SynopticSet, SynopticWordMark, Version } from "./schema";
 import { VERSIONABLE_FEATURES } from "@/lib/versions/registry";
 import type { TextSource, Testament } from "@/lib/morphology/types";
@@ -571,6 +571,53 @@ export async function toggleParagraphBreak(
     return { added: false };
   } else {
     await userDb.insert(paragraphBreaks).values({ wordId, book, chapter, textSource, workspaceId, versionId });
+    return { added: true };
+  }
+}
+
+/** Returns the set of word IDs that have a horizontal line marker for a chapter (all sources) */
+export async function getChapterHorizontalLines(
+  book: string,
+  chapter: number,
+  workspaceId: number,
+  versionId: number
+): Promise<string[]> {
+  const rows = await userDb
+    .select({ wordId: horizontalLines.wordId })
+    .from(horizontalLines)
+    .where(
+      and(
+        eq(horizontalLines.workspaceId, workspaceId),
+        eq(horizontalLines.versionId, versionId),
+        eq(horizontalLines.book, book),
+        eq(horizontalLines.chapter, chapter)
+      )
+    );
+  return rows.map((r) => r.wordId);
+}
+
+/** Toggles a horizontal line for a word. Returns whether it was added (true) or removed (false). */
+export async function toggleHorizontalLine(
+  wordId: string,
+  book: string,
+  chapter: number,
+  textSource: string,
+  workspaceId: number,
+  versionId: number
+): Promise<{ added: boolean }> {
+  const existing = await userDb
+    .select({ id: horizontalLines.id })
+    .from(horizontalLines)
+    .where(and(eq(horizontalLines.workspaceId, workspaceId), eq(horizontalLines.versionId, versionId), eq(horizontalLines.wordId, wordId)))
+    .limit(1);
+
+  if (existing.length > 0) {
+    await userDb.delete(horizontalLines).where(
+      and(eq(horizontalLines.workspaceId, workspaceId), eq(horizontalLines.versionId, versionId), eq(horizontalLines.wordId, wordId))
+    );
+    return { added: false };
+  } else {
+    await userDb.insert(horizontalLines).values({ wordId, book, chapter, textSource, workspaceId, versionId });
     return { added: true };
   }
 }

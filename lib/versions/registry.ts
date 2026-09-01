@@ -16,6 +16,7 @@
 import type { AnySQLiteColumn, SQLiteTable } from "drizzle-orm/sqlite-core";
 import {
   paragraphBreaks,
+  horizontalLines,
   characterRefs,
   speechSections,
   wordTagRefs,
@@ -49,6 +50,7 @@ export interface VersionableFeature {
 
 const TABLES_BY_KEY: Record<string, VersionableTable> = {
   paragraphBreaks,
+  horizontalLines,
   characterRefs,
   speechSections,
   wordTagRefs,

@@ -8,6 +8,7 @@
  */
 import {
   getChapterParagraphBreaks,
+  getChapterHorizontalLines,
   getChapterCharacterRefs,
   getChapterSpeechSections,
   getChapterWordTagRefs,
@@ -53,6 +54,7 @@ export async function getScriptureLocusEditingData(
       const versionId = await getVersionId(book, chapter);
       return Promise.all([
         getChapterParagraphBreaks(book, chapter, workspaceId, versionId),
+        getChapterHorizontalLines(book, chapter, workspaceId, versionId),
         getChapterCharacterRefs(book, chapter, workspaceId, versionId),
         getChapterSpeechSections(book, chapter, textSource, workspaceId, versionId),
         getChapterWordTagRefs(book, chapter, workspaceId, versionId),
@@ -79,19 +81,20 @@ export async function getScriptureLocusEditingData(
   ).flat();
   return {
     initialParagraphBreakIds: perChapterResults.flatMap(([p]) => p),
-    initialCharacterRefs:     perChapterResults.flatMap(([, r]) => r),
-    initialSpeechSections:    perChapterResults.flatMap(([,, s]) => s),
-    initialWordTagRefs:       perChapterResults.flatMap(([,,, t]) => t),
-    initialLineIndents:       perChapterResults.flatMap(([,,,, l]) => l),
-    initialSyllableStressOverrides: perChapterResults.flatMap(([,,,,, sso]) => sso),
-    initialRstRelations:      perChapterResults.flatMap(([,,,,,, cr]) => cr),
-    initialLineGroups:        perChapterResults.flatMap(([,,,,,,, lg]) => lg),
-    initialWordArrows:        perChapterResults.flatMap(([,,,,,,,, wa]) => wa),
-    initialWordFormatting:    perChapterResults.flatMap(([,,,,,,,,, wf]) => wf),
-    initialSceneBreaks:       perChapterResults.flatMap(([,,,,,,,,,, sb]) => sb),
-    initialLineAnnotations:   perChapterResults.flatMap(([,,,,,,,,,,, la]) => la),
-    initialPoetryNotations:   perChapterResults.flatMap(([,,,,,,,,,,,, pn]) => pn),
-    initialPoetryLineBracketExclusions: perChapterResults.flatMap(([,,,,,,,,,,,,, plbe]) => plbe),
+    initialHorizontalLineIds: perChapterResults.flatMap(([, hl]) => hl),
+    initialCharacterRefs:     perChapterResults.flatMap(([,, r]) => r),
+    initialSpeechSections:    perChapterResults.flatMap(([,,, s]) => s),
+    initialWordTagRefs:       perChapterResults.flatMap(([,,,, t]) => t),
+    initialLineIndents:       perChapterResults.flatMap(([,,,,, l]) => l),
+    initialSyllableStressOverrides: perChapterResults.flatMap(([,,,,,, sso]) => sso),
+    initialRstRelations:      perChapterResults.flatMap(([,,,,,,, cr]) => cr),
+    initialLineGroups:        perChapterResults.flatMap(([,,,,,,,, lg]) => lg),
+    initialWordArrows:        perChapterResults.flatMap(([,,,,,,,,, wa]) => wa),
+    initialWordFormatting:    perChapterResults.flatMap(([,,,,,,,,,, wf]) => wf),
+    initialSceneBreaks:       perChapterResults.flatMap(([,,,,,,,,,,, sb]) => sb),
+    initialLineAnnotations:   perChapterResults.flatMap(([,,,,,,,,,,,, la]) => la),
+    initialPoetryNotations:   perChapterResults.flatMap(([,,,,,,,,,,,,, pn]) => pn),
+    initialPoetryLineBracketExclusions: perChapterResults.flatMap(([,,,,,,,,,,,,,, plbe]) => plbe),
     initialTextCriticalMarks,
   };
 }

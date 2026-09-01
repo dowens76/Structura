@@ -174,7 +174,7 @@ export default async function PassagePage({ params, searchParams }: PageProps) {
   const activeVersionRevision = initialVersions.find((v) => v.id === activeVersionId)?.contentRevision ?? 0;
 
   const {
-    initialParagraphBreakIds, initialCharacterRefs, initialSpeechSections,
+    initialParagraphBreakIds, initialHorizontalLineIds, initialCharacterRefs, initialSpeechSections,
     initialWordTagRefs, initialLineIndents, initialSyllableStressOverrides, initialRstRelations, initialLineGroups,
     initialWordArrows, initialWordFormatting, initialSceneBreaks,
     initialLineAnnotations, initialPoetryNotations, initialPoetryLineBracketExclusions, initialTextCriticalMarks,
@@ -349,6 +349,7 @@ export default async function PassagePage({ params, searchParams }: PageProps) {
           startBookChapterCount={bookRecord.chapterCount}
           sortedBooks={sourceBooks.map((b) => b.osisCode)}
           initialParagraphBreakIds={initialParagraphBreakIds}
+          initialHorizontalLineIds={initialHorizontalLineIds}
           initialCharacters={characters}
           initialCharacterRefs={initialCharacterRefs}
           initialSpeechSections={initialSpeechSections}

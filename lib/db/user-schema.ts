@@ -137,6 +137,26 @@ export const paragraphBreaks = sqliteTable(
   ]
 );
 
+export const horizontalLines = sqliteTable(
+  "horizontal_lines",
+  {
+    id:          integer("id").primaryKey({ autoIncrement: true }),
+    workspaceId: integer("workspace_id").notNull().default(1)
+                   .references(() => workspaces.id, { onDelete: "cascade" }),
+    versionId:   integer("version_id").notNull()
+                   .references(() => versions.id, { onDelete: "cascade" }),
+    wordId:      text("word_id").notNull(),
+    textSource:  text("text_source").notNull(),
+    book:        text("book").notNull(),
+    chapter:     integer("chapter").notNull(),
+    createdAt:   text("created_at").$defaultFn(() => new Date().toISOString()),
+  },
+  (table) => [
+    uniqueIndex("hl_ws_word_idx").on(table.workspaceId, table.versionId, table.wordId),
+    index("hl_book_ch_source_idx").on(table.book, table.chapter, table.textSource),
+  ]
+);
+
 export const characters = sqliteTable(
   "characters",
   {

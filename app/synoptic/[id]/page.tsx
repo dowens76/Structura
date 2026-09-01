@@ -79,7 +79,7 @@ async function loadColumnData(passage: Passage, workspaceId: number): Promise<Sy
   ]);
 
   const {
-    initialParagraphBreakIds, initialCharacterRefs, initialSpeechSections,
+    initialParagraphBreakIds, initialHorizontalLineIds, initialCharacterRefs, initialSpeechSections,
     initialWordTagRefs, initialLineIndents, initialSyllableStressOverrides, initialRstRelations, initialLineGroups,
     initialWordArrows, initialWordFormatting, initialSceneBreaks,
     initialLineAnnotations, initialPoetryNotations, initialPoetryLineBracketExclusions, initialTextCriticalMarks,
@@ -129,6 +129,7 @@ async function loadColumnData(passage: Passage, workspaceId: number): Promise<Sy
       availableTranslations,
       translationVerseData,
       initialParagraphBreakIds,
+      initialHorizontalLineIds,
       initialCharacters: characters,
       initialCharacterRefs,
       initialSpeechSections,

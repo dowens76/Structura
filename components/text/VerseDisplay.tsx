@@ -147,6 +147,8 @@ interface VerseDisplayProps {
   useLinguisticTerms: boolean;
   paragraphBreakIds: Set<string>;
   editingParagraphs: boolean;
+  horizontalLineIds: Set<string>;
+  editingHorizontalLines: boolean;
   // Character tagging
   characterRefMap: Map<string, CharacterRef>;
   characterMap: Map<number, Character>;
@@ -175,6 +177,8 @@ interface VerseDisplayProps {
   onSelectTranslationWord: (wordId: string, abbr: string, shiftHeld?: boolean) => void;
   // Translation paragraph breaks
   onToggleTranslationParagraphBreak: (wordId: string, abbr: string) => void;
+  // Translation horizontal lines
+  onToggleTranslationHorizontalLine: (wordId: string, abbr: string) => void;
   // Character highlight
   highlightCharIds: Set<number>;
   // Speech section delete (via × button) and reassign (via character badge)
@@ -1473,6 +1477,8 @@ export default function VerseDisplay({
   useLinguisticTerms,
   paragraphBreakIds,
   editingParagraphs,
+  horizontalLineIds,
+  editingHorizontalLines,
   characterRefMap,
   characterMap,
   wordSpeechMap,
@@ -1491,6 +1497,7 @@ export default function VerseDisplay({
   chapter,
   onSelectTranslationWord,
   onToggleTranslationParagraphBreak,
+  onToggleTranslationHorizontalLine,
   highlightCharIds,
   onDeleteSpeechSection,
   onReassignSpeechSection,
@@ -2353,6 +2360,37 @@ export default function VerseDisplay({
   // scene break → solid HR + heading; regular paragraph break → dashed line.
   function renderSegSeparator(wordId: string): React.ReactNode {
     if ((sceneBreakMap.get(wordId)?.length ?? 0) > 0) return renderSceneSeparator(wordId);
+    const hasHorizontalLine = horizontalLineIds.has(wordId);
+    if (editingHorizontalLines) {
+      const breakWord = words.find((w) => w.wordId === wordId);
+      return (
+        <div className="relative flex items-center mb-2">
+          <div className="flex-1 border-t-2 border-sky-400" />
+          {breakWord && (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onSelectWord(breakWord); }}
+              title={hasHorizontalLine ? "Remove horizontal line" : "Add horizontal line here"}
+              className={[
+                "mx-1 flex items-center justify-center w-4 h-4 rounded-full text-white text-[11px] leading-none shrink-0",
+                hasHorizontalLine ? "bg-sky-500 hover:bg-sky-600" : "bg-stone-300 dark:bg-stone-600 hover:bg-sky-400",
+              ].join(" ")}
+            >
+              {hasHorizontalLine ? "×" : "+"}
+            </button>
+          )}
+          <div className="flex-1 border-t-2 border-sky-400" />
+        </div>
+      );
+    }
+    if (hasHorizontalLine) {
+      return (
+        <div
+          className="w-full border-t-2 mb-2 border-stone-400 dark:border-stone-500"
+          aria-hidden="true"
+        />
+      );
+    }
     if (editingParagraphs) {
       const breakWord = words.find((w) => w.wordId === wordId);
       return (
@@ -2617,6 +2655,7 @@ export default function VerseDisplay({
               showTooltip={showTooltips}
               useLinguisticTerms={useLinguisticTerms}
               editingParagraphs={editingParagraphs}
+              editingHorizontalLines={editingHorizontalLines}
               characterRef={charRef}
               characterMap={characterMap}
               editingRefs={editingRefs}
@@ -2892,7 +2931,7 @@ export default function VerseDisplay({
           // Suppress the dashed separator (and its margin) when this segment is a
           // continuation of the same speech box or annotation — no gap inside the box.
           // Use the outermost layer to decide: if it continues, no gap.
-          const suppressSeparator = !editingParagraphs && (
+          const suppressSeparator = !editingParagraphs && !editingHorizontalLines && (
             (layers.length > 0 && !isSegStart) ||
             (annotationsBySegment?.get(seg[0].wordId) ?? []).some(e => !e.isStart)
           );
@@ -3073,6 +3112,8 @@ export default function VerseDisplay({
           // Verse-level translation paragraph separator (first row only)
           const tvStartsNewParagraph = si === 0
             && paragraphBreakIds.has(`tv:${abbr}:${book}.${chapter}.${verseNum}.0`);
+          const tvHasHorizontalLine = tvStartsNewParagraph
+            && horizontalLineIds.has(`tv:${abbr}:${book}.${chapter}.${verseNum}.0`);
 
           // ── Translation edit mode: show a plain textarea for direct text editing ──
           if (editingTranslation || editingTranslationSource) {
@@ -3114,7 +3155,25 @@ export default function VerseDisplay({
           return (
             <div key={abbr} className="relative">
               {tvStartsNewParagraph && (
-                editingParagraphs ? (
+                editingHorizontalLines ? (
+                  <div className="relative flex items-center mb-1">
+                    <div className="flex-1 border-t-2 border-sky-400" />
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); onToggleTranslationHorizontalLine(`tv:${abbr}:${book}.${chapter}.${verseNum}.0`, abbr); }}
+                      title={tvHasHorizontalLine ? "Remove horizontal line" : "Add horizontal line here"}
+                      className={[
+                        "mx-1 flex items-center justify-center w-4 h-4 rounded-full text-white text-[11px] leading-none shrink-0",
+                        tvHasHorizontalLine ? "bg-sky-500 hover:bg-sky-600" : "bg-stone-300 dark:bg-stone-600 hover:bg-sky-400",
+                      ].join(" ")}
+                    >
+                      {tvHasHorizontalLine ? "×" : "+"}
+                    </button>
+                    <div className="flex-1 border-t-2 border-sky-400" />
+                  </div>
+                ) : tvHasHorizontalLine ? (
+                  <div className="w-full border-t-2 mb-1 border-stone-400 dark:border-stone-500" aria-hidden="true" />
+                ) : editingParagraphs ? (
                   <div className="relative flex items-center mb-1">
                     <div className="flex-1 border-t border-dashed border-amber-400" />
                     <button
@@ -3141,7 +3200,7 @@ export default function VerseDisplay({
                     color: "var(--foreground)",
                     lineHeight: "var(--translation-line-height, var(--source-row-height, 1.625))",
                     paddingLeft: tvIndentLevel > 0 ? `${tvIndentLevel * 2}rem` : undefined,
-                    cursor: editingParagraphs ? "crosshair" : undefined,
+                    cursor: (editingParagraphs || editingHorizontalLines) ? "crosshair" : undefined,
                   }}
                 >
                   {rowWordSegs.flatMap((wordSeg, segIdx) =>
@@ -3149,6 +3208,7 @@ export default function VerseDisplay({
                       const globalWi = wordSeg.startIdx + localWi;
                       const tvWordId = `tv:${abbr}:${book}.${chapter}.${verseNum}.${globalWi}`;
                       const isInterSegBreak = segIdx > 0 && localWi === 0;
+                      const hasHorizontalLine = isInterSegBreak && horizontalLineIds.has(tvWordId);
                       const isLastInSeg = localWi === wordSeg.words.length - 1;
                       const isLastOverall = segIdx === rowWordSegs.length - 1 && isLastInSeg;
 
@@ -3243,7 +3303,7 @@ export default function VerseDisplay({
                           : undefined;
 
                       // ── Combined span style ───────────────────────────────────
-                      const isLxxEditingMode = editingTc || editingParagraphs || editingFormatting ||
+                      const isLxxEditingMode = editingTc || editingParagraphs || editingHorizontalLines || editingFormatting ||
                         editingRefs || editingWordTags || editingArrows || editingScenes;
                       const isLxxSelected = !isLxxEditingMode && selectedWordId === lxxWord.wordId;
 
@@ -3257,7 +3317,7 @@ export default function VerseDisplay({
                         ...underlineStyle,
                         ...tvBgStyle,
                         ...formattingStyle,
-                        cursor: editingTc || editingParagraphs || editingFormatting || editingRefs || editingWordTags || editingArrows
+                        cursor: editingTc || editingParagraphs || editingHorizontalLines || editingFormatting || editingRefs || editingWordTags || editingArrows
                           ? "crosshair" : "pointer",
                       };
 
@@ -3268,6 +3328,8 @@ export default function VerseDisplay({
                         ? () => onTcMarkWord?.(lxxWord.wordId, lxxWord.textSource)
                         : editingParagraphs && globalWi > 0
                         ? () => onToggleTranslationParagraphBreak(tvWordId, abbr)
+                        : editingHorizontalLines && globalWi > 0
+                        ? () => onToggleTranslationHorizontalLine(tvWordId, abbr)
                         : editingArrows
                         ? () => onSelectArrowWordById?.(tvWordId)
                         : editingFormatting
@@ -3300,7 +3362,23 @@ export default function VerseDisplay({
                           {isInterSegBreak && (
                             <>
                               <br />
-                              {editingParagraphs && (
+                              {editingHorizontalLines ? (
+                                <div className="relative flex items-center w-full">
+                                  <div className="flex-1 border-t-2 border-sky-400" />
+                                  <button
+                                    type="button"
+                                    onClick={(e) => { e.stopPropagation(); onToggleTranslationHorizontalLine(tvWordId, abbr); }}
+                                    title={hasHorizontalLine ? "Remove horizontal line" : "Add horizontal line here"}
+                                    className={[
+                                      "mx-1 flex items-center justify-center w-4 h-4 rounded-full text-white text-[11px] leading-none shrink-0",
+                                      hasHorizontalLine ? "bg-sky-500 hover:bg-sky-600" : "bg-stone-300 dark:bg-stone-600 hover:bg-sky-400",
+                                    ].join(" ")}
+                                  >{hasHorizontalLine ? "×" : "+"}</button>
+                                  <div className="flex-1 border-t-2 border-sky-400" />
+                                </div>
+                              ) : hasHorizontalLine ? (
+                                <div className="w-full border-t-2 border-stone-400 dark:border-stone-500" aria-hidden="true" />
+                              ) : editingParagraphs && (
                                 <button
                                   type="button"
                                   onClick={(e) => { e.stopPropagation(); onToggleTranslationParagraphBreak(tvWordId, abbr); }}
@@ -3592,6 +3670,7 @@ export default function VerseDisplay({
                       const isMidVerseBreak = localWi > 0 && paragraphBreakIds.has(wordId);
                       // Between adjacent tvSegs in the same row: add a visual ¶ separator
                       const isInterSegBreak = segIdx > 0 && localWi === 0;
+                      const hasHorizontalLine = (isMidVerseBreak || isInterSegBreak) && horizontalLineIds.has(wordId);
 
                       // ── Bold / italic / underline formatting for translation tokens ──
                       const tvFormatting = wordFormattingMap.get(wordId);
@@ -3614,6 +3693,8 @@ export default function VerseDisplay({
                         ? "cursor-crosshair rounded px-0.5 -mx-0.5 hover:bg-violet-100 dark:hover:bg-violet-900/40 transition-colors"
                         : editingParagraphs
                         ? "cursor-crosshair rounded px-0.5 -mx-0.5 hover:bg-amber-100 dark:hover:bg-amber-900/40 transition-colors"
+                        : editingHorizontalLines
+                        ? "cursor-crosshair rounded px-0.5 -mx-0.5 hover:bg-sky-100 dark:hover:bg-sky-900/40 transition-colors"
                         : editingSpeech
                         ? "cursor-crosshair rounded px-0.5 -mx-0.5 hover:bg-violet-100 dark:hover:bg-violet-900/40 transition-colors"
                         : editingWordTags
@@ -3634,6 +3715,8 @@ export default function VerseDisplay({
                         ? (e: React.MouseEvent) => onSelectTranslationWord(wordId, abbr, e.shiftKey)
                         : editingParagraphs
                         ? () => onToggleTranslationParagraphBreak(wordId, abbr)
+                        : editingHorizontalLines
+                        ? () => onToggleTranslationHorizontalLine(wordId, abbr)
                         : editingSpeech
                         ? () => {
                             // Map clicked translation token to the correct source paragraph
@@ -3737,7 +3820,25 @@ export default function VerseDisplay({
                           {(isMidVerseBreak || isInterSegBreak) && (
                             <>
                               <br />
-                              {editingParagraphs ? (
+                              {editingHorizontalLines ? (
+                                <button
+                                  type="button"
+                                  onClick={(e) => { e.stopPropagation(); onToggleTranslationHorizontalLine(wordId, abbr); }}
+                                  title={hasHorizontalLine ? "Remove horizontal line" : "Add horizontal line here"}
+                                  className={`text-xs font-mono mr-1 cursor-pointer ${hasHorizontalLine ? "text-sky-500 hover:text-sky-600" : "text-stone-400 hover:text-sky-400"}`}
+                                >
+                                  ―{hasHorizontalLine ? "×" : "+"}
+                                </button>
+                              ) : hasHorizontalLine ? (
+                                // <span style="display:block">, not <div> — this whole
+                                // node tree renders inside a <p>, and a <div> descendant
+                                // of <p> is invalid HTML (hydration error).
+                                <span
+                                  style={{ display: "block", width: "100%" }}
+                                  className="border-t-2 border-stone-400 dark:border-stone-500 mb-1"
+                                  aria-hidden="true"
+                                />
+                              ) : editingParagraphs ? (
                                 <button
                                   type="button"
                                   onClick={(e) => { e.stopPropagation(); onToggleTranslationParagraphBreak(wordId, abbr); }}
@@ -4129,7 +4230,7 @@ export default function VerseDisplay({
 
         // Suppress the dashed separator when this segment continues the same speech box or annotation.
         // Use the outermost layer to decide — if it continues from the previous segment, no gap.
-        const suppressSeparator = !editingParagraphs && (
+        const suppressSeparator = !editingParagraphs && !editingHorizontalLines && (
           (layers.length > 0 && !isSegStart) ||
           (annotationsBySegment?.get(seg[0].wordId) ?? []).some(e => !e.isStart)
         );

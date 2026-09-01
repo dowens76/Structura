@@ -111,6 +111,7 @@ interface ChapterDisplayProps {
   availableTranslations: Translation[];
   translationVerseData: Record<number, TranslationVerse[]>;
   initialParagraphBreakIds: string[];
+  initialHorizontalLineIds: string[];
   initialCharacters: Character[];
   initialCharacterRefs: CharacterRef[];
   initialSpeechSections: SpeechSection[];
@@ -260,6 +261,7 @@ export default function ChapterDisplay({
   availableTranslations,
   translationVerseData,
   initialParagraphBreakIds,
+  initialHorizontalLineIds,
   initialCharacters,
   initialCharacterRefs,
   initialSpeechSections,
@@ -436,6 +438,10 @@ export default function ChapterDisplay({
   const [editingParagraphs, setEditingParagraphs] = useState(false);
   const [paragraphBreakIds, setParagraphBreakIds] = useState<Set<string>>(
     () => new Set(initialParagraphBreakIds)
+  );
+  const [editingHorizontalLines, setEditingHorizontalLines] = useState(false);
+  const [horizontalLineIds, setHorizontalLineIds] = useState<Set<string>>(
+    () => new Set(initialHorizontalLineIds)
   );
 
   // ── Section break state ──────────────────────────────────────────────────────
@@ -1765,6 +1771,44 @@ export default function ChapterDisplay({
     setEditingScenes(readLocal<boolean>("structura:editingScenes", false));
   }, []); // empty deps → runs once after first render (client only)
 
+  // Reconcile the active-translations selection with its DB-backed copy.
+  // localStorage alone isn't reliable here: in the packaged Tauri app the
+  // embedded server's port can fall back off its usual 3737 (see
+  // find_preferred_port in src-tauri/src/lib.rs) when that port is briefly
+  // held by a leftover process, and WKWebView scopes localStorage per-origin
+  // — so a port change makes a previously-selected translation silently
+  // disappear even though its text is still in the database (this is why
+  // "translation not showing" reports kept recurring). The DB copy (POSTed
+  // whenever the user toggles a translation, see toggleTranslation) survives
+  // any origin change, so once it loads it wins over whatever localStorage
+  // had. If the DB has nothing yet but localStorage does, migrate that
+  // legacy value into the DB so it's durable from here on.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/settings/active-translations");
+        if (!res.ok || cancelled) return;
+        const data = await res.json() as { abbrs?: string[] };
+        const dbAbbrs = data.abbrs ?? [];
+        if (dbAbbrs.length > 0) {
+          setActiveTranslationAbbrs(new Set(dbAbbrs));
+          writeLocal("structura:activeTranslations", dbAbbrs);
+        } else {
+          const storedAbbrs = readLocal<string[]>("structura:activeTranslations", []);
+          if (storedAbbrs.length > 0) {
+            fetch("/api/settings/active-translations", {
+              method: "PUT",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ abbrs: storedAbbrs }),
+            }).catch(() => {});
+          }
+        }
+      } catch { /* network error — localStorage-restored selection stands */ }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
   // Snapshot translation data when editing mode is entered so Cancel can revert to it
   useEffect(() => {
     if (editingTranslation) {
@@ -2573,7 +2617,15 @@ export default function ChapterDisplay({
       const next = new Set(prev);
       if (next.has(abbr)) next.delete(abbr);
       else next.add(abbr);
-      writeLocal("structura:activeTranslations", [...next]);
+      const abbrs = [...next];
+      writeLocal("structura:activeTranslations", abbrs);
+      // Persisted to the DB (not just localStorage) so the selection survives
+      // an origin change in the packaged app — see the reconciliation effect above.
+      fetch("/api/settings/active-translations", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ abbrs }),
+      }).catch(() => {});
       return next;
     });
   }
@@ -2633,6 +2685,10 @@ export default function ChapterDisplay({
     }
     if (editingParagraphs) {
       handleToggleParagraphBreak(word.wordId);
+      return;
+    }
+    if (editingHorizontalLines) {
+      handleToggleHorizontalLine(word.wordId);
       return;
     }
     if (editingScenes) {
@@ -2738,6 +2794,57 @@ export default function ChapterDisplay({
   // Called when a translation word is clicked in paragraph-editing mode.
   function handleToggleTranslationParagraphBreak(wordId: string, abbr: string) {
     return handleToggleParagraphBreakById(wordId, abbr);
+  }
+
+  // Core toggle logic for horizontal lines — mirrors handleToggleParagraphBreakById.
+  async function handleToggleHorizontalLineById(wordId: string, source: string, record = true) {
+    if (record) {
+      const wasSet = horizontalLineIds.has(wordId);
+      pushUndo({
+        label: wasSet ? "Remove ―" : "Add ―",
+        undo: () => handleToggleHorizontalLineById(wordId, source, false),
+      });
+    }
+    setHorizontalLineIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(wordId)) next.delete(wordId);
+      else next.add(wordId);
+      return next;
+    });
+    try {
+      await fetch("/api/horizontal-lines", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ wordId, ...getWordLocation(wordId), source }),
+      });
+    } catch {
+      setHorizontalLineIds((prev) => {
+        const next = new Set(prev);
+        if (next.has(wordId)) next.delete(wordId);
+        else next.add(wordId);
+        return next;
+      });
+    }
+  }
+
+  // A horizontal line can only render at a paragraph-segment boundary, so
+  // adding one to a word that isn't already a paragraph break start also
+  // creates that break (inheriting indent, same as handleToggleParagraphBreak).
+  function handleToggleHorizontalLine(wordId: string) {
+    const wasSet = horizontalLineIds.has(wordId);
+    if (!wasSet && !paragraphBreakIds.has(wordId)) {
+      handleToggleParagraphBreak(wordId);
+    }
+    return handleToggleHorizontalLineById(wordId, textSource);
+  }
+
+  // Called when a translation word is clicked in horizontal-line-editing mode.
+  function handleToggleTranslationHorizontalLine(wordId: string, abbr: string) {
+    const wasSet = horizontalLineIds.has(wordId);
+    if (!wasSet && !paragraphBreakIds.has(wordId)) {
+      handleToggleTranslationParagraphBreak(wordId, abbr);
+    }
+    return handleToggleHorizontalLineById(wordId, abbr);
   }
 
 
@@ -5213,6 +5320,7 @@ export default function ChapterDisplay({
   function deactivateIncompatible(mode: string) {
     const keep = new Set([mode, ...(COMPAT[mode] ?? [])]);
     if (!keep.has("paragraph"))   setEditingParagraphs(false);
+    if (!keep.has("horizontalLines")) setEditingHorizontalLines(false);
     if (!keep.has("scenes"))      setEditingScenes(false);
     if (!keep.has("annotations")) { setEditingAnnotations(false); setAnnotRangeStart(null); setAnnotRangeEnd(null); setEditingAnnotationId(null); }
     if (!keep.has("poetry"))      { setEditingPoetryNotation(false); clearPoetryPending(); }
@@ -5736,6 +5844,22 @@ export default function ChapterDisplay({
                 ].join(" ")}
               >
                 ¶
+              </button>}
+
+              {/* Horizontal line edit mode toggle */}
+              {toolbarVis.horizontalLines && <button
+                onClick={() => { if (!editingHorizontalLines) deactivateIncompatible("horizontalLines"); setEditingHorizontalLines((v) => !v); }}
+                data-tip={editingHorizontalLines
+                  ? "Exit horizontal-line editing"
+                  : "Add/remove horizontal lines to divide sections without a heading"}
+                className={[
+                  "px-3 py-1.5 rounded text-[13px] font-medium transition-colors",
+                  editingHorizontalLines
+                    ? "bg-amber-500 text-white"
+                    : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
+                ].join(" ")}
+              >
+                ―
               </button>}
 
               {/* Atnach marker — Hebrew only */}
@@ -7123,6 +7247,8 @@ export default function ChapterDisplay({
                 useLinguisticTerms={useLinguisticTerms}
                 paragraphBreakIds={paragraphBreakIds}
                 editingParagraphs={editingParagraphs}
+                horizontalLineIds={horizontalLineIds}
+                editingHorizontalLines={editingHorizontalLines}
                 showAtnachBreaks={showAtnachBreaks}
                 showSyllableStress={showSyllableStress}
                 syllableStressOverrideMap={syllableStressOverrideMap}
@@ -7149,6 +7275,7 @@ export default function ChapterDisplay({
                 chapter={verse.ch}
                 onSelectTranslationWord={handleSelectTranslationWord}
                 onToggleTranslationParagraphBreak={handleToggleTranslationParagraphBreak}
+                onToggleTranslationHorizontalLine={handleToggleTranslationHorizontalLine}
                 highlightCharIds={highlightCharIds}
                 onDeleteSpeechSection={handleDeleteSpeechSection}
                 onReassignSpeechSection={handleReassignSpeechSection}

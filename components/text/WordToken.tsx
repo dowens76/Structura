@@ -24,6 +24,7 @@ interface WordTokenProps {
   showTooltip: boolean;
   useLinguisticTerms: boolean;
   editingParagraphs: boolean;
+  editingHorizontalLines?: boolean;
   // Character tagging
   characterRef: CharacterRef | null;
   characterMap: Map<number, Character>;
@@ -501,6 +502,7 @@ export default function WordToken({
   showTooltip: tooltipsEnabled,
   useLinguisticTerms,
   editingParagraphs,
+  editingHorizontalLines = false,
   characterRef,
   characterMap,
   editingRefs,
@@ -688,13 +690,15 @@ export default function WordToken({
     setHovering(true);
   }
 
-  const isEditing = editingParagraphs || editingRefs || editingSpeech || !!editingWordTags || !!editingFormatting || !!editingWordCompare;
+  const isEditing = editingParagraphs || editingHorizontalLines || editingRefs || editingSpeech || !!editingWordTags || !!editingFormatting || !!editingWordCompare;
 
   const baseClasses = [
     "relative transition-all duration-100",
     "rounded px-0.5 -mx-0.5",
     editingParagraphs
       ? "cursor-crosshair hover:bg-amber-100 dark:hover:bg-amber-900/40"
+      : editingHorizontalLines
+      ? "cursor-crosshair hover:bg-sky-100 dark:hover:bg-sky-900/40"
       : editingFormatting
         ? "cursor-crosshair hover:bg-amber-50 dark:hover:bg-amber-950/40"
       : editingWordTags

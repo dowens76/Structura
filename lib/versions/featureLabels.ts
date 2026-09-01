@@ -11,6 +11,7 @@ export interface VersionableFeatureLabel {
 
 export const VERSIONABLE_FEATURE_LABELS: VersionableFeatureLabel[] = [
   { key: "paragraphBreaks", label: "Paragraph breaks" },
+  { key: "horizontalLines", label: "Horizontal lines" },
   { key: "characterRefs", label: "Character assignments" },
   { key: "speechSections", label: "Speech sections" },
   { key: "wordTagRefs", label: "Word/concept tags" },
@@ -39,4 +40,4 @@ export const VERSIONABLE_FEATURE_LABELS: VersionableFeatureLabel[] = [
  * version dialogs use this to force "Paragraph breaks" on whenever one of
  * these is selected.
  */
-export const FEATURES_REQUIRING_PARAGRAPH_BREAKS = ["lineAnnotations", "sceneBreaks", "poetryNotations", "poetryLineBracketExclusions", "syllableStressOverrides"];
+export const FEATURES_REQUIRING_PARAGRAPH_BREAKS = ["lineAnnotations", "sceneBreaks", "poetryNotations", "poetryLineBracketExclusions", "syllableStressOverrides", "horizontalLines"];
