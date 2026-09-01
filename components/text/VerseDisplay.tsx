@@ -251,8 +251,8 @@ interface VerseDisplayProps {
   // Translation text editing
   editingTranslation?: boolean;
   editingTranslationSource?: boolean;
-  onUpdateTranslationVerse?: (abbr: string, verse: number, newText: string) => void;
-  onCancelTranslationVerse?: (abbr: string, verse: number) => void;
+  onUpdateTranslationVerse?: (abbr: string, book: string, chapter: number, verse: number, newText: string) => void;
+  onCancelTranslationVerse?: (abbr: string, book: string, chapter: number, verse: number) => void;
   // Free-form arrows (applies to both source and translation words)
   editingArrows?: boolean;
   onSelectArrowWordById?: (wordId: string) => void;
@@ -1361,12 +1361,14 @@ function computeSegments(ws: Word[], breakIds: Set<string>): Word[][] {
 interface TranslationTextareaProps {
   initialText: string;
   abbr: string;
+  book: string;
+  chapter: number;
   verseNum: number;
   onSave: (abbr: string, verse: number, text: string) => void;
   onCancel: (abbr: string, verse: number) => void;
   sourceMode?: boolean;
 }
-function TranslationTextarea({ initialText, abbr, verseNum, onSave, onCancel, sourceMode }: TranslationTextareaProps) {
+function TranslationTextarea({ initialText, abbr, book, chapter, verseNum, onSave, onCancel, sourceMode }: TranslationTextareaProps) {
   const [value, setValue] = useState(initialText);
   const savedRef = useRef(false);
   const valueRef = useRef(value);
@@ -1417,6 +1419,8 @@ function TranslationTextarea({ initialText, abbr, verseNum, onSave, onCancel, so
         data-translation-textarea="true"
         data-verse={verseNum}
         data-abbr={abbr}
+        data-book={book}
+        data-chapter={chapter}
         onBlur={() => {
           // User navigated away — cancel debounce and save with trailing spaces trimmed
           if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -3094,9 +3098,11 @@ export default function VerseDisplay({
                   key={`${abbr}-${verseNum}-${editingTranslationSource ? "src" : "edit"}`}
                   initialText={tvFullText}
                   abbr={abbr}
+                  book={book}
+                  chapter={chapter}
                   verseNum={verseNum}
-                  onSave={(a, v, t) => onUpdateTranslationVerse?.(a, v, t)}
-                  onCancel={(a, v) => onCancelTranslationVerse?.(a, v)}
+                  onSave={(a, v, t) => onUpdateTranslationVerse?.(a, book, chapter, v, t)}
+                  onCancel={(a, v) => onCancelTranslationVerse?.(a, book, chapter, v)}
                   sourceMode={editingTranslationSource}
                 />
               </div>

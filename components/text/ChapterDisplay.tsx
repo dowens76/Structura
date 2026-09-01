@@ -322,6 +322,12 @@ export default function ChapterDisplay({
 
   // Footnote dialog state (shared between create and edit)
   const [fnDialogOpen, setFnDialogOpen] = useState(false);
+  // Book/chapter the dialog's verse number belongs to — a passage view can span
+  // multiple chapters (even multiple books) that share the same verse number, so
+  // `fnDialogVerse` alone isn't enough to identify the right verse. Defaults to
+  // this component's own book/chapter (the common single-chapter case).
+  const [fnDialogBook, setFnDialogBook] = useState(book);
+  const [fnDialogChapter, setFnDialogChapter] = useState(chapter);
   const [fnDialogVerse, setFnDialogVerse] = useState(1);
   const [fnDialogAbbr, setFnDialogAbbr] = useState("");
   const [fnDialogType, setFnDialogType] = useState<"f" | "x">("f");
@@ -4754,10 +4760,14 @@ export default function ChapterDisplay({
   }
 
   // ── Translation verse text edit handler ────────────────────────────────────
-  async function handleUpdateTranslationVerse(abbr: string, verse: number, newText: string, record = true) {
+  // book/chapter identify which verse-N is meant — a passage view can span
+  // multiple chapters that share a raw verse number, so matching by verse
+  // alone would silently read/write the wrong chapter's text (and, worse,
+  // overwrite it with content derived from a different verse entirely).
+  async function handleUpdateTranslationVerse(abbr: string, vBook: string, vChapter: number, verse: number, newText: string, record = true) {
     const translation = allAvailableTranslations.find((t) => t.abbreviation === abbr);
     if (!translation) return;
-    const tvRecord = localTranslationVerseData[translation.id]?.find((tv) => tv.verse === verse);
+    const tvRecord = localTranslationVerseData[translation.id]?.find((tv) => tv.chapter === vChapter && tv.verse === verse);
 
     // ── Create new record when verse has no existing translation ─────────
     if (!tvRecord) {
@@ -4768,8 +4778,8 @@ export default function ChapterDisplay({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             translationId: translation.id,
-            book,
-            chapter,
+            book: vBook,
+            chapter: vChapter,
             verse,
             text: newText,
           }),
@@ -4779,7 +4789,7 @@ export default function ChapterDisplay({
           ...prev,
           [translation.id]: [
             ...(prev[translation.id] ?? []),
-            { id, workspaceId: 1, translationId: translation.id, osisRef: `${book}.${chapter}.${verse}`, bookId: 0, chapter, verse, text: newText },
+            { id, workspaceId: 1, translationId: translation.id, osisRef: `${vBook}.${vChapter}.${verse}`, bookId: 0, chapter: vChapter, verse, text: newText },
           ],
         }));
       } catch {
@@ -4792,7 +4802,7 @@ export default function ChapterDisplay({
     if (record && newText !== oldText) {
       pushUndo({
         label: `Edit translation ${abbr} ${verse}`,
-        undo: () => handleUpdateTranslationVerse(abbr, verse, oldText, false),
+        undo: () => handleUpdateTranslationVerse(abbr, vBook, vChapter, verse, oldText, false),
       });
       // Fire-and-forget server-side version snapshot
       fetch("/api/translation-versions", {
@@ -4800,7 +4810,7 @@ export default function ChapterDisplay({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           translationId: translation.id,
-          osisRef: `${book}.${chapter}.${verse}`,
+          osisRef: `${vBook}.${vChapter}.${verse}`,
           text: oldText,
         }),
       }).catch(() => {});
@@ -4810,7 +4820,7 @@ export default function ChapterDisplay({
     setLocalTranslationVerseData((prev) => ({
       ...prev,
       [translation.id]: (prev[translation.id] ?? []).map((tv) =>
-        tv.verse === verse ? { ...tv, text: newText } : tv
+        tv.chapter === vChapter && tv.verse === verse ? { ...tv, text: newText } : tv
       ),
     }));
 
@@ -4825,20 +4835,20 @@ export default function ChapterDisplay({
       setLocalTranslationVerseData((prev) => ({
         ...prev,
         [translation.id]: (prev[translation.id] ?? []).map((tv) =>
-          tv.verse === verse ? { ...tv, text: oldText } : tv
+          tv.chapter === vChapter && tv.verse === verse ? { ...tv, text: oldText } : tv
         ),
       }));
     }
   }
 
   // Revert a verse back to the text it had when translation editing mode was entered
-  async function handleCancelTranslationVerse(abbr: string, verse: number) {
+  async function handleCancelTranslationVerse(abbr: string, vBook: string, vChapter: number, verse: number) {
     const translation = allAvailableTranslations.find((t) => t.abbreviation === abbr);
     if (!translation) return;
     const snapshot = translationEditSnapshotRef.current;
-    const snapRecord = snapshot[translation.id]?.find((tv) => tv.verse === verse);
+    const snapRecord = snapshot[translation.id]?.find((tv) => tv.chapter === vChapter && tv.verse === verse);
     if (!snapRecord) return;
-    await handleUpdateTranslationVerse(abbr, verse, snapRecord.text, false);
+    await handleUpdateTranslationVerse(abbr, vBook, vChapter, verse, snapRecord.text, false);
   }
 
   // ── Inline USFM marker insertion ─────────────────────────────────────────────
@@ -4895,23 +4905,15 @@ export default function ChapterDisplay({
   }
 
   /**
-   * Returns footnotes for a given (translationId, verse) sorted by wordIndex asc,
-   * then id asc — the same order as the `\fn \fn*` markers in the verse text.
-   *
-   * KNOWN LIMITATION (deferred): this filters by verse only, not (chapter,
-   * verse), so once `words` spans more than one chapter, footnotes for the
-   * same verse number in two different chapters would collide. The footnote
-   * dialog state (fnDialogVerse) is verse-only keyed throughout this
-   * component for the same reason. (Translation verse text itself —
-   * translationVerseData, localTranslationVerseData, editingTranslationVerseMap,
-   * activeTranslationVerseMap — is already (bookId, chapter, verse) keyed;
-   * only the footnote-specific lookups below remain verse-only.) Fixing this
-   * needs a coordinated pass across the footnote dialog/CRUD handlers plus
-   * page.tsx's per-translation footnote fetch, not a local patch here.
+   * Returns footnotes for a given (translationId, chapter, verse) sorted by
+   * wordIndex asc, then id asc — the same order as the `\fn \fn*` markers in
+   * the verse text. Chapter-scoped (not verse-only) so that a passage
+   * spanning multiple chapters doesn't collide footnotes that happen to
+   * share a verse number in different chapters (e.g. Ps 29:7 and Ps 30:7).
    */
-  function sortedVerseFootnotes(translationId: number, verse: number): TranslationFootnote[] {
+  function sortedVerseFootnotes(translationId: number, chapter: number, verse: number): TranslationFootnote[] {
     return (localFootnotes[translationId] ?? [])
-      .filter((fn) => fn.verse === verse)
+      .filter((fn) => fn.chapter === chapter && fn.verse === verse)
       .sort((a, b) => a.wordIndex - b.wordIndex || a.id - b.id);
   }
 
@@ -4919,7 +4921,7 @@ export default function ChapterDisplay({
     const translation = allAvailableTranslations.find((t) => t.abbreviation === fnDialogAbbr);
     if (!translation || !fnDialogContent.trim()) return;
     try {
-      const tvRecord = localTranslationVerseData[translation.id]?.find((tv) => tv.verse === fnDialogVerse);
+      const tvRecord = localTranslationVerseData[translation.id]?.find((tv) => tv.chapter === fnDialogChapter && tv.verse === fnDialogVerse);
       const existingText = tvRecord?.text ?? "";
       const anchor = fnAnchorRef.current;
       const insertPos = anchor ? Math.min(anchor.pos, existingText.length) : existingText.length;
@@ -4930,12 +4932,12 @@ export default function ChapterDisplay({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           translationId: translation.id,
-          osisRef: `${book}.${chapter}.${fnDialogVerse}`,
+          osisRef: `${fnDialogBook}.${fnDialogChapter}.${fnDialogVerse}`,
           type: fnDialogType,
           content: fnDialogContent.trim(),
           wordIndex,
-          book,
-          chapter,
+          book: fnDialogBook,
+          chapter: fnDialogChapter,
           verse: fnDialogVerse,
         }),
       });
@@ -4951,7 +4953,7 @@ export default function ChapterDisplay({
             ? existingText.slice(0, insertPos) + "\\fn \\fn*" + existingText.slice(insertPos)
             : existingText.trimEnd() + " \\fn \\fn*";
           fnAnchorRef.current = null;
-          await handleUpdateTranslationVerse(fnDialogAbbr, fnDialogVerse, newText);
+          await handleUpdateTranslationVerse(fnDialogAbbr, fnDialogBook, fnDialogChapter, fnDialogVerse, newText);
         }
         setFnDialogOpen(false);
         setFnDialogContent("");
@@ -4988,6 +4990,8 @@ export default function ChapterDisplay({
     const translation = allAvailableTranslations.find((t) => t.id === fn.translationId);
     setFnEditId(fn.id);
     setFnDialogAbbr(translation?.abbreviation ?? "");
+    setFnDialogBook(fn.book);
+    setFnDialogChapter(fn.chapter);
     setFnDialogVerse(fn.verse);
     setFnDialogType(fn.type as "f" | "x");
     setFnDialogContent(fn.content);
@@ -5005,17 +5009,17 @@ export default function ChapterDisplay({
     }
     if (!targetFn) { setFnAnchorMoveId(null); return; }
 
-    const { translationId, verse } = targetFn;
+    const { translationId, book: fnBook, chapter: fnChapter, verse } = targetFn;
     const translation = allAvailableTranslations.find((t) => t.id === translationId);
     if (!translation) { setFnAnchorMoveId(null); return; }
 
-    // Rank of this footnote among same-verse footnotes (sorted order)
-    const siblings = sortedVerseFootnotes(translationId, verse);
+    // Rank of this footnote among same-(chapter, verse) footnotes (sorted order)
+    const siblings = sortedVerseFootnotes(translationId, fnChapter, verse);
     const rank = siblings.findIndex((fn) => fn.id === fnId);
     if (rank < 0) { setFnAnchorMoveId(null); return; }
 
     // Current verse text
-    const tvRecord = localTranslationVerseData[translationId]?.find((tv) => tv.verse === verse);
+    const tvRecord = localTranslationVerseData[translationId]?.find((tv) => tv.chapter === fnChapter && tv.verse === verse);
     if (!tvRecord) { setFnAnchorMoveId(null); return; }
 
     // Remove the nth \fn \fn* from the verse text
@@ -5040,7 +5044,7 @@ export default function ChapterDisplay({
 
     try {
       // Save updated verse text
-      await handleUpdateTranslationVerse(translation.abbreviation, verse, newText);
+      await handleUpdateTranslationVerse(translation.abbreviation, fnBook, fnChapter, verse, newText);
 
       // Persist new wordIndex
       await fetch("/api/translation-footnotes", {
@@ -5137,13 +5141,13 @@ export default function ChapterDisplay({
     if (targetFn) {
       const translation = allAvailableTranslations.find((t) => t.id === translationId);
       if (translation) {
-        const siblings = sortedVerseFootnotes(translationId, targetFn.verse);
+        const siblings = sortedVerseFootnotes(translationId, targetFn.chapter, targetFn.verse);
         const rank = siblings.findIndex((fn) => fn.id === fnId);
-        const tvRecord = localTranslationVerseData[translationId]?.find((tv) => tv.verse === targetFn.verse);
+        const tvRecord = localTranslationVerseData[translationId]?.find((tv) => tv.chapter === targetFn.chapter && tv.verse === targetFn.verse);
         if (tvRecord && rank >= 0) {
           const newText = removeNthFnMarker(tvRecord.text, rank);
           if (newText !== tvRecord.text) {
-            await handleUpdateTranslationVerse(translation.abbreviation, targetFn.verse, newText);
+            await handleUpdateTranslationVerse(translation.abbreviation, targetFn.book, targetFn.chapter, targetFn.verse, newText);
           }
         }
       }
@@ -5173,7 +5177,7 @@ export default function ChapterDisplay({
   }
 
   async function handleRestoreVersion(versionText: string) {
-    await handleUpdateTranslationVerse(historyAbbr, historyVerse, versionText, true);
+    await handleUpdateTranslationVerse(historyAbbr, book, chapter, historyVerse, versionText, true);
     setHistoryOpen(false);
   }
 
@@ -6602,12 +6606,16 @@ export default function ChapterDisplay({
                         onClick={() => {
                           const anchor = fnAnchorRef.current;
                           const activeVerse = anchor ? (parseInt(anchor.el.dataset.verse ?? "") || chapter) : chapter;
+                          const activeBook = anchor?.el.dataset.book || book;
+                          const activeChapter = anchor ? (parseInt(anchor.el.dataset.chapter ?? "") || chapter) : chapter;
                           const activeAbbr = anchor?.el.dataset.abbr ?? "";
                           const firstAbbr = activeAbbr || ([...activeTranslationIds]
                             .map((id) => allAvailableTranslations.find((tr) => tr.id === id))
                             .find((tr) => tr)?.abbreviation ?? "");
                           setFnEditId(null);
                           setFnDialogAbbr(firstAbbr);
+                          setFnDialogBook(activeBook);
+                          setFnDialogChapter(activeChapter);
                           setFnDialogVerse(activeVerse);
                           setFnDialogType("f");
                           setFnDialogContent("");
@@ -7259,7 +7267,7 @@ export default function ChapterDisplay({
                 translationFootnotes={
                   showFootnotes
                     ? Object.entries(localFootnotes).flatMap(([tid, fns]) =>
-                        fns.filter((fn) => fn.verse === verseNum && activeTranslationIds.has(Number(tid)))
+                        fns.filter((fn) => fn.book === verse.book && fn.chapter === verse.ch && fn.verse === verseNum && activeTranslationIds.has(Number(tid)))
                       )
                     : []
                 }
@@ -7269,7 +7277,7 @@ export default function ChapterDisplay({
                 anchorMoveFootnote={(() => {
                   if (fnAnchorMoveId === null) return undefined;
                   const fn = Object.values(localFootnotes).flat().find((f) => f.id === fnAnchorMoveId);
-                  if (!fn || fn.verse !== verseNum) return undefined;
+                  if (!fn || fn.book !== verse.book || fn.chapter !== verse.ch || fn.verse !== verseNum) return undefined;
                   const tr = allAvailableTranslations.find((t) => t.id === fn.translationId);
                   if (!tr) return undefined;
                   return { id: fn.id, translationId: fn.translationId, verse: fn.verse, abbr: tr.abbreviation };
