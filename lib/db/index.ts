@@ -949,6 +949,21 @@ function _migrateUserDbInner(sqlite: Database.Database): void {
     CREATE INDEX IF NOT EXISTS sso_book_ch_idx ON syllable_stress_overrides(book, chapter);
   `);
 
+  sqlite.exec(`
+    CREATE TABLE IF NOT EXISTS horizontal_lines (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      workspace_id INTEGER NOT NULL DEFAULT 1 REFERENCES workspaces(id) ON DELETE CASCADE,
+      version_id   INTEGER NOT NULL REFERENCES versions(id) ON DELETE CASCADE,
+      word_id      TEXT    NOT NULL,
+      text_source  TEXT    NOT NULL,
+      book         TEXT    NOT NULL,
+      chapter      INTEGER NOT NULL,
+      created_at   TEXT    DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now'))
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS hl_ws_word_idx ON horizontal_lines(workspace_id, version_id, word_id);
+    CREATE INDEX IF NOT EXISTS hl_book_ch_source_idx ON horizontal_lines(book, chapter, text_source);
+  `);
+
   // Seed VCB translation record if vcb.db is present but the translations row is missing
   if (fs.existsSync(VCB_DB_PATH)) {
     const existing = sqlite.prepare("SELECT id FROM translations WHERE abbreviation = 'VCB' LIMIT 1").get();
