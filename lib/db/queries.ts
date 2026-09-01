@@ -474,9 +474,22 @@ export async function getTranslationVerses(
   // translations store their own verse numbering and shouldn't be silently re-numbered.
   const hasCrossChapterRemap = instructions?.some(i => i.kjvChapter !== chapter);
 
+  // translation_verses.book_id is a snapshot taken at import time of whatever
+  // id the source books table happened to assign that book (see the "FK not
+  // enforced cross-file" comment on the schema column) — every row is always
+  // fetched by osisRef (a stable string) instead, never by this column. But a
+  // rebuilt/re-imported source database can (and has) reassigned book ids,
+  // leaving old rows' stored book_id stale. Callers use the returned bookId
+  // to key lookups against the *current* chapter's own (correctly current)
+  // bookId, so a stale value here silently makes the row invisible even
+  // though it was found and returned. Overwrite it with the book's current
+  // id rather than trusting what's stored.
+  const currentBook = await getBook(osisBook);
+  const currentBookId = currentBook?.id;
+
   if (!hasCrossChapterRemap) {
     const prefix = `${osisBook}.${chapter}.`;
-    return userDb
+    const rows = await userDb
       .select()
       .from(translationVerses)
       .where(
@@ -486,6 +499,7 @@ export async function getTranslationVerses(
         )
       )
       .orderBy(asc(translationVerses.verse));
+    return currentBookId == null ? rows : rows.map((r) => ({ ...r, bookId: currentBookId }));
   }
 
   // Cross-chapter remapping (e.g. MT Jonah 2 fetches KJV Jonah 1:17 + Jonah 2:1-10).
@@ -506,7 +520,11 @@ export async function getTranslationVerses(
         )
       );
     for (const row of rows) {
-      allResults.push({ ...row, verse: row.verse + instr.mtVerseOffset });
+      allResults.push({
+        ...row,
+        bookId: currentBookId ?? row.bookId,
+        verse: row.verse + instr.mtVerseOffset,
+      });
     }
   }
   return allResults.sort((a, b) => a.verse - b.verse);
