@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { getBooks, getTranslations } from "@/lib/db/queries";
 import { getActiveWorkspaceId } from "@/lib/workspace";
 import UsfmExportForm from "./UsfmExportForm";

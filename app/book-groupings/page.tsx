@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { getBooks, getBooksWithWords } from "@/lib/db/queries";
 import type { Book } from "@/lib/db/schema";
 import type { Testament } from "@/lib/morphology/types";

@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { getActiveWorkspaceId } from "@/lib/workspace";
 import AccountPanel from "./AccountPanel";
 
