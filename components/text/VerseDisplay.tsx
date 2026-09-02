@@ -4399,7 +4399,7 @@ export default function VerseDisplay({
                           <button
                             type="button"
                             onClick={() => onEditFootnote(fn)}
-                            className="text-stone-300 hover:text-sky-500 dark:text-stone-500 dark:hover:text-sky-400 text-xs leading-none mt-0.5 shrink-0"
+                            className="text-stone-500 hover:text-sky-500 dark:text-stone-400 dark:hover:text-sky-400 text-xs leading-none mt-0.5 shrink-0"
                             title="Edit footnote"
                           >✎</button>
                         )}

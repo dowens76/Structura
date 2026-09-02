@@ -6208,7 +6208,7 @@ export default function ChapterDisplay({
                       : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
                   ].join(" ")}
                 >
-                  📝
+                  🗒
                 </button>
               )}
               {toolbarVis.poetry && editingPoetryNotation && (
