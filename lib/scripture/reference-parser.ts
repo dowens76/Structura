@@ -122,21 +122,37 @@ const SCRIPTURE_REGEX = buildRegex();
 // whitespace and a reference that is either "verse" or "chapter:verse".
 // Group 1 = separator + spaces  (not included in the link)
 // Group 2 = the reference text  (linked)
-const CONTINUATION_RE = /^([;.,]\s*)(\d+(?::\d+)?)(?!\w)/;
+// Trailing (?!\d) — not (?!\w) — so typing a letter right after the number
+// (e.g. the "a"/"b" half-verse suffix in "3a") doesn't break the match; it
+// only guards against swallowing more digits of a longer number.
+const CONTINUATION_RE = /^([;.,]\s*)(\d+(?::\d+)?)(?!\d)/;
 
 // ─── Book-less reference regexes ──────────────────────────────────────────────
 // Only used when a `currentBook` context is supplied (see parseScriptureRefs).
 
 // "ch. 5", "ch 5", "chapter 5" — chapter-only, resolved against currentBook.
-const CHAPTER_ONLY_RE = /(?<!\w)ch(?:apter)?\.?\s+(\d+)(?!\w)/giu;
+// Trailing (?!\d), see CONTINUATION_RE comment above.
+const CHAPTER_ONLY_RE = /(?<!\w)ch(?:apter)?\.?\s+(\d+)(?!\d)/giu;
 
 // "v. 3", "v 3", "verse 3" — verse-only, resolved against currentBook + currentChapter.
-const VERSE_ONLY_RE = /(?<!\w)v(?:erse)?\.?\s+(\d+)(?!\w)/giu;
+const VERSE_ONLY_RE = /(?<!\w)v(?:erse)?\.?\s+(\d+)(?!\d)/giu;
+
+// "vv. 3", "vv. 3-5" — one or more verses in the current chapter, anchored on
+// "vv."/"verses". A dash range is captured directly on the anchor; a
+// comma/semicolon-separated list of further verses or ranges (e.g.
+// "vv. 1, 3, 5" or "vv. 1-3, 7") is picked up by VERSES_CONTINUATION_RE below,
+// mirroring the book-anchored series handling further down.
+const VERSES_ANCHOR_RE =
+  /(?<!\w)(?:vv|verses)\.?\s+(\d+)(?:\s*[-–]\s*(\d+))?(?!\d)/giu;
+
+// Continuation for a "vv." series: separator then a bare verse number or
+// verse range, e.g. ", 5" or "; 7-9" following "vv. 1-3".
+const VERSES_CONTINUATION_RE = /^([;,]\s*)(\d+)(?:\s*[-–]\s*(\d+))?(?!\d)/;
 
 // "1:1", "1:1-3", "1:1-2:3" — bare chapter:verse (optionally a range), resolved
 // against currentBook. Same shape as the book-anchored pattern above.
 const BARE_CHAPTER_VERSE_RE =
-  /(?<!\w)(\d+):(\d+)(?:\s*[-–]\s*(?:(\d+):)?(\d+))?(?!\w)/gu;
+  /(?<!\w)(\d+):(\d+)(?:\s*[-–]\s*(?:(\d+):)?(\d+))?(?!\d)/gu;
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
@@ -257,6 +273,47 @@ export function parseScriptureRefs(
             to,
           });
           claim(from, to);
+        }
+      }
+
+      // "vv. 3", "vv. 3-5" (+ optional ", 7" / "; 9-11" continuations) — all
+      // resolved against the current chapter, same as "v." above.
+      const verseOsisRef = (v: number, endV?: number) =>
+        endV === undefined
+          ? `${book}.${chapter}.${v}`
+          : `${book}.${chapter}.${v}-${book}.${chapter}.${endV}`;
+
+      VERSES_ANCHOR_RE.lastIndex = 0;
+      while ((bm = VERSES_ANCHOR_RE.exec(text)) !== null) {
+        const from = bm.index;
+        const to = from + bm[0].length;
+        if (overlaps(from, to)) continue;
+
+        const startVerse = parseInt(bm[1], 10);
+        const endVerse = bm[2] !== undefined ? parseInt(bm[2], 10) : undefined;
+        results.push({ raw: bm[0], osisRef: verseOsisRef(startVerse, endVerse), from, to });
+        claim(from, to);
+
+        let pos = to;
+        while (pos < text.length) {
+          const cm = VERSES_CONTINUATION_RE.exec(text.slice(pos));
+          if (!cm) break;
+
+          const sepLen = cm[1].length;
+          const cFrom = pos + sepLen;
+          const cTo = pos + cm[0].length;
+          if (overlaps(cFrom, cTo)) break;
+
+          const cStart = parseInt(cm[2], 10);
+          const cEnd = cm[3] !== undefined ? parseInt(cm[3], 10) : undefined;
+          results.push({
+            raw: text.slice(cFrom, cTo),
+            osisRef: verseOsisRef(cStart, cEnd),
+            from: cFrom,
+            to: cTo,
+          });
+          claim(cFrom, cTo);
+          pos += cm[0].length;
         }
       }
     }
