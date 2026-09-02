@@ -31,6 +31,7 @@ import OutlinePane from "@/components/text/OutlinePane";
 import BibleLookupPane from "@/components/bible/BibleLookupPane";
 import PassagePreviewPane from "@/components/text/PassagePreviewPane";
 import IntertextualPanel from "@/components/text/IntertextualPanel";
+import IntertextualWebIcon from "@/components/text/IntertextualWebIcon";
 import ResizablePane from "@/components/ResizablePane";
 import RstTypeManager from "@/components/controls/RstTypeManager";
 import LineGroupColorPanel from "@/components/controls/LineGroupColorPanel";
@@ -389,6 +390,13 @@ export default function ChapterDisplay({
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewRequest, setPreviewRequest] = useState<{ osisRef: string; lexiconSource: string; nonce: number } | null>(null);
   const [intertextualOpen, setIntertextualOpen] = useState(false);
+  /** Set when the intertextual panel was opened from a specific verse's web
+   *  icon (rather than the toolbar toggle), to scope the panel to that verse. */
+  const [intertextualVerse, setIntertextualVerse] = useState<number | null>(null);
+  /** "book.chapter.verse" keys (matching VerseDisplay's data-osis-ref format)
+   *  for every verse that has at least one intertextual link, across all
+   *  chapters currently loaded — drives the per-verse web icon. */
+  const [intertextualVerseKeys, setIntertextualVerseKeys] = useState<Set<string>>(new Set());
   const [searchHits, setSearchHits] = useState<Set<string>>(new Set());
   const [searchRequest, setSearchRequest] = useState<{ query: string; source: string; nonce: number } | null>(null);
   const [notesScrollVerse, setNotesScrollVerse] = useState<{ ch: number; v: number } | null>(null);
@@ -2086,6 +2094,48 @@ export default function ChapterDisplay({
       .then((all) => setTransliterationFormatMap(new Map(all.flat().map((r) => [r.wordId, r.format]))))
       .catch(() => {});
   }, [displayMode, interlinearSubMode, coveredBookChapters, textSource]);
+
+  // ── Load which verses have intertextual links, for all chapters currently
+  // loaded — drives the small web icon under a verse's number. ─────────────
+  useEffect(() => {
+    if (!toolbarVis.intertextual || disableSidePanels) return;
+    type LinkRow = {
+      sourceBook: string; sourceChapter: number; sourceVerse: number; sourceEndVerse: number | null;
+      targetBook: string; targetChapter: number; targetVerse: number; targetEndVerse: number | null;
+    };
+    Promise.all(coveredBookChapters.map((g) =>
+      fetch(`/api/intertextual-links?book=${encodeURIComponent(g.book)}&chapter=${g.ch}`)
+        .then((r) => r.json())
+        .then((data: { links?: LinkRow[] }) => ({ g, links: data.links ?? [] }))
+    ))
+      .then((results) => {
+        const keys = new Set<string>();
+        for (const { g, links } of results) {
+          for (const link of links) {
+            if (link.sourceBook === g.book && link.sourceChapter === g.ch) {
+              for (let v = link.sourceVerse; v <= (link.sourceEndVerse ?? link.sourceVerse); v++) {
+                keys.add(`${g.book}.${g.ch}.${v}`);
+              }
+            }
+            if (link.targetBook === g.book && link.targetChapter === g.ch) {
+              for (let v = link.targetVerse; v <= (link.targetEndVerse ?? link.targetVerse); v++) {
+                keys.add(`${g.book}.${g.ch}.${v}`);
+              }
+            }
+          }
+        }
+        setIntertextualVerseKeys(keys);
+      })
+      .catch(() => {});
+    // Re-fetched on every open/close of the panel too, so edits made while it
+    // was open (adding/deleting a link) are reflected in the icons once closed.
+  }, [toolbarVis.intertextual, disableSidePanels, coveredBookChapters, intertextualOpen]);
+
+  // Called from a verse's web icon — scopes the intertextual panel to that verse.
+  const handleOpenIntertextual = useCallback((verseNum: number) => {
+    setIntertextualVerse(verseNum);
+    setIntertextualOpen(true);
+  }, []);
 
   // PassageNotesPane's ordered-verse shape — the full loaded range, so a
   // multi-chapter passage gets a note section per chapter, not just the
@@ -6616,7 +6666,7 @@ export default function ChapterDisplay({
 
               {/* Intertextual links panel toggle */}
               {toolbarVis.intertextual && !disableSidePanels && <button
-                onClick={() => setIntertextualOpen((v) => !v)}
+                onClick={() => { setIntertextualOpen((v) => !v); setIntertextualVerse(null); }}
                 data-tip={intertextualOpen ? "Close Intertextual Links" : "Intertextual Links"}
                 className={[
                   "px-[14px] py-[7px] rounded font-medium transition-colors",
@@ -6625,17 +6675,7 @@ export default function ChapterDisplay({
                     : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
                 ].join(" ")}
               >
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                  <line x1="8" y1="8" x2="8" y2="1" stroke="currentColor" strokeWidth="0.8"/>
-                  <line x1="8" y1="8" x2="14.1" y2="4.5" stroke="currentColor" strokeWidth="0.8"/>
-                  <line x1="8" y1="8" x2="14.1" y2="11.5" stroke="currentColor" strokeWidth="0.8"/>
-                  <line x1="8" y1="8" x2="8" y2="15" stroke="currentColor" strokeWidth="0.8"/>
-                  <line x1="8" y1="8" x2="1.9" y2="11.5" stroke="currentColor" strokeWidth="0.8"/>
-                  <line x1="8" y1="8" x2="1.9" y2="4.5" stroke="currentColor" strokeWidth="0.8"/>
-                  <path d="M8 5.7 L9.99 6.85 L9.99 9.15 L8 10.3 L6.01 9.15 L6.01 6.85 Z" stroke="currentColor" strokeWidth="0.75" fill="none"/>
-                  <path d="M8 3.4 L11.98 5.7 L11.98 10.3 L8 12.6 L4.02 10.3 L4.02 5.7 Z" stroke="currentColor" strokeWidth="0.75" fill="none"/>
-                  <path d="M8 1 L14.06 4.5 L14.06 11.5 L8 15 L1.94 11.5 L1.94 4.5 Z" stroke="currentColor" strokeWidth="0.75" fill="none"/>
-                </svg>
+                <IntertextualWebIcon />
               </button>}
 
               <div className="toolbar-spacer h-5 border-l border-[var(--border)]" />
@@ -7395,6 +7435,8 @@ export default function ChapterDisplay({
                   setNotesOpen(true);
                   setNotesScrollVerse({ ch: verse.ch, v });
                 }}
+                hasIntertextualLink={intertextualVerseKeys.has(`${verse.book}.${verse.ch}.${verseNum}`)}
+                onOpenIntertextual={toolbarVis.intertextual && !disableSidePanels ? handleOpenIntertextual : undefined}
                 rstSourcePad={Math.max(rstSourcePad, lineGroupSourcePad)}
                 lineSpacingMap={lineSpacingMap}
                 presentationMode={presentationMode}
@@ -7642,7 +7684,9 @@ export default function ChapterDisplay({
             book={book}
             chapter={chapter}
             textSource={textSource}
-            onClose={() => setIntertextualOpen(false)}
+            verse={intertextualVerse}
+            onClearVerse={() => setIntertextualVerse(null)}
+            onClose={() => { setIntertextualOpen(false); setIntertextualVerse(null); }}
           />
         </ResizablePane>
       )}

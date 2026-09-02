@@ -7,6 +7,7 @@ import { renderClickableGraphemes, renderGraphemesWithSimilarityHighlight } from
 import PoetryNotePopover from "./PoetryNotePopover";
 import SimilarityNotePopover from "./SimilarityNotePopover";
 import PoetryArrowIcon from "./PoetryArrowIcon";
+import IntertextualWebIcon from "./IntertextualWebIcon";
 import { renderUsfmText } from "@/lib/utils/usfm-renderer";
 import type { DisplayMode, GrammarFilterState, TranslationTextEntry, InterlinearSubMode } from "@/lib/morphology/types";
 import type { ColorRule } from "@/lib/morphology/colorRules";
@@ -389,6 +390,12 @@ interface VerseDisplayProps {
   showCantillation?: boolean;
   /** Called when the user clicks a verse-number label; used to scroll the notes pane */
   onVerseClick?: (verseNum: number) => void;
+  /** True when this verse has at least one intertextual connection — shows a
+   *  small web icon under the verse-number label. */
+  hasIntertextualLink?: boolean;
+  /** Called when the user clicks the intertextual web icon under the verse
+   *  number; scopes the Intertextual Links pane to this verse. */
+  onOpenIntertextual?: (verseNum: number) => void;
   /** Extra gap (px) inserted between the verse-label column and the source-text column
    *  so that RST tree arrows don't overlap the verse number. */
   rstSourcePad?: number;
@@ -1610,6 +1617,8 @@ export default function VerseDisplay({
   onDeleteSimilarityWord,
   onRestoreSimilarityArrows,
   onVerseClick,
+  hasIntertextualLink,
+  onOpenIntertextual,
   rstSourcePad = 0,
   lineSpacingMap,
   presentationMode = false,
@@ -2906,6 +2915,16 @@ export default function VerseDisplay({
               title={si === 0 && onVerseClick ? "Scroll notes to this verse" : undefined}
             >
               {paraLabels[si]}
+              {si === 0 && hasIntertextualLink && onOpenIntertextual && (
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); onOpenIntertextual(verseNum); }}
+                  className="block mx-auto mt-0.5 text-stone-400 hover:text-amber-500 dark:text-stone-600 dark:hover:text-amber-400 transition-colors"
+                  title="View intertextual connections for this verse"
+                >
+                  <IntertextualWebIcon size={9} />
+                </button>
+              )}
             </span>
           );
           const segSourceEl = (
@@ -4345,6 +4364,16 @@ export default function VerseDisplay({
                     }
                     return null;
                   })()}
+                  {si === 0 && hasIntertextualLink && onOpenIntertextual && (
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); onOpenIntertextual(verseNum); }}
+                      className="block mx-auto mt-0.5 text-stone-400 hover:text-amber-500 dark:text-stone-600 dark:hover:text-amber-400 transition-colors"
+                      title="View intertextual connections for this verse"
+                    >
+                      <IntertextualWebIcon size={9} />
+                    </button>
+                  )}
                 </span>
               )}
             </div>

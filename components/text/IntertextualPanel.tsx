@@ -9,6 +9,12 @@ interface Props {
   book: string;
   chapter: number;
   textSource: string;
+  /** When set, the link list is scoped to links touching this verse (either
+   *  side) within `book`/`chapter` — set when the panel was opened from a
+   *  verse's web icon rather than the toolbar toggle. */
+  verse?: number | null;
+  /** Called when the user dismisses the verse scope, to show the whole chapter again. */
+  onClearVerse?: () => void;
   onClose: () => void;
 }
 
@@ -72,6 +78,15 @@ function verseRange(chapter: number, verse: number, endVerse?: number | null): s
 
 function bookLabel(osisBook: string): string {
   return OSIS_REF_BOOK_NAMES[osisBook] ?? osisBook;
+}
+
+/** True when `link` touches `verse` (either side) within the given book/chapter. */
+function linkCoversVerse(link: IntertextualLink, book: string, chapter: number, verse: number): boolean {
+  const inSource = link.sourceBook === book && link.sourceChapter === chapter &&
+    verse >= link.sourceVerse && verse <= (link.sourceEndVerse ?? link.sourceVerse);
+  const inTarget = link.targetBook === book && link.targetChapter === chapter &&
+    verse >= link.targetVerse && verse <= (link.targetEndVerse ?? link.targetVerse);
+  return inSource || inTarget;
 }
 
 function linkLabel(link: IntertextualLink, currentBook: string, currentChapter: number): string {
@@ -227,11 +242,15 @@ interface FormState {
 
 function LinkForm({
   book, chapter, textSource,
+  defaultVerse,
   editLink,
   custom, onAddCustom, onRemoveCustom,
   onSave, onCancel,
 }: {
   book: string; chapter: number; textSource: string;
+  /** Verse to prefill the source reference with, when creating a new link
+   *  (e.g. the panel was opened from that verse's web icon). Defaults to 1. */
+  defaultVerse?: number;
   editLink?: IntertextualLink;
   custom: CustomLinkType[];
   onAddCustom: (type: CustomLinkType) => void;
@@ -241,7 +260,7 @@ function LinkForm({
   const [form, setForm] = useState<FormState>(() => {
     if (!editLink) {
       return {
-        sourceRef: `${bookLabel(book)} ${chapter}:1`,
+        sourceRef: `${bookLabel(book)} ${chapter}:${defaultVerse ?? 1}`,
         targetRef: "",
         linkType: "allusion",
         strength: 3,
@@ -713,7 +732,7 @@ function ImportExportMenu({
 
 // ── Main panel ─────────────────────────────────────────────────────────────
 
-export default function IntertextualPanel({ book, chapter, textSource, onClose }: Props) {
+export default function IntertextualPanel({ book, chapter, textSource, verse, onClearVerse, onClose }: Props) {
   const [links, setLinks] = useState<IntertextualLink[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -743,8 +762,9 @@ export default function IntertextualPanel({ book, chapter, textSource, onClose }
     load();
   }
 
-  const allTags = Array.from(new Set(links.flatMap((l) => parseTags(l.tags)))).sort();
-  const filteredLinks = tagFilter ? links.filter((l) => parseTags(l.tags).includes(tagFilter)) : links;
+  const verseLinks = verse != null ? links.filter((l) => linkCoversVerse(l, book, chapter, verse)) : links;
+  const allTags = Array.from(new Set(verseLinks.flatMap((l) => parseTags(l.tags)))).sort();
+  const filteredLinks = tagFilter ? verseLinks.filter((l) => parseTags(l.tags).includes(tagFilter)) : verseLinks;
 
   const graphHref = `/${encodeURIComponent(book)}/${textSource}/intertextual-graph`;
 
@@ -783,6 +803,22 @@ export default function IntertextualPanel({ book, chapter, textSource, onClose }
         </div>
       </div>
 
+      {/* Verse scope chip — shown when opened from a specific verse's web icon */}
+      {verse != null && (
+        <div className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 border-b border-[var(--border)]">
+          <span className="text-[10px] px-2 py-0.5 rounded-full border border-amber-500 text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20">
+            {bookLabel(book)} {chapter}:{verse}
+          </span>
+          <button
+            onClick={onClearVerse}
+            title="Show all links in this chapter"
+            className="text-[10px] text-[var(--text-muted)] hover:text-[var(--foreground)] underline"
+          >
+            Show whole chapter
+          </button>
+        </div>
+      )}
+
       {/* Tag filter bar */}
       {allTags.length > 0 && (
         <div className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 border-b border-[var(--border)] overflow-x-auto">
@@ -810,6 +846,7 @@ export default function IntertextualPanel({ book, chapter, textSource, onClose }
           book={book}
           chapter={chapter}
           textSource={textSource}
+          defaultVerse={verse ?? undefined}
           editLink={editLink ?? undefined}
           custom={custom}
           onAddCustom={addCustom}
@@ -834,6 +871,17 @@ export default function IntertextualPanel({ book, chapter, textSource, onClose }
                   className="mt-2 text-amber-500 hover:underline"
                 >
                   + Add the first link
+                </button>
+              </>
+            ) : verseLinks.length === 0 ? (
+              <>
+                No intertextual links for {bookLabel(book)} {chapter}:{verse}.
+                <br />
+                <button
+                  onClick={() => setShowForm(true)}
+                  className="mt-2 text-amber-500 hover:underline"
+                >
+                  + Add a link for this verse
                 </button>
               </>
             ) : (
