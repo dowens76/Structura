@@ -382,10 +382,6 @@ export default function ChapterDisplay({
   const [notesSynced, setNotesSynced] = useState(() => {
     try { const v = localStorage.getItem("structura:notesSynced"); return v === null ? true : v === "true"; } catch { return true; }
   });
-  // Keyed by "bookId:chapter:verse" (data-passage-verse-key on each verse's
-  // wrapper div) — bookId disambiguates chapter/verse numbers that collide
-  // across a cross-book passage boundary, e.g. both books having a "1:1".
-  const visibleVersesRef = useRef(new Set<string>());
   const notesSyncedRef   = useRef(notesSynced);
   const syncTimerRef     = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -2112,45 +2108,46 @@ export default function ChapterDisplay({
   );
   const wholeChapterNum = isWholeChapter ? (orderedVerses[0]?.ch ?? chapter) : undefined;
 
-  // Track topmost visible verse via IntersectionObserver and sync the notes
-  // pane when notesSynced is on. Uses a ref for the synced flag to avoid
-  // recreating the observer on every toggle. Keyed by the "bookId:chapter:verse"
-  // data-passage-verse-key on each verse's wrapper div (not VerseDisplay's own
-  // id="verse-N", which collides across chapters/books) so this works
-  // identically whether `words` covers one chapter or a whole passage.
+  // Track topmost visible verse and sync the notes pane when notesSynced is
+  // on. Driven by a scroll listener + geometry check rather than
+  // IntersectionObserver — in the packaged desktop app's webview, observer
+  // callbacks are only delivered alongside a freshly-composited rendering
+  // frame, and the webview doesn't reliably produce one on every scroll,
+  // which silently stopped the sync from ever firing. A scroll listener runs
+  // directly off the input instead of waiting on that. Keyed by the
+  // "bookId:chapter:verse" data-passage-verse-key on each verse's wrapper div
+  // (not VerseDisplay's own id="verse-N", which collides across
+  // chapters/books) so this works identically whether `words` covers one
+  // chapter or a whole passage.
   // Placed after orderedVerses so the dependency is in scope.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!notesOpen) return;
-    visibleVersesRef.current.clear();
-    const observer = new IntersectionObserver((entries) => {
-      entries.forEach((entry) => {
-        const key = (entry.target as HTMLElement).dataset.passageVerseKey;
-        if (!key) return;
-        if (entry.isIntersecting) visibleVersesRef.current.add(key);
-        else visibleVersesRef.current.delete(key);
-      });
-      if (!notesSyncedRef.current || visibleVersesRef.current.size === 0) return;
-      if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
-      syncTimerRef.current = setTimeout(() => {
-        if (!notesSyncedRef.current || visibleVersesRef.current.size === 0) return;
-        const keys = [...visibleVersesRef.current];
-        // Sort by bookId, then chapter, then verse, numerically
-        keys.sort((a, b) => {
-          const [aBook, ac, av] = a.split(":").map(Number);
-          const [bBook, bc, bv] = b.split(":").map(Number);
-          if (aBook !== bBook) return aBook - bBook;
-          return ac !== bc ? ac - bc : av - bv;
-        });
-        const parts = keys[0].split(":");
-        const ch = parseInt(parts[1]);
-        const v  = parseInt(parts[2]);
+    const container = textContainerRef.current;
+    if (!container) return;
+
+    function syncNow() {
+      if (!notesSyncedRef.current) return;
+      const containerTop = container!.getBoundingClientRect().top;
+      const elements = container!.querySelectorAll<HTMLElement>("[data-passage-verse-key]");
+      // First verse (in document order) not yet scrolled fully past the
+      // container's top edge is the topmost currently-visible one.
+      for (const el of elements) {
+        if (el.getBoundingClientRect().bottom <= containerTop) continue;
+        const key = el.dataset.passageVerseKey;
+        if (!key) continue;
+        const [, ch, v] = key.split(":").map(Number);
         if (!isNaN(ch) && !isNaN(v)) setNotesScrollVerse({ ch, v });
-      }, 300);
-    }, { threshold: 0.1 });
-    document.querySelectorAll("[data-passage-verse-key]").forEach((el) => observer.observe(el));
+        return;
+      }
+    }
+
+    function onScroll() {
+      if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
+      syncTimerRef.current = setTimeout(syncNow, 300);
+    }
+    container.addEventListener("scroll", onScroll, { passive: true });
     return () => {
-      observer.disconnect();
+      container.removeEventListener("scroll", onScroll);
       if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
     };
   }, [notesOpen, orderedVerses]);
