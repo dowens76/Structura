@@ -190,6 +190,13 @@ export function parseUsfmFile(raw: string): ParsedUsfmFile {
   let pendingIndent:    number | null = null;
   let pendingSection:   { heading: string; level: number } | null = null;
 
+  // Psalm superscription (\d ... \d*) — this app's MT-based verse numbering
+  // (matching OSHB) treats the title as verse 1, with the first sung line
+  // starting at verse 2. Accumulated here and flushed as verse 1 once the
+  // title closes, since it precedes any \v marker in the chapter.
+  let inTitle           = false;
+  let titleText         = "";
+
   // Outputs
   const verses:          ParsedVerseRecord[]    = [];
   const footnotes:       ParsedFootnoteRecord[] = [];
@@ -229,6 +236,14 @@ export function parseUsfmFile(raw: string): ParsedUsfmFile {
     verses.push({ osisRef, book: osisBook, chapter: currentChapter, verse: currentVerse, text });
     verseText = "";
     wordsSoFar = 0;
+  }
+
+  function flushTitle() {
+    const text = titleText.replace(/\s+/g, " ").trim();
+    titleText = "";
+    if (!text || !osisBook || currentChapter === 0 || currentVerse !== 0) return;
+    const osisRef = `${osisBook}.${currentChapter}.1`;
+    verses.push({ osisRef, book: osisBook, chapter: currentChapter, verse: 1, text });
   }
 
   function applyPending(osisRef: string) {
@@ -304,6 +319,30 @@ export function parseUsfmFile(raw: string): ParsedUsfmFile {
       continue;
     }
 
+    // ── Psalm superscription (\d ... \d*) ──────────────────────────────────
+    // Precedes any \v in the chapter, so accumulate raw text (dropping any
+    // nested marker codes) until the title closes, then flush it as verse 1
+    // once the next \c or \v tells us the title is done. Some USFM sources
+    // omit the explicit \d* closer — \v or \c must always end the title
+    // rather than being swallowed into it, so those fall through below.
+    if (inTitle) {
+      if (marker === "d" && closing) {
+        inTitle = false;
+        if (text) titleText += text;
+        continue;
+      }
+      if (marker !== "v" && marker !== "c") {
+        if (text) titleText += text;
+        continue;
+      }
+      inTitle = false;
+      // fall through — let the \v/\c handling below run normally
+    } else if (marker === "d" && !closing) {
+      inTitle = true;
+      titleText += text;
+      continue;
+    }
+
     // ── Book / structure markers ───────────────────────────────────────────
     if (marker === "id") {
       const code = text.trim().split(/\s/)[0].toUpperCase();
@@ -313,6 +352,7 @@ export function parseUsfmFile(raw: string): ParsedUsfmFile {
     }
 
     if (marker === "c") {
+      flushTitle();
       flushVerse();
       currentChapter = parseInt(text.trim().split(/\s/)[0], 10) || 0;
       currentVerse   = 0;
@@ -320,6 +360,7 @@ export function parseUsfmFile(raw: string): ParsedUsfmFile {
     }
 
     if (marker === "v") {
+      flushTitle();
       flushVerse();
       const parts = text.trim().split(/\s+/);
       // Handle verse ranges like "1-2"
@@ -393,6 +434,10 @@ export function parseUsfmFile(raw: string): ParsedUsfmFile {
       preservedSeen.add(marker);
       if (closing) {
         verseText += `\\${marker}* `;
+        if (text) {
+          verseText += text;
+          wordsSoFar += countWords(text);
+        }
       } else {
         verseText += `\\${marker} `;
         if (text) {
@@ -431,6 +476,7 @@ export function parseUsfmFile(raw: string): ParsedUsfmFile {
     }
   }
 
+  flushTitle();
   flushVerse();
 
   // Deduplicate: remove from strippedSeen anything that's actually handled

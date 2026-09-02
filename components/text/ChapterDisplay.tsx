@@ -4891,7 +4891,9 @@ export default function ChapterDisplay({
             text: newText,
           }),
         });
+        if (!res.ok) throw new Error(`Save failed (${res.status})`);
         const { id } = await res.json() as { id: number };
+        if (id == null) throw new Error("Save failed (no id returned)");
         setLocalTranslationVerseData((prev) => ({
           ...prev,
           [translation.id]: [
@@ -4900,7 +4902,12 @@ export default function ChapterDisplay({
           ],
         }));
       } catch {
-        // ignore — verse simply won't appear until next reload
+        // A silently-swallowed failure here previously looked identical to a
+        // successful save — the typed text just vanished with no indication
+        // why (see the low-disk-space investigation that traced a real
+        // instance of this to intermittent SQLite write failures). Surface it
+        // so the user knows to retry instead of assuming their edit landed.
+        window.alert(`Could not save the ${abbr} translation for ${vBook} ${vChapter}:${verse} — your edit was not stored. Please try again.`);
       }
       return;
     }
@@ -4932,19 +4939,22 @@ export default function ChapterDisplay({
     }));
 
     try {
-      await fetch("/api/translation-verses", {
+      const res = await fetch("/api/translation-verses", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: tvRecord.id, text: newText }),
       });
+      if (!res.ok) throw new Error(`Save failed (${res.status})`);
     } catch {
-      // Rollback on network error
+      // Rollback on failure — and say so, since a silent rollback here looked
+      // identical to a successful save with no indication the edit was lost.
       setLocalTranslationVerseData((prev) => ({
         ...prev,
         [translation.id]: (prev[translation.id] ?? []).map((tv) =>
           tv.chapter === vChapter && tv.verse === verse ? { ...tv, text: oldText } : tv
         ),
       }));
+      window.alert(`Could not save the ${abbr} translation for ${vBook} ${vChapter}:${verse} — reverted to the previous text. Please try again.`);
     }
   }
 
