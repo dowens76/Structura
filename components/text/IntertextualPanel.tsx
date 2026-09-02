@@ -89,12 +89,14 @@ function linkCoversVerse(link: IntertextualLink, book: string, chapter: number, 
   return inSource || inTarget;
 }
 
-function linkLabel(link: IntertextualLink, currentBook: string, currentChapter: number): string {
-  const isSource = link.sourceBook === currentBook && link.sourceChapter === currentChapter;
-  if (isSource) {
-    return `→ ${bookLabel(link.targetBook)} ${verseRange(link.targetChapter, link.targetVerse, link.targetEndVerse)}`;
-  }
-  return `← ${bookLabel(link.sourceBook)} ${verseRange(link.sourceChapter, link.sourceVerse, link.sourceEndVerse)}`;
+// Shows both sides' verse numbers (not just "the other side" implied by
+// whatever chapter the panel happens to be scoped to) — e.g. "Exod 34:6-7 →
+// Jonah 4:2" rather than just "→ Jonah 4:2".
+function linkLabel(link: IntertextualLink): string {
+  const source = `${bookLabel(link.sourceBook)} ${verseRange(link.sourceChapter, link.sourceVerse, link.sourceEndVerse)}`;
+  const target = `${bookLabel(link.targetBook)} ${verseRange(link.targetChapter, link.targetVerse, link.targetEndVerse)}`;
+  const arrow = link.direction === "bidirectional" ? "↔" : "→";
+  return `${source} ${arrow} ${target}`;
 }
 
 function resolveLinkType(value: string, custom: CustomLinkType[]): { label: string; color: string } {
@@ -508,11 +510,11 @@ function LinkForm({
 // ── Link row ───────────────────────────────────────────────────────────────
 
 function LinkRow({
-  link, book, chapter,
+  link,
   custom,
   onEdit, onDelete,
 }: {
-  link: IntertextualLink; book: string; chapter: number;
+  link: IntertextualLink;
   custom: CustomLinkType[];
   onEdit: (link: IntertextualLink) => void;
   onDelete: (id: number) => void;
@@ -531,7 +533,7 @@ function LinkRow({
         </span>
         <div className="flex-1 min-w-0">
           <div className="font-medium text-[var(--foreground)] truncate">
-            {linkLabel(link, book, chapter)}
+            {linkLabel(link)}
           </div>
           <div className="flex items-center gap-2 mt-0.5">
             <StrengthStars value={link.strength} />
@@ -893,8 +895,6 @@ export default function IntertextualPanel({ book, chapter, textSource, verse, on
             <LinkRow
               key={link.id}
               link={link}
-              book={book}
-              chapter={chapter}
               custom={custom}
               onEdit={(l) => { setEditLink(l); setShowForm(false); }}
               onDelete={handleDelete}
