@@ -34,6 +34,25 @@ function openDbWithRetry(
   throw lastErr;
 }
 
+// Strip Greek accents/breathings/iota-subscript and normalize final sigma +
+// case, so a lemma typed with (or without) diacritics matches regardless of
+// which source's convention is stored — SBLGNT/most lexica cite lemmas fully
+// accented, while the LXX import and LSJ store unaccented lowercase forms.
+export function normalizeGreekLemma(s: string): string {
+  return s
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "") // combining accents, breathings, iota-subscript
+    .normalize("NFC")
+    .replace(/ς/g, "σ")
+    .toLowerCase();
+}
+
+function registerGreekNormalizeFn(sqlite: Database.Database): void {
+  sqlite.function("greek_normalize", (s: unknown) =>
+    typeof s === "string" ? normalizeGreekLemma(s) : s
+  );
+}
+
 const RESOURCES_DIR = process.env.STRUCTURA_RESOURCES_DIR
   ?? path.join(process.cwd(), "data");
 const USER_DATA_DIR = process.env.STRUCTURA_USER_DATA_DIR
@@ -208,6 +227,7 @@ export function getSblgntDb(): ReturnType<typeof drizzle<typeof sourceSchema>> {
     const dbPath = fs.existsSync(SBLGNT_DB_PATH) ? SBLGNT_DB_PATH : SOURCE_DB_PATH;
     const sqlite = openDbWithRetry(dbPath, { readonly: true });
     sqlite.pragma("foreign_keys = ON");
+    registerGreekNormalizeFn(sqlite);
     dbCache.sblgntDb = drizzle(sqlite, { schema: sourceSchema });
   }
   return dbCache.sblgntDb;
@@ -303,6 +323,7 @@ export function getLxxDb(): ReturnType<typeof drizzle<typeof sourceSchema>> | nu
   if (!fs.existsSync(LXX_DB_PATH)) return null;
   const sqlite = openDbWithRetry(LXX_DB_PATH, { readonly: true });
   sqlite.pragma("foreign_keys = ON");
+  registerGreekNormalizeFn(sqlite);
   dbCache.lxxSqlite = sqlite;
   dbCache.lxxDb = drizzle(sqlite, { schema: sourceSchema });
   return dbCache.lxxDb;

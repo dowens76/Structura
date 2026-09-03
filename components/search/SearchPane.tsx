@@ -198,9 +198,17 @@ export default function SearchPane({ book, textSource, onClose, onResultsChange,
   const [showSuggestions, setShowSuggestions] = useState(false);
   const suggestTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const queryIsHebrew = /[\u05D0-\u05EA]/.test(query);
+  const queryIsGreek = /[\u0370-\u03FF\u1F00-\u1FFF]/.test(query);
+  const queryIsStrongs = /^[HhGg]\d+[a-z]?$/.test(query.trim());
+  // A Strong's number is only meaningful once we know which language it targets
+  const strongsIsEligible = queryIsStrongs && (
+    (/^[Hh]/.test(query.trim()) && hasHebrew) || (/^[Gg]/.test(query.trim()) && hasGreek)
+  );
+  const suggestionsEligible =
+    (queryIsHebrew && hasHebrew) || (queryIsGreek && hasGreek) || strongsIsEligible;
 
   useEffect(() => {
-    if (searchType !== "lemma" || !queryIsHebrew || !hasHebrew || !query.trim()) {
+    if (searchType !== "lemma" || !suggestionsEligible || !query.trim()) {
       setSuggestions([]);
       setShowSuggestions(false);
       return;
@@ -217,7 +225,7 @@ export default function SearchPane({ book, textSource, onClose, onResultsChange,
       } catch { /* ignore */ }
     }, 250);
     return () => { if (suggestTimer.current) clearTimeout(suggestTimer.current); };
-  }, [query, searchType, queryIsHebrew, hasHebrew]);
+  }, [query, searchType, suggestionsEligible]);
 
   // ── Results ─────────────────────────────────────────────────────────────────
   const [loading, setLoading] = useState(false);

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { eq, and, like, inArray, sql } from "drizzle-orm";
-import { sourceDb, sourceLookups, getLexiconDbsForLanguage } from "@/lib/db";
+import { getOshbDb, getSblgntDb, getLxxDb, oshbLookups, sblgntLookups, normalizeGreekLemma, getLexiconDbsForLanguage } from "@/lib/db";
 import { words } from "@/lib/db/source-schema";
 import { lexiconEntries } from "@/lib/db/lexica-schema";
 
@@ -94,20 +94,48 @@ export async function GET(request: NextRequest) {
   const strongs = parseStrongsNumber(q);
   if (strongs) {
     const { lang, num } = strongs;
-    const srcId = lang === "hebrew"
-      ? sourceLookups.textSourceByValue["OSHB"]
-      : sourceLookups.textSourceByValue["SBLGNT"];
-    if (srcId == null) return NextResponse.json({ suggestions: [] });
 
-    const rows = await sourceDb
-      .select({ surfaceNorm: words.surfaceNorm, surfaceText: words.surfaceText, strongNumber: words.strongNumber, lemma: words.lemma })
-      .from(words)
-      .where(and(eq(words.textSourceId, srcId), eq(words.strongNumber, num)))
-      .groupBy(words.strongNumber, words.lemma)
-      .limit(1);
+    let row: { surfaceNorm: string | null; surfaceText: string; strongNumber: string | null; lemma: string | null } | undefined;
 
-    if (rows.length === 0) return NextResponse.json({ suggestions: [] });
-    const row = rows[0];
+    if (lang === "hebrew") {
+      const srcId = oshbLookups.textSourceByValue["OSHB"];
+      if (srcId != null) {
+        const rows = await getOshbDb()
+          .select({ surfaceNorm: words.surfaceNorm, surfaceText: words.surfaceText, strongNumber: words.strongNumber, lemma: words.lemma })
+          .from(words)
+          .where(and(eq(words.textSourceId, srcId), eq(words.strongNumber, num)))
+          .groupBy(words.strongNumber, words.lemma)
+          .limit(1);
+        row = rows[0];
+      }
+    } else {
+      // Greek: a Strong's number may only occur in the NT (SBLGNT) or only
+      // in the OT Greek text (LXX) — check both, since they're separate DBs.
+      const srcId = sblgntLookups.textSourceByValue["SBLGNT"];
+      if (srcId != null) {
+        const rows = await getSblgntDb()
+          .select({ surfaceNorm: words.surfaceNorm, surfaceText: words.surfaceText, strongNumber: words.strongNumber, lemma: words.lemma })
+          .from(words)
+          .where(and(eq(words.textSourceId, srcId), eq(words.strongNumber, num)))
+          .groupBy(words.strongNumber, words.lemma)
+          .limit(1);
+        row = rows[0];
+      }
+      if (!row) {
+        const lxxDb = getLxxDb();
+        if (lxxDb) {
+          const rows = await lxxDb
+            .select({ surfaceNorm: words.surfaceNorm, surfaceText: words.surfaceText, strongNumber: words.strongNumber, lemma: words.lemma })
+            .from(words)
+            .where(eq(words.strongNumber, num))
+            .groupBy(words.strongNumber, words.lemma)
+            .limit(1);
+          row = rows[0];
+        }
+      }
+    }
+
+    if (!row) return NextResponse.json({ suggestions: [] });
     const glossMap = await fetchGlosses([num], lang);
     const suggestion: LemmaSuggestion = {
       surfaceNorm: row.surfaceNorm ?? "",
@@ -175,24 +203,57 @@ export async function GET(request: NextRequest) {
   }
 
   // ── Greek text prefix search ───────────────────────────────────────────────
+  // Searches both SBLGNT (NT) and LXX (OT Greek) — separate DBs — and matches
+  // on a diacritic/case-normalized form of the lemma, since SBLGNT stores
+  // fully accented lemmas while the LXX import stores unaccented lowercase
+  // ones.
   if (isGreek(q)) {
-    const sblgntId = sourceLookups.textSourceByValue["SBLGNT"];
-    if (sblgntId == null) return NextResponse.json({ suggestions: [] });
+    const nq = normalizeGreekLemma(q);
+    type Row = { surfaceNorm: string | null; surfaceText: string; strongNumber: string | null; lemma: string | null };
+    const allRows: Row[] = [];
 
-    const rows = await sourceDb
-      .select({ surfaceNorm: words.surfaceNorm, surfaceText: words.surfaceText, strongNumber: words.strongNumber, lemma: words.lemma })
-      .from(words)
-      .where(and(eq(words.textSourceId, sblgntId), like(words.lemma, `${q}%`)))
-      .groupBy(words.lemma, words.strongNumber)
-      .orderBy(sql`length(${words.lemma})`, words.lemma)
-      .limit(limit);
+    const sblgntId = sblgntLookups.textSourceByValue["SBLGNT"];
+    if (sblgntId != null) {
+      const rows = await getSblgntDb()
+        .select({ surfaceNorm: words.surfaceNorm, surfaceText: words.surfaceText, strongNumber: words.strongNumber, lemma: words.lemma })
+        .from(words)
+        .where(and(eq(words.textSourceId, sblgntId), sql`greek_normalize(${words.lemma}) LIKE ${nq + "%"}`))
+        .groupBy(words.lemma, words.strongNumber)
+        .orderBy(sql`length(${words.lemma})`, words.lemma)
+        .limit(limit * 2);
+      allRows.push(...rows);
+    }
 
-    const filtered = rows.filter((r) => r.lemma);
-    const strongNums = [...new Set(filtered.map((r) => r.strongNumber).filter(Boolean) as string[])];
+    const lxxDb = getLxxDb();
+    if (lxxDb) {
+      const rows = await lxxDb
+        .select({ surfaceNorm: words.surfaceNorm, surfaceText: words.surfaceText, strongNumber: words.strongNumber, lemma: words.lemma })
+        .from(words)
+        .where(sql`greek_normalize(${words.lemma}) LIKE ${nq + "%"}`)
+        .groupBy(words.lemma, words.strongNumber)
+        .orderBy(sql`length(${words.lemma})`, words.lemma)
+        .limit(limit * 2);
+      allRows.push(...rows);
+    }
+
+    // Dedupe by normalized lemma, preferring whichever row carries a Strong's number
+    const best = new Map<string, Row>();
+    for (const row of allRows) {
+      if (!row.lemma) continue;
+      const key = normalizeGreekLemma(row.lemma);
+      const existing = best.get(key);
+      if (!existing || (!existing.strongNumber && row.strongNumber)) best.set(key, row);
+    }
+
+    const deduped = [...best.values()]
+      .sort((a, b) => (a.lemma!.length - b.lemma!.length) || a.lemma!.localeCompare(b.lemma!))
+      .slice(0, limit);
+
+    const strongNums = [...new Set(deduped.map((r) => r.strongNumber).filter(Boolean) as string[])];
     const glossMap = await fetchGlosses(strongNums, "greek");
 
-    const suggestions: LemmaSuggestion[] = filtered.map((r) => ({
-      surfaceNorm: r.surfaceNorm ?? "",
+    const suggestions: LemmaSuggestion[] = deduped.map((r) => ({
+      surfaceNorm: r.surfaceNorm ?? r.lemma ?? "",
       surfaceText: r.surfaceText,
       strongNumber: r.strongNumber,
       lemma: r.lemma,
