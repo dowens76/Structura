@@ -70,6 +70,41 @@ export async function withWriteRetry<T>(fn: () => T | Promise<T>, attempts = 5, 
   throw lastErr;
 }
 
+// withWriteRetry() above has to be applied by hand at every call site, and in
+// practice that's proven easy to forget — three separate features (line
+// annotations, word arrows, speech sections) shipped without it and each hit
+// this exact class of Windows-only lock failure. Patching retry in at the
+// statement level instead means every current AND future query through this
+// connection is covered automatically, with no per-call-site opt-in needed.
+// better-sqlite3's `run`/`get`/`all`/`iterate` are synchronous, so the retry
+// loop here has to block synchronously too (same Atomics.wait trick as
+// openDbWithRetry) rather than `await`ing a delay.
+function withStatementRetry(sqlite: Database.Database): Database.Database {
+  const origPrepare = sqlite.prepare.bind(sqlite);
+  const RETRYABLE_METHODS = ["run", "get", "all", "iterate"] as const;
+  sqlite.prepare = ((sql: string) => {
+    const stmt = origPrepare(sql);
+    for (const method of RETRYABLE_METHODS) {
+      const orig = (stmt[method] as (...args: unknown[]) => unknown).bind(stmt);
+      (stmt as unknown as Record<string, unknown>)[method] = (...args: unknown[]) => {
+        let lastErr: unknown;
+        for (let i = 0; i < 5; i++) {
+          try {
+            return orig(...args);
+          } catch (e) {
+            lastErr = e;
+            if (!isTransientDbLockError(e) || i === 4) throw e;
+            Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 150);
+          }
+        }
+        throw lastErr;
+      };
+    }
+    return stmt;
+  }) as typeof sqlite.prepare;
+  return sqlite;
+}
+
 // Strip Greek accents/breathings/iota-subscript and normalize final sigma +
 // case, so a lemma typed with (or without) diacritics matches regardless of
 // which source's convention is stored — SBLGNT/most lexica cite lemmas fully
@@ -1061,6 +1096,12 @@ export function getUserDb() {
     sqlite.pragma("journal_mode = WAL");
     sqlite.pragma("synchronous = NORMAL");
     sqlite.pragma("foreign_keys = ON");
+    // user.db is the only writable database in the app — every insert/update/
+    // delete anywhere (annotations, tags, characters, arrows, etc.) goes
+    // through this one connection, so this is where the Windows-lock retry
+    // needs to live to cover all of them without relying on every call site
+    // remembering to opt in via withWriteRetry().
+    withStatementRetry(sqlite);
     migrateUserDb(sqlite);
     dbCache.userSqlite = sqlite;
     dbCache.userDb = drizzle(sqlite, { schema: userSchema });

@@ -3872,8 +3872,14 @@ export default function ChapterDisplay({
         }),
       });
       const data = await res.json();
+      if (!res.ok || !data.sections) {
+        console.error("[handleToggleSpeechSection] save failed:", res.status, data?.error);
+        setSpeechSections(beforeSections);
+        return;
+      }
       setSpeechSections(data.sections);
-    } catch {
+    } catch (e) {
+      console.error("[handleToggleSpeechSection] network error:", e);
       setSpeechSections(beforeSections);
     }
   }

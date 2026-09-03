@@ -521,11 +521,14 @@ export default function WordArrowOverlay({
   }, []); // empty: attach once per mount, refs keep content current
 
   // ── Global drag handlers ────────────────────────────────────────────────────
+  // Pointer Events (not mouse events) so dragging a handle works with touch
+  // and Surface-Pen input too, not just a real mouse — a plain mousemove/
+  // mouseup pair never fires for a touch/pen drag, only a synthesized click.
 
   useEffect(() => {
     if (!dragState) return;
 
-    function onMouseMove(e: MouseEvent) {
+    function onPointerMove(e: PointerEvent) {
       e.preventDefault();
       if (dragState?.type === "midpoint") {
         const liveDx = dragState.origDx + (e.clientX - dragState.startClientX);
@@ -540,7 +543,7 @@ export default function WordArrowOverlay({
       }
     }
 
-    function onMouseUp(e: MouseEvent) {
+    function onPointerUp(e: PointerEvent) {
       if (!dragState) return;
 
       if (dragState.type === "midpoint") {
@@ -577,11 +580,11 @@ export default function WordArrowOverlay({
       setDragState(null);
     }
 
-    window.addEventListener("mousemove", onMouseMove);
-    window.addEventListener("mouseup", onMouseUp);
+    window.addEventListener("pointermove", onPointerMove);
+    window.addEventListener("pointerup", onPointerUp);
     return () => {
-      window.removeEventListener("mousemove", onMouseMove);
-      window.removeEventListener("mouseup", onMouseUp);
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerup", onPointerUp);
     };
   }, [dragState, drawn, onUpdateArrow]);
 
@@ -720,7 +723,7 @@ export default function WordArrowOverlay({
 
             {/* ── Editing handles (visible when hovered in edit mode) ── */}
             {editing && (
-              <g style={{ pointerEvents: "auto" }}>
+              <g style={{ pointerEvents: "auto", touchAction: "none" }}>
 
                 {/* Anchor handle — FROM word */}
                 <circle
@@ -734,7 +737,7 @@ export default function WordArrowOverlay({
                   style={{ cursor: "grab", pointerEvents: "auto" }}
                   onMouseEnter={() => { if (!dragState) setHoveredId(arrow.id); }}
                   onMouseLeave={() => { if (!dragState) setHoveredId(null); }}
-                  onMouseDown={(e) => {
+                  onPointerDown={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
                     setDragState({
@@ -759,7 +762,7 @@ export default function WordArrowOverlay({
                   style={{ cursor: "grab", pointerEvents: "auto" }}
                   onMouseEnter={() => { if (!dragState) setHoveredId(arrow.id); }}
                   onMouseLeave={() => { if (!dragState) setHoveredId(null); }}
-                  onMouseDown={(e) => {
+                  onPointerDown={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
                     setDragState({
@@ -785,7 +788,7 @@ export default function WordArrowOverlay({
                   style={{ cursor: "move", pointerEvents: "auto" }}
                   onMouseEnter={() => { if (!dragState) setHoveredId(arrow.id); }}
                   onMouseLeave={() => { if (!dragState) setHoveredId(null); }}
-                  onMouseDown={(e) => {
+                  onPointerDown={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
                     setDragState({
@@ -814,7 +817,7 @@ export default function WordArrowOverlay({
                   style={{ cursor: "move", pointerEvents: "auto" }}
                   onMouseEnter={() => { if (!dragState) setHoveredId(arrow.id); }}
                   onMouseLeave={() => { if (!dragState) setHoveredId(null); }}
-                  onMouseDown={(e) => {
+                  onPointerDown={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
                     // Initialise orig2 from midpoint2Dx/Dy, falling back to

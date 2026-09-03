@@ -32,8 +32,11 @@ export interface UseWordArrowsReturn {
   setEditingArrows: Dispatch<SetStateAction<boolean>>;
   arrowFromWordId: string | null;
   setArrowFromWordId: Dispatch<SetStateAction<string | null>>;
-  /** Two-click arrow creation. First click sets the origin; second click saves. */
-  handleSelectArrowWordById: (wordId: string) => Promise<void>;
+  /** Two-click arrow creation. First click sets the origin; second click saves.
+   *  Returns null on success, or an error message on failure. On failure the
+   *  origin selection (`arrowFromWordId`) is left intact so the user can just
+   *  retry the second click instead of having to re-pick the start word. */
+  handleSelectArrowWordById: (wordId: string) => Promise<string | null>;
   handleDeleteWordArrow: (id: number) => Promise<void>;
   handleUpdateWordArrow: (id: number, patch: ArrowPatch) => Promise<void>;
   /** Creates an arrow directly between two known endpoints, bypassing the
@@ -54,30 +57,43 @@ export function useWordArrows({
   const [editingArrows, setEditingArrows] = useState(false);
   const [arrowFromWordId, setArrowFromWordId] = useState<string | null>(null);
 
-  async function handleSelectArrowWordById(wordId: string) {
+  async function handleSelectArrowWordById(wordId: string): Promise<string | null> {
     if (!arrowFromWordId) {
       setArrowFromWordId(wordId);
-      return;
+      return null;
     }
     if (arrowFromWordId === wordId) {
       setArrowFromWordId(null);
-      return;
+      return null;
     }
     const chapter = getChapterForWord(arrowFromWordId);
-    const resp = await fetch("/api/word-arrows", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        fromWordId: arrowFromWordId,
-        toWordId: wordId,
-        book,
-        chapter,
-        source: textSource,
-      }),
-    });
-    const { arrow } = await resp.json();
-    setWordArrowsState((prev) => [...prev, arrow]);
-    setArrowFromWordId(null);
+    try {
+      const resp = await fetch("/api/word-arrows", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fromWordId: arrowFromWordId,
+          toWordId: wordId,
+          book,
+          chapter,
+          source: textSource,
+        }),
+      });
+      if (!resp.ok) {
+        const body = await resp.json().catch(() => ({}) as { error?: string });
+        console.error("[handleSelectArrowWordById] save failed:", resp.status, body.error);
+        return body.error || `Save failed (${resp.status}).`;
+      }
+      const { arrow } = await resp.json();
+      setWordArrowsState((prev) => [...prev, arrow]);
+      setArrowFromWordId(null);
+      return null;
+    } catch (e) {
+      // Leave arrowFromWordId set so the pending selection isn't lost —
+      // the caller can just retry the second click.
+      console.error("[handleSelectArrowWordById] network error:", e);
+      return e instanceof Error ? e.message : "Network error.";
+    }
   }
 
   async function createDirectArrow(fromWordId: string, toWordId: string, chapter: number, similarityGroupId: number, color?: string): Promise<WordArrow | null> {
@@ -97,22 +113,36 @@ export function useWordArrows({
   }
 
   async function handleDeleteWordArrow(id: number) {
-    await fetch("/api/word-arrows", {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id }),
-    });
     setWordArrowsState((prev) => prev.filter((a) => a.id !== id));
+    try {
+      const resp = await fetch("/api/word-arrows", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+      if (!resp.ok) console.error("[handleDeleteWordArrow] delete failed:", resp.status, await resp.json().catch(() => null));
+    } catch (e) {
+      // non-critical — UI already updated optimistically
+      console.error("[handleDeleteWordArrow] network error:", e);
+    }
   }
 
   async function handleUpdateWordArrow(id: number, patch: ArrowPatch) {
-    const resp = await fetch("/api/word-arrows", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id, ...patch }),
-    });
-    const { arrow } = await resp.json();
-    setWordArrowsState((prev) => prev.map((a) => (a.id === id ? arrow : a)));
+    try {
+      const resp = await fetch("/api/word-arrows", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, ...patch }),
+      });
+      if (!resp.ok) {
+        console.error("[handleUpdateWordArrow] update failed:", resp.status, await resp.json().catch(() => null));
+        return;
+      }
+      const { arrow } = await resp.json();
+      setWordArrowsState((prev) => prev.map((a) => (a.id === id ? arrow : a)));
+    } catch (e) {
+      console.error("[handleUpdateWordArrow] network error:", e);
+    }
   }
 
   return {

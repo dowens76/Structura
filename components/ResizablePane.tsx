@@ -54,37 +54,32 @@ export default function ResizablePane({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [storageKey]);
 
-  // Global mouse-move / mouse-up listeners (attached only once).
-  useEffect(() => {
-    function onMove(e: MouseEvent) {
-      if (!draggingRef.current) return;
-      // Handle is on the LEFT edge of the pane.  Moving left → wider.
-      const delta = startX.current - e.clientX;
-      const w = clamp(startW.current + delta, minWidth, maxWidth);
-      setWidth(w);
-    }
-    function onUp() {
-      if (!draggingRef.current) return;
-      draggingRef.current = false;
-      setDragging(false);
-      localStorage.setItem(storageKey, String(widthRef.current));
-    }
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup",   onUp);
-    return () => {
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup",   onUp);
-    };
-  // storageKey / min / max are stable props — no need to re-register.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  function onMouseDown(e: React.MouseEvent) {
+  // Pointer Events (not mouse events) so dragging works with touch and pen
+  // input, not just a real mouse — a plain `mousemove`/`mouseup` pair never
+  // fires for a touch or Surface-Pen drag, only a synthesized single click.
+  // Pointer capture also means the drag keeps tracking even if the pointer
+  // strays off the 1px handle, so no window-level listeners are needed.
+  function onPointerDown(e: React.PointerEvent) {
     draggingRef.current = true;
     setDragging(true);
     startX.current = e.clientX;
     startW.current = widthRef.current;
+    e.currentTarget.setPointerCapture(e.pointerId);
     e.preventDefault(); // prevent text selection during drag
+  }
+  function onPointerMove(e: React.PointerEvent) {
+    if (!draggingRef.current) return;
+    // Handle is on the LEFT edge of the pane.  Moving left → wider.
+    const delta = startX.current - e.clientX;
+    const w = clamp(startW.current + delta, minWidth, maxWidth);
+    setWidth(w);
+  }
+  function onPointerUp(e: React.PointerEvent) {
+    if (!draggingRef.current) return;
+    draggingRef.current = false;
+    setDragging(false);
+    e.currentTarget.releasePointerCapture(e.pointerId);
+    localStorage.setItem(storageKey, String(widthRef.current));
   }
 
   const active = hovered || dragging;
@@ -97,13 +92,19 @@ export default function ResizablePane({
         style={{
           width: "1px",
           cursor: "col-resize",
+          // Prevent the browser's default touch-scroll/pan gesture from
+          // hijacking a touch or pen drag on this handle.
+          touchAction: "none",
           // Slightly widen visually while active so the user sees feedback.
           outline: active ? "2px solid var(--accent, #3b82f6)" : "none",
           outlineOffset: "-1px",
           backgroundColor: "var(--border)",
           transition: dragging ? "none" : "outline 0.1s",
         }}
-        onMouseDown={onMouseDown}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerCancel={onPointerUp}
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
         aria-hidden="true"

@@ -1267,7 +1267,7 @@ export async function upsertSpeechSection(
   // Delete same-character overlaps + partially-overlapping different-character ones
   const toDelete = [...sameCharOverlapping, ...diffCharToDelete];
   for (const s of toDelete) {
-    await userDb.delete(speechSections).where(eq(speechSections.id, s.id));
+    await withWriteRetry(() => userDb.delete(speechSections).where(eq(speechSections.id, s.id)));
   }
 
   // Expand range only by absorbing same-character deleted sections
@@ -1288,13 +1288,13 @@ export async function upsertSpeechSection(
     const ei = posMap.get(s.endWordId)   ?? -1;
     if (ei + 1 === finalLo || si - 1 === finalHi) {
       // Adjacent and same character — merge
-      await userDb.delete(speechSections).where(eq(speechSections.id, s.id));
+      await withWriteRetry(() => userDb.delete(speechSections).where(eq(speechSections.id, s.id)));
       finalLo = Math.min(finalLo, si);
       finalHi = Math.max(finalHi, ei);
     }
   }
 
-  await userDb.insert(speechSections).values({
+  await withWriteRetry(() => userDb.insert(speechSections).values({
     characterId,
     startWordId: chapterWords[finalLo].wordId,
     endWordId:   chapterWords[finalHi].wordId,
@@ -1303,7 +1303,7 @@ export async function upsertSpeechSection(
     textSource,
     workspaceId,
     versionId,
-  });
+  }));
 
   return getChapterSpeechSections(book, chapter, textSource, workspaceId, versionId);
 }
@@ -1320,7 +1320,7 @@ export async function replaceChapterSpeechSections(
   workspaceId: number,
   versionId: number
 ): Promise<void> {
-  await userDb.delete(speechSections).where(
+  await withWriteRetry(() => userDb.delete(speechSections).where(
     and(
       eq(speechSections.workspaceId, workspaceId),
       eq(speechSections.versionId, versionId),
@@ -1328,9 +1328,9 @@ export async function replaceChapterSpeechSections(
       eq(speechSections.chapter, chapter),
       eq(speechSections.textSource, textSource)
     )
-  );
+  ));
   if (sections.length > 0) {
-    await userDb.insert(speechSections).values(
+    await withWriteRetry(() => userDb.insert(speechSections).values(
       sections.map((s) => ({
         characterId: s.characterId,
         startWordId: s.startWordId,
@@ -1341,7 +1341,7 @@ export async function replaceChapterSpeechSections(
         workspaceId,
         versionId,
       }))
-    );
+    ));
   }
 }
 
@@ -1370,7 +1370,7 @@ export async function removeSpeechSectionContaining(
   });
 
   if (containing) {
-    await userDb.delete(speechSections).where(eq(speechSections.id, containing.id));
+    await withWriteRetry(() => userDb.delete(speechSections).where(eq(speechSections.id, containing.id)));
   }
 
   return getChapterSpeechSections(book, chapter, textSource, workspaceId, versionId);
@@ -1385,10 +1385,10 @@ export async function updateSpeechSectionCharacter(
   workspaceId: number,
   versionId: number
 ): Promise<SpeechSection[]> {
-  await userDb
+  await withWriteRetry(() => userDb
     .update(speechSections)
     .set({ characterId: newCharacterId })
-    .where(eq(speechSections.id, sectionId));
+    .where(eq(speechSections.id, sectionId)));
   return getChapterSpeechSections(book, chapter, textSource, workspaceId, versionId);
 }
 
@@ -2190,15 +2190,15 @@ export async function createWordArrow(
   similarityGroupId?: number,
   color?: string
 ): Promise<WordArrow> {
-  const [row] = await userDb
+  const [row] = await withWriteRetry(() => userDb
     .insert(wordArrows)
     .values({ fromWordId, toWordId, book, chapter, textSource, workspaceId, versionId, label: label ?? null, similarityGroupId: similarityGroupId ?? null, color: color ?? null })
-    .returning();
+    .returning());
   return row;
 }
 
 export async function deleteWordArrow(id: number): Promise<void> {
-  await userDb.delete(wordArrows).where(eq(wordArrows.id, id));
+  await withWriteRetry(() => userDb.delete(wordArrows).where(eq(wordArrows.id, id)));
 }
 
 export async function updateWordArrow(
@@ -2213,11 +2213,11 @@ export async function updateWordArrow(
     toWordId?: string;
   }
 ): Promise<WordArrow> {
-  const [row] = await userDb
+  const [row] = await withWriteRetry(() => userDb
     .update(wordArrows)
     .set(patch)
     .where(eq(wordArrows.id, id))
-    .returning();
+    .returning());
   return row;
 }
 

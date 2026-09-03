@@ -14,6 +14,16 @@ import { getActiveVersionId } from "@/lib/versions/activeVersion";
 
 export const dynamic = "force-dynamic";
 
+/** Logs the real error (visible in the Tauri app's captured node-stderr log,
+ *  even though the client only ever sees a generic message) and returns a
+ *  JSON 500 response instead of letting Next.js's default bare-500 handler
+ *  swallow the detail. */
+function failedWrite(action: string, e: unknown) {
+  console.error(`[speech-sections] ${action} failed:`, e);
+  const message = e instanceof Error ? e.message : String(e);
+  return NextResponse.json({ error: message }, { status: 500 });
+}
+
 // GET /api/speech-sections?book=Gen&chapter=1&source=OSHB
 export async function GET(request: NextRequest) {
   const workspaceId = await getActiveWorkspaceId();
@@ -55,12 +65,16 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Missing fields" }, { status: 400 });
   }
 
-  const versionId = await getActiveVersionId(workspaceId, book, chapter);
-  const chapterWords = await getChapterWords(book, chapter, source as TextSource);
-  const sections = await upsertSpeechSection(
-    characterId, startWordId, endWordId, book, chapter, source, chapterWords, workspaceId, versionId
-  );
-  return NextResponse.json({ sections });
+  try {
+    const versionId = await getActiveVersionId(workspaceId, book, chapter);
+    const chapterWords = await getChapterWords(book, chapter, source as TextSource);
+    const sections = await upsertSpeechSection(
+      characterId, startWordId, endWordId, book, chapter, source, chapterWords, workspaceId, versionId
+    );
+    return NextResponse.json({ sections });
+  } catch (e) {
+    return failedWrite("create", e);
+  }
 }
 
 // PUT /api/speech-sections — replace the full section list for a chapter (used by undo)
@@ -84,10 +98,14 @@ export async function PUT(request: NextRequest) {
     return NextResponse.json({ error: "Missing fields" }, { status: 400 });
   }
 
-  const versionId = await getActiveVersionId(workspaceId, book, chapter);
-  await replaceChapterSpeechSections(book, chapter, source, sections, workspaceId, versionId);
-  const updated = await getChapterSpeechSections(book, chapter, source, workspaceId, versionId);
-  return NextResponse.json({ sections: updated });
+  try {
+    const versionId = await getActiveVersionId(workspaceId, book, chapter);
+    await replaceChapterSpeechSections(book, chapter, source, sections, workspaceId, versionId);
+    const updated = await getChapterSpeechSections(book, chapter, source, workspaceId, versionId);
+    return NextResponse.json({ sections: updated });
+  } catch (e) {
+    return failedWrite("replace", e);
+  }
 }
 
 // PATCH /api/speech-sections
@@ -107,9 +125,13 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ error: "Missing fields" }, { status: 400 });
   }
 
-  const versionId = await getActiveVersionId(workspaceId, book, chapter);
-  const sections = await updateSpeechSectionCharacter(sectionId, characterId, book, chapter, source, workspaceId, versionId);
-  return NextResponse.json({ sections });
+  try {
+    const versionId = await getActiveVersionId(workspaceId, book, chapter);
+    const sections = await updateSpeechSectionCharacter(sectionId, characterId, book, chapter, source, workspaceId, versionId);
+    return NextResponse.json({ sections });
+  } catch (e) {
+    return failedWrite("update", e);
+  }
 }
 
 // DELETE /api/speech-sections
@@ -134,8 +156,12 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json({ error: "Missing fields" }, { status: 400 });
   }
 
-  const versionId = await getActiveVersionId(workspaceId, book, chapter);
-  const chapterWords = await getChapterWords(book, chapter, source as TextSource);
-  const sections = await removeSpeechSectionContaining(wordId, book, chapter, source, chapterWords, workspaceId, versionId);
-  return NextResponse.json({ sections });
+  try {
+    const versionId = await getActiveVersionId(workspaceId, book, chapter);
+    const chapterWords = await getChapterWords(book, chapter, source as TextSource);
+    const sections = await removeSpeechSectionContaining(wordId, book, chapter, source, chapterWords, workspaceId, versionId);
+    return NextResponse.json({ sections });
+  } catch (e) {
+    return failedWrite("delete", e);
+  }
 }
