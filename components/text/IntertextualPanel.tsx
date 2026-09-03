@@ -523,43 +523,15 @@ function LinkRow({
   const [confirming, setConfirming] = useState(false);
 
   return (
-    <div className="px-3 py-2 border-b border-[var(--border)] last:border-b-0 text-sm">
-      <div className="flex items-start gap-2">
+    <div className="px-3 py-2 border-b border-[var(--border)] last:border-b-0 text-sm text-left">
+      {/* Header row: type badge (left) + edit/delete (right) */}
+      <div className="flex items-start justify-between gap-2">
         <span
-          className="mt-0.5 shrink-0 text-xs font-semibold px-1.5 py-0.5 rounded"
+          className="text-xs font-semibold px-1.5 py-0.5 rounded"
           style={{ backgroundColor: color + "25", color }}
         >
           {typeLabel}
         </span>
-        <div className="flex-1 min-w-0">
-          <div className="font-medium text-[var(--foreground)] truncate">
-            {linkLabel(link)}
-          </div>
-          <div className="flex items-center gap-2 mt-0.5">
-            <StrengthStars value={link.strength} />
-            {link.direction === "bidirectional" && (
-              <span className="text-xs text-[var(--text-muted)]">↔</span>
-            )}
-          </div>
-          {link.notes && (
-            <p className="text-xs text-[var(--text-muted)] mt-1 line-clamp-2">{link.notes}</p>
-          )}
-          {(() => {
-            const tags = parseTags(link.tags);
-            return tags.length > 0 ? (
-              <div className="flex flex-wrap gap-1 mt-1">
-                {tags.map((tag) => (
-                  <span
-                    key={tag}
-                    className="text-[10px] px-1.5 py-0.5 rounded-full border border-[var(--border)] text-[var(--text-muted)]"
-                  >
-                    {tag}
-                  </span>
-                ))}
-              </div>
-            ) : null;
-          })()}
-        </div>
         <div className="flex gap-1 shrink-0">
           <button
             onClick={() => onEdit(link)}
@@ -586,6 +558,37 @@ function LinkRow({
           )}
         </div>
       </div>
+
+      {/* Reference — full width now that the type badge sits above it, so both
+          verse references (source and target) have room to fit without
+          truncating in a narrow pane. */}
+      <div className="font-medium text-[var(--foreground)] mt-1">
+        {linkLabel(link)}
+      </div>
+      <div className="flex items-center gap-2 mt-0.5">
+        <StrengthStars value={link.strength} />
+        {link.direction === "bidirectional" && (
+          <span className="text-xs text-[var(--text-muted)]">↔</span>
+        )}
+      </div>
+      {link.notes && (
+        <p className="text-xs text-[var(--text-muted)] mt-1 line-clamp-2">{link.notes}</p>
+      )}
+      {(() => {
+        const tags = parseTags(link.tags);
+        return tags.length > 0 ? (
+          <div className="flex flex-wrap gap-1 mt-1">
+            {tags.map((tag) => (
+              <span
+                key={tag}
+                className="text-[10px] px-1.5 py-0.5 rounded-full border border-[var(--border)] text-[var(--text-muted)]"
+              >
+                {tag}
+              </span>
+            ))}
+          </div>
+        ) : null;
+      })()}
     </div>
   );
 }
