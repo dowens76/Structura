@@ -34,9 +34,10 @@ export interface UseAnnotationRangeReturn {
   setEditingAnnotationId: Dispatch<SetStateAction<number | null>>;
   handleSelectAnnotationSegment: (segWordId: string, shiftHeld?: boolean) => void;
   handleCancelAnnotation: () => void;
-  /** Returns true on success. On failure, the pending range selection is left
-   *  intact (rather than silently discarded) so the caller can show an error
-   *  and let the user retry without losing their range/description/etc. */
+  /** Returns null on success, or an error message on failure. On failure, the
+   *  pending range selection is left intact (rather than silently discarded)
+   *  so the caller can show the error and let the user retry without losing
+   *  their range/description/etc. */
   handleSaveAnnotation: (data: {
     annotType: string;
     label: string;
@@ -45,7 +46,7 @@ export interface UseAnnotationRangeReturn {
     description: string | null;
     outOfSequence: boolean;
     transitional: boolean;
-  }) => Promise<boolean>;
+  }) => Promise<string | null>;
   handleDeleteAnnotation: (id: number) => Promise<void>;
   handleUpdateAnnotation: (
     id: number,
@@ -120,6 +121,7 @@ export function useAnnotationRange({
     setAnnotRangeEnd(null);
   }
 
+  /** Returns null on success, or an error message to show the user on failure. */
   async function handleSaveAnnotation(data: {
     annotType: string;
     label: string;
@@ -128,8 +130,8 @@ export function useAnnotationRange({
     description: string | null;
     outOfSequence: boolean;
     transitional: boolean;
-  }): Promise<boolean> {
-    if (!annotRangeStart) return false;
+  }): Promise<string | null> {
+    if (!annotRangeStart) return "No range selected.";
     const endWordId = annotRangeEnd ?? annotRangeStart;
     const segIds = paragraphFirstWordIds;
     const posMap = new Map(segIds.map((id, i) => [id, i]));
@@ -152,17 +154,22 @@ export function useAnnotationRange({
           source: textSource,
         }),
       });
-      if (!resp.ok) return false;
+      if (!resp.ok) {
+        const body = await resp.json().catch(() => ({}) as { error?: string });
+        console.error("[handleSaveAnnotation] save failed:", resp.status, body.error);
+        return body.error || `Save failed (${resp.status}).`;
+      }
       const { annotation } = await resp.json();
       setLineAnnotations((prev) => [...prev, annotation]);
       setAnnotRangeStart(null);
       setAnnotRangeEnd(null);
-      return true;
-    } catch {
+      return null;
+    } catch (e) {
       // Network error — leave the range selected so the creation form stays
       // open and the caller can surface an error instead of silently losing
       // the user's in-progress annotation.
-      return false;
+      console.error("[handleSaveAnnotation] network error:", e);
+      return e instanceof Error ? e.message : "Network error.";
     }
   }
 
@@ -170,13 +177,15 @@ export function useAnnotationRange({
     setLineAnnotations((prev) => prev.filter((a) => a.id !== id));
     setEditingAnnotationId((prev) => (prev === id ? null : prev));
     try {
-      await fetch("/api/line-annotations", {
+      const resp = await fetch("/api/line-annotations", {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id }),
       });
-    } catch {
-      // non-critical
+      if (!resp.ok) console.error("[handleDeleteAnnotation] delete failed:", resp.status, await resp.json().catch(() => null));
+    } catch (e) {
+      // non-critical — UI already updated optimistically
+      console.error("[handleDeleteAnnotation] network error:", e);
     }
   }
 
@@ -201,9 +210,12 @@ export function useAnnotationRange({
             prev.map((a) => (colorById.has(a.id) ? { ...a, color: colorById.get(a.id)! } : a))
           );
         }
+      } else {
+        console.error("[handleUpdateAnnotation] update failed:", resp.status, await resp.json().catch(() => null));
       }
-    } catch {
-      // non-critical
+    } catch (e) {
+      // non-critical — UI already updated optimistically
+      console.error("[handleUpdateAnnotation] network error:", e);
     }
   }
 

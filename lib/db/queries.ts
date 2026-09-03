@@ -1,5 +1,5 @@
 import { eq, and, asc, inArray, or, gte, lte, gt, lt, sql, max, like, isNull } from "drizzle-orm";
-import { sourceDb, userDb, sourceLookups, lxxLookups, getLxxDb, getLxxSqlite, getUltSqlite, getVcbSqlite, getUserSqlite, getOshbDb, getSblgntDb, getDbAndLookups, getLexiconDbsForLanguage } from "./index";
+import { sourceDb, userDb, sourceLookups, lxxLookups, getLxxDb, getLxxSqlite, getUltSqlite, getVcbSqlite, getUserSqlite, getOshbDb, getSblgntDb, getDbAndLookups, getLexiconDbsForLanguage, withWriteRetry } from "./index";
 import { getMtToKjvInstructions } from "@/lib/versification/mt-kjv-mapping";
 import type { LookupMaps } from "./index";
 import { books, words } from "./source-schema";
@@ -2375,10 +2375,10 @@ export async function createLineAnnotation(
   versionId: number,
   commFunction: string | null = null
 ): Promise<LineAnnotation> {
-  const [row] = await userDb
+  const [row] = await withWriteRetry(() => userDb
     .insert(lineAnnotations)
     .values({ annotType, label, commFunction, color, description, outOfSequence, transitional, startWordId, endWordId, textSource, book, chapter, workspaceId, versionId })
-    .returning();
+    .returning());
   return row;
 }
 
@@ -2387,17 +2387,17 @@ export async function updateLineAnnotation(
   id: number,
   updates: Partial<Pick<LineAnnotation, "annotType" | "label" | "commFunction" | "color" | "description" | "outOfSequence" | "transitional" | "startWordId" | "endWordId">>
 ): Promise<LineAnnotation> {
-  const [row] = await userDb
+  const [row] = await withWriteRetry(() => userDb
     .update(lineAnnotations)
     .set(updates)
     .where(eq(lineAnnotations.id, id))
-    .returning();
+    .returning());
   return row;
 }
 
 /** Delete an annotation by id. */
 export async function deleteLineAnnotation(id: number): Promise<void> {
-  await userDb.delete(lineAnnotations).where(eq(lineAnnotations.id, id));
+  await withWriteRetry(() => userDb.delete(lineAnnotations).where(eq(lineAnnotations.id, id)));
 }
 
 /**
@@ -2414,7 +2414,7 @@ export async function updateThemeColorForLabel(
   label: string,
   color: string
 ): Promise<LineAnnotation[]> {
-  return userDb
+  return withWriteRetry(() => userDb
     .update(lineAnnotations)
     .set({ color })
     .where(
@@ -2427,7 +2427,7 @@ export async function updateThemeColorForLabel(
         eq(lineAnnotations.label, label)
       )
     )
-    .returning();
+    .returning());
 }
 
 // ── Poetry Notations (Gestalt: continuation/balance/requiredness/symmetry/similarity/closure) ──

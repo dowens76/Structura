@@ -283,7 +283,7 @@ interface VerseDisplayProps {
   editingAnnotationId?: number | null;
   onSetEditingAnnotationId?: (id: number | null) => void;
   onSelectAnnotationSegment?: (wordId: string, shiftHeld?: boolean) => void;
-  onSaveAnnotation?: (data: { annotType: string; label: string; commFunction?: string | null; color: string; description: string | null; outOfSequence: boolean; transitional: boolean }) => Promise<boolean>;
+  onSaveAnnotation?: (data: { annotType: string; label: string; commFunction?: string | null; color: string; description: string | null; outOfSequence: boolean; transitional: boolean }) => Promise<string | null>;
   onCancelAnnotation?: () => void;
   onDeleteAnnotation?: (id: number) => void;
   onUpdateAnnotation?: (id: number, updates: { annotType?: string; label?: string; commFunction?: string | null; color?: string; description?: string | null; outOfSequence?: boolean; transitional?: boolean }) => void;
@@ -1161,7 +1161,7 @@ function AnnotCreationForm({
   onCancel,
 }: {
   themeColorsByLabel?: Map<string, string>;
-  onSave: (data: { annotType: string; label: string; commFunction?: string | null; color: string; description: string | null; outOfSequence: boolean; transitional: boolean }) => Promise<boolean>;
+  onSave: (data: { annotType: string; label: string; commFunction?: string | null; color: string; description: string | null; outOfSequence: boolean; transitional: boolean }) => Promise<string | null>;
   onCancel: () => void;
 }) {
   const { t } = useTranslation();
@@ -1204,7 +1204,7 @@ function AnnotCreationForm({
     }
     setSaving(true);
     setSaveError(null);
-    const ok = await onSave({
+    const errorMessage = await onSave({
       annotType,
       label,
       commFunction: annotType === "theme" ? (commFunction.trim() || null) : undefined,
@@ -1214,7 +1214,7 @@ function AnnotCreationForm({
       transitional,
     });
     setSaving(false);
-    if (!ok) setSaveError("Failed to save — please try again.");
+    if (errorMessage) setSaveError(errorMessage);
   }
 
   const tabs: { key: "plot" | "theme" | "desc"; display: string }[] = [
@@ -2247,7 +2247,7 @@ export default function VerseDisplay({
           <AnnotCreationForm
             key={segFirstWordId}
             themeColorsByLabel={themeColorsByLabel}
-            onSave={(data) => onSaveAnnotation?.(data) ?? Promise.resolve(false)}
+            onSave={(data) => onSaveAnnotation?.(data) ?? Promise.resolve("Saving is unavailable.")}
             onCancel={() => onCancelAnnotation?.()}
           />
         )}

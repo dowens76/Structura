@@ -34,6 +34,42 @@ function openDbWithRetry(
   throw lastErr;
 }
 
+// ── Retry-on-lock DB write ───────────────────────────────────────────────────
+//
+// openDbWithRetry() above only covers the initial `new Database(...)` open.
+// A connection that's already open and cached (e.g. userDb, reused for the
+// life of the process) gets no such protection on later writes — but the
+// same class of transient Windows-only lock (antivirus real-time scanning,
+// OneDrive syncing the WAL/SHM sidecar files, etc.) can just as easily hit a
+// write mid-session. better-sqlite3's own `busy_timeout` pragma only handles
+// contention between SQLite connections in the same process; it does nothing
+// for an OS-level lock (EBUSY/EPERM) held by an external process. Wrap
+// individual write calls in this so they ride out a brief external lock
+// instead of throwing straight through to the caller.
+function isTransientDbLockError(e: unknown): boolean {
+  const code = (e as { code?: string } | null | undefined)?.code;
+  const message = e instanceof Error ? e.message : String(e);
+  return (
+    code === "SQLITE_BUSY" || code === "SQLITE_LOCKED" ||
+    code === "EBUSY" || code === "EPERM" || code === "SQLITE_IOERR" ||
+    /database is locked|disk i\/o error/i.test(message)
+  );
+}
+
+export async function withWriteRetry<T>(fn: () => T | Promise<T>, attempts = 5, delayMs = 150): Promise<T> {
+  let lastErr: unknown;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await fn();
+    } catch (e) {
+      lastErr = e;
+      if (!isTransientDbLockError(e) || i === attempts - 1) throw e;
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+  }
+  throw lastErr;
+}
+
 // Strip Greek accents/breathings/iota-subscript and normalize final sigma +
 // case, so a lemma typed with (or without) diacritics matches regardless of
 // which source's convention is stored — SBLGNT/most lexica cite lemmas fully
