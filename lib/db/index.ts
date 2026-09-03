@@ -1056,6 +1056,15 @@ function _migrateUserDbInner(sqlite: Database.Database): void {
     CREATE INDEX IF NOT EXISTS hl_book_ch_source_idx ON horizontal_lines(book, chapter, text_source);
   `);
 
+  const translationsCols = (sqlite.prepare("PRAGMA table_info(translations)").all() as { name: string }[]).map(r => r.name);
+  if (!translationsCols.includes("uses_kjv_versification")) {
+    try { sqlite.exec("ALTER TABLE translations ADD COLUMN uses_kjv_versification INTEGER NOT NULL DEFAULT 0"); } catch { /* already exists */ }
+    // Backfill: ULT/VCB already don't count Psalm superscriptions as verse 1
+    // (see getUltVerses/getVcbVerses), so mark any pre-existing rows for them
+    // the same way the seed inserts below mark newly-created ones.
+    try { sqlite.exec("UPDATE translations SET uses_kjv_versification = 1 WHERE abbreviation IN ('ULT', 'VCB')"); } catch { /* best effort */ }
+  }
+
   // Seed VCB translation record if vcb.db is present but the translations row is missing
   if (fs.existsSync(VCB_DB_PATH)) {
     const existing = sqlite.prepare("SELECT id FROM translations WHERE abbreviation = 'VCB' LIMIT 1").get();
@@ -1067,7 +1076,7 @@ function _migrateUserDbInner(sqlite: Database.Database): void {
         "INSERT OR IGNORE INTO workspaces (id, user_id, name) VALUES (1, 1, 'Default')"
       ).run();
       sqlite.prepare(
-        "INSERT OR IGNORE INTO translations (workspace_id, name, abbreviation, language) VALUES (1, 'Vietnamese Contemporary Bible 2015', 'VCB', 'Vietnamese')"
+        "INSERT OR IGNORE INTO translations (workspace_id, name, abbreviation, language, uses_kjv_versification) VALUES (1, 'Vietnamese Contemporary Bible 2015', 'VCB', 'Vietnamese', 1)"
       ).run();
     }
   }
@@ -1083,7 +1092,7 @@ function _migrateUserDbInner(sqlite: Database.Database): void {
         "INSERT OR IGNORE INTO workspaces (id, user_id, name) VALUES (1, 1, 'Default')"
       ).run();
       sqlite.prepare(
-        "INSERT OR IGNORE INTO translations (workspace_id, name, abbreviation, language) VALUES (1, 'UnfoldingWord Literal Text', 'ULT', 'English')"
+        "INSERT OR IGNORE INTO translations (workspace_id, name, abbreviation, language, uses_kjv_versification) VALUES (1, 'UnfoldingWord Literal Text', 'ULT', 'English', 1)"
       ).run();
     }
   }

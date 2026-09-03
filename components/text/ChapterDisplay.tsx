@@ -2545,18 +2545,20 @@ export default function ChapterDisplay({
 
   const hasActiveTranslations = activeTranslationIds.size > 0;
 
-  // Verse number offset for Psalm superscriptions: ULT/VCB don't count the
-  // superscription heading as verse 1, so MT verse N = ULT verse (N − offset).
+  // Verse number offset for Psalm superscriptions: translations that opted in
+  // via usesKjvVersification (ULT/VCB by default, plus any user-imported
+  // translation like ESV flagged at import time) don't count the superscription
+  // heading as verse 1, so MT verse N = that translation's verse (N − offset).
   // When > 0 VerseDisplay shows the translation verse number in brackets below
   // the MT verse number (e.g. "2" with "[1]" below it for Ps 22 in ULT).
   const translationVerseOffset = useMemo(() => {
     if (book !== "Ps") return 0;
-    // Only apply when at least one of the active translations is ULT or VCB.
-    const hasUltOrVcb = [...activeTranslationIds].some((id) => {
+    // Only apply when at least one active translation uses KJV-style Psalm numbering.
+    const hasKjvVersification = [...activeTranslationIds].some((id) => {
       const t = allAvailableTranslations.find((t) => t.id === id);
-      return t?.abbreviation === "ULT" || t?.abbreviation === "VCB";
+      return t?.usesKjvVersification === true;
     });
-    if (!hasUltOrVcb) return 0;
+    if (!hasKjvVersification) return 0;
     // getMtToKjvInstructions returns a single-instruction array for Psalm offset
     // chapters: { kjvChapter: N, kjvVerseStart: 1, kjvVerseEnd: 999, mtVerseOffset: 1|2 }
     const instrs = getMtToKjvInstructions(book, chapter);

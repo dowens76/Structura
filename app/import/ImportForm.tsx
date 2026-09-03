@@ -159,6 +159,7 @@ export default function ImportForm({ books, existingTranslations }: ImportFormPr
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [name, setName] = useState("");
   const [abbreviation, setAbbreviation] = useState("");
+  const [usesKjvVersification, setUsesKjvVersification] = useState(false);
   const [checking, setChecking] = useState(false);
   const [confirmData, setConfirmData] = useState<{
     formData: FormData;
@@ -176,6 +177,7 @@ export default function ImportForm({ books, existingTranslations }: ImportFormPr
   const [usfmState, usfmFormAction, usfmPending] = useActionState(importUsfmFileAction, INITIAL_USFM_STATE);
   const [usfmName, setUsfmName] = useState("");
   const [usfmAbbr, setUsfmAbbr] = useState("");
+  const [usfmUsesKjvVersification, setUsfmUsesKjvVersification] = useState(false);
   const [usfmSelectedId, setUsfmSelectedId] = useState<number | null>(null);
   const [importMode, setImportMode] = useState<"file" | "folder">("file");
   // Single-file mode
@@ -268,17 +270,19 @@ export default function ImportForm({ books, existingTranslations }: ImportFormPr
 
   function selectTranslation(tr: Translation) {
     if (selectedId === tr.id) {
-      setSelectedId(null); setName(""); setAbbreviation("");
+      setSelectedId(null); setName(""); setAbbreviation(""); setUsesKjvVersification(false);
     } else {
       setSelectedId(tr.id); setName(tr.name); setAbbreviation(tr.abbreviation);
+      setUsesKjvVersification(tr.usesKjvVersification);
     }
   }
 
   function selectUsfmTranslation(tr: Translation) {
     if (usfmSelectedId === tr.id) {
-      setUsfmSelectedId(null); setUsfmName(""); setUsfmAbbr("");
+      setUsfmSelectedId(null); setUsfmName(""); setUsfmAbbr(""); setUsfmUsesKjvVersification(false);
     } else {
       setUsfmSelectedId(tr.id); setUsfmName(tr.name); setUsfmAbbr(tr.abbreviation);
+      setUsfmUsesKjvVersification(tr.usesKjvVersification);
     }
   }
 
@@ -302,6 +306,7 @@ export default function ImportForm({ books, existingTranslations }: ImportFormPr
       const fd = new FormData();
       fd.set("name", usfmName.trim());
       fd.set("abbreviation", usfmAbbr.trim().toUpperCase());
+      if (usfmUsesKjvVersification) fd.set("usesKjvVersification", "on");
       fd.set("usfmFile", match);
 
       const bookCode = preview.parsed?.detectedBook;
@@ -364,6 +369,7 @@ export default function ImportForm({ books, existingTranslations }: ImportFormPr
     const fd = new FormData();
     fd.set("name", usfmName.trim());
     fd.set("abbreviation", usfmAbbr.trim().toUpperCase());
+    if (usfmUsesKjvVersification) fd.set("usesKjvVersification", "on");
     fd.set("usfmFile", file);
     if (chaptersMap) fd.set("chaptersToProcess", JSON.stringify(chaptersMap));
     startTransition(() => usfmFormAction(fd));
@@ -494,6 +500,20 @@ export default function ImportForm({ books, existingTranslations }: ImportFormPr
                   className={inputClass + " font-mono uppercase"} />
               </div>
             </div>
+            <label className="flex items-start gap-2.5 mt-3 cursor-pointer">
+              <input
+                type="checkbox" name="usesKjvVersification"
+                checked={usesKjvVersification}
+                onChange={(e) => setUsesKjvVersification(e.target.checked)}
+                className="mt-0.5 accent-blue-600"
+              />
+              <span className="text-sm text-stone-700 dark:text-stone-300">
+                Doesn&apos;t number the Psalm superscription as verse 1
+                <span className="block text-xs text-stone-500 dark:text-stone-400">
+                  Check this for most English translations (ESV, NIV, KJV…). Leave unchecked for translations that already follow Hebrew (MT) verse numbering.
+                </span>
+              </span>
+            </label>
           </div>
           <div>
             <SectionHeading size="label" className="mb-3">{t("importPage.locationHeading")}</SectionHeading>
@@ -607,6 +627,20 @@ export default function ImportForm({ books, existingTranslations }: ImportFormPr
                   className={inputClass + " font-mono uppercase"} />
               </div>
             </div>
+            <label className="flex items-start gap-2.5 mt-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={usfmUsesKjvVersification}
+                onChange={(e) => setUsfmUsesKjvVersification(e.target.checked)}
+                className="mt-0.5 accent-blue-600"
+              />
+              <span className="text-sm text-stone-700 dark:text-stone-300">
+                Doesn&apos;t number the Psalm superscription as verse 1
+                <span className="block text-xs text-stone-500 dark:text-stone-400">
+                  Check this for most English translations (ESV, NIV, KJV…). Leave unchecked for translations that already follow Hebrew (MT) verse numbering.
+                </span>
+              </span>
+            </label>
           </div>
 
           {/* Import mode toggle */}

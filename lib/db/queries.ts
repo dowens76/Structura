@@ -469,10 +469,27 @@ export async function getTranslationVerses(
 ): Promise<TranslationVerse[]> {
   const instructions = getMtToKjvInstructions(osisBook, chapter);
 
-  // Only apply remapping when cross-chapter instructions exist (Jonah, Joel, Malachi).
-  // Same-chapter Psalm superscription offsets are intentionally excluded — user-imported
-  // translations store their own verse numbering and shouldn't be silently re-numbered.
+  // Cross-chapter remaps (Jonah, Joel, Malachi) always apply — MT and KJV
+  // disagree on where the chapter boundary itself falls, so any translation
+  // querying "MT chapter N" must pull from the KJV chapter its content
+  // actually lives in, regardless of numbering scheme.
   const hasCrossChapterRemap = instructions?.some(i => i.kjvChapter !== chapter);
+
+  // Same-chapter Psalm superscription offsets, by contrast, only apply when
+  // this translation has opted in via usesKjvVersification — user-imported
+  // translations may already use MT-style numbering (superscription = verse
+  // 1) and must not be silently re-numbered. Translations like ESV that
+  // don't count the superscription as verse 1 need to opt in (see the
+  // "Uses English Psalm numbering" import checkbox).
+  let applySameChapterPsalmOffset = false;
+  if (!hasCrossChapterRemap && instructions && instructions.length === 1) {
+    const [trans] = await userDb
+      .select({ usesKjvVersification: translations.usesKjvVersification })
+      .from(translations)
+      .where(eq(translations.id, translationId))
+      .limit(1);
+    applySameChapterPsalmOffset = !!trans?.usesKjvVersification;
+  }
 
   // translation_verses.book_id is a snapshot taken at import time of whatever
   // id the source books table happened to assign that book (see the "FK not
@@ -487,7 +504,7 @@ export async function getTranslationVerses(
   const currentBook = await getBook(osisBook);
   const currentBookId = currentBook?.id;
 
-  if (!hasCrossChapterRemap) {
+  if (!hasCrossChapterRemap && !applySameChapterPsalmOffset) {
     const prefix = `${osisBook}.${chapter}.`;
     const rows = await userDb
       .select()
@@ -502,7 +519,8 @@ export async function getTranslationVerses(
     return currentBookId == null ? rows : rows.map((r) => ({ ...r, bookId: currentBookId }));
   }
 
-  // Cross-chapter remapping (e.g. MT Jonah 2 fetches KJV Jonah 1:17 + Jonah 2:1-10).
+  // Cross-chapter remapping (e.g. MT Jonah 2 fetches KJV Jonah 1:17 + Jonah 2:1-10)
+  // or a same-chapter Psalm superscription offset (kjvChapter === chapter here).
   // The returned `.verse` values are remapped to MT verse numbers.
   const allResults: TranslationVerse[] = [];
   for (const instr of instructions!) {
@@ -530,18 +548,30 @@ export async function getTranslationVerses(
   return allResults.sort((a, b) => a.verse - b.verse);
 }
 
-export async function upsertTranslation(name: string, abbreviation: string, _workspaceId?: number): Promise<number> {
+export async function upsertTranslation(
+  name: string,
+  abbreviation: string,
+  _workspaceId?: number,
+  usesKjvVersification?: boolean
+): Promise<number> {
   const upper = abbreviation.toUpperCase();
   const existing = await userDb
     .select()
     .from(translations)
     .where(eq(translations.abbreviation, upper))
     .limit(1);
-  if (existing[0]) return existing[0].id;
+  if (existing[0]) {
+    // Versification is a translation-level setting, not a per-import one — keep
+    // it in sync even when re-importing a chapter for an already-created translation.
+    if (usesKjvVersification !== undefined && usesKjvVersification !== existing[0].usesKjvVersification) {
+      await userDb.update(translations).set({ usesKjvVersification }).where(eq(translations.id, existing[0].id));
+    }
+    return existing[0].id;
+  }
 
   const result = await userDb
     .insert(translations)
-    .values({ name, abbreviation: upper, workspaceId: 1 })
+    .values({ name, abbreviation: upper, workspaceId: 1, usesKjvVersification: usesKjvVersification ?? false })
     .returning({ id: translations.id });
   return result[0].id;
 }

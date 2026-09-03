@@ -24,6 +24,7 @@ export async function importTranslationAction(
   const osisBook = (formData.get("osisBook") as string)?.trim();
   const chapterStr = formData.get("chapter") as string;
   const pastedText = (formData.get("pastedText") as string)?.trim();
+  const usesKjvVersification = formData.get("usesKjvVersification") === "on";
 
   if (!name || !abbreviation || !osisBook || !chapterStr || !pastedText) {
     return { success: false, error: "All fields are required.", count: 0, redirectTo: null };
@@ -75,7 +76,7 @@ export async function importTranslationAction(
   }
 
   // Translations are workspace-independent — always stored under workspaceId 1.
-  const translationId = await upsertTranslation(name, abbreviation);
+  const translationId = await upsertTranslation(name, abbreviation, undefined, usesKjvVersification);
 
   // Delete existing verses for this translation+chapter (clean re-import, no workspace filter).
   await userDb
@@ -305,6 +306,7 @@ export async function importUsfmFileAction(
 ): Promise<ImportUsfmState> {
   const name         = (formData.get("name") as string)?.trim();
   const abbreviation = (formData.get("abbreviation") as string)?.trim().toUpperCase();
+  const usesKjvVersification = formData.get("usesKjvVersification") === "on";
   const files        = formData.getAll("usfmFile") as File[];
   const validFiles   = files.filter(f => f.size > 0 && (
     USFM_EXTENSIONS.has("." + f.name.split(".").pop()) || f.type === "text/plain"
@@ -322,7 +324,7 @@ export async function importUsfmFileAction(
     return { success: false, error: "No USFM file provided.", count: 0, detectedBook: null, booksImported: [], redirectTo: null };
   }
 
-  const translationId = await upsertTranslation(name, abbreviation);
+  const translationId = await upsertTranslation(name, abbreviation, undefined, usesKjvVersification);
 
   let totalCount = 0;
   const booksImported: string[] = [];
