@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { eq, and, gte, lte } from "drizzle-orm";
+import { eq, and, gte, lte, like } from "drizzle-orm";
 import { userDb } from "@/lib/db";
 import { translationVerses, translations } from "@/lib/db/user-schema";
 import { getAppSetting, getUltVerses, getVcbVerses } from "@/lib/db/queries";
@@ -109,7 +109,8 @@ async function fetchLocalVerses(
         .where(
           and(
             eq(translationVerses.translationId, translationId),
-            eq(translationVerses.chapter, chapter)
+            eq(translationVerses.chapter, chapter),
+            like(translationVerses.osisRef, `${book}.${chapter}.%`)
           )
         )
         .orderBy(translationVerses.verse);
@@ -133,6 +134,7 @@ async function fetchLocalVerses(
       .where(
         and(
           eq(translationVerses.translationId, translationId),
+          like(translationVerses.osisRef, `${book}.%`),
           // Use chapter+verse numeric comparison for cross-chapter ranges
           gte(translationVerses.chapter, chapter),
           lte(translationVerses.chapter, endChapter ?? chapter)
