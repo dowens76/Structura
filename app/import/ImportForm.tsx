@@ -218,7 +218,7 @@ export default function ImportForm({ books, existingTranslations }: ImportFormPr
     reader.onload = (ev) => {
       try {
         const text = ev.target?.result as string;
-        const result = parseUsfmFile(text);
+        const result = parseUsfmFile(text, { usesKjvVersification: usfmUsesKjvVersification });
         if (result.verses.length === 0) {
           setFileError("No verses detected. Check that the file is a valid USFM file.");
         } else {
@@ -243,7 +243,7 @@ export default function ImportForm({ books, existingTranslations }: ImportFormPr
     for (const file of usfmFiles) {
       try {
         const text = await file.text();
-        const parsed = parseUsfmFile(text);
+        const parsed = parseUsfmFile(text, { usesKjvVersification: usfmUsesKjvVersification });
         results.push({ name: file.name, parsed: parsed.verses.length > 0 ? parsed : null, error: parsed.verses.length === 0 ? "No verses found" : null });
       } catch (err) {
         results.push({ name: file.name, parsed: null, error: String(err) });

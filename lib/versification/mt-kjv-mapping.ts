@@ -564,6 +564,18 @@ export function getMtToKjvInstructions(
 }
 
 /**
+ * True when this book/chapter has a Psalm-superscription verse-0 offset —
+ * i.e. a translation that doesn't number the superscription as verse 1
+ * should have its superscription text captured as verse 0 during import
+ * (see the "Doesn't number the Psalm superscription as verse 1" import
+ * option) so getMtToKjvInstructions can shift it to the right MT verse.
+ */
+export function hasPsalmSuperscriptionOffset(book: string, chapter: number): boolean {
+  const instrs = getMtToKjvInstructions(book, chapter);
+  return !!instrs && instrs.some((i) => i.kjvVerseStart === 0);
+}
+
+/**
  * Returns the KJV display label for a given MT verse whose KJV/ULT source
  * reference differs from its own MT chapter:verse (e.g. "1:17" so the UI can
  * show "[1:17]" next to MT Jonah 2:1, or "4:21" next to MT 1Kgs 5:1).

@@ -7,6 +7,15 @@ import { userDb } from "@/lib/db";
 import { translations, translationVerses, translationFootnotes, paragraphBreaks, lineIndents, sceneBreaks } from "@/lib/db/schema";
 import { and, eq, inArray } from "drizzle-orm";
 import { formatOsisRef } from "@/lib/utils/osis";
+import { hasPsalmSuperscriptionOffset } from "@/lib/versification/mt-kjv-mapping";
+
+// Whether text preceding "1 ..." (a Psalm superscription) should be captured
+// as verse 0 rather than dropped — only meaningful when this translation
+// doesn't count the superscription as its own verse 1, and only for a
+// chapter that actually has a superscription offset (kjvVerseStart === 0).
+function shouldCaptureSuperscription(osisBook: string, chapter: number, usesKjvVersification: boolean): boolean {
+  return usesKjvVersification && hasPsalmSuperscriptionOffset(osisBook, chapter);
+}
 
 export interface ImportState {
   success: boolean;
@@ -54,7 +63,9 @@ export async function importTranslationAction(
     };
   }
 
-  const { verses, detectedChapter } = parseBibleComText(pastedText);
+  const { verses, detectedChapter } = parseBibleComText(pastedText, {
+    captureLeadingAsVerseZero: shouldCaptureSuperscription(osisBook, chapter, usesKjvVersification),
+  });
 
   if (verses.length === 0) {
     return {
@@ -336,7 +347,7 @@ export async function importUsfmFileAction(
     const usfmContent = await file.text();
     let parsed: Awaited<ReturnType<typeof parseUsfmFile>>;
     try {
-      parsed = parseUsfmFile(usfmContent);
+      parsed = parseUsfmFile(usfmContent, { usesKjvVersification });
     } catch (e) {
       errors.push(`${file.name}: parse error — ${String(e)}`);
       continue;

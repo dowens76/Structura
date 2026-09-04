@@ -10,6 +10,8 @@
  *  - a per-file marker inventory (preserved vs stripped) for the pre-import UI
  */
 
+import { hasPsalmSuperscriptionOffset } from "@/lib/versification/mt-kjv-mapping";
+
 export const PARATEXT_TO_OSIS: Record<string, string> = {
   GEN: "Gen",   EXO: "Exod",  LEV: "Lev",   NUM: "Num",   DEU: "Deut",
   JOS: "Josh",  JDG: "Judg",  RUT: "Ruth",  "1SA": "1Sam", "2SA": "2Sam",
@@ -168,7 +170,17 @@ function cleanFootnoteContent(raw: string): string {
 
 // ── Main parser ───────────────────────────────────────────────────────────────
 
-export function parseUsfmFile(raw: string): ParsedUsfmFile {
+export interface ParseUsfmOptions {
+  /**
+   * When true, a Psalm's \d superscription is stored as verse 0 (for
+   * chapters where that superscription doesn't correspond to MT verse 1 in
+   * this translation's own numbering) rather than always as verse 1. See
+   * the "Doesn't number the Psalm superscription as verse 1" import option.
+   */
+  usesKjvVersification?: boolean;
+}
+
+export function parseUsfmFile(raw: string, opts?: ParseUsfmOptions): ParsedUsfmFile {
   const tokens = tokenize(raw);
 
   let paratextCode:     string | null = null;
@@ -190,10 +202,11 @@ export function parseUsfmFile(raw: string): ParsedUsfmFile {
   let pendingIndent:    number | null = null;
   let pendingSection:   { heading: string; level: number } | null = null;
 
-  // Psalm superscription (\d ... \d*) — this app's MT-based verse numbering
-  // (matching OSHB) treats the title as verse 1, with the first sung line
-  // starting at verse 2. Accumulated here and flushed as verse 1 once the
-  // title closes, since it precedes any \v marker in the chapter.
+  // Psalm superscription (\d ... \d*), accumulated here and flushed once the
+  // title closes (it precedes any \v marker in the chapter). Flushed as
+  // verse 1 by default (MT-based numbering, matching OSHB, where the title
+  // IS verse 1) — or as verse 0 when this translation uses KJV-style
+  // numbering, so getMtToKjvInstructions can shift it to the right MT verse.
   let inTitle           = false;
   let titleText         = "";
 
@@ -242,8 +255,9 @@ export function parseUsfmFile(raw: string): ParsedUsfmFile {
     const text = titleText.replace(/\s+/g, " ").trim();
     titleText = "";
     if (!text || !osisBook || currentChapter === 0 || currentVerse !== 0) return;
-    const osisRef = `${osisBook}.${currentChapter}.1`;
-    verses.push({ osisRef, book: osisBook, chapter: currentChapter, verse: 1, text });
+    const verse = opts?.usesKjvVersification && hasPsalmSuperscriptionOffset(osisBook, currentChapter) ? 0 : 1;
+    const osisRef = `${osisBook}.${currentChapter}.${verse}`;
+    verses.push({ osisRef, book: osisBook, chapter: currentChapter, verse, text });
   }
 
   function applyPending(osisRef: string) {

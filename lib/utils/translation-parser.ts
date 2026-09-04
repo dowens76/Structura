@@ -32,10 +32,22 @@ const HEADER_RE = /^(.+?)\s+(\d+)(?::[\d\-]+)?\s*(?:\(([A-Z0-9\-]+)\))?\s*$/;
 // USFM is detected by the presence of \v N verse markers.
 const IS_USFM_RE = /\\v\s+\d+/;
 
-export function parseBibleComText(raw: string): ParseResult {
+export interface ParseOptions {
+  /**
+   * Capture any text preceding the first \v marker as verse 0 instead of
+   * discarding it. Used for Psalm superscriptions ("A Psalm of David...")
+   * in translations that don't number them as verse 1 — see the "Doesn't
+   * number the Psalm superscription as verse 1" import option, which maps
+   * to this. getTranslationVerses/getUltVerses already know how to shift a
+   * stored verse-0 row to MT verse 1 (lib/versification/mt-kjv-mapping.ts).
+   */
+  captureLeadingAsVerseZero?: boolean;
+}
+
+export function parseBibleComText(raw: string, opts?: ParseOptions): ParseResult {
   // USFM takes priority — detected before any other processing
   if (IS_USFM_RE.test(raw)) {
-    return parseUSFM(raw);
+    return parseUSFM(raw, opts);
   }
 
   const lines = raw.trim().split(/\r?\n/);
@@ -63,7 +75,7 @@ export function parseBibleComText(raw: string): ParseResult {
   const withMarkers = injectVerseMarkers(body);
 
   if (IS_USFM_RE.test(withMarkers)) {
-    const result = parseUSFM(withMarkers);
+    const result = parseUSFM(withMarkers, opts);
     return {
       verses: result.verses,
       detectedChapter: result.detectedChapter ?? detectedChapter,
@@ -89,7 +101,40 @@ export function parseBibleComText(raw: string): ParseResult {
  * - Strips all other backslash markers
  * - Detects chapter from \c N and book name from \mt / \h markers
  */
-function parseUSFM(raw: string): ParseResult {
+// Cleans one verse chunk: converts poetry markers to line breaks, preserves
+// \nd/\add/\wj inline markers, strips everything else, trims/drops empty lines.
+function cleanUsfmChunk(chunk: string): string {
+  // Poetry/quote paragraph markers → line break (handles \q \q1 \q2 \q3 etc.)
+  chunk = chunk.replace(/\\q\d*\s*/g, "\n");
+
+  // Preserve \nd...\nd*, \add...\add*, \wj...\wj* — temporarily encode them
+  // so the generic strip pass below doesn't remove them.
+  chunk = chunk
+    .replace(/\\nd\s+([\s\S]*?)\\nd\*/g,   "§ND§$1§ND*§")
+    .replace(/\\add\s+([\s\S]*?)\\add\*/g, "§ADD§$1§ADD*§")
+    .replace(/\\wj\s+([\s\S]*?)\\wj\*/g,   "§WJ§$1§WJ*§");
+
+  // Strip remaining closing inline markers: \word* (e.g. \wj* \nd*)
+  chunk = chunk.replace(/\\[a-z]+\d*\*/g, "");
+
+  // Strip remaining opening markers (optionally \+ prefixed): \word or \+word
+  chunk = chunk.replace(/\\[+]?[a-z]+\d*\s*/g, "");
+
+  // Restore preserved markers
+  chunk = chunk
+    .replace(/§ND§([\s\S]*?)§ND\*§/g,   "\\nd $1\\nd*")
+    .replace(/§ADD§([\s\S]*?)§ADD\*§/g, "\\add $1\\add*")
+    .replace(/§WJ§([\s\S]*?)§WJ\*§/g,   "\\wj $1\\wj*");
+
+  // Normalise: trim each line, drop empties, rejoin with preserved breaks
+  return chunk
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0)
+    .join("\n");
+}
+
+function parseUSFM(raw: string, opts?: ParseOptions): ParseResult {
   // Extract chapter number from \c N
   const chapterMatch = raw.match(/\\c\s+(\d+)/);
   const detectedChapter = chapterMatch ? parseInt(chapterMatch[1], 10) : null;
@@ -122,40 +167,21 @@ function parseUSFM(raw: string): ParseResult {
   }
 
   const verses: ParsedVerse[] = [];
+
+  // Text before the first \v marker (e.g. a Psalm descriptive title / \d
+  // superscription, or a plain unnumbered line pasted above "1 ...") is
+  // normally not part of any verse and gets dropped. When the translation
+  // doesn't number that heading as verse 1, store it as verse 0 instead —
+  // getTranslationVerses shifts verse 0 to the MT superscription verse.
+  if (opts?.captureLeadingAsVerseZero) {
+    const leading = cleanUsfmChunk(flat.slice(0, verseStarts[0].index));
+    if (leading) verses.push({ verse: 0, text: leading });
+  }
+
   for (let i = 0; i < verseStarts.length; i++) {
     const { num, textStart } = verseStarts[i];
     const end = verseStarts[i + 1]?.index ?? flat.length;
-    let chunk = flat.slice(textStart, end);
-
-    // Poetry/quote paragraph markers → line break (handles \q \q1 \q2 \q3 etc.)
-    chunk = chunk.replace(/\\q\d*\s*/g, "\n");
-
-    // Preserve \nd...\nd*, \add...\add*, \wj...\wj* — temporarily encode them
-    // so the generic strip pass below doesn't remove them.
-    chunk = chunk
-      .replace(/\\nd\s+([\s\S]*?)\\nd\*/g,   "§ND§$1§ND*§")
-      .replace(/\\add\s+([\s\S]*?)\\add\*/g, "§ADD§$1§ADD*§")
-      .replace(/\\wj\s+([\s\S]*?)\\wj\*/g,   "§WJ§$1§WJ*§");
-
-    // Strip remaining closing inline markers: \word* (e.g. \wj* \nd*)
-    chunk = chunk.replace(/\\[a-z]+\d*\*/g, "");
-
-    // Strip remaining opening markers (optionally \+ prefixed): \word or \+word
-    chunk = chunk.replace(/\\[+]?[a-z]+\d*\s*/g, "");
-
-    // Restore preserved markers
-    chunk = chunk
-      .replace(/§ND§([\s\S]*?)§ND\*§/g,   "\\nd $1\\nd*")
-      .replace(/§ADD§([\s\S]*?)§ADD\*§/g, "\\add $1\\add*")
-      .replace(/§WJ§([\s\S]*?)§WJ\*§/g,   "\\wj $1\\wj*");
-
-    // Normalise: trim each line, drop empties, rejoin with preserved breaks
-    const cleaned = chunk
-      .split("\n")
-      .map((l) => l.trim())
-      .filter((l) => l.length > 0)
-      .join("\n");
-
+    const cleaned = cleanUsfmChunk(flat.slice(textStart, end));
     if (cleaned) verses.push({ verse: num, text: cleaned });
   }
 
