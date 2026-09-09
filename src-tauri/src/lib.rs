@@ -367,17 +367,35 @@ fn spawn_server(app: &AppHandle, port: u16) -> Result<CommandChild, String> {
     let (mut rx, child) = sidecar.spawn().map_err(|e| format!("Failed to spawn node sidecar: {e}"))?;
 
     let app_handle = app.clone();
-    let ready_url = format!("http://127.0.0.1:{port}");
     let navigated = Arc::new(Mutex::new(false));
+
+    // ── Kick off the webview-side reachability check ──────────────────────────
+    // Navigation itself is driven by JS in frontend/index.html (fetch-polling
+    // the port from inside the webview, then redirecting) rather than by
+    // calling window.navigate() from here. A Rust-side TCP check only proves
+    // the *host process* can reach the port — on some locked-down Windows
+    // machines the webview process is blocked separately (firewall/proxy/
+    // endpoint security), which would otherwise pass our check and then fail
+    // as soon as we navigated, showing a bare "can't reach this page". Letting
+    // the webview prove reachability itself closes that gap.
+    if let Some(window) = app.get_webview_window("main") {
+        // Self-retrying in case this eval races the page's own inline <script>
+        // (which defines __structuraStartHealthCheck) instead of guarding with
+        // a plain `&&`, which would silently no-op and strand the user on the
+        // "Starting Structura…" placeholder forever.
+        let _ = window.eval(format!(
+            "(function poll(){{ if (window.__structuraStartHealthCheck) {{ window.__structuraStartHealthCheck({port}); }} else {{ setTimeout(poll, 50); }} }})()"
+        ));
+    }
 
     // ── TCP port-polling fallback ─────────────────────────────────────────────
     // On Linux the "Ready" message in stdout may never arrive if the server
     // crashes before printing it.  As a belt-and-suspenders check we also poll
-    // the TCP port directly: once the port accepts a connection the server is
-    // ready to serve requests regardless of what it printed.
+    // the TCP port directly so we can detect (and report) a server that never
+    // comes up at all. This no longer drives navigation — see above — it only
+    // gates the startup-timeout dialog below.
     {
         let app_handle2  = app.clone();
-        let ready_url2   = ready_url.clone();
         let navigated2   = navigated.clone();
         tauri::async_runtime::spawn(async move {
             use tokio::net::TcpStream;
@@ -390,11 +408,7 @@ fn spawn_server(app: &AppHandle, port: u16) -> Result<CommandChild, String> {
                     let mut nav = navigated2.lock().unwrap();
                     if !*nav {
                         *nav = true;
-                        drop(nav);
-                        log::info!("Server TCP-ready — navigating to {ready_url2}");
-                        if let Some(window) = app_handle2.get_webview_window("main") {
-                            let _ = window.navigate(ready_url2.parse().unwrap());
-                        }
+                        log::info!("Server TCP-ready");
                     }
                     return;
                 }
@@ -420,7 +434,6 @@ fn spawn_server(app: &AppHandle, port: u16) -> Result<CommandChild, String> {
 
     {
         let app_handle   = app_handle.clone();
-        let ready_url    = ready_url.clone();
         let navigated    = navigated.clone();
         let stderr_buf   = stderr_buf.clone();
 
@@ -430,16 +443,14 @@ fn spawn_server(app: &AppHandle, port: u16) -> Result<CommandChild, String> {
                     tauri_plugin_shell::process::CommandEvent::Stdout(line) => {
                         let text = String::from_utf8_lossy(&line);
                         log::info!("[node] {}", text.trim());
-                        // Navigate WebView once server is ready.
                         // Next.js standalone prints "✓ Ready in Nms" to stdout.
+                        // Navigation itself is driven by the webview-side health
+                        // check in frontend/index.html — this just marks that the
+                        // server came up, so the startup-timeout dialog doesn't fire.
                         let mut nav = navigated.lock().unwrap();
                         if !*nav && (text.contains("Ready") || text.contains("Listening on") || text.contains("started server")) {
                             *nav = true;
-                            drop(nav);
-                            log::info!("Server ready — navigating to {ready_url}");
-                            if let Some(window) = app_handle.get_webview_window("main") {
-                                let _ = window.navigate(ready_url.parse().unwrap());
-                            }
+                            log::info!("Server ready");
                         }
                     }
                     tauri_plugin_shell::process::CommandEvent::Stderr(line) => {
@@ -455,11 +466,7 @@ fn spawn_server(app: &AppHandle, port: u16) -> Result<CommandChild, String> {
                         let mut nav = navigated.lock().unwrap();
                         if !*nav && (text.contains("Ready") || text.contains("started server")) {
                             *nav = true;
-                            drop(nav);
-                            log::info!("Server ready (stderr) — navigating to {ready_url}");
-                            if let Some(window) = app_handle.get_webview_window("main") {
-                                let _ = window.navigate(ready_url.parse().unwrap());
-                            }
+                            log::info!("Server ready (stderr)");
                         }
                     }
                     tauri_plugin_shell::process::CommandEvent::Error(err) => {

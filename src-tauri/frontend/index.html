@@ -19,10 +19,65 @@
       font-size: 13px;
       letter-spacing: 0.08em;
       text-transform: uppercase;
+      text-align: center;
+      max-width: 420px;
+      padding: 0 24px;
+    }
+    .label.error {
+      letter-spacing: normal;
+      text-transform: none;
+      line-height: 1.6;
+      color: #999;
     }
   </style>
 </head>
 <body>
   <p class="label">Starting Structura…</p>
+  <script>
+    // The Rust host confirms the sidecar's TCP port is open before it ever
+    // calls into this page, but that check runs in the Tauri host process —
+    // not the webview process. On some locked-down Windows machines (e.g.
+    // enterprise/school-managed Surface devices) a firewall, proxy, or
+    // endpoint-security policy can block outbound loopback connections from
+    // the webview process specifically while leaving the host process
+    // unaffected, so the Rust-side check passes but navigating the webview
+    // to http://127.0.0.1:<port> still fails with "can't reach this page".
+    // To close that gap, navigation is gated on a fetch() issued from *this*
+    // page instead — the exact same network path the real navigation will
+    // use — so we only redirect once the webview has proven it can reach
+    // the server itself.
+    (function () {
+      var MAX_ATTEMPTS = 120; // 120 * 500ms = 60s, matches the Rust-side startup timeout
+      var attempts = 0;
+
+      function structuraCheck(port) {
+        attempts++;
+        var url = "http://127.0.0.1:" + port + "/";
+        // mode: "no-cors" avoids CORS errors entirely — an opaque response
+        // still proves the connection succeeded, which is all we need here.
+        fetch(url, { mode: "no-cors", cache: "no-store" })
+          .then(function () {
+            window.location.replace(url);
+          })
+          .catch(function () {
+            if (attempts < MAX_ATTEMPTS) {
+              setTimeout(function () { structuraCheck(port); }, 500);
+            } else {
+              var el = document.querySelector(".label");
+              el.classList.add("error");
+              el.textContent =
+                "This window can't reach Structura's local server at 127.0.0.1:" + port +
+                ". A firewall, proxy, or security tool on this device may be blocking local " +
+                "connections. See Help → Open Log Folder, or try relaunching Structura.";
+            }
+          });
+      }
+
+      window.__structuraStartHealthCheck = function (port) {
+        attempts = 0;
+        structuraCheck(port);
+      };
+    })();
+  </script>
 </body>
 </html>
