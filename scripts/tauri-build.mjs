@@ -83,6 +83,26 @@ if (process.platform === "linux") {
       }
     }
   }
+
+  // better-sqlite3 ships one prebuilt .node addon per platform/arch/libc in
+  // prebuilds/ (linux-x64, linux-arm64, linuxmusl-x64, linuxmusl-arm64,
+  // darwin-*, win32-*); lib/binding.js picks exactly one by filename at
+  // runtime, so only the current target's file is ever needed. linuxdeploy
+  // scans every .node file as an ELF and tries to resolve its dynamic deps —
+  // the linuxmusl-x64 build depends on libc.musl-x86_64.so.1, which doesn't
+  // exist on a glibc runner, so it aborts the whole bundle with "Could not
+  // find dependency". Strip everything but the matching prebuild first.
+  const prebuildsDir = path.join(ROOT, "src-tauri/resources/server/node_modules/better-sqlite3/prebuilds");
+  if (existsSync(prebuildsDir)) {
+    const keep = `linux-${npmArch}.node`;
+    console.log(`\n▶ Pruning better-sqlite3 prebuilds to ${keep}`);
+    for (const file of readdirSync(prebuildsDir)) {
+      if (file !== keep) {
+        rmSync(path.join(prebuildsDir, file));
+        console.log(`  removed: ${file}`);
+      }
+    }
+  }
 }
 
 // 9. macOS: re-sign all .node files in the server bundle with a secure timestamp.
