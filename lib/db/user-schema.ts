@@ -84,14 +84,13 @@ export const translations = sqliteTable(
     language:    text("language"),
     sortOrder:   integer("sort_order").notNull().default(0),
     createdAt:   integer("created_at", { mode: "timestamp" }).$defaultFn(() => new Date()),
-    // MT numbers a Psalm superscription as verse 1; most English translations
-    // (ESV, NIV, KJV, ULT, VCB…) don't. When true, getTranslationVerses/
-    // ChapterDisplay shift this translation's Psalm verses by the MT offset
-    // (see lib/versification/mt-kjv-mapping.ts) so they align with the Hebrew
-    // verse the content actually corresponds to. Defaults false so existing
-    // translations that already use MT-style numbering (e.g. a user's own
-    // from-Hebrew translation) are never silently renumbered.
-    usesKjvVersification: integer("uses_kjv_versification", { mode: "boolean" }).notNull().default(false),
+    // Psalm-superscription versification scheme — 'kjv' | 'mt' | 'lxx' |
+    // 'vietnamese' (see lib/versification/schemes.ts). Set from the Manage
+    // Translations page, not at import time; getTranslationVerses/
+    // ChapterDisplay/the import parsers all read it from here. Defaults to
+    // 'mt' (no offset) so an unconfigured translation is never silently
+    // renumbered.
+    versificationScheme: text("versification_scheme").notNull().default("mt"),
   },
   (t) => [
     // Translations are shared across workspaces (see getTranslations in

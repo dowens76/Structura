@@ -1064,6 +1064,21 @@ function _migrateUserDbInner(sqlite: Database.Database): void {
     // the same way the seed inserts below mark newly-created ones.
     try { sqlite.exec("UPDATE translations SET uses_kjv_versification = 1 WHERE abbreviation IN ('ULT', 'VCB')"); } catch { /* best effort */ }
   }
+  if (!translationsCols.includes("versification_scheme")) {
+    try { sqlite.exec("ALTER TABLE translations ADD COLUMN versification_scheme TEXT NOT NULL DEFAULT 'mt'"); } catch { /* already exists */ }
+    // Superseded by the versification_scheme column (see Manage Translations —
+    // 'kjv'/'mt'/'lxx'/'vietnamese', lib/versification/schemes.ts), which
+    // replaces this simple boolean. Backfill from it: VCB gets its own
+    // 'vietnamese' label, a pre-existing built-in LXX row gets 'lxx' (both
+    // behave identically to 'mt' — no offset — but read better in the Manage
+    // Translations UI), every other translation previously flagged true gets
+    // 'kjv'; everything else keeps the column's 'mt' default.
+    try {
+      sqlite.exec("UPDATE translations SET versification_scheme = 'vietnamese' WHERE abbreviation = 'VCB' AND uses_kjv_versification = 1");
+      sqlite.exec("UPDATE translations SET versification_scheme = 'lxx' WHERE abbreviation = 'LXX'");
+      sqlite.exec("UPDATE translations SET versification_scheme = 'kjv' WHERE abbreviation NOT IN ('VCB', 'LXX') AND uses_kjv_versification = 1");
+    } catch { /* best effort */ }
+  }
 
   // Seed VCB translation record if vcb.db is present but the translations row is missing
   if (fs.existsSync(VCB_DB_PATH)) {
@@ -1076,7 +1091,7 @@ function _migrateUserDbInner(sqlite: Database.Database): void {
         "INSERT OR IGNORE INTO workspaces (id, user_id, name) VALUES (1, 1, 'Default')"
       ).run();
       sqlite.prepare(
-        "INSERT OR IGNORE INTO translations (workspace_id, name, abbreviation, language, uses_kjv_versification) VALUES (1, 'Vietnamese Contemporary Bible 2015', 'VCB', 'Vietnamese', 1)"
+        "INSERT OR IGNORE INTO translations (workspace_id, name, abbreviation, language, uses_kjv_versification, versification_scheme) VALUES (1, 'Vietnamese Contemporary Bible 2015', 'VCB', 'Vietnamese', 1, 'vietnamese')"
       ).run();
     }
   }
@@ -1092,7 +1107,7 @@ function _migrateUserDbInner(sqlite: Database.Database): void {
         "INSERT OR IGNORE INTO workspaces (id, user_id, name) VALUES (1, 1, 'Default')"
       ).run();
       sqlite.prepare(
-        "INSERT OR IGNORE INTO translations (workspace_id, name, abbreviation, language, uses_kjv_versification) VALUES (1, 'UnfoldingWord Literal Text', 'ULT', 'English', 1)"
+        "INSERT OR IGNORE INTO translations (workspace_id, name, abbreviation, language, uses_kjv_versification, versification_scheme) VALUES (1, 'UnfoldingWord Literal Text', 'ULT', 'English', 1, 'kjv')"
       ).run();
     }
   }

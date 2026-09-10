@@ -4,12 +4,19 @@ import { useState, useEffect, useRef } from "react";
 import PageShell from "@/components/ui/PageShell";
 import SectionHeading from "@/components/ui/SectionHeading";
 import Button from "@/components/ui/Button";
+import {
+  VERSIFICATION_SCHEMES,
+  VERSIFICATION_SCHEME_LABELS,
+  DEFAULT_VERSIFICATION_SCHEME,
+  type VersificationScheme,
+} from "@/lib/versification/schemes";
 
 interface TranslationRow {
   id: number;
   name: string;
   abbreviation: string;
   language: string | null;
+  versificationScheme: VersificationScheme;
 }
 
 const LANGUAGES: { code: string; label: string }[] = [
@@ -99,6 +106,7 @@ export default function TranslationsPanel() {
   const [newName, setNewName] = useState("");
   const [newAbbr, setNewAbbr] = useState("");
   const [newLang, setNewLang] = useState("");
+  const [newScheme, setNewScheme] = useState<VersificationScheme>(DEFAULT_VERSIFICATION_SCHEME);
   const [error, setError] = useState<string | null>(null);
   const dragIdx = useRef<number | null>(null);
 
@@ -109,7 +117,7 @@ export default function TranslationsPanel() {
       .catch(() => setLoading(false));
   }, []);
 
-  async function patchField(id: number, patch: Partial<Pick<TranslationRow, "name" | "abbreviation" | "language">>) {
+  async function patchField(id: number, patch: Partial<Pick<TranslationRow, "name" | "abbreviation" | "language" | "versificationScheme">>) {
     setSaving(id);
     const res = await fetch("/api/translations", {
       method: "PATCH",
@@ -142,15 +150,15 @@ export default function TranslationsPanel() {
     const res = await fetch("/api/translations", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, abbreviation, language: newLang || null }),
+      body: JSON.stringify({ name, abbreviation, language: newLang || null, versificationScheme: newScheme }),
     });
     if (!res.ok) {
       const { error: msg } = await res.json();
       setError(msg ?? "Failed to create translation.");
     } else {
       const { id } = await res.json();
-      setRows((prev) => [...prev, { id, name, abbreviation, language: newLang || null }]);
-      setNewName(""); setNewAbbr(""); setNewLang("");
+      setRows((prev) => [...prev, { id, name, abbreviation, language: newLang || null, versificationScheme: newScheme }]);
+      setNewName(""); setNewAbbr(""); setNewLang(""); setNewScheme(DEFAULT_VERSIFICATION_SCHEME);
     }
     setCreating(false);
   }
@@ -250,7 +258,7 @@ export default function TranslationsPanel() {
         {/* Create new */}
         <div className="border-t pt-4 space-y-3" style={{ borderColor: "var(--border)" }}>
           <SectionHeading size="label">New Translation</SectionHeading>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-4 gap-3">
             <div>
               <label className={labelCls}>Name</label>
               <input
@@ -284,6 +292,20 @@ export default function TranslationsPanel() {
                 ))}
               </select>
             </div>
+            <div>
+              <label className={labelCls} title="Whether this translation counts a Psalm's descriptive title as verse 1">
+                Versification
+              </label>
+              <select
+                className={inputCls}
+                value={newScheme}
+                onChange={(e) => setNewScheme(e.target.value as VersificationScheme)}
+              >
+                {VERSIFICATION_SCHEMES.map((s) => (
+                  <option key={s} value={s}>{VERSIFICATION_SCHEME_LABELS[s]}</option>
+                ))}
+              </select>
+            </div>
           </div>
           {error && <p className="text-xs text-red-500">{error}</p>}
           <Button onClick={handleCreate} disabled={creating}>
@@ -307,7 +329,7 @@ function TranslationEditor({
 }: {
   row: TranslationRow;
   saving: boolean;
-  onSave: (patch: Partial<Pick<TranslationRow, "name" | "abbreviation" | "language">>) => void;
+  onSave: (patch: Partial<Pick<TranslationRow, "name" | "abbreviation" | "language" | "versificationScheme">>) => void;
   confirmingDelete: boolean;
   deleting: boolean;
   onRequestDelete: () => void;
@@ -317,13 +339,14 @@ function TranslationEditor({
   const [name, setName] = useState(row.name);
   const [abbr, setAbbr] = useState(row.abbreviation);
   const [lang, setLang] = useState(row.language ?? "");
+  const [scheme, setScheme] = useState<VersificationScheme>(row.versificationScheme);
 
   const inputCls = "w-full text-sm px-2 py-1 rounded border border-stone-300 dark:border-stone-600 bg-stone-50 dark:bg-stone-900 focus:outline-none focus:ring-1 focus:ring-sky-500";
   const labelCls = "text-[10px] font-semibold uppercase tracking-wider text-stone-400 dark:text-stone-500 mb-0.5 block";
 
   return (
     <div className="rounded-lg border p-3 space-y-2" style={{ borderColor: confirmingDelete ? "var(--color-pos-verb)" : "var(--border)" }}>
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-4 gap-3">
         <div>
           <label className={labelCls}>Name</label>
           <input
@@ -352,6 +375,20 @@ function TranslationEditor({
           >
             {LANGUAGES.map((l) => (
               <option key={l.code} value={l.code}>{l.label}</option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className={labelCls} title="Whether this translation counts a Psalm's descriptive title as verse 1">
+            Versification
+          </label>
+          <select
+            className={inputCls}
+            value={scheme}
+            onChange={(e) => { const v = e.target.value as VersificationScheme; setScheme(v); onSave({ versificationScheme: v }); }}
+          >
+            {VERSIFICATION_SCHEMES.map((s) => (
+              <option key={s} value={s}>{VERSIFICATION_SCHEME_LABELS[s]}</option>
             ))}
           </select>
         </div>

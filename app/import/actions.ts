@@ -8,6 +8,31 @@ import { translations, translationVerses, translationFootnotes, paragraphBreaks,
 import { and, eq, inArray } from "drizzle-orm";
 import { formatOsisRef } from "@/lib/utils/osis";
 import { hasPsalmSuperscriptionOffset } from "@/lib/versification/mt-kjv-mapping";
+import { schemeUsesKjvPsalmOffset } from "@/lib/versification/schemes";
+
+// A translation's Psalm-superscription versification scheme is set on the
+// Manage Translations page (app/translations), not here — look up whatever
+// is already configured for it rather than asking the user per import. A
+// translation that doesn't exist yet (first-ever import under that name)
+// has nothing to look up and defaults to 'mt' (no offset) — create it in
+// Manage Translations first if it needs a different scheme.
+async function usesKjvPsalmVersification(translationId: number): Promise<boolean> {
+  const [trans] = await userDb
+    .select({ versificationScheme: translations.versificationScheme })
+    .from(translations)
+    .where(eq(translations.id, translationId))
+    .limit(1);
+  return schemeUsesKjvPsalmOffset(trans?.versificationScheme);
+}
+
+async function usesKjvPsalmVersificationByAbbr(abbreviation: string): Promise<boolean> {
+  const [trans] = await userDb
+    .select({ versificationScheme: translations.versificationScheme })
+    .from(translations)
+    .where(eq(translations.abbreviation, abbreviation.toUpperCase()))
+    .limit(1);
+  return schemeUsesKjvPsalmOffset(trans?.versificationScheme);
+}
 
 // Whether text preceding "1 ..." (a Psalm superscription) should be captured
 // as verse 0 rather than dropped — only meaningful when this translation
@@ -33,7 +58,6 @@ export async function importTranslationAction(
   const osisBook = (formData.get("osisBook") as string)?.trim();
   const chapterStr = formData.get("chapter") as string;
   const pastedText = (formData.get("pastedText") as string)?.trim();
-  const usesKjvVersification = formData.get("usesKjvVersification") === "on";
 
   if (!name || !abbreviation || !osisBook || !chapterStr || !pastedText) {
     return { success: false, error: "All fields are required.", count: 0, redirectTo: null };
@@ -64,7 +88,11 @@ export async function importTranslationAction(
   }
 
   const { verses, detectedChapter } = parseBibleComText(pastedText, {
-    captureLeadingAsVerseZero: shouldCaptureSuperscription(osisBook, chapter, usesKjvVersification),
+    captureLeadingAsVerseZero: shouldCaptureSuperscription(
+      osisBook,
+      chapter,
+      await usesKjvPsalmVersificationByAbbr(abbreviation)
+    ),
   });
 
   if (verses.length === 0) {
@@ -87,7 +115,7 @@ export async function importTranslationAction(
   }
 
   // Translations are workspace-independent — always stored under workspaceId 1.
-  const translationId = await upsertTranslation(name, abbreviation, undefined, usesKjvVersification);
+  const translationId = await upsertTranslation(name, abbreviation);
 
   // Delete existing verses for this translation+chapter (clean re-import, no workspace filter).
   await userDb
@@ -317,7 +345,6 @@ export async function importUsfmFileAction(
 ): Promise<ImportUsfmState> {
   const name         = (formData.get("name") as string)?.trim();
   const abbreviation = (formData.get("abbreviation") as string)?.trim().toUpperCase();
-  const usesKjvVersification = formData.get("usesKjvVersification") === "on";
   const files        = formData.getAll("usfmFile") as File[];
   const validFiles   = files.filter(f => f.size > 0 && (
     USFM_EXTENSIONS.has("." + f.name.split(".").pop()) || f.type === "text/plain"
@@ -335,7 +362,8 @@ export async function importUsfmFileAction(
     return { success: false, error: "No USFM file provided.", count: 0, detectedBook: null, booksImported: [], redirectTo: null };
   }
 
-  const translationId = await upsertTranslation(name, abbreviation, undefined, usesKjvVersification);
+  const translationId = await upsertTranslation(name, abbreviation);
+  const usesKjvVersification = await usesKjvPsalmVersification(translationId);
 
   let totalCount = 0;
   const booksImported: string[] = [];

@@ -1,6 +1,7 @@
 import { eq, and, asc, inArray, or, gte, lte, gt, lt, sql, max, like, isNull } from "drizzle-orm";
 import { sourceDb, userDb, sourceLookups, lxxLookups, getLxxDb, getLxxSqlite, getUltSqlite, getVcbSqlite, getUserSqlite, getOshbDb, getSblgntDb, getDbAndLookups, getLexiconDbsForLanguage, withWriteRetry } from "./index";
 import { getMtToKjvInstructions } from "@/lib/versification/mt-kjv-mapping";
+import { schemeUsesKjvPsalmOffset } from "@/lib/versification/schemes";
 import type { LookupMaps } from "./index";
 import { books, words } from "./source-schema";
 import { lexiconEntries } from "./lexica-schema";
@@ -475,20 +476,19 @@ export async function getTranslationVerses(
   // actually lives in, regardless of numbering scheme.
   const hasCrossChapterRemap = instructions?.some(i => i.kjvChapter !== chapter);
 
-  // Same-chapter Psalm superscription offsets, by contrast, only apply when
-  // this translation has opted in via usesKjvVersification — user-imported
-  // translations may already use MT-style numbering (superscription = verse
-  // 1) and must not be silently re-numbered. Translations like ESV that
-  // don't count the superscription as verse 1 need to opt in (see the
-  // "Uses English Psalm numbering" import checkbox).
+  // Same-chapter Psalm superscription offsets, by contrast, only apply for
+  // translations whose versification scheme (set on the Manage Translations
+  // page, not at import time) leaves the superscription unnumbered — MT and
+  // LXX both count it as verse 1 and must not be re-numbered; KJV and
+  // Vietnamese don't (see lib/versification/schemes.ts).
   let applySameChapterPsalmOffset = false;
   if (!hasCrossChapterRemap && instructions && instructions.length === 1) {
     const [trans] = await userDb
-      .select({ usesKjvVersification: translations.usesKjvVersification })
+      .select({ versificationScheme: translations.versificationScheme })
       .from(translations)
       .where(eq(translations.id, translationId))
       .limit(1);
-    applySameChapterPsalmOffset = !!trans?.usesKjvVersification;
+    applySameChapterPsalmOffset = schemeUsesKjvPsalmOffset(trans?.versificationScheme);
   }
 
   // translation_verses.book_id is a snapshot taken at import time of whatever
@@ -548,30 +548,18 @@ export async function getTranslationVerses(
   return allResults.sort((a, b) => a.verse - b.verse);
 }
 
-export async function upsertTranslation(
-  name: string,
-  abbreviation: string,
-  _workspaceId?: number,
-  usesKjvVersification?: boolean
-): Promise<number> {
+export async function upsertTranslation(name: string, abbreviation: string, _workspaceId?: number): Promise<number> {
   const upper = abbreviation.toUpperCase();
   const existing = await userDb
-    .select()
+    .select({ id: translations.id })
     .from(translations)
     .where(eq(translations.abbreviation, upper))
     .limit(1);
-  if (existing[0]) {
-    // Versification is a translation-level setting, not a per-import one — keep
-    // it in sync even when re-importing a chapter for an already-created translation.
-    if (usesKjvVersification !== undefined && usesKjvVersification !== existing[0].usesKjvVersification) {
-      await userDb.update(translations).set({ usesKjvVersification }).where(eq(translations.id, existing[0].id));
-    }
-    return existing[0].id;
-  }
+  if (existing[0]) return existing[0].id;
 
   const result = await userDb
     .insert(translations)
-    .values({ name, abbreviation: upper, workspaceId: 1, usesKjvVersification: usesKjvVersification ?? false })
+    .values({ name, abbreviation: upper, workspaceId: 1 })
     .returning({ id: translations.id });
   return result[0].id;
 }
@@ -3223,7 +3211,7 @@ export async function getLxxTranslation(): Promise<Translation | null> {
   try {
     const ins = await userDb
       .insert(translations)
-      .values({ workspaceId: 1, name: "Septuagint (LXX)", abbreviation: "LXX", language: "greek" })
+      .values({ workspaceId: 1, name: "Septuagint (LXX)", abbreviation: "LXX", language: "greek", versificationScheme: "lxx" })
       .returning();
     return ins[0] ?? null;
   } catch {

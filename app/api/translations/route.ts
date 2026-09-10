@@ -3,6 +3,7 @@ import { userDb } from "@/lib/db";
 import { translations } from "@/lib/db/schema";
 import { asc, eq, sql } from "drizzle-orm";
 import { getActiveWorkspaceId } from "@/lib/workspace";
+import { isVersificationScheme, DEFAULT_VERSIFICATION_SCHEME } from "@/lib/versification/schemes";
 
 export const dynamic = "force-dynamic";
 
@@ -14,6 +15,7 @@ export async function GET() {
       name: translations.name,
       abbreviation: translations.abbreviation,
       language: translations.language,
+      versificationScheme: translations.versificationScheme,
     })
     .from(translations)
     .orderBy(asc(translations.sortOrder), asc(translations.abbreviation));
@@ -22,11 +24,11 @@ export async function GET() {
 }
 
 // POST /api/translations
-// Body: { name, abbreviation, language? }
+// Body: { name, abbreviation, language?, versificationScheme? }
 // Creates a new (empty) translation.
 export async function POST(request: NextRequest) {
   const workspaceId = await getActiveWorkspaceId();
-  let body: { name?: string; abbreviation?: string; language?: string | null };
+  let body: { name?: string; abbreviation?: string; language?: string | null; versificationScheme?: string };
   try { body = await request.json(); } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
@@ -35,6 +37,9 @@ export async function POST(request: NextRequest) {
   const abbreviation = body.abbreviation?.trim().toUpperCase();
   if (!name || !abbreviation) {
     return NextResponse.json({ error: "name and abbreviation are required" }, { status: 400 });
+  }
+  if (body.versificationScheme != null && !isVersificationScheme(body.versificationScheme)) {
+    return NextResponse.json({ error: `Invalid versification scheme: "${body.versificationScheme}"` }, { status: 400 });
   }
 
   // Translations are shared across workspaces (see getTranslations in lib/db/queries.ts),
@@ -57,19 +62,22 @@ export async function POST(request: NextRequest) {
 
   const result = await userDb
     .insert(translations)
-    .values({ workspaceId, name, abbreviation, language: body.language ?? null, sortOrder: maxOrder + 1 })
+    .values({
+      workspaceId, name, abbreviation, language: body.language ?? null, sortOrder: maxOrder + 1,
+      versificationScheme: body.versificationScheme ?? DEFAULT_VERSIFICATION_SCHEME,
+    })
     .returning({ id: translations.id });
 
   return NextResponse.json({ id: result[0].id });
 }
 
 // PATCH /api/translations
-// Body: { id, name?, abbreviation?, language? }
+// Body: { id, name?, abbreviation?, language?, versificationScheme? }
 // Updates editable fields of a translation. Translations are shared across
 // workspaces (see getTranslations in lib/db/queries.ts), so edits aren't
 // restricted to the workspace that originally created the row.
 export async function PATCH(request: NextRequest) {
-  let body: { id?: number; name?: string; abbreviation?: string; language?: string | null };
+  let body: { id?: number; name?: string; abbreviation?: string; language?: string | null; versificationScheme?: string };
   try { body = await request.json(); } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
@@ -77,10 +85,15 @@ export async function PATCH(request: NextRequest) {
   const { id } = body;
   if (id == null) return NextResponse.json({ error: "Missing field: id" }, { status: 400 });
 
-  const patch: Partial<{ name: string; abbreviation: string; language: string | null }> = {};
+  if (body.versificationScheme != null && !isVersificationScheme(body.versificationScheme)) {
+    return NextResponse.json({ error: `Invalid versification scheme: "${body.versificationScheme}"` }, { status: 400 });
+  }
+
+  const patch: Partial<{ name: string; abbreviation: string; language: string | null; versificationScheme: string }> = {};
   if (body.name      != null) patch.name        = body.name.trim();
   if (body.abbreviation != null) patch.abbreviation = body.abbreviation.trim().toUpperCase();
   if ("language" in body)     patch.language    = body.language ?? null;
+  if (body.versificationScheme != null) patch.versificationScheme = body.versificationScheme;
 
   if (Object.keys(patch).length === 0) return NextResponse.json({ ok: true });
 

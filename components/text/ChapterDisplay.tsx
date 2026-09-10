@@ -2,6 +2,7 @@
 
 import { Fragment, useMemo, useState, useEffect, useRef, useCallback, useTransition } from "react";
 import { getMtToKjvInstructions, getKjvVerseLabel } from "@/lib/versification/mt-kjv-mapping";
+import { schemeUsesKjvPsalmOffset } from "@/lib/versification/schemes";
 import { useRouter, useSearchParams } from "next/navigation";
 import type { Word, Character, CharacterRef, SpeechSection, WordTag, WordTagRef, RstRelation, WordArrow, LineAnnotation, PoetryNotation, PoetryLineBracketExclusion, Passage, SynopticWordMark, LineGroup } from "@/lib/db/schema";
 import { usePoetryNotations } from "@/lib/hooks/usePoetryNotations";
@@ -2545,18 +2546,18 @@ export default function ChapterDisplay({
 
   const hasActiveTranslations = activeTranslationIds.size > 0;
 
-  // Verse number offset for Psalm superscriptions: translations that opted in
-  // via usesKjvVersification (ULT/VCB by default, plus any user-imported
-  // translation like ESV flagged at import time) don't count the superscription
-  // heading as verse 1, so MT verse N = that translation's verse (N − offset).
-  // When > 0 VerseDisplay shows the translation verse number in brackets below
-  // the MT verse number (e.g. "2" with "[1]" below it for Ps 22 in ULT).
+  // Verse number offset for Psalm superscriptions: translations whose
+  // versification scheme (Manage Translations — KJV or Vietnamese) leaves the
+  // superscription unnumbered don't count it as verse 1, so MT verse N = that
+  // translation's verse (N − offset). When > 0 VerseDisplay shows the
+  // translation verse number in brackets below the MT verse number (e.g. "2"
+  // with "[1]" below it for Ps 22 in ULT).
   const translationVerseOffset = useMemo(() => {
     if (book !== "Ps") return 0;
     // Only apply when at least one active translation uses KJV-style Psalm numbering.
     const hasKjvVersification = [...activeTranslationIds].some((id) => {
       const t = allAvailableTranslations.find((t) => t.id === id);
-      return t?.usesKjvVersification === true;
+      return schemeUsesKjvPsalmOffset(t?.versificationScheme);
     });
     if (!hasKjvVersification) return 0;
     // getMtToKjvInstructions returns a single-instruction array for Psalm offset
