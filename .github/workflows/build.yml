@@ -115,15 +115,37 @@ jobs:
           sudo sysctl -w kernel.unprivileged_userns_clone=1 2>/dev/null || true
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 2>/dev/null || true
 
-      - name: Test linuxdeploy execution
+      # tauri-bundler downloads linuxdeploy on every build unless it's already
+      # sitting in its tool cache (~/.cache/tauri/linuxdeploy-x86_64.AppImage);
+      # that download hits release-assets.githubusercontent.com directly and
+      # has no retry logic, so a single transient GitHub 500 fails the whole
+      # build. Caching the directory across runs and pre-fetching the file
+      # ourselves (with real retries) means the bundler finds it already
+      # present and never makes that flaky request itself.
+      - name: Cache Tauri Linux tool downloads
+        if: runner.os == 'Linux' && matrix.target == 'x86_64-unknown-linux-gnu'
+        uses: actions/cache@v5
+        with:
+          path: ~/.cache/tauri
+          key: tauri-linux-tools-v1-x86_64
+
+      - name: Pre-fetch linuxdeploy into Tauri's tool cache
         if: runner.os == 'Linux' && matrix.target == 'x86_64-unknown-linux-gnu'
         run: |
-          mkdir -p /tmp/ld-preflight
-          wget -q https://github.com/tauri-apps/binary-releases/releases/download/linuxdeploy/linuxdeploy-x86_64.AppImage \
-            -O /tmp/ld-preflight/linuxdeploy
-          chmod +x /tmp/ld-preflight/linuxdeploy
+          mkdir -p ~/.cache/tauri
+          LD=~/.cache/tauri/linuxdeploy-x86_64.AppImage
+          if [ ! -s "$LD" ]; then
+            # Download to a temp file first so a failed/partial attempt never
+            # lands at $LD — that path gets persisted by actions/cache, and a
+            # corrupt file there would poison every future run's cache hit.
+            wget --tries=5 --waitretry=10 --retry-on-http-error=429,500,502,503,504 \
+              https://github.com/tauri-apps/binary-releases/releases/download/linuxdeploy/linuxdeploy-x86_64.AppImage \
+              -O "$LD.tmp"
+            mv "$LD.tmp" "$LD"
+          fi
+          chmod +x "$LD"
           echo "--- linuxdeploy self-test ---"
-          APPIMAGE_EXTRACT_AND_RUN=1 /tmp/ld-preflight/linuxdeploy --version 2>&1 || echo "Exit code: $?"
+          APPIMAGE_EXTRACT_AND_RUN=1 "$LD" --version 2>&1 || echo "Exit code: $?"
 
       # ── macOS: import signing certificate into a keychain ─────────────────────
       # This must run before the build so that our tauri-build.mjs re-signing
