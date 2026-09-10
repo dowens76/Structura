@@ -6,7 +6,8 @@
  * Downloads a Node.js 24 LTS binary for the current Rust target triple
  * and places it at src-tauri/binaries/node-<triple>[.exe]
  *
- * Node 24 is required to match NODE_MODULE_VERSION 137 used by better-sqlite3.
+ * better-sqlite3 >= 13 uses N-API (ABI-stable across Node versions), so this
+ * pin is just an LTS choice, not a required NODE_MODULE_VERSION match.
  *
  * Run: npm run build:node-binary
  */

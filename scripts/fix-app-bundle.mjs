@@ -41,11 +41,18 @@ mkdirSync(serverDest, { recursive: true });
 cpSync(serverSrc, serverDest, { recursive: true });
 console.log("  ✓ server/ replaced with correct directory structure");
 
+// better-sqlite3 >= 13 ships prebuilt N-API binaries per platform/arch under
+// prebuilds/ (no build/Release/ from a source compile) and picks the right
+// one at runtime by process.platform/arch.
+const sqliteArch = buildTarget
+  ? (buildTarget.startsWith("aarch64") ? "arm64" : "x64")
+  : process.arch;
+
 // Verify key files are present
 const checks = [
   path.join(serverDest, "server.js"),
   path.join(serverDest, ".next", "BUILD_ID"),
-  path.join(serverDest, "node_modules", "better-sqlite3", "build", "Release", "better_sqlite3.node"),
+  path.join(serverDest, "node_modules", "better-sqlite3", "prebuilds", `darwin-${sqliteArch}.node`),
 ];
 let ok = true;
 for (const f of checks) {

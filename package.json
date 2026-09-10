@@ -60,7 +60,7 @@
     "@tiptap/pm": "^3.20.4",
     "@tiptap/react": "^3.20.4",
     "@tiptap/starter-kit": "^3.20.4",
-    "better-sqlite3": "^12.6.2",
+    "better-sqlite3": "^13.0.3",
     "d3-hierarchy": "^3.1.2",
     "docx": "^9.6.1",
     "drizzle-orm": "^0.45.1",

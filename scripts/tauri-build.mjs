@@ -13,28 +13,9 @@
  * Run: npm run tauri:build
  */
 import { execSync } from "child_process";
-import { writeFileSync, unlinkSync, copyFileSync, existsSync, readdirSync, rmSync, readFileSync } from "fs";
+import { writeFileSync, unlinkSync, existsSync, readdirSync, rmSync, readFileSync } from "fs";
 import { fileURLToPath } from "url";
 import path from "path";
-
-/**
- * Rebuild better-sqlite3 from source for a specific arch.
- *
- * Older code passed `--build-from-source` as a CLI flag and set
- * `npm_config_arch` as an env var — both trigger "Unknown config" warnings in
- * npm ≥ 10.  Writing the settings to a temporary local .npmrc is the
- * recommended alternative; npm always reads the project .npmrc before running
- * any lifecycle script or rebuild.
- */
-function rebuildSqlite(arch, label) {
-  const npmrcPath = path.join(ROOT, ".npmrc");
-  writeFileSync(npmrcPath, `build_from_source=true\narch=${arch}\n`);
-  try {
-    run("npm rebuild better-sqlite3", label);
-  } finally {
-    unlinkSync(npmrcPath);
-  }
-}
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 
@@ -43,11 +24,12 @@ function run(cmd, label, env) {
   execSync(cmd, { stdio: "inherit", cwd: ROOT, env: env ?? process.env });
 }
 
-// 1. Ensure better-sqlite3 is compiled for the HOST arch.
-//    npm ci may restore a stale cross-compiled binary from a previous run's
-//    cache, so we always rebuild here before any build script loads it.
 const hostArch = process.arch === "arm64" ? "arm64" : "x64";
-rebuildSqlite(hostArch, `Rebuilding better-sqlite3 for host (${hostArch})`);
+
+// 1. (No longer needed.) better-sqlite3 >= 13 ships prebuilt N-API binaries
+//    for every platform/arch in a single npm install (node_modules/better-sqlite3/prebuilds/),
+//    and resolves the right one at runtime by process.platform/arch — no
+//    per-arch `npm rebuild --build-from-source` step required anymore.
 
 // 2. Download sidecar Node binary
 run("node scripts/download-node-binary.mjs", "Downloading sidecar Node binary");
@@ -72,29 +54,17 @@ for (const { db, cmd } of sourceDbs) {
 run("node scripts/copy-databases.mjs", "Copying source databases to Tauri resources");
 
 // 5. Build Next.js (beforeBuildCommand).
-//    Must run BEFORE the target-arch rebuild (step 6) because Next.js page-data
-//    collection loads better-sqlite3 in the host Node process (arm64 on macOS CI).
 run("npm run build:next", "Building Next.js");
 
-// 6. Rebuild better-sqlite3 for the bundle TARGET arch.
-//    This must happen AFTER the build scripts above (which need the host-arch
-//    native module) and BEFORE tauri build (which bundles it into the app).
+// 6/7. (No longer needed.) better-sqlite3's prebuilds/ directory — copied into
+//    the server bundle as-is by copy-standalone.mjs / serverExternalPackages —
+//    already contains every target's binary, and lib/binding.js picks the
+//    right one at runtime by process.platform/arch. No arch-specific rebuild
+//    or copy-in step required.
 //    TAURI_BUILD_TARGET is only set by CI's cross-compile matrix; a plain
-//    local `npm run tauri:build` doesn't set it, so fall back to the host
-//    arch instead of silently defaulting to x64 (which produced an
-//    unloadable arm64-host/x64-module bundle on Apple Silicon).
+//    local `npm run tauri:build` doesn't set it, so fall back to the host arch.
 const target = process.env.TAURI_BUILD_TARGET;
 const npmArch = target ? (target.startsWith("aarch64") ? "arm64" : "x64") : hostArch;
-rebuildSqlite(npmArch, `Rebuilding better-sqlite3 for ${npmArch}`);
-
-// 7. Sync the rebuilt better-sqlite3 native module into the server bundle.
-//    copy-standalone.mjs (step 5) captured the host-arch binary; overwrite it
-//    with the target-arch binary so the sidecar Node process can load it.
-copyFileSync(
-  path.join(ROOT, "node_modules/better-sqlite3/build/Release/better_sqlite3.node"),
-  path.join(ROOT, "src-tauri/resources/server/node_modules/better-sqlite3/build/Release/better_sqlite3.node")
-);
-console.log(`\n▶ Synced better-sqlite3 (${npmArch}) → server bundle`);
 
 // 8. Remove musl-libc Sharp variants on Linux.
 //    sharp ships separate native binaries for glibc (Ubuntu/Debian) and musl libc
@@ -165,8 +135,8 @@ for (const key of ["APPLE_CERTIFICATE", "APPLE_CERTIFICATE_PASSWORD", "APPLE_SIG
   if (!tauriBuildEnv[key]) delete tauriBuildEnv[key];
 }
 
-// Skip beforeBuildCommand — we already ran Next.js in step 5 (before the
-// target-arch better-sqlite3 rebuild), so Tauri must not run it again.
+// Skip beforeBuildCommand — we already ran Next.js in step 5, so Tauri must
+// not run it again.
 // Write config to a file to avoid shell-quoting issues on Windows (PowerShell
 // strips double quotes from inside single-quoted strings).
 const overrideCfgPath = path.join(ROOT, ".tauri-build-override.json");
