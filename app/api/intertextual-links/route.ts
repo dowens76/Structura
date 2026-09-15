@@ -80,8 +80,8 @@ export async function PATCH(req: NextRequest) {
   if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 });
 
   const allowed = ["linkType","strength","notes","direction","tags",
-    "sourceBook","sourceChapter","sourceVerse","sourceEndVerse","sourceStartWordId","sourceEndWordId",
-    "targetBook","targetChapter","targetVerse","targetEndVerse","targetStartWordId","targetEndWordId"];
+    "sourceBook","sourceChapter","sourceVerse","sourceEndVerse","sourceTextSource","sourceStartWordId","sourceEndWordId",
+    "targetBook","targetChapter","targetVerse","targetEndVerse","targetTextSource","targetStartWordId","targetEndWordId"];
   const filteredPatch: Record<string, unknown> = {};
   for (const key of allowed) {
     if (key in patch) filteredPatch[key] = patch[key];

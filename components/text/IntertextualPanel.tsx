@@ -1,9 +1,20 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import { useRouter } from "next/navigation";
 import { LINK_TYPES } from "@/lib/utils/annotations";
-import { OSIS_REF_BOOK_NAMES } from "@/lib/utils/osis";
+import { OSIS_REF_BOOK_NAMES, OSIS_BOOKS_OT, OSIS_BOOKS_NT, formatOsisRef } from "@/lib/utils/osis";
 import type { IntertextualLink } from "@/lib/db/schema";
+import ScriptureTooltip from "@/components/notes/ScriptureTooltip";
+
+/** The text source a freshly-typed reference belongs to — NOT necessarily the
+ *  panel's own `textSource`, since a link's two sides are often in different
+ *  corpora (e.g. an OSHB passage alluded to by a Greek NT one). */
+function defaultTextSourceForBook(book: string): string {
+  if (OSIS_BOOKS_NT.includes(book)) return "SBLGNT";
+  if (OSIS_BOOKS_OT.includes(book)) return "OSHB";
+  return "STEPBIBLE_LXX";
+}
 
 interface Props {
   book: string;
@@ -89,14 +100,39 @@ function linkCoversVerse(link: IntertextualLink, book: string, chapter: number, 
   return inSource || inTarget;
 }
 
-// Shows both sides' verse numbers (not just "the other side" implied by
-// whatever chapter the panel happens to be scoped to) — e.g. "Exod 34:6-7 →
-// Jonah 4:2" rather than just "→ Jonah 4:2".
-function linkLabel(link: IntertextualLink): string {
-  const source = `${bookLabel(link.sourceBook)} ${verseRange(link.sourceChapter, link.sourceVerse, link.sourceEndVerse)}`;
-  const target = `${bookLabel(link.targetBook)} ${verseRange(link.targetChapter, link.targetVerse, link.targetEndVerse)}`;
-  const arrow = link.direction === "bidirectional" ? "↔" : "→";
-  return `${source} ${arrow} ${target}`;
+function toOsisRef(book: string, chapter: number, verse: number, endVerse?: number | null): string {
+  const start = formatOsisRef(book, chapter, verse);
+  if (!endVerse || endVerse === verse) return start;
+  return `${start}-${formatOsisRef(book, chapter, endVerse)}`;
+}
+
+/** A verse reference within a link row: hovering shows the verse text in a
+ *  tooltip (as in the Notes pane), clicking navigates to it in Chapter view. */
+function RefSpan({
+  book, chapter, verse, endVerse, textSource, label,
+  onHover, onLeave,
+}: {
+  book: string; chapter: number; verse: number; endVerse?: number | null; textSource: string;
+  label: string;
+  onHover: (osisRef: string, el: HTMLElement) => void;
+  onLeave: () => void;
+}) {
+  const router = useRouter();
+  const osisRef = toOsisRef(book, chapter, verse, endVerse);
+
+  return (
+    <span
+      className="cursor-pointer hover:underline decoration-dotted underline-offset-2"
+      onMouseEnter={(e) => onHover(osisRef, e.currentTarget)}
+      onMouseLeave={onLeave}
+      onClick={(e) => {
+        e.stopPropagation();
+        router.push(`/${encodeURIComponent(book)}/${textSource}/${chapter}?v=${verse}`);
+      }}
+    >
+      {label}
+    </span>
+  );
 }
 
 function resolveLinkType(value: string, custom: CustomLinkType[]): { label: string; color: string } {
@@ -309,10 +345,19 @@ function LinkForm({
             sourceChapter: parsedSource.chapter,
             sourceVerse: parsedSource.verse,
             sourceEndVerse: parsedSource.endVerse ?? null,
+            // Keep the stored textSource when the book didn't change (it may
+            // have been deliberately set, e.g. an OT book pinned to the LXX);
+            // only re-resolve it when the edited ref points at a new book.
+            sourceTextSource: parsedSource.book === editLink!.sourceBook
+              ? editLink!.sourceTextSource
+              : (parsedSource.book === book ? textSource : defaultTextSourceForBook(parsedSource.book)),
             targetBook: parsedTarget.book,
             targetChapter: parsedTarget.chapter,
             targetVerse: parsedTarget.verse,
             targetEndVerse: parsedTarget.endVerse ?? null,
+            targetTextSource: parsedTarget.book === editLink!.targetBook
+              ? editLink!.targetTextSource
+              : (parsedTarget.book === book ? textSource : defaultTextSourceForBook(parsedTarget.book)),
             linkType: form.linkType,
             strength: form.strength,
             notes: form.notes || null,
@@ -329,12 +374,16 @@ function LinkForm({
             sourceChapter: parsedSource.chapter,
             sourceVerse: parsedSource.verse,
             sourceEndVerse: parsedSource.endVerse ?? null,
-            sourceTextSource: textSource,
+            // The two sides of a link are often in different corpora (e.g. an
+            // OSHB passage alluded to by a Greek NT one) — only fall back to
+            // this panel's own textSource when the typed ref is actually the
+            // book currently open in it; otherwise resolve independently.
+            sourceTextSource: parsedSource.book === book ? textSource : defaultTextSourceForBook(parsedSource.book),
             targetBook: parsedTarget.book,
             targetChapter: parsedTarget.chapter,
             targetVerse: parsedTarget.verse,
             targetEndVerse: parsedTarget.endVerse ?? null,
-            targetTextSource: textSource,
+            targetTextSource: parsedTarget.book === book ? textSource : defaultTextSourceForBook(parsedTarget.book),
             linkType: form.linkType, strength: form.strength,
             notes: form.notes || null, direction: form.direction,
             tags: tagsArr,
@@ -521,6 +570,20 @@ function LinkRow({
 }) {
   const { label: typeLabel, color } = resolveLinkType(link.linkType, custom);
   const [confirming, setConfirming] = useState(false);
+  const [tooltipRef, setTooltipRef] = useState<string | null>(null);
+  const [tooltipPos, setTooltipPos] = useState<{ x: number; y: number } | null>(null);
+  const leaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function handleRefHover(osisRef: string, el: HTMLElement) {
+    if (leaveTimer.current) clearTimeout(leaveTimer.current);
+    if (osisRef === tooltipRef) return;
+    const rect = el.getBoundingClientRect();
+    setTooltipRef(osisRef);
+    setTooltipPos({ x: rect.left + rect.width / 2, y: rect.bottom + 4 });
+  }
+  function handleRefLeave() {
+    leaveTimer.current = setTimeout(() => setTooltipRef(null), 150);
+  }
 
   return (
     <div className="px-3 py-2 border-b border-[var(--border)] last:border-b-0 text-sm text-left">
@@ -563,8 +626,28 @@ function LinkRow({
           verse references (source and target) have room to fit without
           truncating in a narrow pane. */}
       <div className="font-medium text-[var(--foreground)] mt-1">
-        {linkLabel(link)}
+        <RefSpan
+          book={link.sourceBook} chapter={link.sourceChapter} verse={link.sourceVerse} endVerse={link.sourceEndVerse}
+          textSource={link.sourceTextSource}
+          label={`${bookLabel(link.sourceBook)} ${verseRange(link.sourceChapter, link.sourceVerse, link.sourceEndVerse)}`}
+          onHover={handleRefHover} onLeave={handleRefLeave}
+        />
+        {" "}{link.direction === "bidirectional" ? "↔" : "→"}{" "}
+        <RefSpan
+          book={link.targetBook} chapter={link.targetChapter} verse={link.targetVerse} endVerse={link.targetEndVerse}
+          textSource={link.targetTextSource}
+          label={`${bookLabel(link.targetBook)} ${verseRange(link.targetChapter, link.targetVerse, link.targetEndVerse)}`}
+          onHover={handleRefHover} onLeave={handleRefLeave}
+        />
       </div>
+      {tooltipRef && tooltipPos && (
+        <ScriptureTooltip
+          osisRef={tooltipRef}
+          anchorPos={tooltipPos}
+          onCancelLeave={() => { if (leaveTimer.current) clearTimeout(leaveTimer.current); }}
+          onClose={() => setTooltipRef(null)}
+        />
+      )}
       <div className="flex items-center gap-2 mt-0.5">
         <StrengthStars value={link.strength} />
         {link.direction === "bidirectional" && (
@@ -776,10 +859,7 @@ export default function IntertextualPanel({ book, chapter, textSource, verse, on
   return (
     <div className="flex flex-col h-full min-h-0" style={{ backgroundColor: "var(--panel-bg, var(--background))" }}>
       {/* Header */}
-      <div
-        className="shrink-0 flex items-center justify-between px-3 py-2 border-b border-[var(--border)]"
-        style={{ backgroundColor: "var(--nav-bg)" }}
-      >
+      <div className="shrink-0 flex items-center justify-between px-3 py-2 border-b border-[var(--border)]">
         <span className="text-sm font-semibold" style={{ color: "var(--foreground)" }}>
           Intertextual Links
         </span>

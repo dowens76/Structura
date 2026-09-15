@@ -3429,12 +3429,14 @@ export async function updateIntertextualLink(
     sourceChapter: number;
     sourceVerse: number;
     sourceEndVerse: number | null;
+    sourceTextSource: string;
     sourceStartWordId: string | null;
     sourceEndWordId: string | null;
     targetBook: string;
     targetChapter: number;
     targetVerse: number;
     targetEndVerse: number | null;
+    targetTextSource: string;
     targetStartWordId: string | null;
     targetEndWordId: string | null;
     tags: string;
