@@ -441,8 +441,49 @@ export default function ChapterDisplay({
   const [translationFontSize, setTranslationFontSize] = useState(0.875);
   const [lineHeightMultiplier, setLineHeightMultiplier] = useState(1.0);
   const [editingParagraphs, setEditingParagraphs] = useState(false);
+  // Section breaks imported with a translation (USFM \s headings) are stored
+  // under a translation id — "tv:ABBR:Book.ch.v" — rather than a source word.
+  // They're displayed at the first source word of that verse, so resolve that
+  // key once here. `sceneBreakDbIdRef` remembers the stored id per
+  // (displayKey, level) so edits/deletes still reach the real DB row.
+  const sceneBreakDbIdRef = useRef<Map<string, string>>(new Map());
+  const [resolvedInitialSceneBreaks] = useState(() => {
+    // Keyed by chapter.verse (not verse alone) so multi-chapter passage views
+    // don't resolve a heading to another chapter's same-numbered verse.
+    const verseFirstWord = new Map<string, string>();
+    for (const w of words) {
+      const k = `${w.chapter}.${w.verse}`;
+      if (!verseFirstWord.has(k)) verseFirstWord.set(k, w.wordId);
+    }
+    return initialSceneBreaks.map((sb) => {
+      let key = sb.wordId;
+      if (key.startsWith("tv:")) {
+        // "tv:ABBR:Book.ch.v[.wi]" → first source word of that verse
+        const parts = key.split(":")[2]?.split(".") ?? [];
+        const ch = parseInt(parts[1] ?? "", 10);
+        const v = parseInt(parts[2] ?? "", 10);
+        key = verseFirstWord.get(`${isNaN(ch) ? chapter : ch}.${isNaN(v) ? sb.verse : v}`) ?? key;
+        if (key !== sb.wordId) sceneBreakDbIdRef.current.set(`${key}:${sb.level}`, sb.wordId);
+      }
+      return { key, sb };
+    });
+  });
+  /** The id a section break is stored under in the DB (see above). */
+  function sceneBreakDbId(wordId: string, level: number): string {
+    return sceneBreakDbIdRef.current.get(`${wordId}:${level}`) ?? wordId;
+  }
   const [paragraphBreakIds, setParagraphBreakIds] = useState<Set<string>>(
-    () => new Set(initialParagraphBreakIds)
+    () => {
+      const set = new Set(initialParagraphBreakIds);
+      // A section break always implies a paragraph break at its word (the
+      // renderer only draws headings at paragraph starts). For a resolved
+      // translation-anchored break that paragraph break is stored under the
+      // tv: id too, so mirror it onto the displayed source word.
+      for (const { key, sb } of resolvedInitialSceneBreaks) {
+        if (key !== sb.wordId) set.add(key);
+      }
+      return set;
+    }
   );
   const [editingHorizontalLines, setEditingHorizontalLines] = useState(false);
   const [horizontalLineIds, setHorizontalLineIds] = useState<Set<string>>(
@@ -454,19 +495,8 @@ export default function ChapterDisplay({
   // Multiple levels may exist at the same wordId; toggling also mirrors into paragraphBreakIds.
   const [sceneBreakMap, setSceneBreakMap] = useState<Map<string, Array<{ heading: string | null; level: number; verse: number; outOfSequence: boolean; extendedThrough: number | null; thematic: boolean; thematicLetter: string | null; transitional: boolean }>>>(
     () => {
-      // Build verse → first source word map to resolve tv:-prefixed scene break ids
-      const verseFirstWord = new Map<number, string>();
-      for (const w of words) {
-        if (!verseFirstWord.has(w.verse)) verseFirstWord.set(w.verse, w.wordId);
-      }
       const m = new Map<string, Array<{ heading: string | null; level: number; verse: number; outOfSequence: boolean; extendedThrough: number | null; thematic: boolean; thematicLetter: string | null; transitional: boolean }>>();
-      for (const sb of initialSceneBreaks) {
-        let key = sb.wordId;
-        if (key.startsWith("tv:")) {
-          // "tv:ABBR:Book.ch.v" → first source word of that verse
-          const verseNum = parseInt(key.split(".")[2] ?? "0", 10);
-          key = verseFirstWord.get(verseNum) ?? key;
-        }
+      for (const { key, sb } of resolvedInitialSceneBreaks) {
         const arr = m.get(key) ?? [];
         arr.push({ heading: sb.heading, level: sb.level, verse: sb.verse, outOfSequence: sb.outOfSequence, extendedThrough: sb.extendedThrough, thematic: sb.thematic, thematicLetter: sb.thematicLetter, transitional: sb.transitional ?? false });
         m.set(key, arr);
@@ -2985,7 +3015,7 @@ export default function ChapterDisplay({
       await fetch("/api/scene-breaks", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ wordId, ...getWordLocation(wordId), verse, source: textSource, level }),
+        body: JSON.stringify({ wordId: sceneBreakDbId(wordId, level), ...getWordLocation(wordId), verse, source: textSource, level }),
       });
     } catch {
       // Rollback on error
@@ -3029,7 +3059,7 @@ export default function ChapterDisplay({
       await fetch("/api/scene-breaks", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ wordId, ...getWordLocation(wordId), level, heading: heading.trim() || null }),
+        body: JSON.stringify({ wordId: sceneBreakDbId(wordId, level), ...getWordLocation(wordId), level, heading: heading.trim() || null }),
       });
     } catch {
       // Non-critical; leave optimistic state
@@ -3054,7 +3084,7 @@ export default function ChapterDisplay({
       await fetch("/api/scene-breaks", {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ wordId, ...getWordLocation(wordId), level }),
+        body: JSON.stringify({ wordId: sceneBreakDbId(wordId, level), ...getWordLocation(wordId), level }),
       });
     } catch {
       // Rollback on error
@@ -3084,16 +3114,22 @@ export default function ChapterDisplay({
       next.set(wordId, arr);
       return next;
     });
+    // Keep the moved break under the same stored id (it may be a tv: anchor)
+    const dbId = sceneBreakDbId(wordId, fromLevel);
+    if (dbId !== wordId) {
+      sceneBreakDbIdRef.current.delete(`${wordId}:${fromLevel}`);
+      sceneBreakDbIdRef.current.set(`${wordId}:${toLevel}`, dbId);
+    }
     try {
       // Toggle old level off, new level on
       await fetch("/api/scene-breaks", { method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ wordId, ...getWordLocation(wordId), verse, source: textSource, level: fromLevel }) });
+        body: JSON.stringify({ wordId: dbId, ...getWordLocation(wordId), verse, source: textSource, level: fromLevel }) });
       await fetch("/api/scene-breaks", { method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ wordId, ...getWordLocation(wordId), verse, source: textSource, level: toLevel }) });
+        body: JSON.stringify({ wordId: dbId, ...getWordLocation(wordId), verse, source: textSource, level: toLevel }) });
       // Restore heading on the new level
       if (existing.heading) {
         await fetch("/api/scene-breaks", { method: "PATCH", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ wordId, ...getWordLocation(wordId), level: toLevel, heading: existing.heading }) });
+          body: JSON.stringify({ wordId: dbId, ...getWordLocation(wordId), level: toLevel, heading: existing.heading }) });
       }
     } catch {
       // Rollback
@@ -3165,7 +3201,7 @@ export default function ChapterDisplay({
       await fetch("/api/scene-breaks", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ wordId, ...getWordLocation(wordId), level, outOfSequence }),
+        body: JSON.stringify({ wordId: sceneBreakDbId(wordId, level), ...getWordLocation(wordId), level, outOfSequence }),
       });
     } catch {
       // Non-critical; leave optimistic state
@@ -3185,7 +3221,7 @@ export default function ChapterDisplay({
       await fetch("/api/scene-breaks", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ wordId, ...getWordLocation(wordId), level, extendedThrough }),
+        body: JSON.stringify({ wordId: sceneBreakDbId(wordId, level), ...getWordLocation(wordId), level, extendedThrough }),
       });
     } catch {
       // Non-critical; leave optimistic state
@@ -3205,7 +3241,7 @@ export default function ChapterDisplay({
       await fetch("/api/scene-breaks", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ wordId, ...getWordLocation(wordId), level, thematic, thematicLetter }),
+        body: JSON.stringify({ wordId: sceneBreakDbId(wordId, level), ...getWordLocation(wordId), level, thematic, thematicLetter }),
       });
     } catch {
       // Non-critical; leave optimistic state
@@ -3225,7 +3261,7 @@ export default function ChapterDisplay({
       await fetch("/api/scene-breaks", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ wordId, ...getWordLocation(wordId), level, transitional }),
+        body: JSON.stringify({ wordId: sceneBreakDbId(wordId, level), ...getWordLocation(wordId), level, transitional }),
       });
     } catch {
       // Non-critical; leave optimistic state
