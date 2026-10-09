@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { updateWordTag, deleteWordTag, deleteWordTagRefsByTagId, getWordRefsByLemmas, bulkInsertWordTagRefs } from "@/lib/db/queries";
+import { updateWordTag, deleteWordTag, deleteWordTagRefsForWords, getWordRefsByLemmas, bulkInsertWordTagRefs } from "@/lib/db/queries";
 import { getActiveWorkspaceId } from "@/lib/workspace";
 
 export const dynamic = "force-dynamic";
@@ -40,17 +40,28 @@ export async function PATCH(
   const lemmasChanged = lemmas !== undefined && JSON.stringify(lemmas ?? []) !== JSON.stringify(prevLemmas ?? []);
   let chapterRefs: Array<{ wordId: string; book: string; chapter: number; textSource: string }> = [];
 
+  let removedWordIds: string[] = [];
+
   if (lemmasChanged && lemmas?.length && corpusBooks?.length && textSource) {
     const workspaceId = await getActiveWorkspaceId();
-    await deleteWordTagRefsByTagId(numId);
     const allRefs = await getWordRefsByLemmas(lemmas, corpusBooks, textSource);
+    // Refs carry no record of whether they came from the lemma search or were
+    // tagged by hand (incl. every translation-word tag), so never wipe the tag.
+    // Only drop words the *previous* lemmas matched that the new lemmas don't —
+    // i.e. a lemma was removed. Adding a lemma never deletes anything.
+    if (prevLemmas?.length) {
+      const keep = new Set(allRefs.map((r) => r.wordId));
+      const prevRefs = await getWordRefsByLemmas(prevLemmas, corpusBooks, textSource);
+      removedWordIds = prevRefs.map((r) => r.wordId).filter((w) => !keep.has(w));
+      await deleteWordTagRefsForWords(numId, removedWordIds);
+    }
     await bulkInsertWordTagRefs(numId, allRefs, workspaceId);
     if (currentChapter != null && book) {
       chapterRefs = allRefs.filter((r) => r.book === book && r.chapter === currentChapter);
     }
   }
 
-  return NextResponse.json({ tag, chapterRefs });
+  return NextResponse.json({ tag, chapterRefs, removedWordIds });
 }
 
 // DELETE /api/word-tags/:id

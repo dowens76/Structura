@@ -3658,13 +3658,18 @@ export default function ChapterDisplay({
       });
       const data = await res.json();
       const chapterRefs = (data.chapterRefs ?? []) as Array<{ wordId: string; book: string; chapter: number; textSource: string }>;
-      if (chapterRefs.length > 0 || (prevLemmas?.length && lemmas !== prevLemmas)) {
+      const removedWordIds = (data.removedWordIds ?? []) as string[];
+      if (chapterRefs.length > 0 || removedWordIds.length > 0) {
+        // Mirror the server's incremental sync: drop only words a removed lemma
+        // matched, and add new matches without clobbering words that already
+        // carry a tag (the DB insert skips those too). Manual tags survive.
         setWordTagRefMap((prev) => {
           const next = new Map(prev);
-          for (const [wid, ref] of next) {
-            if (ref.tagId === id) next.delete(wid);
+          for (const wid of removedWordIds) {
+            if (next.get(wid)?.tagId === id) next.delete(wid);
           }
           for (const r of chapterRefs) {
+            if (next.has(r.wordId)) continue;
             next.set(r.wordId, { id: -1, wordId: r.wordId, tagId: id, textSource: r.textSource, book: r.book, chapter: r.chapter, workspaceId: 0, versionId: 0 });
           }
           return next;
@@ -4163,15 +4168,21 @@ export default function ChapterDisplay({
       });
       const data = await res.json();
       const chapterRefs = (data.chapterRefs ?? []) as Array<{ wordId: string; book: string; chapter: number; textSource: string }>;
-      const lemmasChanged = JSON.stringify(lemmas ?? []) !== JSON.stringify(prevLemmas ?? []);
-      if (lemmasChanged) {
+      const removedWordIds = (data.removedWordIds ?? []) as string[];
+      if (chapterRefs.length > 0 || removedWordIds.length > 0) {
+        // Mirror the server's incremental sync: undo only words a removed lemma
+        // matched (promoting a manual second character if present), and add new
+        // matches without clobbering words that already have a character.
         setCharacterRefMap((prevMap) => {
           const next = new Map(prevMap);
-          for (const [wid, ref] of next) {
-            if (ref.character1Id === id) next.delete(wid);
-            else if (ref.character2Id === id) next.set(wid, { ...ref, character2Id: null });
+          for (const wid of removedWordIds) {
+            const ref = next.get(wid);
+            if (ref?.character1Id !== id) continue;
+            if (ref.character2Id != null) next.set(wid, { ...ref, character1Id: ref.character2Id, character2Id: null });
+            else next.delete(wid);
           }
           for (const r of chapterRefs) {
+            if (next.has(r.wordId)) continue;
             next.set(r.wordId, { id: -1, wordId: r.wordId, character1Id: id, character2Id: null, textSource: r.textSource, book: r.book, chapter: r.chapter, workspaceId: 0, versionId: 0 });
           }
           return next;

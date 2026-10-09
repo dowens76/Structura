@@ -1145,17 +1145,26 @@ export async function removeCharacterRef(wordId: string, workspaceId: number, ve
   );
 }
 
-/**
- * Clears a character out of every ref that references it — deleting the row
- * when it's the primary (character1Id) assignment, or just unsetting the
- * secondary slot (character2Id) so the other character's assignment survives.
- * Mirrors the character_refs FK's own onDelete rules (cascade / set null),
- * so this is safe to call before a lemma-driven bulk re-link (see
- * bulkInsertCharacterRefs) without disturbing unrelated manual assignments.
- */
-export async function deleteCharacterRefsByCharacterId(characterId: number): Promise<void> {
-  await userDb.delete(characterRefs).where(eq(characterRefs.character1Id, characterId));
-  await userDb.update(characterRefs).set({ character2Id: null }).where(eq(characterRefs.character2Id, characterId));
+/** Undo a character's lemma-derived assignment on the given words only. The
+ *  lemma search only ever fills character1Id, so character2Id assignments are
+ *  manual and left alone; where one exists it's promoted to character1Id
+ *  rather than being deleted along with the row. */
+export async function removeCharacterRefsForWords(characterId: number, wordIds: string[]): Promise<void> {
+  const CHUNK = 500;
+  for (let i = 0; i < wordIds.length; i += CHUNK) {
+    const ids = wordIds.slice(i, i + CHUNK);
+    await userDb.update(characterRefs)
+      .set({ character1Id: sql`${characterRefs.character2Id}`, character2Id: null })
+      .where(and(
+        eq(characterRefs.character1Id, characterId),
+        sql`${characterRefs.character2Id} IS NOT NULL`,
+        inArray(characterRefs.wordId, ids),
+      ));
+    await userDb.delete(characterRefs).where(and(
+      eq(characterRefs.character1Id, characterId),
+      inArray(characterRefs.wordId, ids),
+    ));
+  }
 }
 
 /**
@@ -1528,8 +1537,16 @@ export async function removeWordTagRef(wordId: string, workspaceId: number, vers
   );
 }
 
-export async function deleteWordTagRefsByTagId(tagId: number): Promise<void> {
-  await userDb.delete(wordTagRefs).where(eq(wordTagRefs.tagId, tagId));
+/** Delete only the given words' refs for one tag (chunked for SQLite's
+ *  bound-parameter limit). Leaves every other ref on the tag untouched. */
+export async function deleteWordTagRefsForWords(tagId: number, wordIds: string[]): Promise<void> {
+  const CHUNK = 500;
+  for (let i = 0; i < wordIds.length; i += CHUNK) {
+    await userDb.delete(wordTagRefs).where(and(
+      eq(wordTagRefs.tagId, tagId),
+      inArray(wordTagRefs.wordId, wordIds.slice(i, i + CHUNK)),
+    ));
+  }
 }
 
 function stripHebVowels(s: string): string {

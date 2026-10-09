@@ -766,22 +766,39 @@ export default function WordTagPanel({
                       onClick={(e) => { e.stopPropagation(); onToggleHighlight(t.id); }}
                       title={isHighlighted ? "Remove highlight" : "Highlight all occurrences"}>✦</span>
                   )}
-                  {/* manage list (opens the Word/Concept Editor in a new tab — or,
-                      in the Tauri app where there's no tab to open, in place) */}
+                  {/* edit tag (same inline editor as double-click) */}
                   {isHovered && (
-                    <Link
-                      href={`/concepts/${encodeURIComponent(t.name)}`}
-                      target="_blank"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (isTauriApp()) {
-                          e.preventDefault();
-                          router.push(`/concepts/${encodeURIComponent(t.name)}`);
-                        }
-                      }}
-                      className="ml-0.5 text-stone-400 hover:text-blue-500 transition-colors leading-none"
-                      title="Manage this list's occurrences">✎</Link>
+                    <span role="button"
+                      onClick={(e) => { e.stopPropagation(); handleStartEdit(t); }}
+                      className="ml-0.5 text-stone-400 hover:text-blue-500 transition-colors cursor-pointer leading-none"
+                      title="Edit this tag">✎</span>
                   )}
+                  {/* list of occurrences (opens the Word/Concept Editor in a new tab —
+                      or, in the Tauri app where there's no tab to open, in place).
+                      `from` lets that page link back to this passage. */}
+                  {isHovered && (() => {
+                    const from = typeof window !== "undefined" ? window.location.pathname + window.location.search : "";
+                    const href = `/concepts/${encodeURIComponent(t.name)}${from ? `?from=${encodeURIComponent(from)}` : ""}`;
+                    return (
+                      <Link
+                        href={href}
+                        target="_blank"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (isTauriApp()) {
+                            e.preventDefault();
+                            router.push(href);
+                          }
+                        }}
+                        className="ml-0.5 text-stone-400 hover:text-blue-500 transition-colors leading-none inline-flex items-center"
+                        title="View list of occurrences">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                          <line x1="9" y1="6" x2="20" y2="6" /><line x1="9" y1="12" x2="20" y2="12" /><line x1="9" y1="18" x2="20" y2="18" />
+                          <circle cx="4.5" cy="6" r="1" /><circle cx="4.5" cy="12" r="1" /><circle cx="4.5" cy="18" r="1" />
+                        </svg>
+                      </Link>
+                    );
+                  })()}
                   {/* delete button */}
                   {isHovered && (
                     <span className="ml-0.5 text-stone-400 hover:text-red-500 transition-colors cursor-pointer leading-none"

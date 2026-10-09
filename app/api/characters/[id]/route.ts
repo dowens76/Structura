@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
   deleteCharacter, updateCharacter,
-  deleteCharacterRefsByCharacterId, getWordRefsByLemmas, bulkInsertCharacterRefs,
+  removeCharacterRefsForWords, getWordRefsByLemmas, bulkInsertCharacterRefs,
 } from "@/lib/db/queries";
 import { getActiveWorkspaceId } from "@/lib/workspace";
 
@@ -39,18 +39,28 @@ export async function PATCH(
   // Re-run lemma search when lemmas changed
   const lemmasChanged = lemmas !== undefined && JSON.stringify(lemmas ?? []) !== JSON.stringify(prevLemmas ?? []);
   let chapterRefs: Array<{ wordId: string; book: string; chapter: number; textSource: string }> = [];
+  let removedWordIds: string[] = [];
 
   if (lemmasChanged && lemmas?.length && corpusBooks?.length && textSource) {
     const workspaceId = await getActiveWorkspaceId();
-    await deleteCharacterRefsByCharacterId(numId);
     const allRefs = await getWordRefsByLemmas(lemmas, corpusBooks, textSource);
+    // Refs don't record whether they came from the lemma search or were
+    // assigned by hand, so never wipe the character. Only undo words the
+    // *previous* lemmas matched that the new lemmas don't — i.e. a lemma was
+    // removed. Adding a lemma never deletes anything.
+    if (prevLemmas?.length) {
+      const keep = new Set(allRefs.map((r) => r.wordId));
+      const prevRefs = await getWordRefsByLemmas(prevLemmas, corpusBooks, textSource);
+      removedWordIds = prevRefs.map((r) => r.wordId).filter((w) => !keep.has(w));
+      await removeCharacterRefsForWords(numId, removedWordIds);
+    }
     await bulkInsertCharacterRefs(numId, allRefs, workspaceId);
     if (currentChapter != null && book) {
       chapterRefs = allRefs.filter((r) => r.book === book && r.chapter === currentChapter);
     }
   }
 
-  return NextResponse.json({ character, chapterRefs });
+  return NextResponse.json({ character, chapterRefs, removedWordIds });
 }
 
 // DELETE /api/characters/:id

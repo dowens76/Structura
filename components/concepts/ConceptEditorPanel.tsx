@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import Link from "next/link";
 import HomeLink from "@/components/ui/HomeLink";
+import { OSIS_BOOKS_NT } from "@/lib/utils/osis";
 import { tokenizeTranslationText, decodeUsfmToken } from "@/lib/utils/translationTokens";
 
 const HEBREW_FONT: React.CSSProperties = { fontFamily: '"Ezra SIL", "SBL Hebrew", serif' };
@@ -48,7 +49,7 @@ function typeBadge(type: string): string {
   return "C";
 }
 
-export default function ConceptEditorPanel({ tagName }: { tagName: string }) {
+export default function ConceptEditorPanel({ tagName, returnTo = null }: { tagName: string; returnTo?: string | null }) {
   const [data, setData] = useState<OccurrencesData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -253,6 +254,18 @@ export default function ConceptEditorPanel({ tagName }: { tagName: string }) {
             </svg>
             Back to Manage Lists
           </Link>
+          {returnTo && (
+            <Link
+              href={returnTo}
+              className="flex items-center gap-1.5 text-sm transition-colors hover:opacity-70 w-fit"
+              style={{ color: "var(--accent, var(--text-muted))" }}
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="15 18 9 12 15 6" />
+              </svg>
+              Back to original {/\/passage\//.test(returnTo) ? "passage" : "chapter"}
+            </Link>
+          )}
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <span className="inline-block w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: data.tag.color }} />
@@ -315,6 +328,16 @@ export default function ConceptEditorPanel({ tagName }: { tagName: string }) {
 }
 
 // ─── Occurrence table ───────────────────────────────────────────────────────
+
+/** Source-text route segment for a verse link. Translation-tagged words carry
+ *  the translation abbreviation as textSource, which isn't a reading route, so
+ *  prefer the verse's underlying source text and fall back by testament. */
+function readingSourceFor(group: { book: string; sourceTextSource: string | null; members: { textSource: string }[] }): string {
+  if (group.sourceTextSource) return group.sourceTextSource;
+  const src = group.members.find((m) => m.textSource === "OSHB" || m.textSource === "SBLGNT" || m.textSource === "LXX")?.textSource;
+  if (src) return src;
+  return (OSIS_BOOKS_NT as readonly string[]).includes(group.book) ? "SBLGNT" : "OSHB";
+}
 
 interface OccurrenceTableProps {
   data: OccurrencesData;
@@ -651,7 +674,14 @@ function OccurrenceTable({
             const showBadges = group.phraseCount > 1;
             return (
               <tr key={group.osisRef} className="border-t" style={{ borderColor: "var(--border)" }}>
-                <td className="px-3 py-2 whitespace-nowrap align-top" style={{ color: "var(--foreground)" }}>{group.reference}</td>
+                <td className="px-3 py-2 whitespace-nowrap align-top">
+                  <Link
+                    href={`/${encodeURIComponent(group.book)}/${readingSourceFor(group)}/${group.chapter}?v=${group.verse}`}
+                    className="hover:underline hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+                    style={{ color: "var(--foreground)" }}
+                    title="Go to this verse"
+                  >{group.reference}</Link>
+                </td>
                 {showSourceText && (
                   <td className="px-3 py-2 align-top" style={hebrewStyle(group.sourceText)}>
                     {group.sourceTokens ? (
