@@ -1643,6 +1643,11 @@ export default function VerseDisplay({
   const { t } = useTranslation();
   const firstWordId = words[0]?.wordId;
   const verseStartsNewParagraph = firstWordId ? paragraphBreakIds.has(firstWordId) : false;
+  // A verse start is always a line boundary, so a horizontal line can sit
+  // above any verse — with or without a paragraph break there.
+  const showVerseSeparator = !!firstWordId && (
+    verseStartsNewParagraph || horizontalLineIds.has(firstWordId) || editingHorizontalLines
+  );
 
 
   const pilcrowClass = editingParagraphs
@@ -2861,7 +2866,7 @@ export default function VerseDisplay({
         className={`${verseStartsNewParagraph && verseSpacingOverride === undefined ? "mt-5" : ""} ${(speechContinuesIntoNext || annotContinuesIntoNext) ? "" : "mb-4"}`}
         style={verseSpacingOverride !== undefined ? { marginTop: verseSpacingOverride } : undefined}
       >
-        {verseStartsNewParagraph && firstWordId && renderSegSeparator(firstWordId)}
+        {showVerseSeparator && renderSegSeparator(firstWordId!)}
         {sourceSegments.map((seg, si) => {
           const { layers, isSegStart } = getSegSpeech(seg, si);
           const runs = computeRuns(seg, layers);
@@ -3096,7 +3101,7 @@ export default function VerseDisplay({
       } last:border-0${verseStartsNewParagraph && !(speechContinuesFromPrev || annotContinuesFromPrev) && verseSpacingOverrideMulti === undefined ? " mt-4" : ""}`}
       style={verseSpacingOverrideMulti !== undefined ? { marginTop: verseSpacingOverrideMulti } : undefined}
     >
-      {verseStartsNewParagraph && firstWordId && renderSegSeparator(firstWordId)}
+      {showVerseSeparator && renderSegSeparator(firstWordId!)}
 
       {/* Each source paragraph is its own 5-cell grid row so the speech-box
           background/border wraps the source, arc columns, label AND translation together. */}
@@ -3131,7 +3136,7 @@ export default function VerseDisplay({
           // Verse-level translation paragraph separator (first row only)
           const tvStartsNewParagraph = si === 0
             && paragraphBreakIds.has(`tv:${abbr}:${book}.${chapter}.${verseNum}.0`);
-          const tvHasHorizontalLine = tvStartsNewParagraph
+          const tvHasHorizontalLine = si === 0
             && horizontalLineIds.has(`tv:${abbr}:${book}.${chapter}.${verseNum}.0`);
 
           // ── Translation edit mode: show a plain textarea for direct text editing ──
@@ -3173,7 +3178,7 @@ export default function VerseDisplay({
 
           return (
             <div key={abbr} className="relative">
-              {tvStartsNewParagraph && (
+              {(tvStartsNewParagraph || tvHasHorizontalLine || (si === 0 && editingHorizontalLines)) && (
                 editingHorizontalLines ? (
                   <div className="relative flex items-center mb-1">
                     <div className="flex-1 border-t-2 border-sky-400" />

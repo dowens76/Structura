@@ -2907,12 +2907,13 @@ export default function ChapterDisplay({
     }
   }
 
-  // A horizontal line can only render at a paragraph-segment boundary, so
-  // adding one to a word that isn't already a paragraph break start also
-  // creates that break (inheriting indent, same as handleToggleParagraphBreak).
+  // A horizontal line renders at any line boundary. A verse start is always one,
+  // so no paragraph break is needed there; mid-verse, the line needs a paragraph
+  // break to create the boundary (inheriting indent, same as handleToggleParagraphBreak).
   function handleToggleHorizontalLine(wordId: string) {
     const wasSet = horizontalLineIds.has(wordId);
-    if (!wasSet && !paragraphBreakIds.has(wordId)) {
+    const isVerseStart = wordPositionMap.get(wordId) === 1;
+    if (!wasSet && !isVerseStart && !paragraphBreakIds.has(wordId)) {
       handleToggleParagraphBreak(wordId);
     }
     return handleToggleHorizontalLineById(wordId, textSource);
@@ -2921,7 +2922,8 @@ export default function ChapterDisplay({
   // Called when a translation word is clicked in horizontal-line-editing mode.
   function handleToggleTranslationHorizontalLine(wordId: string, abbr: string) {
     const wasSet = horizontalLineIds.has(wordId);
-    if (!wasSet && !paragraphBreakIds.has(wordId)) {
+    const isVerseStart = wordId.endsWith(".0");
+    if (!wasSet && !isVerseStart && !paragraphBreakIds.has(wordId)) {
       handleToggleTranslationParagraphBreak(wordId, abbr);
     }
     return handleToggleHorizontalLineById(wordId, abbr);
