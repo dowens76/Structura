@@ -3,6 +3,15 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import NoteEditor from "./NoteEditor";
 import { extractTextFromTipTap, tiptapToHtml } from "@/lib/utils/tiptap-text";
+import { onCollectNotes } from "@/lib/utils/collectNotes";
+import { useTranslation } from "@/lib/i18n/LocaleContext";
+import CopyButton, { plainToHtml, type CopyPayload } from "./CopyButton";
+
+/** Copy payload for a plain-text field, or null when it's blank. */
+function plainPayload(value: string): CopyPayload | null {
+  const plain = value.trim();
+  return plain ? { html: plainToHtml(plain), plain } : null;
+}
 
 interface CustomField {
   id: string;
@@ -58,6 +67,7 @@ export default function ChapterSummarySection({
   const [loaded, setLoaded] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const [copied, setCopied] = useState(false);
+  const { t } = useTranslation();
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Load both keys on mount / key change
@@ -78,6 +88,14 @@ export default function ChapterSummarySection({
       });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [metaKey, sermonKey]);
+
+  // Report live (possibly unsaved) meta for pane-wide copy
+  useEffect(() => {
+    if (!loaded) return;
+    return onCollectNotes((contents) => {
+      contents[metaKey] = JSON.stringify(meta);
+    });
+  }, [loaded, metaKey, meta]);
 
   const saveMeta = useCallback(
     (updated: SummaryMeta) => {
@@ -225,7 +243,7 @@ export default function ChapterSummarySection({
             className="text-[10px] px-1.5 py-0.5 rounded transition-colors"
             style={{ color: copied ? "var(--accent)" : "var(--text-muted)" }}
           >
-            {copied ? "✓ Copied" : "Copy"}
+            {copied ? "✓ Copied" : "Copy all overview fields"}
           </button>
         )}
       </div>
@@ -238,9 +256,16 @@ export default function ChapterSummarySection({
             <>
               {/* Main Idea */}
               <div>
-                <label className="block text-xs font-semibold mb-1" style={{ color: "var(--text-muted)" }}>
-                  Main Idea
-                </label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-semibold" style={{ color: "var(--text-muted)" }}>
+                    Main Idea
+                  </label>
+                  <CopyButton
+                    className="!w-5 !h-5"
+                    label={t("notes.copyField", { name: "Main Idea" })}
+                    getPayload={() => plainPayload(meta.mainIdea)}
+                  />
+                </div>
                 <input
                   type="text"
                   value={meta.mainIdea}
@@ -280,6 +305,11 @@ export default function ChapterSummarySection({
                           value={field.name}
                           onChange={(e) => updateFieldName(field.id, e.target.value)}
                           className="flex-1 text-xs px-2 py-1 rounded border border-[var(--border)] bg-[var(--background)] text-[var(--foreground)] font-semibold focus:outline-none focus:ring-1 focus:ring-amber-400"
+                        />
+                        <CopyButton
+                          className="!w-5 !h-5"
+                          label={t("notes.copyField", { name: field.name || "Field" })}
+                          getPayload={() => plainPayload(field.value)}
                         />
                         <button
                           onClick={() => removeField(field.id)}

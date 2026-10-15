@@ -14,6 +14,10 @@ import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
 import ZoteroCitePicker from "./ZoteroCitePicker";
 import ScriptureTooltip from "./ScriptureTooltip";
 import { ScriptureRefPlugin } from "@/lib/scripture/ScriptureRefPlugin";
+import { onCollectNotes } from "@/lib/utils/collectNotes";
+import { extractTextFromTipTap, tiptapToHtml } from "@/lib/utils/tiptap-text";
+import { useTranslation } from "@/lib/i18n/LocaleContext";
+import CopyButton from "./CopyButton";
 
 // ─── Search-highlight ProseMirror extension ───────────────────────────────────
 
@@ -242,6 +246,14 @@ export default function NoteEditor({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [noteKey]);
 
+  // Report live (possibly unsaved) content for pane-wide copy
+  useEffect(() => {
+    if (!editor) return;
+    return onCollectNotes((contents) => {
+      contents[noteKey] = JSON.stringify(editor.getJSON());
+    });
+  }, [editor, noteKey]);
+
   // Update search highlights whenever query changes
   useEffect(() => {
     if (!editor) return;
@@ -249,6 +261,7 @@ export default function NoteEditor({
   }, [editor, searchQuery]);
 
   const [showCitePicker, setShowCitePicker] = useState(false);
+  const { t } = useTranslation();
 
   // Scripture reference tooltip state
   const [tooltipRef, setTooltipRef] = useState<string | null>(null);
@@ -430,6 +443,17 @@ export default function NoteEditor({
             <text x="9.5" y="11.2" textAnchor="middle" fontSize="3" fill="white" fontWeight="bold">Z</text>
           </svg>
         </ToolBtn>
+
+        {/* Copy this note */}
+        <CopyButton
+          className="ml-auto"
+          label={t("notes.copyNote")}
+          getPayload={() => {
+            const json = JSON.stringify(editor.getJSON());
+            const plain = extractTextFromTipTap(json);
+            return plain ? { html: `<div>${tiptapToHtml(json)}</div>`, plain } : null;
+          }}
+        />
       </div>
 
       {/* Floating citation picker */}

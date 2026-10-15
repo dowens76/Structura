@@ -4,7 +4,9 @@ import { useEffect, useRef, useState } from "react";
 import NoteEditor from "./NoteEditor";
 import ChapterSummarySection from "./ChapterSummarySection";
 import { useTranslation } from "@/lib/i18n/LocaleContext";
-import { extractTextFromTipTap } from "@/lib/utils/tiptap-text";
+import { extractTextFromTipTap, tiptapToHtml } from "@/lib/utils/tiptap-text";
+import { collectLiveNotes } from "@/lib/utils/collectNotes";
+import CopyButton, { escHtml, plainToHtml, type CopyPayload } from "./CopyButton";
 
 interface VerseRef { ch: number; v: number; }
 
@@ -130,6 +132,14 @@ export default function PassageNotesPane({
     });
   }
 
+  // Keys for the passage/chapter summary block (main idea, outline, custom fields)
+  const summaryMetaKey = isWholeChapter && wholeChapterNum != null
+    ? `meta:chapter:${book}.${wholeChapterNum}`
+    : `meta:passage:${passageId}`;
+  const summarySermonKey = isWholeChapter && wholeChapterNum != null
+    ? `sermon:chapter:${book}.${wholeChapterNum}`
+    : `sermon:passage:${passageId}`;
+
   // Fetch existing content for all keys
   const [noteContents, setNoteContents] = useState<Record<string, string>>({});
   const [loaded, setLoaded] = useState(false);
@@ -202,6 +212,56 @@ export default function PassageNotesPane({
   function goPrev() {
     if (matchingSections.length === 0) return;
     setMatchIndex((i) => (i - 1 + matchingSections.length) % matchingSections.length);
+  }
+
+  // ── Copy whole pane to clipboard ─────────────────────────────────────────
+  function buildAllNotesPayload(): CopyPayload | null {
+    // Live editor state first (catches edits still inside the save debounce),
+    // falling back to what was loaded for anything not currently mounted.
+    const live = collectLiveNotes();
+    const contentOf = (key: string) => live[key] ?? noteContents[key] ?? "{}";
+
+    const blocks: Array<{ label: string; level: 2 | 3; html: string; text: string }> = [];
+    const addTiptap = (label: string, level: 2 | 3, content: string) => {
+      const text = extractTextFromTipTap(content);
+      if (text) blocks.push({ label, level, html: tiptapToHtml(content), text });
+    };
+    const addPlain = (label: string, level: 2 | 3, value: string) => {
+      const text = value.trim();
+      if (text) blocks.push({ label, level, html: plainToHtml(text), text });
+    };
+
+    if (showBookNotes) {
+      addTiptap(t("notes.bookNotesHeader", { bookName }), 2, live[`book:${book}`] ?? bookNoteContent);
+    }
+
+    // Summary block
+    try {
+      const meta = JSON.parse(live[summaryMetaKey] ?? "{}");
+      if (typeof meta?.mainIdea === "string") addPlain("Main Idea", 3, meta.mainIdea);
+    } catch { /* ignore */ }
+    if (live[summarySermonKey]) addTiptap("Teaching Outline", 3, live[summarySermonKey]);
+    try {
+      const meta = JSON.parse(live[summaryMetaKey] ?? "{}");
+      for (const f of Array.isArray(meta?.customFields) ? meta.customFields : []) {
+        if (typeof f?.value === "string") addPlain(f.name || "Field", 3, f.value);
+      }
+    } catch { /* ignore */ }
+
+    for (const section of sections) {
+      addTiptap(section.label, section.noteType === "verse" ? 3 : 2, contentOf(section.key));
+    }
+
+    if (blocks.length === 0) return null;
+
+    const title = passageLabel ?? (wholeChapterNum != null ? `${bookName} ${wholeChapterNum}` : bookName);
+    const html =
+      `<div><h1>${escHtml(title)}</h1>` +
+      blocks.map((b) => `<h${b.level}>${escHtml(b.label)}</h${b.level}>${b.html}`).join("") +
+      `</div>`;
+    const plain = [title, ...blocks.map((b) => `${b.label}\n${b.text}`)].join("\n\n");
+
+    return { html, plain };
   }
 
   // Cmd/Ctrl+F → open search bar
@@ -286,6 +346,7 @@ export default function PassageNotesPane({
         >
           🔍
         </button>
+        <CopyButton getPayload={buildAllNotesPayload} label={t("notes.copyAll")} disabled={!loaded} />
         {onSyncToggle && (
           <button
             onClick={onSyncToggle}
@@ -358,12 +419,8 @@ export default function PassageNotesPane({
         )}
 
         <ChapterSummarySection
-          metaKey={isWholeChapter && wholeChapterNum != null
-            ? `meta:chapter:${book}.${wholeChapterNum}`
-            : `meta:passage:${passageId}`}
-          sermonKey={isWholeChapter && wholeChapterNum != null
-            ? `sermon:chapter:${book}.${wholeChapterNum}`
-            : `sermon:passage:${passageId}`}
+          metaKey={summaryMetaKey}
+          sermonKey={summarySermonKey}
           book={book}
           chapter={isWholeChapter ? wholeChapterNum : undefined}
           searchQuery={q || undefined}
@@ -409,3 +466,4 @@ export default function PassageNotesPane({
     </div>
   );
 }
+

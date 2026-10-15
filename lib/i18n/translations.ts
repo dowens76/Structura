@@ -595,6 +595,11 @@ const en = {
     loading: "Loading…",
     chapterNoteLabel: "Chapter notes: {bookName} {chapter}",
     passageNoteLabel: "Passage notes: {label}",
+    copyAll: "Copy all notes in this pane to the clipboard",
+    copied: "Copied",
+    nothingToCopy: "Nothing to copy",
+    copyNote: "Copy this note",
+    copyField: "Copy {name}",
   },
   // ── Outline pane ─────────────────────────────────────────────────────────────
   outlinePane: {
@@ -1175,6 +1180,11 @@ const vi: Translations = {
     loading: "Đang tải…",
     chapterNoteLabel: "Ghi chú chương: {bookName} {chapter}",
     passageNoteLabel: "Ghi chú phân đoạn: {label}",
+    copyAll: "Sao chép tất cả ghi chú trong khung này vào bảng tạm",
+    copied: "Đã sao chép",
+    nothingToCopy: "Không có gì để sao chép",
+    copyNote: "Sao chép ghi chú này",
+    copyField: "Sao chép {name}",
   },
   // ── Outline pane ─────────────────────────────────────────────────────────────
   outlinePane: {
