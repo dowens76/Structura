@@ -286,8 +286,10 @@ export default function NoteEditor({
         leaveTimer.current = setTimeout(() => setTooltipRef(null), 150);
       }}
     >
-      {/* ── Toolbar wrapper — position: relative so picker floats below ── */}
-      <div style={{ position: "relative" }}>
+      {/* ── Toolbar wrapper — sticky so it stays visible while scrolling a
+          long note (bounded by .note-editor, so each note's toolbar hands off
+          to the next); also the positioning context for the citation picker ── */}
+      <div className="sticky top-0 z-20 bg-[var(--background)]">
       <div className="note-toolbar flex items-center gap-0.5 flex-wrap px-2 py-1 border-b border-stone-100 dark:border-stone-800">
         {/* Paragraph styles */}
         <ToolBtn

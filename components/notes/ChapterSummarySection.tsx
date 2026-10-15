@@ -255,7 +255,8 @@ export default function ChapterSummarySection({
                 <label className="block text-xs font-semibold mb-1" style={{ color: "var(--text-muted)" }}>
                   Teaching Outline
                 </label>
-                <div className="rounded border border-[var(--border)] overflow-hidden">
+                {/* overflow-clip (not hidden) so NoteEditor's sticky toolbar still works */}
+                <div className="rounded border border-[var(--border)] overflow-clip">
                   <NoteEditor
                     key={sermonKey}
                     noteKey={sermonKey}
