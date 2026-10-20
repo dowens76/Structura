@@ -922,6 +922,30 @@ export const translationFootnotes = sqliteTable(
   ]
 );
 
+/** Section headings (\s1, \s2, …) that came with an imported translation.
+ *  Kept apart from scene_breaks so importing a Bible never writes into the
+ *  user's own outline/markup layer — each translation carries its own
+ *  heading set, removed along with the translation. */
+export const translationHeadings = sqliteTable(
+  "translation_headings",
+  {
+    id:            integer("id").primaryKey({ autoIncrement: true }),
+    translationId: integer("translation_id").notNull()
+                     .references(() => translations.id, { onDelete: "cascade" }),
+    osisRef:       text("osis_ref").notNull(),     // Book.Ch.V — the verse the heading precedes
+    book:          text("book").notNull(),
+    chapter:       integer("chapter").notNull(),
+    verse:         integer("verse").notNull(),
+    level:         integer("level").notNull().default(1),
+    heading:       text("heading").notNull(),
+    createdAt:     text("created_at").$defaultFn(() => new Date().toISOString()),
+  },
+  (t) => [
+    uniqueIndex("th_trans_ref_level_idx").on(t.translationId, t.osisRef, t.level),
+    index("th_trans_book_ch_idx").on(t.translationId, t.book, t.chapter),
+  ]
+);
+
 /** Per-verse text snapshots recorded before each save (fine-grained VCS). */
 export const translationVersions = sqliteTable(
   "translation_versions",

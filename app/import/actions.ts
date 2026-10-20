@@ -4,7 +4,7 @@ import { parseBibleComText } from "@/lib/utils/translation-parser";
 import { parseUsfmFile } from "@/lib/utils/usfm-full-parser";
 import { upsertTranslation, getBook, getOrCreateDefaultVersion } from "@/lib/db/queries";
 import { userDb } from "@/lib/db";
-import { translations, translationVerses, translationFootnotes, paragraphBreaks, lineIndents, sceneBreaks } from "@/lib/db/schema";
+import { translations, translationVerses, translationFootnotes, translationHeadings, paragraphBreaks, lineIndents, sceneBreaks } from "@/lib/db/schema";
 import { and, eq, inArray } from "drizzle-orm";
 import { formatOsisRef } from "@/lib/utils/osis";
 import { hasPsalmSuperscriptionOffset } from "@/lib/versification/mt-kjv-mapping";
@@ -192,6 +192,9 @@ async function importSingleUsfmFile(
     await userDb.delete(translationFootnotes).where(
       and(eq(translationFootnotes.translationId, translationId), eq(translationFootnotes.book, osisBook))
     );
+    await userDb.delete(translationHeadings).where(
+      and(eq(translationHeadings.translationId, translationId), eq(translationHeadings.book, osisBook))
+    );
 
     const allParaBreaks = await userDb
       .select({ id: paragraphBreaks.id, wordId: paragraphBreaks.wordId })
@@ -205,6 +208,8 @@ async function importSingleUsfmFile(
     const liIds = allLineIndentsRows.filter(li => li.wordId.startsWith(tvPrefix)).map(li => li.id);
     if (liIds.length > 0) await userDb.delete(lineIndents).where(inArray(lineIndents.id, liIds));
 
+    // Older imports wrote headings into scene_breaks (the user's outline) under
+    // a tv: prefix — clear those so a re-import moves them to translation_headings.
     const allSceneBreaks = await userDb
       .select({ id: sceneBreaks.id, wordId: sceneBreaks.wordId })
       .from(sceneBreaks).where(eq(sceneBreaks.book, osisBook));
@@ -221,6 +226,10 @@ async function importSingleUsfmFile(
       await userDb.delete(translationFootnotes).where(
         and(eq(translationFootnotes.translationId, translationId), eq(translationFootnotes.book, osisBook),
           inArray(translationFootnotes.chapter, chapterList))
+      );
+      await userDb.delete(translationHeadings).where(
+        and(eq(translationHeadings.translationId, translationId), eq(translationHeadings.book, osisBook),
+          inArray(translationHeadings.chapter, chapterList))
       );
 
       const chParaBreaks = await userDb
@@ -312,26 +321,19 @@ async function importSingleUsfmFile(
     }
   }
 
-  // ── Insert section breaks ────────────────────────────────────────────────────
-  const sbFiltered = parsed.sectionBreaks.filter(sb => {
-    const ch = parseInt(sb.osisRef.split(".")[1] ?? "0", 10);
-    return shouldProcess(ch);
-  });
-  if (sbFiltered.length > 0) {
-    const sbRows = await Promise.all(sbFiltered.map(async (sb) => {
+  // ── Insert section headings ──────────────────────────────────────────────────
+  // Stored as this translation's own heading set, never as scene_breaks: an
+  // import must not write into the user's outline.
+  const thRows = parsed.sectionBreaks
+    .map((sb) => {
       const parts = sb.osisRef.split(".");
       const ch = parseInt(parts[1] ?? "0", 10);
       const v = parseInt(parts[2] ?? "1", 10);
-      return {
-        workspaceId: 1, versionId: await versionForChapter(ch), wordId: `tv:${abbreviation}:${sb.osisRef}`, heading: sb.heading,
-        level: sb.level, verse: v, outOfSequence: false,
-        extendedThrough: null, thematic: false, thematicLetter: null,
-        textSource, book: osisBook, chapter: ch,
-      };
-    }));
-    for (let i = 0; i < sbRows.length; i += BATCH) {
-      await userDb.insert(sceneBreaks).values(sbRows.slice(i, i + BATCH)).onConflictDoNothing();
-    }
+      return { translationId, osisRef: sb.osisRef, book: osisBook, chapter: ch, verse: v, level: sb.level, heading: sb.heading };
+    })
+    .filter(th => shouldProcess(th.chapter) && th.heading);
+  for (let i = 0; i < thRows.length; i += BATCH) {
+    await userDb.insert(translationHeadings).values(thRows.slice(i, i + BATCH)).onConflictDoNothing();
   }
 
   return { count: verseRows.length };

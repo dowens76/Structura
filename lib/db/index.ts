@@ -856,6 +856,22 @@ function _migrateUserDbInner(sqlite: Database.Database): void {
   `);
 
   sqlite.exec(`
+    CREATE TABLE IF NOT EXISTS translation_headings (
+      id             INTEGER PRIMARY KEY AUTOINCREMENT,
+      translation_id INTEGER NOT NULL REFERENCES translations(id) ON DELETE CASCADE,
+      osis_ref       TEXT    NOT NULL,
+      book           TEXT    NOT NULL,
+      chapter        INTEGER NOT NULL,
+      verse          INTEGER NOT NULL,
+      level          INTEGER NOT NULL DEFAULT 1,
+      heading        TEXT    NOT NULL,
+      created_at     TEXT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS th_trans_ref_level_idx ON translation_headings(translation_id, osis_ref, level);
+    CREATE INDEX IF NOT EXISTS th_trans_book_ch_idx ON translation_headings(translation_id, book, chapter);
+  `);
+
+  sqlite.exec(`
     CREATE TABLE IF NOT EXISTS translation_versions (
       id             INTEGER PRIMARY KEY AUTOINCREMENT,
       workspace_id   INTEGER NOT NULL DEFAULT 1 REFERENCES workspaces(id) ON DELETE CASCADE,

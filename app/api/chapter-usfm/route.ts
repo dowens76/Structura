@@ -3,7 +3,7 @@ import { parseUsfmFile } from "@/lib/utils/usfm-full-parser";
 import { getBook, getOrCreateDefaultVersion } from "@/lib/db/queries";
 import { userDb } from "@/lib/db";
 import {
-  translations, translationVerses, translationFootnotes,
+  translations, translationVerses, translationFootnotes, translationHeadings,
   paragraphBreaks, lineIndents, sceneBreaks,
 } from "@/lib/db/schema";
 import { and, eq, like } from "drizzle-orm";
@@ -69,7 +69,16 @@ export async function POST(req: NextRequest) {
     )
   );
 
-  // Delete paragraph/indent/scene breaks for this chapter's tv prefix
+  await userDb.delete(translationHeadings).where(
+    and(
+      eq(translationHeadings.translationId, translationId),
+      eq(translationHeadings.book, book),
+      eq(translationHeadings.chapter, chapter)
+    )
+  );
+
+  // Delete paragraph/indent breaks for this chapter's tv prefix, plus any
+  // scene breaks an older import wrote there before translation_headings existed
   const deleteByPrefix = async (table: typeof paragraphBreaks | typeof lineIndents | typeof sceneBreaks) => {
     const rows = await userDb.select({ id: table.id, wordId: table.wordId })
       .from(table as typeof paragraphBreaks)
@@ -133,21 +142,20 @@ export async function POST(req: NextRequest) {
       await userDb.insert(lineIndents).values(liRows.slice(i, i + BATCH)).onConflictDoNothing();
   }
 
-  // Insert section breaks
-  const sbRows = parsed.sectionBreaks
-    .filter(sb => sb.osisRef.startsWith(osisChapterPrefix))
+  // Insert section headings into the translation's own heading set — never
+  // into scene_breaks, which is the user's outline
+  const thRows = parsed.sectionBreaks
+    .filter(sb => sb.osisRef.startsWith(osisChapterPrefix) && sb.heading)
     .map(sb => {
       const [, ch, v] = sb.osisRef.split(".");
       return {
-        workspaceId: 1, versionId, wordId: `tv:${abbr}:${sb.osisRef}`, heading: sb.heading,
-        level: sb.level, verse: parseInt(v ?? "1", 10), outOfSequence: false,
-        extendedThrough: null, thematic: false, thematicLetter: null,
-        textSource, book, chapter: parseInt(ch, 10),
+        translationId, osisRef: sb.osisRef, book,
+        chapter: parseInt(ch, 10), verse: parseInt(v ?? "1", 10),
+        level: sb.level, heading: sb.heading,
       };
     });
-  for (let i = 0; i < sbRows.length; i += BATCH) {
-    if (sbRows.slice(i, i + BATCH).length > 0)
-      await userDb.insert(sceneBreaks).values(sbRows.slice(i, i + BATCH)).onConflictDoNothing();
+  for (let i = 0; i < thRows.length; i += BATCH) {
+    await userDb.insert(translationHeadings).values(thRows.slice(i, i + BATCH)).onConflictDoNothing();
   }
 
   return NextResponse.json({ success: true, verseCount: verseRows.length });

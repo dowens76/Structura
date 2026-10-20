@@ -6,7 +6,7 @@ import {
   getBook,
 } from "@/lib/db/queries";
 import { userDb } from "@/lib/db";
-import { paragraphBreaks, lineIndents, sceneBreaks, translations } from "@/lib/db/schema";
+import { paragraphBreaks, lineIndents, sceneBreaks, translations, translationHeadings } from "@/lib/db/schema";
 import { and, eq, like } from "drizzle-orm";
 import { exportToUsfm } from "@/lib/utils/usfm-exporter";
 import type { UsfmExportData } from "@/lib/utils/usfm-exporter";
@@ -85,17 +85,29 @@ export async function GET(req: NextRequest) {
     allLineIndents.map(li => [li.wordId.slice(`tv:${abbr}:`.length), li.indentLevel])
   );
 
-  // Fetch section breaks
-  const allSceneBreaks = await userDb
+  // Fetch section headings — the translation's own heading set, plus any
+  // tv:-prefixed scene breaks left by imports made before translation_headings
+  // existed (the heading set wins where both have one).
+  const legacySceneBreaks = await userDb
     .select()
     .from(sceneBreaks)
     .where(and(eq(sceneBreaks.book, book), like(sceneBreaks.wordId, `${tvPrefix}%`)));
 
-  const sectionMap = new Map<string, { heading: string; level: number }>(
-    allSceneBreaks
+  const headingRows = await userDb
+    .select()
+    .from(translationHeadings)
+    .where(and(
+      eq(translationHeadings.translationId, translationId),
+      eq(translationHeadings.book, book),
+      ...(chapter ? [eq(translationHeadings.chapter, chapter)] : []),
+    ));
+
+  const sectionMap = new Map<string, { heading: string; level: number }>([
+    ...legacySceneBreaks
       .filter(sb => sb.heading)
-      .map(sb => [sb.wordId.slice(`tv:${abbr}:`.length), { heading: sb.heading!, level: sb.level }])
-  );
+      .map(sb => [sb.wordId.slice(`tv:${abbr}:`.length), { heading: sb.heading!, level: sb.level }] as const),
+    ...headingRows.map(th => [th.osisRef, { heading: th.heading, level: th.level }] as const),
+  ]);
 
   const exportData: UsfmExportData = {
     book,
