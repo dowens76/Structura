@@ -38,7 +38,7 @@ import RstTypeManager from "@/components/controls/RstTypeManager";
 import LineGroupColorPanel from "@/components/controls/LineGroupColorPanel";
 import ToolbarCustomizer, { DEFAULT_TOOLBAR_VIS, type ToolbarVisibility } from "@/components/controls/ToolbarCustomizer";
 import type { ColorRule } from "@/lib/morphology/colorRules";
-import { RELATIONSHIP_TYPES } from "@/lib/morphology/clauseRelationships";
+import { RELATIONSHIP_TYPES, localizeRstType } from "@/lib/morphology/clauseRelationships";
 import type { RstTypeEntry } from "@/lib/morphology/clauseRelationships";
 import type { RstCustomType } from "@/lib/db/schema";
 import { useWordArrows } from "@/lib/hooks/useWordArrows";
@@ -1944,8 +1944,8 @@ export default function ChapterDisplay({
 
   // Merged RST types (built-in + custom)
   const allRstTypes = useMemo<RstTypeEntry[]>(
-    () => [...RELATIONSHIP_TYPES, ...customRstTypes],
-    [customRstTypes]
+    () => [...RELATIONSHIP_TYPES.map((r) => localizeRstType(t, r)), ...customRstTypes],
+    [customRstTypes, t]
   );
 
   const isHebrew = words[0]?.language === "hebrew";

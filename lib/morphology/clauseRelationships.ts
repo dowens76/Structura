@@ -52,3 +52,18 @@ export function buildRelationshipMap(customTypes: RstTypeEntry[]): Record<string
   for (const t of customTypes) map[t.key] = t;
   return map;
 }
+
+/** Built-in type with its label and chip abbreviation in the current locale.
+ *  Custom types are user-named and returned unchanged. */
+export function localizeRstType(t: (key: string) => string, entry: RstTypeEntry): RstTypeEntry {
+  if (!entry.isBuiltIn) return entry;
+  const labelKey = `rstTypes.labels.${entry.key}`;
+  const abbrKey  = `rstTypes.abbrs.${entry.key}`;
+  const label = t(labelKey);
+  const abbr  = t(abbrKey);
+  return {
+    ...entry,
+    label: label === labelKey ? entry.label : label,
+    abbr:  abbr  === abbrKey  ? entry.abbr  : abbr,
+  };
+}

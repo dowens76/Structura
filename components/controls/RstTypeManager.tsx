@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import type { RstTypeEntry } from "@/lib/morphology/clauseRelationships";
-import { RELATIONSHIP_TYPES } from "@/lib/morphology/clauseRelationships";
+import { RELATIONSHIP_TYPES, localizeRstType } from "@/lib/morphology/clauseRelationships";
 import { useTranslation } from "@/lib/i18n/LocaleContext";
 
 // 20-swatch palette for colour picker
@@ -193,7 +193,7 @@ export default function RstTypeManager({ customTypes, onAdd, onUpdate, onDelete 
           {tr("rstTypes.builtIn")}
         </p>
         <div className="flex flex-wrap gap-1.5">
-          {RELATIONSHIP_TYPES.map((t) => (
+          {RELATIONSHIP_TYPES.map((r) => localizeRstType(tr, r)).map((t) => (
             <span
               key={t.key}
               title={t.label}
@@ -231,7 +231,7 @@ export default function RstTypeManager({ customTypes, onAdd, onUpdate, onDelete 
                 <div key={t.id} className="flex items-center gap-2 group">
                   <Chip abbr={t.abbr} color={t.color} />
                   <span className="flex-1" style={{ color: "var(--nav-fg)" }}>{t.label}</span>
-                  <span className="text-[10px] opacity-40">{t.category === "coordinate" ? "coord." : "subord."}</span>
+                  <span className="text-[10px] opacity-40">{t.category === "coordinate" ? tr("rstTypes.coordShort") : tr("rstTypes.subordShort")}</span>
                   <button
                     type="button"
                     onClick={() => setEditingId(t.id)}

@@ -7,8 +7,10 @@ import type { RstRelation } from "@/lib/db/schema";
 import {
   RELATIONSHIP_MAP,
   buildRelationshipMap,
+  localizeRstType,
   type RstTypeEntry,
 } from "@/lib/morphology/clauseRelationships";
+import { useTranslation } from "@/lib/i18n/LocaleContext";
 import { buildRstTree } from "@/lib/rst/buildRstTree";
 import { measureSegments, type SegPos } from "./measureSegments";
 
@@ -415,9 +417,15 @@ export default function RstRelationOverlay({
   onRequiredSourcePad,
   onUpdateRstIntersectPoint,
 }: Props) {
-  const relMap = customTypes.length > 0
-    ? buildRelationshipMap(customTypes)
-    : RELATIONSHIP_MAP;
+  const { t } = useTranslation();
+  const relMap = useMemo(() => {
+    const map = customTypes.length > 0
+      ? buildRelationshipMap(customTypes)
+      : RELATIONSHIP_MAP;
+    return Object.fromEntries(
+      Object.entries(map).map(([k, v]) => [k, localizeRstType(t, v)])
+    );
+  }, [customTypes, t]);
 
   const svgRef    = useRef<SVGSVGElement>(null);
   const frameRef  = useRef<number | null>(null);

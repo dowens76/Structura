@@ -18,7 +18,8 @@ import { computePoetryAnchorLayout, computePoetrySpacingMap, POETRY_STACK_STEP_P
 import { buildLineGroupTree } from "@/lib/lineGroups/buildLineGroupTree";
 import { computeLineSpacing } from "@/lib/lineGroups/computeLineSpacing";
 import { defaultColorForLevel } from "@/lib/lineGroups/colors";
-import { RELATIONSHIP_TYPES } from "@/lib/morphology/clauseRelationships";
+import { RELATIONSHIP_TYPES, localizeRstType } from "@/lib/morphology/clauseRelationships";
+import { useTranslation } from "@/lib/i18n/LocaleContext";
 import type { RstTypeEntry } from "@/lib/morphology/clauseRelationships";
 import { derivePoetryDisplayMaps } from "@/lib/poetry/derivePoetryDisplayMaps";
 
@@ -114,9 +115,10 @@ export default function ExportTextView({
       .then((rows: RstCustomType[]) => setCustomRstTypes(rows))
       .catch(() => {});
   }, []);
+  const { t } = useTranslation();
   const allRstTypes = useMemo<RstTypeEntry[]>(
-    () => [...RELATIONSHIP_TYPES, ...customRstTypes],
-    [customRstTypes],
+    () => [...RELATIONSHIP_TYPES.map((r) => localizeRstType(t, r)), ...customRstTypes],
+    [customRstTypes, t],
   );
 
   // ── Build lookup maps ───────────────────────────────────────────────────
