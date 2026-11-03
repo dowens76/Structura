@@ -70,9 +70,13 @@ export function parseBibleComText(raw: string, opts?: ParseOptions): ParseResult
     .map((l) => l.trim())
     .join("\n");
 
-  // Inject \v markers before verse numbers (line-start and inline), then
-  // route through the USFM parser which handles verse splitting reliably.
-  const withMarkers = injectVerseMarkers(body);
+  // Inject \v markers before verse numbers, then route through the USFM
+  // parser which handles verse splitting reliably. Superscript verse numbers
+  // (VietBible) are unambiguous, so when present they are used exclusively
+  // and plain digits in the text are left alone.
+  const withMarkers = SUPERSCRIPT_DIGITS_RE.test(body)
+    ? injectSuperscriptVerseMarkers(body)
+    : injectVerseMarkers(body);
 
   if (IS_USFM_RE.test(withMarkers)) {
     const result = parseUSFM(withMarkers, opts);
@@ -186,6 +190,27 @@ function parseUSFM(raw: string, opts?: ParseOptions): ParseResult {
   }
 
   return { verses, detectedChapter, detectedBookName, detectedAbbreviation: null };
+}
+
+const SUPERSCRIPT_DIGIT_MAP: Record<string, string> = {
+  "⁰": "0", "¹": "1", "²": "2", "³": "3", "⁴": "4",
+  "⁵": "5", "⁶": "6", "⁷": "7", "⁸": "8", "⁹": "9",
+};
+const SUPERSCRIPT_DIGITS_RE = /[⁰¹²³⁴-⁹]+/;
+
+/**
+ * Convert superscript verse numbers (as copied from VietBible) into \v N
+ * markers. The number is often glued to the end of the previous verse with
+ * no space ("…mặt nước.³ Đức Chúa Trời…"), so no surrounding whitespace is
+ * required. Lettered footnote markers ("Trời[a]vận") are removed, leaving a
+ * space where they sat between two words.
+ */
+function injectSuperscriptVerseMarkers(body: string): string {
+  return body
+    .replace(/(\S?)\[[a-z]{1,2}\](\S?)/g, (_m, before: string, after: string) =>
+      before && after ? `${before} ${after}` : before + after)
+    .replace(/[⁰¹²³⁴-⁹]+/g, (sup) =>
+      ` \\v ${[...sup].map((c) => SUPERSCRIPT_DIGIT_MAP[c]).join("")} `);
 }
 
 /**
