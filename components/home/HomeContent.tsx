@@ -193,7 +193,7 @@ export default function HomeContent({ otBooks, ntBooks, lxxBooks, translationOnl
           </div>
           <UpdateBanner />
           <h2 className="text-xl font-semibold text-stone-700 dark:text-stone-300 mb-3 border-b border-stone-200 dark:border-stone-700 pb-2">
-            Manage
+            {t("home2.manage")}
           </h2>
           <div className="flex flex-wrap gap-2">
             <Link
@@ -208,7 +208,7 @@ export default function HomeContent({ otBooks, ntBooks, lxxBooks, translationOnl
               className="text-xs px-3 py-1.5 rounded border font-medium transition-colors"
               style={{ borderColor: "var(--border)", backgroundColor: "var(--surface)", color: "var(--foreground)" }}
             >
-              Manage Translations
+              {t("home2.manageTranslations")}
             </Link>
             <Link
               href="/import"
@@ -222,21 +222,21 @@ export default function HomeContent({ otBooks, ntBooks, lxxBooks, translationOnl
               className="text-xs px-3 py-1.5 rounded border font-medium transition-colors"
               style={{ borderColor: "var(--border)", backgroundColor: "var(--surface)", color: "var(--foreground)" }}
             >
-              Export USFM
+              {t("home2.exportUsfm")}
             </Link>
             <Link
               href="/export/lists"
               className="text-xs px-3 py-1.5 rounded border font-medium transition-colors"
               style={{ borderColor: "var(--border)", backgroundColor: "var(--surface)", color: "var(--foreground)" }}
             >
-              Manage Lists
+              {t("home2.manageLists")}
             </Link>
             <Link
               href="/vocabulary"
               className="text-xs px-3 py-1.5 rounded border font-medium transition-colors"
               style={{ borderColor: "var(--border)", backgroundColor: "var(--surface)", color: "var(--foreground)" }}
             >
-              Vocabulary List tool
+              {t("home2.vocabTool")}
             </Link>
             <Link
               href="/backup"
@@ -257,11 +257,11 @@ export default function HomeContent({ otBooks, ntBooks, lxxBooks, translationOnl
               className="text-xs px-3 py-1.5 rounded border font-medium transition-colors"
               style={{ borderColor: "var(--border)", backgroundColor: "var(--surface)", color: "var(--foreground)" }}
             >
-              ⌨ Shortcuts
+              {t("home2.shortcuts")}
             </Link>
           </div>
           <h2 className="text-xl font-semibold text-stone-700 dark:text-stone-300 mb-3 mt-6 border-b border-stone-200 dark:border-stone-700 pb-2">
-            Navigate
+            {t("home2.navigate")}
           </h2>
           <div className="flex flex-wrap gap-2 mt-2">
             <BookmarkButton variant="bordered" />
@@ -271,7 +271,7 @@ export default function HomeContent({ otBooks, ntBooks, lxxBooks, translationOnl
               className="text-xs px-3 py-1.5 rounded border font-medium transition-colors"
               style={{ borderColor: "var(--border)", backgroundColor: "var(--surface)", color: "var(--foreground)" }}
             >
-              Synoptic View
+              {t("home2.synoptic")}
             </Link>
           </div>
         </header>

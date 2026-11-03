@@ -1,9 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useTranslation } from "@/lib/i18n/LocaleContext";
 
 export default function ThemeToggle() {
   const [isDark, setIsDark] = useState(false);
+  const { t } = useTranslation();
 
   useEffect(() => {
     // Sync with whatever the inline script already applied
@@ -28,8 +30,8 @@ export default function ThemeToggle() {
   return (
     <button
       onClick={toggle}
-      aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
-      title={isDark ? "Light mode" : "Dark mode"}
+      aria-label={isDark ? t("ui.switchToLight") : t("ui.switchToDark")}
+      title={isDark ? t("ui.lightMode") : t("ui.darkMode")}
       className="flex items-center justify-center w-7 h-7 rounded transition-colors"
       style={{ color: "var(--nav-fg-muted)" }}
     >

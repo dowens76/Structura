@@ -493,15 +493,15 @@ export default function SettingsButton() {
           {/* Custom Fonts */}
           <div className="pt-3 border-t" style={{ borderColor: "var(--border)" }}>
             <p className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: "var(--text-muted)" }}>
-              Custom Fonts
+              {t("settings2.customFonts")}
             </p>
 
             {(
               [
-                { key: "hebrew"          as const, label: "Hebrew",          sampleDir: "rtl" as const },
-                { key: "greek"           as const, label: "Greek",           sampleDir: "ltr" as const },
-                { key: "translation"     as const, label: "Translation",     sampleDir: "ltr" as const },
-                { key: "transliteration" as const, label: "Transliteration", sampleDir: "ltr" as const },
+                { key: "hebrew"          as const, label: t("settings2.hebrew"),          sampleDir: "rtl" as const },
+                { key: "greek"           as const, label: t("settings2.greek"),           sampleDir: "ltr" as const },
+                { key: "translation"     as const, label: t("settings2.translation"),     sampleDir: "ltr" as const },
+                { key: "transliteration" as const, label: t("settings2.transliteration"), sampleDir: "ltr" as const },
               ]
             ).map(({ key, label, sampleDir }) => {
               const activeFont = fontInputs[key];
@@ -523,9 +523,9 @@ export default function SettingsButton() {
                         fontStyle: key === "transliteration" ? "italic" : undefined,
                         direction: sampleDir,
                       }}
-                      title={activeFont || "Default (click to choose)"}
+                      title={activeFont || t("settings2.defaultChoose")}
                     >
-                      {activeFont || "Default"}
+                      {activeFont || t("settings2.default")}
                     </button>
                     {/* Clear button — only shown when a custom font is set */}
                     {activeFont && (
@@ -537,8 +537,8 @@ export default function SettingsButton() {
                         }}
                         className="shrink-0 w-6 h-6 flex items-center justify-center rounded text-xs transition-colors"
                         style={{ color: "var(--text-muted)" }}
-                        title="Reset to default"
-                        aria-label="Reset font"
+                        title={t("settings2.resetDefault")}
+                        aria-label={t("settings2.resetFont")}
                       >
                         ×
                       </button>
@@ -550,7 +550,7 @@ export default function SettingsButton() {
 
             {fontSaved && (
               <p className="text-[10px] mt-1 text-right" style={{ color: "var(--accent)" }}>
-                ✓ Saved
+                {t("settings2.saved")}
               </p>
             )}
           </div>
@@ -677,7 +677,7 @@ export default function SettingsButton() {
                 <div className="pt-3 border-t mb-3" style={{ borderColor: "var(--border)" }}>
                   <div className="flex items-center justify-between mb-2">
                     <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>
-                      Bible Lookup Languages
+                      {t("settings2.bibleLookupLanguages")}
                     </p>
                     <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>
                       {activeCount} / {allLangs.length}
@@ -687,7 +687,7 @@ export default function SettingsButton() {
                     type="text"
                     value={bibleLangSearch}
                     onChange={(e) => setBibleLangSearch(e.target.value)}
-                    placeholder="Filter languages…"
+                    placeholder={t("settings2.filterLanguages")}
                     className="w-full text-xs px-2 py-1 rounded border outline-none mb-1.5"
                     style={{ borderColor: "var(--border)", background: "var(--surface)", color: "var(--foreground)" }}
                   />
@@ -698,7 +698,7 @@ export default function SettingsButton() {
                       className="flex-1 text-[11px] px-2 py-0.5 rounded border transition-colors hover:bg-stone-100 dark:hover:bg-stone-700"
                       style={{ borderColor: "var(--border)", color: "var(--foreground)" }}
                     >
-                      All
+                      {t("settings2.all")}
                     </button>
                     <button
                       type="button"
@@ -706,7 +706,7 @@ export default function SettingsButton() {
                       className="flex-1 text-[11px] px-2 py-0.5 rounded border transition-colors hover:bg-stone-100 dark:hover:bg-stone-700"
                       style={{ borderColor: "var(--border)", color: "var(--foreground)" }}
                     >
-                      None
+                      {t("settings2.none")}
                     </button>
                   </div>
                   <div className="flex flex-col gap-0.5 max-h-48 overflow-y-auto">
@@ -742,14 +742,14 @@ export default function SettingsButton() {
             {/* Source Text Visibility */}
             <div className="pt-3 border-t mb-3" style={{ borderColor: "var(--border)" }}>
               <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: "var(--text-muted)" }}>
-                Source Texts
+                {t("settings2.sourceTexts")}
               </p>
               <div className="flex flex-col gap-1">
                 {(
                   [
-                    ["OSHB",   "Hebrew Bible (OSHB)"],
-                    ["SBLGNT", "Greek NT (SBLGNT)"],
-                    ["LXX",    "Septuagint (LXX)"],
+                    ["OSHB",   t("settings2.oshb")],
+                    ["SBLGNT", t("settings2.sblgnt")],
+                    ["LXX",    t("settings2.lxx")],
                   ] as [SourceId, string][]
                 ).map(([src, label]) => (
                   <label key={src} className="flex items-center gap-2 cursor-pointer">
@@ -799,7 +799,7 @@ export default function SettingsButton() {
                       ? fetchBibleTransls.filter((t) => t.lang === lang)
                       : [];
                     return filtered.length > 0 ? (
-                      <optgroup label="fetch.bible (free)">
+                      <optgroup label={t("settings2.fetchBible")}>
                         {filtered.map((t) => (
                           <option key={t.id} value={`fetchbible:${t.id}`}>
                             {t.abbrev} — {t.name}

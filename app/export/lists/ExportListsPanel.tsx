@@ -10,6 +10,7 @@ import { OSIS_BOOK_ORDER } from "@/lib/utils/osis";
 import { isTauriApp } from "@/lib/utils/openExternal";
 import TagEditModal from "@/components/concepts/TagEditModal";
 import CharacterEditModal from "@/components/concepts/CharacterEditModal";
+import { useTranslation } from "@/lib/i18n/LocaleContext";
 
 interface TagGroup {
   name: string;
@@ -53,6 +54,7 @@ function matchesBookFilter(itemBooks: string[], selectedBooks: Set<string>): boo
 }
 
 export default function ExportListsPanel() {
+  const { t: tr } = useTranslation();
   const router = useRouter();
   const [data, setData] = useState<ListsData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -112,7 +114,7 @@ export default function ExportListsPanel() {
     });
   }
 
-  // "Select all" / "Clear" act on whatever the book filter currently shows,
+  // tr("exportLists.selectAll") / tr("exportLists.clear") act on whatever the book filter currently shows,
   // not the whole workspace — so they stay consistent with what's on screen.
   function selectAllTags() {
     if (!data) return;
@@ -199,7 +201,7 @@ export default function ExportListsPanel() {
   if (loading) {
     return (
       <div className="text-sm" style={{ color: "var(--text-muted)" }}>
-        Loading…
+        {tr("exportLists.loading")}
       </div>
     );
   }
@@ -223,13 +225,11 @@ export default function ExportListsPanel() {
 
   return (
     <PageShell
-      title="Manage Lists"
+      title={tr("exportLists.title")}
       subtitle={
         <>
-          Export tagged words, concepts, or characters as CSV files, or edit a word/concept tag&apos;s
-          name, color, and corpus. Each selected tag or character
-          becomes a separate CSV file named <code className="font-mono text-xs">List-[name].csv</code> with
-          columns for Scripture reference, source text, and any imported translations.
+          {tr("exportLists.introBefore")} <code className="font-mono text-xs">List-[name].csv</code>{" "}
+          {tr("exportLists.introAfter")}
         </>
       }
     >
@@ -239,8 +239,8 @@ export default function ExportListsPanel() {
           className="rounded-lg border px-4 py-6 text-center text-sm"
           style={{ borderColor: "var(--border)", color: "var(--text-muted)" }}
         >
-          No word tags or characters found in this workspace.
-          Tag some words in the text view first.
+          {tr("exportLists.noTags")}
+          {tr("exportLists.tagFirst")}
         </div>
       )}
 
@@ -248,20 +248,20 @@ export default function ExportListsPanel() {
       {hasAny && (
         <section>
           <div className="flex items-center gap-3 mb-2">
-            <SectionHeading>Book Filter</SectionHeading>
+            <SectionHeading>{tr("exportLists.bookFilter")}</SectionHeading>
             <button
               onClick={() => setSelectedBooks(new Set(data.books.map((b) => b.osisCode)))}
               className="text-xs px-2 py-0.5 rounded transition-colors"
               style={{ color: "var(--text-muted)" }}
             >
-              All
+              {tr("exportLists.all")}
             </button>
             <button
               onClick={() => setSelectedBooks(new Set())}
               className="text-xs px-2 py-0.5 rounded transition-colors"
               style={{ color: "var(--text-muted)" }}
             >
-              None
+              {tr("exportLists.none")}
             </button>
           </div>
           <div className="flex flex-wrap gap-1.5">
@@ -289,7 +289,7 @@ export default function ExportListsPanel() {
           className="rounded-lg border px-4 py-6 text-center text-sm"
           style={{ borderColor: "var(--border)", color: "var(--text-muted)" }}
         >
-          No word tags or characters match the selected books.
+          {tr("exportLists.noMatch")}
         </div>
       )}
 
@@ -297,21 +297,21 @@ export default function ExportListsPanel() {
       {visibleTags.length > 0 && (
         <section>
           <div className="flex items-center justify-between mb-2">
-            <SectionHeading>Word &amp; Concept Tags</SectionHeading>
+            <SectionHeading>{tr("exportLists.tags")}</SectionHeading>
             <div className="flex gap-2">
               <button
                 onClick={selectAllTags}
                 className="text-xs px-2 py-0.5 rounded transition-colors"
                 style={{ color: "var(--text-muted)" }}
               >
-                Select all
+                {tr("exportLists.selectAll")}
               </button>
               <button
                 onClick={clearTags}
                 className="text-xs px-2 py-0.5 rounded transition-colors"
                 style={{ color: "var(--text-muted)" }}
               >
-                Clear
+                {tr("exportLists.clear")}
               </button>
             </div>
           </div>
@@ -344,21 +344,21 @@ export default function ExportListsPanel() {
       {visibleChars.length > 0 && (
         <section>
           <div className="flex items-center justify-between mb-2">
-            <SectionHeading>Characters</SectionHeading>
+            <SectionHeading>{tr("exportLists.characters")}</SectionHeading>
             <div className="flex gap-2">
               <button
                 onClick={selectAllChars}
                 className="text-xs px-2 py-0.5 rounded transition-colors"
                 style={{ color: "var(--text-muted)" }}
               >
-                Select all
+                {tr("exportLists.selectAll")}
               </button>
               <button
                 onClick={clearChars}
                 className="text-xs px-2 py-0.5 rounded transition-colors"
                 style={{ color: "var(--text-muted)" }}
               >
-                Clear
+                {tr("exportLists.clear")}
               </button>
             </div>
           </div>
@@ -394,9 +394,9 @@ export default function ExportListsPanel() {
         <div className="flex items-center gap-4">
           <Button onClick={handleExport} disabled={exporting || totalSelected === 0}>
             {exporting
-              ? "Exporting…"
+              ? tr("exportLists.exporting")
               : totalSelected === 0
-              ? "Select items to export"
+              ? tr("exportLists.selectItems")
               : `Export ${totalSelected} CSV file${totalSelected > 1 ? "s" : ""}`}
           </Button>
           {exportStatus && (

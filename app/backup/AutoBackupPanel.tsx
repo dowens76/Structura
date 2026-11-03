@@ -150,7 +150,7 @@ export default function AutoBackupPanel() {
         setPathStatus("ok");
       } else {
         setPathStatus("error");
-        setPathError(result.error ?? "Invalid path.");
+        setPathError(result.error ?? t("autoBackup2.invalidPath"));
       }
     } catch {
       setPathStatus("error");
@@ -179,7 +179,7 @@ export default function AutoBackupPanel() {
       const result = await res.json() as AutoBackupSettings & { error?: string };
       if (!res.ok) {
         setSaveStatus("error");
-        setSaveError(result.error ?? "Save failed.");
+        setSaveError(result.error ?? t("autoBackup2.saveFailed"));
         return;
       }
       setSettings(result);
@@ -219,11 +219,11 @@ export default function AutoBackupPanel() {
       }
       if (result.ok) {
         setRunStatus("done");
-        setRunMsg(result.filename ?? "Backup complete.");
+        setRunMsg(result.filename ?? t("autoBackup2.complete"));
         fetchStatus();
       } else {
         setRunStatus("error");
-        setRunMsg(result.error ?? "Backup failed.");
+        setRunMsg(result.error ?? t("autoBackup2.failed"));
       }
     } catch (err) {
       setRunStatus("error");

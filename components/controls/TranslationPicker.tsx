@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { Translation } from "@/lib/db/schema";
+import { useTranslation, languageName } from "@/lib/i18n/LocaleContext";
 
 const LANGUAGES: { value: string; label: string }[] = [
   { value: "trl", label: "Transliteration" },
@@ -38,6 +39,9 @@ export default function TranslationPicker({
   onToggle,
   currentBook,
 }: TranslationPickerProps) {
+  // `t` is used below as the loop variable for translations, so call the
+  // i18n lookup `tr` here.
+  const { t: tr } = useTranslation();
   const [open, setOpen] = useState(false);
   // Wraps just the trigger button — the dropdown panel itself is portaled to
   // document.body (see below) so a narrow Synoptic View column can't clip it.
@@ -158,7 +162,7 @@ export default function TranslationPicker({
 
   const buttonLabel =
     activeCount === 0
-      ? "None"
+      ? tr("translationPicker.none")
       : activeAbbrs.length <= 2
       ? activeAbbrs.join(", ")
       : `${activeAbbrs[0]}, +${activeAbbrs.length - 1}`;
@@ -168,7 +172,7 @@ export default function TranslationPicker({
       {/* Trigger button */}
       <button
         onClick={() => setOpen((v) => !v)}
-        title="Select translations to display"
+        title={tr("translationPicker.title")}
         className={[
           "flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium transition-colors",
           open || activeCount > 0
@@ -209,7 +213,7 @@ export default function TranslationPicker({
         >
           {availableTranslations.length === 0 ? (
             <div className="px-3 py-2 text-xs" style={{ color: "var(--text-muted)" }}>
-              No translations imported
+              {tr("translationPicker.noneImported")}
             </div>
           ) : (
             <>
@@ -236,7 +240,7 @@ export default function TranslationPicker({
                     <button
                       onClick={() => onToggle(t.id)}
                       className="flex items-center gap-2 flex-1 min-w-0 text-left"
-                      title={active ? `Hide ${t.name}` : `Show ${t.name}`}
+                      title={active ? tr("translationPicker.hide", { name: t.name }) : tr("translationPicker.show", { name: t.name })}
                     >
                       {/* Checkbox */}
                       <span
@@ -290,11 +294,11 @@ export default function TranslationPicker({
                           borderColor: lang ? "var(--border-muted)" : "var(--border-muted)",
                           color: lang ? "var(--foreground)" : "var(--text-muted)",
                         }}
-                        title="Set translation language"
+                        title={tr("translationPicker.setLanguage")}
                       >
                         <option value="">— unset —</option>
                         {LANGUAGES.map((l) => (
-                          <option key={l.value} value={l.value}>{l.label}</option>
+                          <option key={l.value} value={l.value}>{languageName(tr, l.label)}</option>
                         ))}
                       </select>
                     )}
@@ -305,7 +309,7 @@ export default function TranslationPicker({
                         href={`/api/export/usfm?translationId=${t.id}&book=${encodeURIComponent(currentBook)}`}
                         download
                         onClick={(e) => e.stopPropagation()}
-                        title={`Export ${t.abbreviation} — ${currentBook} as USFM`}
+                        title={tr("translationPicker.exportUsfm", { abbr: t.abbreviation, book: currentBook })}
                         className="flex-shrink-0 text-[10px] px-1.5 py-0.5 rounded border transition-colors hover:bg-stone-100 dark:hover:bg-stone-700"
                         style={{ color: "var(--text-muted)", borderColor: "var(--border-muted)" }}
                       >

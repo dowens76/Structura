@@ -238,13 +238,13 @@ export default function PassageNotesPane({
     // Summary block
     try {
       const meta = JSON.parse(live[summaryMetaKey] ?? "{}");
-      if (typeof meta?.mainIdea === "string") addPlain("Main Idea", 3, meta.mainIdea);
+      if (typeof meta?.mainIdea === "string") addPlain(t("notes2.mainIdea"), 3, meta.mainIdea);
     } catch { /* ignore */ }
-    if (live[summarySermonKey]) addTiptap("Teaching Outline", 3, live[summarySermonKey]);
+    if (live[summarySermonKey]) addTiptap(t("notes2.teachingOutline"), 3, live[summarySermonKey]);
     try {
       const meta = JSON.parse(live[summaryMetaKey] ?? "{}");
       for (const f of Array.isArray(meta?.customFields) ? meta.customFields : []) {
-        if (typeof f?.value === "string") addPlain(f.name || "Field", 3, f.value);
+        if (typeof f?.value === "string") addPlain(f.name || t("notes2.field"), 3, f.value);
       }
     } catch { /* ignore */ }
 
@@ -304,7 +304,7 @@ export default function PassageNotesPane({
               if (e.key === "Escape") setSearchOpen(false);
               if (e.key === "Enter") { e.shiftKey ? goPrev() : goNext(); }
             }}
-            placeholder="Search notes…"
+            placeholder={t("notes2.searchPlaceholder")}
             className="flex-1 text-xs px-2 py-1 rounded border border-[var(--border)] bg-[var(--background)] text-[var(--foreground)] placeholder-stone-400 dark:placeholder-stone-500 focus:outline-none focus:ring-1 focus:ring-amber-400"
           />
         )}
@@ -319,7 +319,7 @@ export default function PassageNotesPane({
             <button
               onClick={goPrev}
               disabled={matchingSections.length === 0}
-              title="Previous match (Shift+Enter)"
+              title={t("notes2.prevMatch")}
               className="w-5 h-5 flex items-center justify-center rounded text-stone-400 hover:text-stone-600 dark:hover:text-stone-200 hover:bg-stone-100 dark:hover:bg-stone-800 disabled:opacity-30 disabled:cursor-not-allowed shrink-0"
             >
               ▲
@@ -327,7 +327,7 @@ export default function PassageNotesPane({
             <button
               onClick={goNext}
               disabled={matchingSections.length === 0}
-              title="Next match (Enter)"
+              title={t("notes2.nextMatch")}
               className="w-5 h-5 flex items-center justify-center rounded text-stone-400 hover:text-stone-600 dark:hover:text-stone-200 hover:bg-stone-100 dark:hover:bg-stone-800 disabled:opacity-30 disabled:cursor-not-allowed shrink-0"
             >
               ▼
@@ -336,7 +336,7 @@ export default function PassageNotesPane({
         )}
         <button
           onClick={() => setSearchOpen((v) => !v)}
-          title={searchOpen ? "Close search" : "Search notes"}
+          title={searchOpen ? t("notes2.closeSearch") : t("notes2.searchNotes")}
           className={[
             "w-6 h-6 flex items-center justify-center rounded text-xs transition-colors shrink-0",
             searchOpen
@@ -350,7 +350,7 @@ export default function PassageNotesPane({
         {onSyncToggle && (
           <button
             onClick={onSyncToggle}
-            title={synced ? "Unsync notes from scroll position" : "Sync notes to scroll position"}
+            title={synced ? t("notes2.unsync") : t("notes2.sync")}
             className={[
               "w-6 h-6 flex items-center justify-center rounded transition-colors shrink-0",
               synced
@@ -368,7 +368,7 @@ export default function PassageNotesPane({
         <button
           onClick={onClose}
           className="text-stone-400 hover:text-stone-600 dark:hover:text-stone-200 text-lg leading-none shrink-0"
-          aria-label="Close notes pane"
+          aria-label={t("notes2.closePane")}
         >
           ×
         </button>

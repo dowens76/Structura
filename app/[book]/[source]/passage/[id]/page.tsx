@@ -48,6 +48,7 @@ import LanguagePicker from "@/components/ui/LanguagePicker";
 import ImportButton from "@/components/navigation/ImportButton";
 import HistoryNav from "@/components/navigation/HistoryNav";
 import BookmarkButton from "@/components/navigation/BookmarkButton";
+import { T, BookName, LocalizedRef } from "@/components/ui/Localized";
 
 interface PageProps {
   params: Promise<{ book: string; source: string; id: string }>;
@@ -255,7 +256,7 @@ export default async function PassagePage({ params, searchParams }: PageProps) {
 
         {/* Passage reference */}
         <span className="text-sm font-semibold" style={{ color: "var(--nav-fg-muted)" }}>
-          {crossBookRef ?? bookName}
+          {crossBookRef ? <LocalizedRef label={crossBookRef} /> : <BookName code={osisBook} refForm />}
         </span>
 
         {/* Import button */}
@@ -270,7 +271,7 @@ export default async function PassagePage({ params, searchParams }: PageProps) {
           className="text-xs px-2 py-1 rounded transition-colors"
           style={{ color: "var(--nav-fg)" }}
         >
-          Account
+          <T k="nav.account" />
         </Link>
 
         {/* Language picker */}
@@ -307,7 +308,7 @@ export default async function PassagePage({ params, searchParams }: PageProps) {
             className="text-xs px-2 py-1 rounded border transition-colors"
             style={{ borderColor: "var(--border)", color: "var(--nav-fg)" }}
           >
-            Switch to Chapter View
+            <T k="ui.switchToChapterView" />
           </Link>
           <HistoryNav />
           <BookmarkButton

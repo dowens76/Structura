@@ -2831,7 +2831,7 @@ export default function ChapterDisplay({
     if (record) {
       const wasSet = paragraphBreakIds.has(wordId);
       pushUndo({
-        label: wasSet ? "Remove ¶" : "Add ¶",
+        label: wasSet ? t("chapter.removePara") : t("chapter.addPara"),
         undo: () => handleToggleParagraphBreakById(wordId, source, false),
       });
     }
@@ -2881,7 +2881,7 @@ export default function ChapterDisplay({
     if (record) {
       const wasSet = horizontalLineIds.has(wordId);
       pushUndo({
-        label: wasSet ? "Remove ―" : "Add ―",
+        label: wasSet ? t("chapter.removeHLine") : t("chapter.addHLine"),
         undo: () => handleToggleHorizontalLineById(wordId, source, false),
       });
     }
@@ -2987,7 +2987,7 @@ export default function ChapterDisplay({
     const wasSet = existingArr.some((b) => b.level === level);
     if (record) {
       pushUndo({
-        label: wasSet ? "Remove section break" : "Add section break",
+        label: wasSet ? t("chapter.removeSection") : t("chapter.addSection"),
         undo: () => handleToggleSceneBreak(wordId, level, verse, false),
       });
     }
@@ -3283,7 +3283,7 @@ export default function ChapterDisplay({
     // Capture the state before any change for undo
     const beforeRef = characterRefMap.get(wordId) ?? null;
     pushUndo({
-      label: "Character ref",
+      label: t("chapter.characterRef"),
       undo: async () => {
         setCharacterRefMap((prev) => {
           const next = new Map(prev);
@@ -3771,7 +3771,7 @@ export default function ChapterDisplay({
 
     const beforeSections = [...speechSections];
     pushUndo({
-      label: "Reassign speech",
+      label: t("chapter.reassignSpeech"),
       undo: async () => {
         setSpeechSections(beforeSections);
         try {
@@ -3808,7 +3808,7 @@ export default function ChapterDisplay({
 
     const beforeSections = [...speechSections];
     pushUndo({
-      label: "Delete speech",
+      label: t("chapter.deleteSpeech"),
       undo: async () => {
         setSpeechSections(beforeSections);
         try {
@@ -3885,7 +3885,7 @@ export default function ChapterDisplay({
     // Snapshot before create (for undo)
     const beforeSections = [...speechSections];
     pushUndo({
-      label: "Add speech",
+      label: t("chapter.addSpeech"),
       undo: async () => {
         setSpeechSections(beforeSections);
         try {
@@ -5335,23 +5335,23 @@ export default function ChapterDisplay({
   }
 
   async function saveChapterUsfm() {
-    const t = allAvailableTranslations.find((tr) => activeTranslationAbbrs.has(tr.abbreviation));
-    if (!t) return;
+    const tl = allAvailableTranslations.find((tr) => activeTranslationAbbrs.has(tr.abbreviation));
+    if (!tl) return;
     setChapterUsfmSaving(true);
     setChapterUsfmError(null);
     try {
       const res = await fetch("/api/chapter-usfm", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ translationId: t.id, book, chapter, usfm: chapterUsfmText }),
+        body: JSON.stringify({ translationId: tl.id, book, chapter, usfm: chapterUsfmText }),
       });
       const json = await res.json();
-      if (!res.ok) throw new Error(json.error ?? "Save failed");
+      if (!res.ok) throw new Error(json.error ?? t("chapter.saveFailed"));
       setChapterUsfmOpen(false);
       // Reload the page to reflect updated verse data
       window.location.reload();
     } catch (e: unknown) {
-      setChapterUsfmError(e instanceof Error ? e.message : "Save failed");
+      setChapterUsfmError(e instanceof Error ? e.message : t("chapter.saveFailed"));
     } finally {
       setChapterUsfmSaving(false);
     }
@@ -5571,7 +5571,7 @@ export default function ChapterDisplay({
             onClick={() => setOutlineOpen((v) => !v)}
             className="shrink-0 text-xs px-2 py-0.5 rounded hover:bg-stone-200 dark:hover:bg-stone-700 transition-colors"
             style={{ color: outlineOpen ? "var(--accent)" : "var(--text-muted)" }}
-            title="Open outline sidebar"
+            title={t("chapter.openOutline")}
           >
             📋 Outline
           </button>
@@ -5579,33 +5579,33 @@ export default function ChapterDisplay({
 
         {showDeleteConfirm ? (
           <div className="flex items-center gap-1 shrink-0">
-            <span className="text-xs" style={{ color: "var(--text-muted)" }}>Delete?</span>
+            <span className="text-xs" style={{ color: "var(--text-muted)" }}>{t("chapter.deleteQ")}</span>
             <button type="button" onClick={handleDeletePassage}
               className="text-xs px-2 py-0.5 rounded bg-red-600 text-white hover:bg-red-700 transition-colors">
-              Yes
+              {t("chapter.yes")}
             </button>
             <button type="button" onClick={() => setShowDeleteConfirm(false)}
               className="text-xs px-2 py-0.5 rounded hover:bg-stone-200 dark:hover:bg-stone-700 transition-colors"
               style={{ color: "var(--text-muted)" }}>
-              No
+              {t("chapter.no")}
             </button>
           </div>
         ) : (
           <button type="button" onClick={() => setShowDeleteConfirm(true)}
             className="shrink-0 text-xs px-2 py-0.5 rounded hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
-            style={{ color: "var(--text-muted)" }} title="Delete this passage">
+            style={{ color: "var(--text-muted)" }} title={t("chapter.deletePassage")}>
             🗑 Delete passage
           </button>
         )}
       </div>
 
-      {isPending && <p className="text-xs mb-1 opacity-50" style={{ color: "var(--text-muted)" }}>updating…</p>}
+      {isPending && <p className="text-xs mb-1 opacity-50" style={{ color: "var(--text-muted)" }}>{t("chapter.updating")}</p>}
 
       {/* New passage section break prompt */}
       {showNewPassagePrompt && (
         <div className="flex items-center gap-2 mb-3 p-2 rounded bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700">
-          <span className="text-xs text-stone-600 dark:text-stone-300 shrink-0">Add section heading?</span>
-          <span className="text-[10px] text-stone-400 mr-1 shrink-0">Level:</span>
+          <span className="text-xs text-stone-600 dark:text-stone-300 shrink-0">{t("chapter.addHeadingQ")}</span>
+          <span className="text-[10px] text-stone-400 mr-1 shrink-0">{t("chapter.level")}</span>
           {([1, 2, 3, 4, 5, 6] as const).map((l) => (
             <button key={l} type="button"
               onClick={() => setNewPassageLevel(l)}
@@ -5616,7 +5616,7 @@ export default function ChapterDisplay({
           <input
             value={newPassageHeading}
             onChange={(e) => setNewPassageHeading(e.target.value)}
-            placeholder="Section label…"
+            placeholder={t("toolbar2.sectionLabelPlaceholder")}
             className="flex-1 min-w-0 text-xs bg-transparent border-b border-stone-300 dark:border-stone-600 outline-none px-0 py-0.5"
             style={{ color: "var(--foreground)" }}
             onKeyDown={(e) => e.stopPropagation()}
@@ -5635,7 +5635,7 @@ export default function ChapterDisplay({
               url.searchParams.delete("newPassage");
               window.history.replaceState({}, "", url.toString());
             }}>
-            Add
+            {t("toolbar2.add")}
           </button>
           <button type="button"
             className="shrink-0 text-xs px-2 py-0.5 rounded hover:bg-stone-200 dark:hover:bg-stone-700 transition-colors"
@@ -5646,7 +5646,7 @@ export default function ChapterDisplay({
               url.searchParams.delete("newPassage");
               window.history.replaceState({}, "", url.toString());
             }}>
-            Skip
+            {t("toolbar2.skip")}
           </button>
         </div>
       )}
@@ -5654,7 +5654,7 @@ export default function ChapterDisplay({
       {/* Range controls */}
       <div className="flex items-center gap-4 flex-wrap">
         <div className="flex items-center gap-1">
-          <span className="text-xs font-medium" style={{ color: "var(--text-muted)" }}>Start:</span>
+          <span className="text-xs font-medium" style={{ color: "var(--text-muted)" }}>{t("chapter.start")}</span>
           {rangeBtn(!canExtendStart, "← +1v", `Include ${passageState.startChapter === 1 && passageState.startVerse === 1 ? "(already at beginning)" : refStr(passageState.startVerse > 1 ? passageState.startChapter : passageState.startChapter - 1, passageState.startVerse > 1 ? passageState.startVerse - 1 : (maxVerseOfPrevStartChapter || 1))}`, handleExtendStart)}
           <span className="text-xs font-mono px-1.5 py-0.5 rounded" style={{ backgroundColor: "var(--border)", color: "var(--foreground)" }}>
             {refStr(passageState.startChapter, passageState.startVerse)}
@@ -5667,7 +5667,7 @@ export default function ChapterDisplay({
           <span className="text-xs font-mono px-1.5 py-0.5 rounded" style={{ backgroundColor: "var(--border)", color: "var(--foreground)" }}>
             {refStr(passageState.endChapter, passageState.endVerse)}
           </span>
-          <span className="text-xs font-medium" style={{ color: "var(--text-muted)" }}>End:</span>
+          <span className="text-xs font-medium" style={{ color: "var(--text-muted)" }}>{t("chapter.end")}</span>
           {rangeBtn(!canExtendEnd, "+1v →", `Include ${passageState.endChapter === startBookChapterCount && passageState.endVerse >= (maxVerseOfEndChapter ?? 0) ? "(already at end)" : refStr(passageState.endVerse < (maxVerseOfEndChapter ?? 0) ? passageState.endChapter : passageState.endChapter + 1, passageState.endVerse < (maxVerseOfEndChapter ?? 0) ? passageState.endVerse + 1 : 1)}`, handleExtendEnd)}
         </div>
       </div>
@@ -5882,7 +5882,7 @@ export default function ChapterDisplay({
               {isHebrew && (
                 <button
                   onClick={() => setShowVowels((v) => !v)}
-                  data-tip={showVowels ? "Hide Hebrew vowel points" : "Show Hebrew vowel points"}
+                  data-tip={showVowels ? t("toolbar2.titleVowelsOn") : t("toolbar2.titleVowelsOff")}
                   className={[
                     "px-3 py-1.5 rounded text-[13px] font-medium transition-colors",
                     showVowels
@@ -5890,13 +5890,13 @@ export default function ChapterDisplay({
                       : "bg-amber-500 text-white",
                   ].join(" ")}
                 >
-                  Vowels
+                  {t("toolbar2.vowels")}
                 </button>
               )}
               {isHebrew && (
                 <button
                   onClick={() => setShowCantillation((v) => !v)}
-                  data-tip={showCantillation ? "Hide Hebrew cantillation marks" : "Show Hebrew cantillation marks"}
+                  data-tip={showCantillation ? t("toolbar2.titleCantillationOn") : t("toolbar2.titleCantillationOff")}
                   className={[
                     "px-3 py-1.5 rounded text-[13px] font-medium transition-colors",
                     showCantillation
@@ -5904,7 +5904,7 @@ export default function ChapterDisplay({
                       : "bg-amber-500 text-white",
                   ].join(" ")}
                 >
-                  Cantillation
+                  {t("toolbar2.cantillation")}
                 </button>
               )}
 
@@ -5965,8 +5965,8 @@ export default function ChapterDisplay({
               {toolbarVis.horizontalLines && <button
                 onClick={() => { if (!editingHorizontalLines) deactivateIncompatible("horizontalLines"); setEditingHorizontalLines((v) => !v); }}
                 data-tip={editingHorizontalLines
-                  ? "Exit horizontal-line editing"
-                  : "Add/remove horizontal lines to divide sections without a heading"}
+                  ? t("toolbar2.titleHLinesOn")
+                  : t("toolbar2.titleHLinesOff")}
                 className={[
                   "px-3 py-1.5 rounded text-[13px] font-medium transition-colors",
                   editingHorizontalLines
@@ -5982,8 +5982,8 @@ export default function ChapterDisplay({
                 <button
                   onClick={() => setShowAtnachBreaks((v) => !v)}
                   data-tip={showAtnachBreaks
-                    ? "Hide atnach half-verse markers"
-                    : "Show atnach accent markers (main cantillation accent dividing each verse)"}
+                    ? t("toolbar2.titleAtnachOn")
+                    : t("toolbar2.titleAtnachOff")}
                   className={[
                     "px-3 py-1.5 rounded text-[13px] font-medium transition-colors",
                     showAtnachBreaks
@@ -5991,7 +5991,7 @@ export default function ChapterDisplay({
                       : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
                   ].join(" ")}
                 >
-                  Show Atnach
+                  {t("toolbar2.showAtnach")}
                 </button>
               )}
 
@@ -5999,10 +5999,10 @@ export default function ChapterDisplay({
               {isHebrew && toolbarVis.atnachInsert && (
                 <button
                   onClick={handleAddAtnachParagraphBreaks}
-                  data-tip="Insert paragraph breaks at every atnach accent in this chapter"
+                  data-tip={t("toolbar2.titleAtnachInsert")}
                   className="px-3 py-1.5 rounded text-[13px] font-medium transition-colors bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700"
                 >
-                  ¶ at Atnach
+                  {t("toolbar2.atnachInsert")}
                 </button>
               )}
 
@@ -6018,8 +6018,8 @@ export default function ChapterDisplay({
                     if (!next) setEditingSyllableStress(false);
                   }}
                   data-tip={showSyllableStress
-                    ? "Hide stress/syllable counts"
-                    : "Show stress and syllable counts per line (stresses/syllables)"}
+                    ? t("toolbar2.titleStressOn")
+                    : t("toolbar2.titleStressOff")}
                   className={[
                     "px-3 py-1.5 rounded text-[13px] font-medium transition-colors",
                     showSyllableStress
@@ -6027,7 +6027,7 @@ export default function ChapterDisplay({
                       : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700",
                   ].join(" ")}
                 >
-                  Stresses/Syllables
+                  {t("toolbar2.stressSyllables")}
                 </button>
               )}
 
@@ -6041,8 +6041,8 @@ export default function ChapterDisplay({
                     setEditingSyllableStress((v) => !v);
                   }}
                   data-tip={editingSyllableStress
-                    ? "Done editing — changes are already saved"
-                    : "Edit the stress/syllable counts for each line"}
+                    ? t("toolbar2.titleStressEditOn")
+                    : t("toolbar2.titleStressEditOff")}
                   className={[
                     "px-2 py-1.5 rounded text-[13px] font-medium transition-colors",
                     editingSyllableStress
@@ -6176,7 +6176,7 @@ export default function ChapterDisplay({
                             : "bg-stone-100 dark:bg-stone-800 text-stone-500 dark:text-stone-400 hover:bg-stone-200 dark:hover:bg-stone-700",
                         ].join(" ")}
                       >
-                        Src
+                        {t("toolbar2.src")}
                       </button>
                       <button
                         onClick={() => setRstEditingSide("translation")}
@@ -6188,7 +6188,7 @@ export default function ChapterDisplay({
                             : "bg-stone-100 dark:bg-stone-800 text-stone-500 dark:text-stone-400 hover:bg-stone-200 dark:hover:bg-stone-700",
                         ].join(" ")}
                       >
-                        Trans
+                        {t("toolbar2.trans")}
                       </button>
                     </div>
                   )}
@@ -6268,7 +6268,7 @@ export default function ChapterDisplay({
                   if (entering) { deactivateIncompatible("poetry"); setPanelDisplayMode("poetry"); }
                   setEditingPoetryNotation(entering);
                 }}
-                data-tip="Poetry notation (Gestalt principles)"
+                data-tip={t("toolbar2.titlePoetry")}
                 className={[
                   "px-3 py-1.5 rounded text-[13px] leading-none font-medium transition-colors",
                   editingPoetryNotation
@@ -6283,7 +6283,7 @@ export default function ChapterDisplay({
                 <button
                   type="button"
                   onClick={() => setShowPoetryLineBrackets((v) => !v)}
-                  data-tip="Show a bracket for every poetic line (level 1 — real line groups nest outside it)"
+                  data-tip={t("toolbar2.titlePoetryLineBrackets")}
                   className={[
                     "px-3 py-1.5 rounded text-[13px] font-medium transition-colors",
                     showPoetryLineBrackets
@@ -6298,7 +6298,7 @@ export default function ChapterDisplay({
                 <button
                   type="button"
                   onClick={() => setPanelDisplayMode((m) => (m === "annotations" ? "poetry" : "annotations"))}
-                  data-tip="Switch the margin panel between clause labels and poetry notation"
+                  data-tip={t("toolbar2.titleMarginToggle")}
                   className="px-2 py-1.5 rounded text-[11px] font-medium bg-stone-100 dark:bg-stone-800 text-stone-500 dark:text-stone-400 hover:bg-stone-200 dark:hover:bg-stone-700"
                 >
                   {panelDisplayMode === "annotations" ? "≡→◈" : "◈→≡"}
@@ -6308,7 +6308,7 @@ export default function ChapterDisplay({
                 <button
                   type="button"
                   onClick={() => setShowPoetryNotes((v) => !v)}
-                  data-tip={showPoetryNotes ? "Hide poetry notation notes" : "Show poetry notation notes"}
+                  data-tip={showPoetryNotes ? t("toolbar2.titlePoetryNotesOn") : t("toolbar2.titlePoetryNotesOff")}
                   className={[
                     "px-3 py-1.5 rounded text-[13px] font-medium transition-colors",
                     showPoetryNotes
@@ -6357,17 +6357,17 @@ export default function ChapterDisplay({
                       {p === "requiredness" && activePrinciple === "requiredness" && (
                         <span className="flex items-center gap-1 pl-1">
                           <button type="button" onClick={() => setActiveRequirednessSubtype("arrow")}
-                            className={`px-1.5 py-1 rounded text-[11px] ${activeRequirednessSubtype === "arrow" ? "bg-gray-500 text-white" : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300"}`}>arrow</button>
+                            className={`px-1.5 py-1 rounded text-[11px] ${activeRequirednessSubtype === "arrow" ? "bg-gray-500 text-white" : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300"}`}>{t("chapter.poetryArrow")}</button>
                           <button type="button" onClick={() => setActiveRequirednessSubtype("underline")}
-                            className={`px-1.5 py-1 rounded text-[11px] ${activeRequirednessSubtype === "underline" ? "bg-gray-500 text-white" : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300"}`}>underline</button>
+                            className={`px-1.5 py-1 rounded text-[11px] ${activeRequirednessSubtype === "underline" ? "bg-gray-500 text-white" : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300"}`}>{t("chapter.poetryUnderline")}</button>
                         </span>
                       )}
                       {p === "closure" && activePrinciple === "closure" && (
                         <span className="flex items-center gap-1 pl-1">
                           <button type="button" onClick={() => setActiveClosureSubtype("weak")}
-                            className={`px-1.5 py-1 rounded text-[11px] ${activeClosureSubtype === "weak" ? "bg-purple-500 text-white" : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300"}`}>weak</button>
+                            className={`px-1.5 py-1 rounded text-[11px] ${activeClosureSubtype === "weak" ? "bg-purple-500 text-white" : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300"}`}>{t("chapter.poetryWeak")}</button>
                           <button type="button" onClick={() => setActiveClosureSubtype("complete")}
-                            className={`px-1.5 py-1 rounded text-[11px] ${activeClosureSubtype === "complete" ? "bg-purple-500 text-white" : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300"}`}>complete</button>
+                            className={`px-1.5 py-1 rounded text-[11px] ${activeClosureSubtype === "complete" ? "bg-purple-500 text-white" : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300"}`}>{t("chapter.poetryComplete")}</button>
                         </span>
                       )}
                     </Fragment>
@@ -6380,7 +6380,7 @@ export default function ChapterDisplay({
                   onClick={handleCancelAddWordToGroup}
                   className="px-2.5 py-1.5 rounded text-[11px] font-medium transition-colors bg-sky-100 dark:bg-sky-900/40 text-sky-600 dark:text-sky-400 ring-1 ring-sky-400 animate-pulse"
                 >
-                  Click a word to add to the group · Cancel
+                  {t("chapter.addToGroup")}
                 </button>
               )}
 
@@ -6461,7 +6461,7 @@ export default function ChapterDisplay({
                   if (!editingUnderline) deactivateIncompatible("underline");
                   setEditingUnderline((v) => !v);
                 }}
-                data-tip={editingWordTags ? "Not available in Word/Concept mode" : editingUnderline ? "Exit underline mode" : "Click words to toggle underline"}
+                data-tip={editingWordTags ? t("toolbar2.titleUnderlineDisabled") : editingUnderline ? t("toolbar2.titleUnderlineOn") : t("toolbar2.titleUnderlineOff")}
                 className={[
                   "px-3 py-1.5 rounded text-[13px] font-bold underline transition-colors",
                   editingUnderline
@@ -6516,7 +6516,7 @@ export default function ChapterDisplay({
                 <>
                   <button
                     onClick={() => setEditingTc((v) => !v)}
-                    data-tip={editingTc ? "Exit text-critical mode" : "Text critical markup (MT/LXX)"}
+                    data-tip={editingTc ? t("toolbar2.titleTcOn") : t("toolbar2.titleTcOff")}
                     className={[
                       "px-3 py-1.5 rounded text-[13px] font-bold transition-colors",
                       editingTc
@@ -6530,7 +6530,7 @@ export default function ChapterDisplay({
                     <>
                       <button
                         onClick={() => setActiveTcMark("lxx_unique")}
-                        data-tip="LXX Unique (green)"
+                        data-tip={t("toolbar2.tcLxxUnique")}
                         className={[
                           "w-7 h-7 rounded transition-colors border-2",
                           activeTcMark === "lxx_unique"
@@ -6538,35 +6538,35 @@ export default function ChapterDisplay({
                             : "border-green-600 bg-transparent hover:bg-green-100 dark:hover:bg-green-900",
                         ].join(" ")}
                         style={{ color: "#16a34a" }}
-                        title="LXX Unique (green)"
+                        title={t("toolbar2.tcLxxUnique")}
                       >
-                        <span className="sr-only">LXX Unique</span>
+                        <span className="sr-only">{t("chapter.lxxUnique")}</span>
                       </button>
                       <button
                         onClick={() => setActiveTcMark("mt_unique")}
-                        data-tip="MT Unique (red)"
+                        data-tip={t("toolbar2.tcMtUnique")}
                         className={[
                           "w-7 h-7 rounded transition-colors border-2",
                           activeTcMark === "mt_unique"
                             ? "border-red-600 bg-red-600"
                             : "border-red-600 bg-transparent hover:bg-red-100 dark:hover:bg-red-900",
                         ].join(" ")}
-                        title="MT Unique (red)"
+                        title={t("toolbar2.tcMtUnique")}
                       >
-                        <span className="sr-only">MT Unique</span>
+                        <span className="sr-only">{t("chapter.mtUnique")}</span>
                       </button>
                       <button
                         onClick={() => setActiveTcMark("same_different")}
-                        data-tip="Same meaning, different form (yellow)"
+                        data-tip={t("toolbar2.tcSameMeaning")}
                         className={[
                           "w-7 h-7 rounded transition-colors border-2",
                           activeTcMark === "same_different"
                             ? "border-yellow-500 bg-yellow-500"
                             : "border-yellow-500 bg-transparent hover:bg-yellow-100 dark:hover:bg-yellow-900",
                         ].join(" ")}
-                        title="Same meaning, different form (yellow)"
+                        title={t("toolbar2.tcSameMeaning")}
                       >
-                        <span className="sr-only">Same Meaning</span>
+                        <span className="sr-only">{t("toolbar2.sameMeaning")}</span>
                       </button>
                     </>
                   )}
@@ -6638,7 +6638,7 @@ export default function ChapterDisplay({
                   if (!editingWordCompare) deactivateIncompatible("wordCompare");
                   setEditingWordCompare((v) => !v);
                 }}
-                data-tip={editingWordCompare ? "Turn off Compare mode" : "Compare: mark word-level differences"}
+                data-tip={editingWordCompare ? t("toolbar2.titleCompareOn") : t("toolbar2.titleCompareOff")}
                 className={[
                   "px-3 py-1.5 rounded text-[13px] font-medium transition-colors",
                   editingWordCompare
@@ -6697,7 +6697,7 @@ export default function ChapterDisplay({
               {/* Search panel toggle */}
               {toolbarVis.search && !disableSidePanels && <button
                 onClick={() => setSearchOpen((v) => !v)}
-                data-tip={searchOpen ? "Close Search" : "Search corpus"}
+                data-tip={searchOpen ? t("toolbar2.titleSearchOn") : t("toolbar2.titleSearchOff")}
                 className={[
                   "px-3 py-1.5 rounded text-[13px] font-medium transition-colors",
                   searchOpen
@@ -6711,7 +6711,7 @@ export default function ChapterDisplay({
               {/* Bible lookup panel toggle */}
               {toolbarVis.bible && !disableSidePanels && <button
                 onClick={() => setBibleOpen((v) => !v)}
-                data-tip={bibleOpen ? "Close Bible Lookup" : "Bible Lookup"}
+                data-tip={bibleOpen ? t("toolbar2.titleBibleOn") : t("toolbar2.titleBibleOff")}
                 className={[
                   "px-3 py-1.5 rounded text-[13px] font-medium transition-colors",
                   bibleOpen
@@ -6725,7 +6725,7 @@ export default function ChapterDisplay({
               {/* Intertextual links panel toggle */}
               {toolbarVis.intertextual && !disableSidePanels && <button
                 onClick={() => { setIntertextualOpen((v) => !v); setIntertextualVerse(null); }}
-                data-tip={intertextualOpen ? "Close Intertextual Links" : "Intertextual Links"}
+                data-tip={intertextualOpen ? t("toolbar2.titleIntertextualOn") : t("toolbar2.titleIntertextualOff")}
                 className={[
                   "px-[14px] py-[7px] rounded font-medium transition-colors",
                   intertextualOpen
@@ -6768,7 +6768,7 @@ export default function ChapterDisplay({
                   {hasActiveTranslations && (
                     <button
                       onClick={copyTranslationText}
-                      data-tip={copiedTranslation ? "Copied!" : "Copy translation text"}
+                      data-tip={copiedTranslation ? t("toolbar2.copied") : t("toolbar2.copyTranslation")}
                       className="px-3 py-2 rounded text-[15px] font-medium transition-colors bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700"
                     >
                       {copiedTranslation ? "✓" : "⎘"}
@@ -6791,7 +6791,7 @@ export default function ChapterDisplay({
                   {hasActiveTranslations && (
                     <button
                       onClick={openChapterUsfm}
-                      data-tip="View / edit USFM source"
+                      data-tip={t("toolbar2.viewUsfm")}
                       className="px-3 py-2 rounded text-[16px] font-mono font-medium transition-colors bg-stone-100 dark:bg-stone-800 text-stone-500 dark:text-stone-400 hover:bg-stone-200 dark:hover:bg-stone-700"
                     >
                       {"‹›"}
@@ -6803,7 +6803,7 @@ export default function ChapterDisplay({
                       {/* Divine Name: wraps textarea selection in \nd...\nd* */}
                       <button
                         onMouseDown={(e) => { e.preventDefault(); applyNdMarker(); }}
-                        data-tip="Wrap selection as Divine Name (small caps) — \nd...\nd*"
+                        data-tip={t("toolbar2.wrapDivineName")}
                         className="px-3 py-2 rounded text-[14px] font-bold font-mono tracking-wider transition-colors bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-amber-100 hover:text-amber-700 dark:hover:bg-amber-900 dark:hover:text-amber-300"
                         style={{ fontVariant: "small-caps" }}
                       >
@@ -6812,7 +6812,7 @@ export default function ChapterDisplay({
                       {/* Bold: wraps selection in \bd...\bd* */}
                       <button
                         onMouseDown={(e) => { e.preventDefault(); applyInlineMarker("bd"); }}
-                        data-tip="Wrap selection as bold text — \bd...\bd*"
+                        data-tip={t("toolbar2.wrapBold")}
                         className="px-3 py-2 rounded text-[14px] font-bold transition-colors bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700"
                       >
                         B
@@ -6820,7 +6820,7 @@ export default function ChapterDisplay({
                       {/* Italic: wraps selection in \it...\it* */}
                       <button
                         onMouseDown={(e) => { e.preventDefault(); applyInlineMarker("it"); }}
-                        data-tip="Wrap selection as italic text — \it...\it*"
+                        data-tip={t("toolbar2.wrapItalic")}
                         className="px-3 py-2 rounded text-[14px] italic transition-colors bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700"
                       >
                         I
@@ -6850,7 +6850,7 @@ export default function ChapterDisplay({
                           setFnDialogContent("");
                           setFnDialogOpen(true);
                         }}
-                        data-tip="Add a footnote or cross-reference to a verse"
+                        data-tip={t("toolbar2.addFootnote")}
                         className="px-2.5 py-1.5 rounded text-[11px] font-medium transition-colors bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700"
                       >
                         fn+
@@ -6863,7 +6863,7 @@ export default function ChapterDisplay({
                             .find((tr) => tr)?.abbreviation ?? "";
                           openHistory(firstAbbr, 1);
                         }}
-                        data-tip="View version history for a verse"
+                        data-tip={t("toolbar2.versionHistory")}
                         className={[
                           "px-2.5 py-1.5 rounded text-[11px] font-medium transition-colors",
                           historyOpen
@@ -6879,7 +6879,7 @@ export default function ChapterDisplay({
                   {hasActiveTranslations && (
                     <button
                       onClick={() => setShowFootnotes((v) => !v)}
-                      data-tip={showFootnotes ? "Hide footnotes" : "Show footnotes"}
+                      data-tip={showFootnotes ? t("toolbar2.hideFootnotes") : t("toolbar2.showFootnotes")}
                       className={[
                         "px-3 py-2 rounded text-[14px] font-medium transition-colors",
                         showFootnotes
@@ -6894,7 +6894,7 @@ export default function ChapterDisplay({
                   {hasActiveTranslations && showFootnotes && (
                     <button
                       onClick={() => setEditingFootnotes((v) => !v)}
-                      data-tip={editingFootnotes ? "Exit footnote editing" : "Edit footnotes (enable delete)"}
+                      data-tip={editingFootnotes ? t("toolbar2.exitFootnoteEdit") : t("toolbar2.editFootnotes")}
                       className={[
                         "px-3 py-2 rounded text-[14px] font-medium transition-colors",
                         editingFootnotes
@@ -6911,7 +6911,7 @@ export default function ChapterDisplay({
                       onClick={() => setFnAnchorMoveId(null)}
                       className="px-2.5 py-1.5 rounded text-[11px] font-medium transition-colors bg-sky-100 dark:bg-sky-900/40 text-sky-600 dark:text-sky-400 ring-1 ring-sky-400 animate-pulse"
                     >
-                      Click word to place anchor · Esc to cancel
+                      {t("chapter.placeAnchor")}
                     </button>
                   )}
                 </div>
@@ -6935,8 +6935,8 @@ export default function ChapterDisplay({
                       </>
                     )}
                     <span className="text-xs text-stone-400 dark:text-stone-500 select-none ml-1">↕</span>
-                    <button className={sizeBtn} onClick={() => adjustLineHeight(-0.1)} data-tip="Decrease line spacing">−</button>
-                    <button className={sizeBtn} onClick={() => adjustLineHeight(+0.1)} data-tip="Increase line spacing">+</button>
+                    <button className={sizeBtn} onClick={() => adjustLineHeight(-0.1)} data-tip={t("toolbar2.decreaseLineSpacing")}>−</button>
+                    <button className={sizeBtn} onClick={() => adjustLineHeight(+0.1)} data-tip={t("toolbar2.increaseLineSpacing")}>+</button>
                   </div>
                 );
               })()}
@@ -6946,7 +6946,7 @@ export default function ChapterDisplay({
           {/* Copy-link button — copies a ?present URL for browser / Reveal.js use */}
           <button
             onClick={handleCopyPresentLink}
-            data-tip={linkCopied ? "Copied!" : "Copy link for browser / iframe (localhost URL with ?present)"}
+            data-tip={linkCopied ? t("toolbar2.copied") : t("toolbar2.copyLink")}
             className="px-3 py-1.5 rounded text-[13px] font-medium transition-colors bg-stone-100 dark:bg-stone-800 text-stone-500 dark:text-stone-400 hover:bg-stone-200 dark:hover:bg-stone-700"
           >
             {linkCopied ? "✓" : "🔗"}
@@ -6957,7 +6957,7 @@ export default function ChapterDisplay({
             <button
               ref={gearBtnRef}
               onClick={() => setShowToolbarCustomizer((v) => !v)}
-              data-tip="Customize toolbar"
+              data-tip={t("toolbar2.customizeToolbar")}
               className={[
                 "px-4 py-2 rounded text-[17px] font-medium transition-colors",
                 showToolbarCustomizer
@@ -7040,7 +7040,7 @@ export default function ChapterDisplay({
             className="flex items-center gap-2 px-6 py-1.5 border-b flex-wrap"
             style={{ borderColor: "var(--border)", backgroundColor: "var(--surface)" }}
           >
-            <span className="text-[11px] shrink-0" style={{ color: "var(--text-muted)" }}>Compare:</span>
+            <span className="text-[11px] shrink-0" style={{ color: "var(--text-muted)" }}>{t("chapter.compare")}</span>
             <div className="flex flex-wrap gap-1">
               {synopticCategories.map((cat) => (
                 <button
@@ -7059,13 +7059,13 @@ export default function ChapterDisplay({
               onClick={() => setShowSynopticCategoryManager(true)}
               className="text-[10px] ml-auto text-indigo-500 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 transition-colors"
             >
-              Manage categories
+              {t("chapter.manageCategories")}
             </button>
           </div>
         )}
         {editingWordCompare && wordCompareRangeStart && (
           <div className="px-6 py-1 text-xs bg-emerald-50 dark:bg-emerald-950 border-b border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300">
-            Click the end word to complete the range (or the same word for a single-word mark).
+            {t("chapter.compareRangeHint")}
           </div>
         )}
         {showSynopticCategoryManager && (
@@ -7531,7 +7531,7 @@ export default function ChapterDisplay({
           <div className="flex flex-col flex-1 m-4 rounded-lg overflow-hidden shadow-2xl border border-stone-700 bg-stone-950">
             {/* Header */}
             <div className="flex items-center gap-3 px-4 py-3 border-b border-stone-700 shrink-0">
-              <span className="font-mono text-sm font-semibold text-amber-400">‹› USFM Source</span>
+              <span className="font-mono text-sm font-semibold text-amber-400">{t("chapter.usfmSource")}</span>
               <span className="text-stone-400 text-xs">
                 {allAvailableTranslations.find(t => activeTranslationAbbrs.has(t.abbreviation))?.abbreviation} · {book} {chapter}
               </span>
@@ -7544,18 +7544,18 @@ export default function ChapterDisplay({
                 disabled={chapterUsfmLoading || chapterUsfmSaving}
                 className="px-3 py-1.5 rounded text-xs font-medium bg-amber-500 hover:bg-amber-400 text-white disabled:opacity-50 transition-colors"
               >
-                {chapterUsfmSaving ? "Saving…" : "Save & Reload"}
+                {chapterUsfmSaving ? t("chapter.saving") : t("chapter.saveReload")}
               </button>
               <button
                 onClick={() => setChapterUsfmOpen(false)}
                 className="px-3 py-1.5 rounded text-xs font-medium bg-stone-700 hover:bg-stone-600 text-stone-200 transition-colors"
               >
-                Cancel
+                {t("chapter.cancel")}
               </button>
             </div>
             {/* Textarea */}
             {chapterUsfmLoading ? (
-              <div className="flex-1 flex items-center justify-center text-stone-400 text-sm">Loading…</div>
+              <div className="flex-1 flex items-center justify-center text-stone-400 text-sm">{t("chapter.loading")}</div>
             ) : (
               <textarea
                 value={chapterUsfmText}
@@ -7577,12 +7577,12 @@ export default function ChapterDisplay({
             onClick={(e) => e.stopPropagation()}
           >
             <h3 className="text-sm font-semibold mb-3" style={{ color: "var(--foreground)" }}>
-              {fnEditId !== null ? "Edit Footnote" : "Add Footnote / Cross-Reference"}
+              {fnEditId !== null ? t("chapter.editFootnote") : t("chapter.addFootnote")}
             </h3>
             <div className="flex gap-3 mb-3">
               {/* Translation picker */}
               <div className="flex-1">
-                <label className="block text-xs mb-1" style={{ color: "var(--text-muted)" }}>Translation</label>
+                <label className="block text-xs mb-1" style={{ color: "var(--text-muted)" }}>{t("chapter.translation")}</label>
                 <select
                   value={fnDialogAbbr}
                   onChange={(e) => setFnDialogAbbr(e.target.value)}
@@ -7597,7 +7597,7 @@ export default function ChapterDisplay({
               </div>
               {/* Verse picker */}
               <div className="w-20">
-                <label className="block text-xs mb-1" style={{ color: "var(--text-muted)" }}>Verse</label>
+                <label className="block text-xs mb-1" style={{ color: "var(--text-muted)" }}>{t("chapter.verse")}</label>
                 <input
                   type="number"
                   min={1}
@@ -7610,7 +7610,7 @@ export default function ChapterDisplay({
               </div>
               {/* Type toggle */}
               <div>
-                <label className="block text-xs mb-1" style={{ color: "var(--text-muted)" }}>Type</label>
+                <label className="block text-xs mb-1" style={{ color: "var(--text-muted)" }}>{t("chapter.type")}</label>
                 <div className="flex gap-1">
                   {(["f", "x"] as const).map((typ) => (
                     <button
@@ -7633,7 +7633,7 @@ export default function ChapterDisplay({
             <textarea
               value={fnDialogContent}
               onChange={(e) => setFnDialogContent(e.target.value)}
-              placeholder="Footnote content (USFM inline markers allowed)"
+              placeholder={t("chapter.fnContent")}
               rows={4}
               className="w-full text-xs rounded border px-2 py-1.5 resize-y focus:outline-none focus:ring-1 focus:ring-sky-500"
               style={{ backgroundColor: "var(--surface-muted)", borderColor: "var(--border-muted)", color: "var(--foreground)" }}
@@ -7664,7 +7664,7 @@ export default function ChapterDisplay({
                   className="px-3 py-1.5 text-xs rounded border"
                   style={{ borderColor: "var(--border-muted)", color: "var(--text-muted)" }}
                 >
-                  Cancel
+                  {t("chapter.cancel")}
                 </button>
                 <button
                   type="button"
@@ -7672,7 +7672,7 @@ export default function ChapterDisplay({
                   disabled={!fnDialogContent.trim()}
                   className="px-3 py-1.5 text-xs rounded bg-emerald-600 text-white disabled:opacity-50"
                 >
-                  {fnEditId !== null ? "Save" : "Add"}
+                  {fnEditId !== null ? t("chapter.save") : t("chapter.add")}
                 </button>
               </div>
             </div>
@@ -7827,7 +7827,7 @@ export default function ChapterDisplay({
           <div className="flex flex-col h-full border-l" style={{ borderColor: "var(--border)", backgroundColor: "var(--surface)" }}>
             <div className="flex items-center justify-between px-4 py-2 border-b shrink-0" style={{ borderColor: "var(--border)" }}>
               <span className="text-sm font-semibold" style={{ color: "var(--foreground)" }}>
-                Version History — {historyAbbr} {chapter}:{historyVerse}
+                {t("chapter.versionHistory", { ref: `${historyAbbr} ${chapter}:${historyVerse}` })}
               </span>
               <div className="flex items-center gap-2">
                 <input
@@ -7838,7 +7838,7 @@ export default function ChapterDisplay({
                   onChange={(e) => openHistory(historyAbbr, parseInt(e.target.value) || 1)}
                   className="w-14 text-xs rounded border px-1.5 py-0.5"
                   style={{ backgroundColor: "var(--surface-muted)", borderColor: "var(--border-muted)", color: "var(--foreground)" }}
-                  title="Verse number"
+                  title={t("chapter.verseNumber")}
                 />
                 <button
                   onClick={() => setHistoryOpen(false)}
@@ -7851,7 +7851,7 @@ export default function ChapterDisplay({
             <div className="flex-1 overflow-y-auto px-3 py-2 space-y-2">
               {historyVersions.length === 0 ? (
                 <p className="text-xs text-center py-6" style={{ color: "var(--text-muted)" }}>
-                  No saved versions yet. Versions are recorded automatically each time you edit a verse.
+                  {t("chapter.noVersions")}
                 </p>
               ) : (
                 historyVersions.map((v) => (
@@ -7865,7 +7865,7 @@ export default function ChapterDisplay({
                         onClick={() => handleRestoreVersion(v.text)}
                         className="px-2 py-0.5 rounded bg-emerald-600 text-white text-[10px] font-medium hover:bg-emerald-700"
                       >
-                        Restore
+                        {t("chapter.restore")}
                       </button>
                     </div>
                     {v.label && (

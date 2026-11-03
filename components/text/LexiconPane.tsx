@@ -5,6 +5,7 @@ import type { LexiconEntry } from "@/lib/db/schema";
 import { getGreekLexicon, getHebrewLexicon } from "@/components/SettingsButton";
 import { parseLexiconOsisRef, splitStepBibleMultiRef } from "@/lib/utils/lexiconRef";
 import { openExternal, isTauriApp } from "@/lib/utils/openExternal";
+import { useTranslation } from "@/lib/i18n/LocaleContext";
 
 interface LexiconPaneProps {
   wordLemma?: string | null;    // Greek: look up by lemma (SBLGNT / LXX)
@@ -506,6 +507,7 @@ function EntryDisplay({
   ubsHtml: string;
   onScriptureRefClick?: (osisRef: string, lexiconSource: string) => void;
 }) {
+  const { t } = useTranslation();
   function handleRefClick(e: React.MouseEvent<HTMLDivElement>) {
     // External links (e.g. UBS's sahd-online.com cross-refs) are plain <a
     // target="_blank"> in the source HTML, which the Tauri webview can't act
@@ -537,7 +539,7 @@ function EntryDisplay({
 
   if (!entry) {
     return (
-      <p className="mt-3 text-xs text-stone-400 dark:text-stone-600 italic">No entry found.</p>
+      <p className="mt-3 text-xs text-stone-400 dark:text-stone-600 italic">{t("lexicon.noEntry")}</p>
     );
   }
 
@@ -696,6 +698,7 @@ function EntryDisplay({
 // ── Main component ────────────────────────────────────────────────────────────
 
 export default function LexiconPane({ wordLemma, strongNumber, isHebrew, textSource, prefixOverride, onScriptureRefClick }: LexiconPaneProps) {
+  const { t } = useTranslation();
   const isLxx = textSource === "STEPBIBLE_LXX";
 
   const [entry, setEntry]           = useState<LexiconEntry | null | "loading">("loading");
@@ -973,7 +976,7 @@ export default function LexiconPane({ wordLemma, strongNumber, isHebrew, textSou
         <button
           onClick={() => canPrev && navigateStrong(currentStrong!.n - 1)}
           disabled={!canPrev}
-          title="Previous entry"
+          title={t("lexicon.prevEntry")}
           className="w-6 h-6 flex items-center justify-center rounded text-stone-400 hover:text-stone-600 dark:hover:text-stone-200 hover:bg-stone-100 dark:hover:bg-stone-800 disabled:opacity-25 disabled:pointer-events-none shrink-0 text-xs"
         >
           ←
@@ -1051,7 +1054,7 @@ export default function LexiconPane({ wordLemma, strongNumber, isHebrew, textSou
         <button
           onClick={() => canNext && navigateStrong(currentStrong!.n + 1)}
           disabled={!canNext}
-          title="Next entry"
+          title={t("lexicon.nextEntry")}
           className="w-6 h-6 flex items-center justify-center rounded text-stone-400 hover:text-stone-600 dark:hover:text-stone-200 hover:bg-stone-100 dark:hover:bg-stone-800 disabled:opacity-25 disabled:pointer-events-none shrink-0 text-xs"
         >
           →

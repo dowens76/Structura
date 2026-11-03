@@ -13,10 +13,11 @@
  * immediately how it looks. A larger preview panel shows sample text in
  * the currently highlighted font.
  *
- * "Apply" immediately persists the selection (calls onApply).
+ * t("fontPicker.apply") immediately persists the selection (calls onApply).
  */
 
 import { useEffect, useRef, useState, useCallback } from "react";
+import { useTranslation } from "@/lib/i18n/LocaleContext";
 
 // ── Curated fallback lists ───────────────────────────────────────────────────
 
@@ -141,6 +142,7 @@ async function fetchSystemFonts(): Promise<{ fonts: string[]; source: "system" |
 // ── Component ────────────────────────────────────────────────────────────────
 
 export default function FontPickerDialog({ language, current, onApply, onClose }: Props) {
+  const { t } = useTranslation();
   const [allFonts,  setAllFonts]  = useState<string[]>([]);
   const [source,    setSource]    = useState<"system" | "curated" | "permission-denied" | "loading">("loading");
   const [search,    setSearch]    = useState("");
@@ -199,17 +201,17 @@ export default function FontPickerDialog({ language, current, onApply, onClose }
   const previewFont = hovered ?? selected;
 
   const TITLE: Record<FontLanguage, string> = {
-    hebrew:          "Choose Hebrew Font",
-    greek:           "Choose Greek Font",
-    translation:     "Choose Translation Font",
-    transliteration: "Choose Transliteration Font",
+    hebrew:          t("fontPicker.chooseHebrew"),
+    greek:           t("fontPicker.chooseGreek"),
+    translation:     t("fontPicker.chooseTranslation"),
+    transliteration: t("fontPicker.chooseTranslit"),
   };
 
   const sourceLabel =
-    source === "loading"          ? "Loading fonts…" :
-    source === "system"           ? `${allFonts.length} system fonts` :
-    source === "permission-denied"? "Font access denied — showing suggestions" :
-    /* curated */                   "Suggested fonts";
+    source === "loading"          ? t("fontPicker.loadingFonts") :
+    source === "system"           ? t("fontPicker.systemFonts", { n: allFonts.length }) :
+    source === "permission-denied"? t("fontPicker.denied") :
+    /* curated */                   t("fontPicker.suggested");
 
   return (
     /* Backdrop */
@@ -239,7 +241,7 @@ export default function FontPickerDialog({ language, current, onApply, onClose }
             onClick={onClose}
             className="w-6 h-6 flex items-center justify-center rounded text-xs transition-colors hover:bg-stone-200 dark:hover:bg-stone-700"
             style={{ color: "var(--text-muted)" }}
-            aria-label="Close"
+            aria-label={t("fontPicker.close")}
           >
             ✕
           </button>
@@ -259,7 +261,7 @@ export default function FontPickerDialog({ language, current, onApply, onClose }
                 type="text"
                 value={search}
                 onChange={e => setSearch(e.target.value)}
-                placeholder="Search fonts…"
+                placeholder={t("fontPicker.search")}
                 className="w-full text-xs px-2 py-1.5 rounded border outline-none"
                 style={{
                   borderColor: "var(--border)",
@@ -282,7 +284,7 @@ export default function FontPickerDialog({ language, current, onApply, onClose }
             <div ref={listRef} className="flex-1 overflow-y-auto">
               {source === "loading" ? (
                 <div className="flex items-center justify-center h-full">
-                  <span className="text-xs" style={{ color: "var(--text-muted)" }}>Loading…</span>
+                  <span className="text-xs" style={{ color: "var(--text-muted)" }}>{t("fontPicker.loading")}</span>
                 </div>
               ) : visible.length === 0 ? (
                 <div className="px-3 py-4 text-xs text-center" style={{ color: "var(--text-muted)" }}>
@@ -324,7 +326,7 @@ export default function FontPickerDialog({ language, current, onApply, onClose }
               style={{ borderColor: "var(--border)" }}
             >
               <span className="text-sm font-medium truncate" style={{ color: "var(--foreground)" }}>
-                {previewFont || <span style={{ color: "var(--text-muted)" }}>No font selected</span>}
+                {previewFont || <span style={{ color: "var(--text-muted)" }}>{t("fontPicker.noneSelected")}</span>}
               </span>
             </div>
 
@@ -336,7 +338,7 @@ export default function FontPickerDialog({ language, current, onApply, onClose }
                   className="text-[10px] uppercase tracking-wider mb-2"
                   style={{ color: "var(--text-muted)" }}
                 >
-                  Preview
+                  {t("fontPicker.preview")}
                 </p>
                 <p
                   className="leading-relaxed"
@@ -358,7 +360,7 @@ export default function FontPickerDialog({ language, current, onApply, onClose }
                   className="text-[10px] uppercase tracking-wider mb-2"
                   style={{ color: "var(--text-muted)" }}
                 >
-                  Character set
+                  {t("fontPicker.charSet")}
                 </p>
                 <p
                   className="leading-relaxed text-sm"
@@ -383,7 +385,7 @@ export default function FontPickerDialog({ language, current, onApply, onClose }
                   className="text-[10px] uppercase tracking-wider mb-2"
                   style={{ color: "var(--text-muted)" }}
                 >
-                  Size scale
+                  {t("fontPicker.sizeScale")}
                 </p>
                 {(["1.5rem", "1.25rem", "1rem", "0.875rem"] as const).map(size => (
                   <p
@@ -414,7 +416,7 @@ export default function FontPickerDialog({ language, current, onApply, onClose }
             className="text-xs px-3 py-1.5 rounded transition-colors"
             style={{ color: "var(--text-muted)" }}
           >
-            Reset to default
+            {t("fontPicker.resetDefault")}
           </button>
           <div className="flex gap-2">
             <button
@@ -422,14 +424,14 @@ export default function FontPickerDialog({ language, current, onApply, onClose }
               className="text-xs px-4 py-1.5 rounded border transition-colors"
               style={{ borderColor: "var(--border)", color: "var(--foreground)" }}
             >
-              Cancel
+              {t("fontPicker.cancel")}
             </button>
             <button
               onClick={() => onApply(selected)}
               className="text-xs px-4 py-1.5 rounded transition-colors font-medium"
               style={{ background: "var(--accent)", color: "white" }}
             >
-              Apply
+              {t("fontPicker.apply")}
             </button>
           </div>
         </div>

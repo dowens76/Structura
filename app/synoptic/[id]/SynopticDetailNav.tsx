@@ -9,6 +9,7 @@ import ThemeToggle from "@/components/ThemeToggle";
 import SettingsButton from "@/components/SettingsButton";
 import WorkspaceSwitcher from "@/components/WorkspaceSwitcher";
 import type { SynopticSetWithColumns } from "@/lib/db/queries";
+import { useTranslation } from "@/lib/i18n/LocaleContext";
 
 export default function SynopticDetailNav({
   set,
@@ -20,6 +21,7 @@ export default function SynopticDetailNav({
   /** The account's Name field (lib/db/queries.ts getAuthorName), null if unset. */
   authorName?: string | null;
 }) {
+  const { t } = useTranslation();
   const router = useRouter();
   const [showEdit, setShowEdit] = useState(false);
   const [pdfStatus, setPdfStatus] = useState<"idle" | "loading" | "done" | "error">("idle");
@@ -126,7 +128,7 @@ export default function SynopticDetailNav({
       });
 
       // The pericope title always heads the page; the author line underneath
-      // it stays opt-in via the "Include name" checkbox. Built with DOM
+      // it stays opt-in via the t("synopticNav.includeName") checkbox. Built with DOM
       // methods (not innerHTML) so neither value needs manual HTML-escaping.
       const showAuthorLine = includeAuthorName && !!authorName;
       const headerEl = document.createElement("div");
@@ -225,7 +227,7 @@ export default function SynopticDetailNav({
         className="text-xs px-2 py-1 rounded transition-colors"
         style={{ color: "var(--nav-fg)" }}
       >
-        ← Synoptic Sets
+        {t("synopticNav.back")}
       </Link>
 
       <span className="text-sm font-semibold truncate" style={{ color: "var(--nav-fg-muted)" }}>
@@ -238,7 +240,7 @@ export default function SynopticDetailNav({
         className="text-xs px-2 py-1 rounded border transition-colors"
         style={{ borderColor: "var(--border)", color: "var(--nav-fg)" }}
       >
-        Edit Scope
+        {t("synopticNav.editScope")}
       </button>
       <button
         type="button"
@@ -246,7 +248,7 @@ export default function SynopticDetailNav({
         className="text-xs px-2 py-1 rounded transition-colors hover:text-red-500"
         style={{ color: "var(--nav-fg-muted)" }}
       >
-        Delete
+        {t("synopticNav.delete")}
       </button>
       {authorName && (
         <label
@@ -260,7 +262,7 @@ export default function SynopticDetailNav({
             onChange={(e) => setIncludeAuthorName(e.target.checked)}
             className="accent-amber-600"
           />
-          Include name
+          {t("synopticNav.includeName")}
         </label>
       )}
       <button
@@ -272,10 +274,10 @@ export default function SynopticDetailNav({
           borderColor: "var(--border)",
           color: pdfStatus === "error" ? "#ef4444" : "var(--nav-fg)",
         }}
-        title="Export the full comparison as a landscape PDF — opens the print dialog, choose 'Save as PDF'"
+        title={t("synopticNav.pdfTitle")}
       >
         {pdfStatus === "loading"
-          ? "Exporting…"
+          ? t("synopticNav.exporting")
           : pdfStatus === "done"
             ? "✓ PDF"
             : pdfStatus === "error"

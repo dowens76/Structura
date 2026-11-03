@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import type { WordTag, BookGrouping } from "@/lib/db/schema";
 import { ColorSwatches, CorpusSelector, type CorpusAssignment } from "@/components/controls/WordTagPanel";
+import { useTranslation } from "@/lib/i18n/LocaleContext";
 
 /**
  * The same name/color/corpus editor the chapter reading view's Tags sidebar
@@ -21,6 +22,7 @@ export default function TagEditModal({
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const { t } = useTranslation();
   const [tags, setTags] = useState<WordTag[] | null>(null);
   const [bookGroupings, setBookGroupings] = useState<BookGrouping[]>([]);
   const [loading, setLoading] = useState(true);
@@ -75,9 +77,9 @@ export default function TagEditModal({
         </div>
 
         <div className="p-4 space-y-3">
-          {loading && <p className="text-sm" style={{ color: "var(--text-muted)" }}>Loading…</p>}
+          {loading && <p className="text-sm" style={{ color: "var(--text-muted)" }}>{t("editModal.loading")}</p>}
           {!loading && tags?.length === 0 && (
-            <p className="text-sm" style={{ color: "var(--text-muted)" }}>Tag not found.</p>
+            <p className="text-sm" style={{ color: "var(--text-muted)" }}>{t("editModal.tagNotFound")}</p>
           )}
           {!loading && (tags?.length ?? 0) > 1 && (
             <p className="text-xs" style={{ color: "var(--text-muted)" }}>
@@ -110,6 +112,7 @@ function TagRowEditor({
   onCreateGrouping: (name: string, books: string[]) => Promise<BookGrouping>;
   onSaved: () => void;
 }) {
+  const { t } = useTranslation();
   const [name, setName] = useState(tag.name);
   const [color, setColor] = useState(tag.color);
   const initialCorpus: CorpusAssignment = {
@@ -121,7 +124,7 @@ function TagRowEditor({
   const [corpus, setCorpus] = useState<CorpusAssignment>(initialCorpus);
   const [saving, setSaving] = useState(false);
   const [justSaved, setJustSaved] = useState(false);
-  // Tracks the last-saved values so "dirty"/"Saved" reflect this save, not
+  // Tracks the last-saved values so "dirty"/t("editModal.saved") reflect this save, not
   // the modal's original snapshot (which never changes after it's fetched).
   const [savedSnapshot, setSavedSnapshot] = useState({ name: tag.name, color: tag.color, corpus: initialCorpus });
 
@@ -158,7 +161,7 @@ function TagRowEditor({
     <div className="rounded-lg border p-3 space-y-2" style={{ borderColor: "var(--border)" }}>
       <div className="flex items-center justify-between">
         <span className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>
-          {tag.book === "*" ? "Corpus-wide (saved search)" : tag.book}
+          {tag.book === "*" ? t("editModal.corpusWide") : tag.book}
         </span>
         <span className="text-[10px] uppercase tracking-wide opacity-60" style={{ color }}>{tag.type}</span>
       </div>
@@ -196,10 +199,10 @@ function TagRowEditor({
           disabled={!dirty || saving || !name.trim()}
           className="text-xs font-semibold px-2 py-1 rounded bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 transition-colors"
         >
-          {saving ? "Saving…" : "Save"}
+          {saving ? t("editModal.saving") : t("editModal.save")}
         </button>
         {justSaved && !dirty && (
-          <span className="text-xs text-green-600 dark:text-green-400">Saved</span>
+          <span className="text-xs text-green-600 dark:text-green-400">{t("editModal.saved")}</span>
         )}
       </div>
     </div>

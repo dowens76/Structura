@@ -5,6 +5,17 @@ import { useRouter } from "next/navigation";
 import type { Version } from "@/lib/db/schema";
 import CreateVersionDialog from "./CreateVersionDialog";
 import ManageVersionsDialog from "./ManageVersionsDialog";
+import { useTranslation } from "@/lib/i18n/LocaleContext";
+
+/** Display name for a version — auto-generated "Version N" names are localized;
+ *  user-chosen names are shown as typed. */
+export function useVersionDisplayName() {
+  const { t } = useTranslation();
+  return (name: string) => {
+    const m = /^Version (\d+)$/.exec(name);
+    return m ? t("versions.defaultName", { n: m[1] }) : name;
+  };
+}
 
 export interface ChapterLocus {
   book: string;
@@ -24,6 +35,8 @@ interface Props {
 
 export default function VersionSelector({ workspaceId, chapters, initialVersions, initialActiveVersionId }: Props) {
   const router = useRouter();
+  const { t } = useTranslation();
+  const displayName = useVersionDisplayName();
   const [open, setOpen] = useState(false);
   const [versions, setVersions] = useState<Version[]>(initialVersions);
   const [activeVersionId, setActiveVersionIdState] = useState(initialActiveVersionId);
@@ -68,7 +81,7 @@ export default function VersionSelector({ workspaceId, chapters, initialVersions
   }
 
   const active = versions.find((v) => v.id === activeVersionId);
-  const label = active?.name ?? "Version 1";
+  const label = displayName(active?.name ?? "Version 1");
 
   return (
     <div ref={ref} className="relative shrink-0">
@@ -77,7 +90,7 @@ export default function VersionSelector({ workspaceId, chapters, initialVersions
         onClick={() => setOpen((v) => !v)}
         className="flex items-center gap-1 text-xs px-2 py-1 rounded transition-colors"
         style={{ color: "var(--nav-fg)", backgroundColor: open ? "var(--surface)" : "transparent" }}
-        title="Switch version"
+        title={t("versions.titleSwitch")}
       >
         <span className="max-w-[100px] truncate">{label}</span>
         <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor">
@@ -91,11 +104,11 @@ export default function VersionSelector({ workspaceId, chapters, initialVersions
           style={{ backgroundColor: "var(--surface)", border: "1px solid var(--border)" }}
         >
           <div className="px-3 py-1 text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>
-            Versions
+            {t("versions.heading")}
           </div>
 
           {versions.length === 0 && (
-            <div className="px-3 py-1.5 text-sm" style={{ color: "var(--text-muted)" }}>Version 1</div>
+            <div className="px-3 py-1.5 text-sm" style={{ color: "var(--text-muted)" }}>{t("versions.defaultName", { n: 1 })}</div>
           )}
 
           {versions.map((v) => (
@@ -113,7 +126,7 @@ export default function VersionSelector({ workspaceId, chapters, initialVersions
               ) : (
                 <span className="w-3 shrink-0" />
               )}
-              <span className="truncate">{v.name}</span>
+              <span className="truncate">{displayName(v.name)}</span>
             </button>
           ))}
 
@@ -124,7 +137,7 @@ export default function VersionSelector({ workspaceId, chapters, initialVersions
               className="w-full text-left block px-3 py-1.5 text-sm hover:bg-stone-100 dark:hover:bg-stone-700 transition-colors"
               style={{ color: "var(--text-muted)" }}
             >
-              + Create new version
+              {t("versions.createNew")}
             </button>
             <button
               type="button"
@@ -132,7 +145,7 @@ export default function VersionSelector({ workspaceId, chapters, initialVersions
               className="w-full text-left block px-3 py-1.5 text-sm hover:bg-stone-100 dark:hover:bg-stone-700 transition-colors"
               style={{ color: "var(--text-muted)" }}
             >
-              Manage versions
+              {t("versions.manage")}
             </button>
           </div>
         </div>

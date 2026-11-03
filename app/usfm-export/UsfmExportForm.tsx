@@ -8,6 +8,7 @@ import Button from "@/components/ui/Button";
 import JSZip from "jszip";
 import type { Book } from "@/lib/db/source-schema";
 import type { Translation } from "@/lib/db/user-schema";
+import { useTranslation } from "@/lib/i18n/LocaleContext";
 
 interface Props {
   books: Book[];
@@ -15,6 +16,7 @@ interface Props {
 }
 
 export default function UsfmExportForm({ books, translations }: Props) {
+  const { t: tr } = useTranslation();
   const [selectedTranslationId, setSelectedTranslationId] = useState<number | null>(
     translations[0]?.id ?? null
   );
@@ -91,9 +93,9 @@ export default function UsfmExportForm({ books, translations }: Props) {
 
   if (translations.length === 0) {
     return (
-      <PageShell title="Export USFM">
+      <PageShell title={tr("usfmExport.title")}>
         <p className="text-stone-500 dark:text-stone-400 text-sm">
-          No translations found. <Link href="/import" className="underline">Import a translation</Link> first.
+          No translations found. <Link href="/import" className="underline">{tr("usfmExport.importLink")}</Link> first.
         </p>
       </PageShell>
     );
@@ -140,10 +142,10 @@ export default function UsfmExportForm({ books, translations }: Props) {
   }
 
   return (
-    <PageShell title="Export USFM">
+    <PageShell title={tr("usfmExport.title")}>
       {/* Translation selector */}
       <div className="mb-6">
-        <SectionHeading size="label" className="mb-2">Translation</SectionHeading>
+        <SectionHeading size="label" className="mb-2">{tr("usfmExport.translation")}</SectionHeading>
         <div className="flex flex-wrap gap-2">
           {translations.map((t) => (
             <button
@@ -167,28 +169,28 @@ export default function UsfmExportForm({ books, translations }: Props) {
       {/* Book selector */}
       <div className="mb-6">
         <div className="flex items-center justify-between mb-2">
-          <SectionHeading size="label">Books</SectionHeading>
+          <SectionHeading size="label">{tr("usfmExport.books")}</SectionHeading>
           <button
             type="button"
             onClick={selectAll}
             className="text-xs text-stone-400 hover:text-stone-600 dark:hover:text-stone-300 underline transition-colors"
           >
-            {allSelected ? "Deselect all" : "Select all"}
+            {allSelected ? tr("usfmExport.deselectAll") : tr("usfmExport.selectAll")}
           </button>
         </div>
-        <BookGrid group={otBooks} label="Old Testament" />
-        <BookGrid group={ntBooks} label="New Testament" />
+        <BookGrid group={otBooks} label={tr("usfmExport.ot")} />
+        <BookGrid group={ntBooks} label={tr("usfmExport.nt")} />
       </div>
 
       {/* Summary + download */}
       <div className="border-t border-[var(--border)] pt-4 flex items-center justify-between gap-4">
         <p className="text-sm text-stone-500 dark:text-stone-400">
           {noneSelected
-            ? "Select at least one book to export."
+            ? tr("usfmExport.selectOne")
             : `${selectedBooks.size} book${selectedBooks.size !== 1 ? "s" : ""} · ${selectedTranslation?.abbreviation ?? ""}`}
         </p>
         <Button onClick={handleDownload} disabled={noneSelected || !selectedTranslationId || downloading}>
-          {downloading ? "Downloading…" : `Download ${selectedBooks.size > 1 ? `${selectedBooks.size} files` : "USFM"}`}
+          {downloading ? tr("usfmExport.downloading") : `Download ${selectedBooks.size > 1 ? `${selectedBooks.size} files` : "USFM"}`}
         </Button>
       </div>
     </PageShell>

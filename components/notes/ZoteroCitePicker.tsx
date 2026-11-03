@@ -221,7 +221,7 @@ export default function ZoteroCitePicker({
         style={{ borderColor: "var(--border)" }}
       >
         <span className="text-xs font-semibold" style={{ color: "var(--text-muted)" }}>
-          Zotero Citation
+          {t("zoteroPicker.title")}
         </span>
         <div className="flex items-center gap-0.5">
           {/* Gear — toggle setup */}
@@ -229,7 +229,7 @@ export default function ZoteroCitePicker({
             type="button"
             onMouseDown={(e) => e.preventDefault()}
             onClick={() => { setSaveError(null); setShowSetup((v) => !v); }}
-            title="Zotero settings"
+            title={t("zoteroPicker.settings")}
             className={[
               "w-5 h-5 flex items-center justify-center rounded text-xs transition-colors",
               showSetup
@@ -244,7 +244,7 @@ export default function ZoteroCitePicker({
             type="button"
             onMouseDown={(e) => e.preventDefault()}
             onClick={onClose}
-            title="Close"
+            title={t("zoteroPicker.close")}
             className="w-5 h-5 flex items-center justify-center rounded text-lg leading-none text-stone-400 hover:text-stone-600 dark:hover:text-stone-200 hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors"
           >
             ×
@@ -260,14 +260,14 @@ export default function ZoteroCitePicker({
       ) : credsError ? (
         /* ── Couldn't verify credentials — distinct from "not configured" ── */
         <div className="px-3 py-4 text-xs space-y-2" style={{ color: "var(--text-muted)" }}>
-          <p>Couldn&apos;t check your Zotero connection. Your saved credentials are probably fine — this looks like a temporary issue.</p>
+          <p>{t("zoteroPicker.checkFailed")}</p>
           <button
             type="button"
             onClick={loadCredentials}
             className="text-xs px-2 py-1 rounded"
             style={{ background: "var(--accent)", color: "white" }}
           >
-            Retry
+            {t("zoteroPicker.retry")}
           </button>
         </div>
       ) : showSetup ? (
@@ -375,7 +375,7 @@ export default function ZoteroCitePicker({
 
             {!loading && !error && !query.trim() && recents.length > 0 && (
               <div className="px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>
-                Recent
+                {t("zoteroPicker.recent")}
               </div>
             )}
 

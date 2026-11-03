@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { useTranslation } from "@/lib/i18n/LocaleContext";
 
 interface FindBarProps {
   query: string;
@@ -27,6 +28,7 @@ export default function FindBar({
   canTag,
   onTag,
 }: FindBarProps) {
+  const { t } = useTranslation();
   // Focus input on mount
   useEffect(() => {
     inputRef.current?.select();
@@ -62,7 +64,7 @@ export default function FindBar({
         value={query}
         onChange={(e) => onChange(e.target.value)}
         onKeyDown={handleKeyDown}
-        placeholder="Find in text…"
+        placeholder={t("findBar.placeholder")}
         className="w-44 bg-transparent text-sm outline-none placeholder:text-stone-400 dark:placeholder:text-stone-500 text-stone-800 dark:text-stone-200"
         spellCheck={false}
         autoComplete="off"
@@ -73,7 +75,7 @@ export default function FindBar({
           ? ""
           : hasHits
             ? `${displayIdx} / ${hitCount}`
-            : "No matches"}
+            : t("findBar.noMatches")}
       </span>
 
       <div className="flex items-center gap-0.5">
@@ -111,7 +113,7 @@ export default function FindBar({
 
       <button
         onClick={onClose}
-        title="Close (Esc)"
+        title={t("findBar.close")}
         className="rounded p-1 text-stone-400 hover:bg-stone-100 dark:hover:bg-stone-800 hover:text-stone-600 dark:hover:text-stone-300"
       >
         <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

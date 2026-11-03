@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import type { InterlinearSubMode } from "@/lib/morphology/types";
 import { CONSTITUENT_LABELS } from "@/lib/morphology/types";
 import { DATASET_GROUP_SWATCHES } from "@/lib/utils/datasetColors";
+import { useTranslation } from "@/lib/i18n/LocaleContext";
 
 interface Dataset {
   id: number;
@@ -78,6 +79,7 @@ export default function InterlinearSubModePicker({
   labelColor = null,
   onSetLabelColor,
 }: InterlinearSubModePickerProps) {
+  const { t } = useTranslation();
   const [dsMenuOpen,   setDsMenuOpen]   = useState(false);
   const [creating,     setCreating]     = useState(false);
   const [newName,      setNewName]      = useState("");
@@ -157,17 +159,17 @@ export default function InterlinearSubModePicker({
 
   return (
     <div className="flex items-center gap-1 flex-wrap">
-      <span className="text-xs text-stone-400 dark:text-stone-500 mr-0.5">Show:</span>
+      <span className="text-xs text-stone-400 dark:text-stone-500 mr-0.5">{t("interlinear.show")}</span>
 
       {/* ── Simple modes ──────────────────────────────────────────────────── */}
-      {SIMPLE_MODES.map(({ value, label, title }) => (
+      {SIMPLE_MODES.map(({ value }) => (
         <button
           key={value}
           onClick={() => onChange(value)}
-          title={title}
+          title={t(`interlinear.title_${value}`)}
           className={[btnBase, currentSimple === value ? btnActive : btnIdle].join(" ")}
         >
-          {label}
+          {t(`interlinear.mode_${value}`)}
         </button>
       ))}
 
@@ -175,7 +177,7 @@ export default function InterlinearSubModePicker({
       <div className="relative" ref={menuRef}>
         <button
           onClick={() => { setDsMenuOpen((v) => !v); setCopyOpen(false); }}
-          title="User-created word datasets"
+          title={t("interlinear.datasetsTitle")}
           className={[
             btnBase,
             "flex items-center gap-1",
@@ -183,8 +185,8 @@ export default function InterlinearSubModePicker({
           ].join(" ")}
         >
           {activeDs != null
-            ? (typeof subMode === "object" && subMode.type === "dataset" ? subMode.name : "Dataset")
-            : "Datasets"}
+            ? (typeof subMode === "object" && subMode.type === "dataset" ? subMode.name : t("interlinear.dataset"))
+            : t("interlinear.datasets")}
           <span className="opacity-70">▾</span>
         </button>
 
@@ -195,7 +197,7 @@ export default function InterlinearSubModePicker({
           >
             {datasets.length === 0 && !creating && (
               <p className="px-3 py-2 text-xs" style={{ color: "var(--text-muted)" }}>
-                No datasets yet.
+                {t("interlinear.noDatasets")}
               </p>
             )}
 
@@ -232,25 +234,25 @@ export default function InterlinearSubModePicker({
                 {renamingId !== ds.id && (
                   <span className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
                     <button
-                      title={ds.direction === "rtl" ? "Right-to-left — click for left-to-right" : "Left-to-right — click for right-to-left"}
+                      title={ds.direction === "rtl" ? t("interlinear.rtlTitle") : t("interlinear.ltrTitle")}
                       className="text-[9px] font-semibold px-1 py-0.5 rounded hover:bg-stone-100 dark:hover:bg-stone-700 w-7 text-center"
                       style={{ color: "var(--text-muted)" }}
                       onClick={() => onSetDatasetDirection(ds.id, ds.direction === "rtl" ? "ltr" : "rtl")}
                     >{ds.direction === "rtl" ? "RTL" : "LTR"}</button>
                     <button
-                      title="Upload entries from file"
+                      title={t("interlinear.upload")}
                       className="text-[10px] px-1 py-0.5 rounded hover:bg-stone-100 dark:hover:bg-stone-700"
                       style={{ color: "var(--text-muted)" }}
                       onClick={() => { onUploadDataset(ds.id); setDsMenuOpen(false); }}
                     >⬆</button>
                     <button
-                      title="Rename"
+                      title={t("interlinear.rename")}
                       className="text-[10px] px-1 py-0.5 rounded hover:bg-stone-100 dark:hover:bg-stone-700"
                       style={{ color: "var(--text-muted)" }}
                       onClick={() => { setRenamingId(ds.id); setRenameVal(ds.name); }}
                     >✎</button>
                     <button
-                      title="Delete dataset"
+                      title={t("interlinear.deleteDataset")}
                       className="text-[10px] px-1 py-0.5 rounded hover:bg-red-100 dark:hover:bg-red-950 text-red-500"
                       onClick={() => { onDeleteDataset(ds.id); if (activeDs === ds.id) onChange("lemma"); setDsMenuOpen(false); }}
                     >✕</button>
@@ -268,7 +270,7 @@ export default function InterlinearSubModePicker({
                       autoFocus
                       value={newName}
                       onChange={(e) => setNewName(e.target.value)}
-                      placeholder="Dataset name"
+                      placeholder={t("interlinear.datasetName")}
                       onKeyDown={(e) => {
                         if (e.key === "Enter") handleCreate();
                         if (e.key === "Escape") { setCreating(false); setNewName(""); setNewDirection("ltr"); }
@@ -279,17 +281,17 @@ export default function InterlinearSubModePicker({
                     <button
                       onClick={handleCreate}
                       className="text-xs px-2 py-0.5 rounded bg-blue-600 text-white"
-                    >Add</button>
+                    >{t("interlinear.add")}</button>
                   </div>
                   <div className="flex items-center gap-1.5">
-                    <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>Direction:</span>
+                    <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>{t("interlinear.direction")}</span>
                     <div className="flex gap-1">
                       {(["ltr", "rtl"] as const).map((d) => (
                         <button
                           key={d}
                           type="button"
                           onClick={() => setNewDirection(d)}
-                          title={d === "ltr" ? "Left-to-right (e.g. English glosses)" : "Right-to-left (e.g. Hebrew/Arabic values)"}
+                          title={d === "ltr" ? t("interlinear.ltrOption") : t("interlinear.rtlOption")}
                           className={[
                             "text-[10px] px-1.5 py-0.5 rounded border transition-colors",
                             newDirection === d
@@ -310,7 +312,7 @@ export default function InterlinearSubModePicker({
                   className="w-full text-left text-xs px-3 py-1 hover:bg-stone-100 dark:hover:bg-stone-700 transition-colors"
                   style={{ color: "var(--text-muted)" }}
                 >
-                  + New dataset
+                  {t("interlinear.newDataset")}
                 </button>
               )}
             </div>
@@ -323,17 +325,17 @@ export default function InterlinearSubModePicker({
         <>
           <button
             onClick={() => { onToggleNewGrouping?.(); setGroupPromptOpen(false); }}
-            title="Toggle new-grouping mode: click words to combine them into one group"
+            title={t("interlinear.newGroupingTitle")}
             className={[btnBase, groupingMode === "new" ? btnActive : btnIdle].join(" ")}
           >
-            New grouping
+            {t("interlinear.newGrouping")}
           </button>
           <button
             onClick={() => { onToggleEditGrouping?.(); setGroupPromptOpen(false); }}
-            title="Toggle edit-grouping mode: click a grouped word to load and modify its group"
+            title={t("interlinear.editGroupingTitle")}
             className={[btnBase, groupingMode === "edit" ? btnActive : btnIdle].join(" ")}
           >
-            Edit grouping
+            {t("interlinear.editGrouping")}
           </button>
           {groupingMode !== "off" && (
             <div className="relative" ref={groupRef}>
@@ -344,7 +346,7 @@ export default function InterlinearSubModePicker({
                   setTimeout(() => groupInputRef.current?.focus(), 0);
                 }}
                 disabled={pendingGroupCount === 0}
-                title="Save the selected words as one grouping"
+                title={t("interlinear.saveGroupingTitle")}
                 className={[btnBase, "disabled:opacity-40 disabled:cursor-not-allowed", groupPromptOpen ? btnActive : btnIdle].join(" ")}
               >
                 Save grouping{pendingGroupCount > 0 ? ` (${pendingGroupCount})` : ""}
@@ -381,7 +383,7 @@ export default function InterlinearSubModePicker({
                       autoFocus
                       value={groupDraftValue}
                       onChange={(e) => onGroupDraftValueChange?.(e.target.value)}
-                      placeholder="Enter value…"
+                      placeholder={t("interlinear.enterValue")}
                       onKeyDown={(e) => {
                         if (e.key === "Enter") { onSaveGrouping?.(); setGroupPromptOpen(false); }
                         if (e.key === "Escape") setGroupPromptOpen(false);
@@ -394,7 +396,7 @@ export default function InterlinearSubModePicker({
                     <span className="flex flex-wrap items-center gap-1">
                       <button
                         onClick={() => onSetLabelColor?.(null)}
-                        title="Use the automatic color for this label"
+                        title={t("interlinear.autoColor")}
                         className="w-4 h-4 rounded-full border flex items-center justify-center text-[8px] leading-none"
                         style={{
                           borderColor: labelColor == null ? "var(--foreground)" : "var(--border)",
@@ -424,7 +426,7 @@ export default function InterlinearSubModePicker({
                         onClick={() => { onDeleteGrouping?.(); setGroupPromptOpen(false); }}
                         className="text-[10px] px-1.5 py-0.5 rounded border border-red-300 dark:border-red-800 text-red-500 hover:bg-red-50 dark:hover:bg-red-950 transition-colors"
                       >
-                        Delete group
+                        {t("interlinear.deleteGroup")}
                       </button>
                     )}
                     <button
@@ -432,7 +434,7 @@ export default function InterlinearSubModePicker({
                       disabled={!groupDraftValue.trim()}
                       className="text-[10px] px-2 py-0.5 rounded bg-blue-600 text-white disabled:opacity-40"
                     >
-                      Save
+                      {t("interlinear.save")}
                     </button>
                   </span>
                 </div>
@@ -447,7 +449,7 @@ export default function InterlinearSubModePicker({
         <div className="relative" ref={copyRef}>
           <button
             onClick={openCopy}
-            title="Copy transliteration to clipboard"
+            title={t("interlinear.copyTranslit")}
             className={[btnBase, "flex items-center gap-1", copyOpen ? btnActive : btnIdle].join(" ")}
           >
             Copy <span className="opacity-70">▾</span>
@@ -461,7 +463,7 @@ export default function InterlinearSubModePicker({
             >
               {/* Format toggle */}
               <div>
-                <p className="text-[10px] uppercase tracking-wide mb-1" style={{ color: "var(--text-muted)" }}>Format</p>
+                <p className="text-[10px] uppercase tracking-wide mb-1" style={{ color: "var(--text-muted)" }}>{t("interlinear.format")}</p>
                 <div className="flex gap-1">
                   {(["running", "interlinear"] as const).map((f) => (
                     <button
@@ -475,20 +477,20 @@ export default function InterlinearSubModePicker({
                       ].join(" ")}
                       style={{ color: copyFormat === f ? undefined : "var(--foreground)" }}
                     >
-                      {f === "running" ? "Running text" : "Interlinear table"}
+                      {f === "running" ? t("interlinear.runningText") : t("interlinear.interlinearTable")}
                     </button>
                   ))}
                 </div>
                 <p className="text-[10px] mt-1" style={{ color: "var(--text-muted)" }}>
                   {copyFormat === "running"
-                    ? "Flowing text per verse — good for inline citations"
-                    : "Source + transliteration rows — good for interlinear display"}
+                    ? t("interlinear.runningHint")
+                    : t("interlinear.tableHint")}
                 </p>
               </div>
 
               {/* Verse range */}
               <div>
-                <p className="text-[10px] uppercase tracking-wide mb-1" style={{ color: "var(--text-muted)" }}>Verses</p>
+                <p className="text-[10px] uppercase tracking-wide mb-1" style={{ color: "var(--text-muted)" }}>{t("interlinear.verses")}</p>
                 <div className="flex items-center gap-1.5">
                   <input
                     type="number"
@@ -513,8 +515,8 @@ export default function InterlinearSubModePicker({
                     onClick={() => { setCopyStart(minVerse); setCopyEnd(maxVerse); }}
                     className="text-[10px] px-1.5 py-0.5 rounded border border-stone-200 dark:border-stone-700 hover:bg-stone-100 dark:hover:bg-stone-700"
                     style={{ color: "var(--text-muted)" }}
-                    title="Reset to full chapter"
-                  >All</button>
+                    title={t("interlinear.resetChapter")}
+                  >{t("interlinear.all")}</button>
                 </div>
               </div>
 
@@ -529,7 +531,7 @@ export default function InterlinearSubModePicker({
                     : "bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-60",
                 ].join(" ")}
               >
-                {copied ? "✓ Copied!" : copying ? "Copying…" : "Copy to clipboard"}
+                {copied ? "✓ Copied!" : copying ? t("interlinear.copying") : t("interlinear.copy")}
               </button>
             </div>
           )}

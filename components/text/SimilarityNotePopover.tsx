@@ -3,6 +3,7 @@
 import { useState } from "react";
 import type { PoetryNotation } from "@/lib/db/schema";
 import { POETRY_COLORS } from "@/lib/poetry/constants";
+import { useTranslation } from "@/lib/i18n/LocaleContext";
 
 /** Similarity's own note editor — like PoetryNotePopover, but (a) positioned
  *  to the right of its anchor (the clicked word/letter-range's own wrapper,
@@ -35,6 +36,7 @@ export default function SimilarityNotePopover({
   onRestoreArrows: () => void;
   onClose: () => void;
 }) {
+  const { t } = useTranslation();
   const [draft, setDraft] = useState(mark.note ?? "");
   const color = POETRY_COLORS.similarity;
   return (
@@ -51,7 +53,7 @@ export default function SimilarityNotePopover({
       <textarea
         className="w-full text-xs rounded border border-stone-300 dark:border-stone-600 bg-transparent p-1 resize-none"
         rows={2}
-        placeholder="Note"
+        placeholder={t("poetryNote.note")}
         value={draft}
         onChange={(e) => setDraft(e.target.value)}
         autoFocus
@@ -62,13 +64,13 @@ export default function SimilarityNotePopover({
           style={{ color }}
           onClick={onAddWord}
         >
-          + Add word
+          {t("poetryNote.addWord")}
         </button>
         <button
           className="text-[10px] text-red-600 hover:underline"
           onClick={() => onDeleteWord(mark.id)}
         >
-          Delete
+          {t("poetryNote.delete")}
         </button>
       </span>
       {hasMissingArrow && (
@@ -77,17 +79,17 @@ export default function SimilarityNotePopover({
           style={{ color }}
           onClick={onRestoreArrows}
         >
-          ↺ Restore arrow
+          {t("poetryNote.restoreArrow")}
         </button>
       )}
       <span className="flex items-center justify-end gap-1">
-        <button className="text-[10px] text-stone-500 hover:underline" onClick={onClose}>Cancel</button>
+        <button className="text-[10px] text-stone-500 hover:underline" onClick={onClose}>{t("poetryNote.cancel")}</button>
         <button
           className="text-[10px] font-semibold hover:underline"
           style={{ color }}
           onClick={() => { onSave(draft.trim() || null); onClose(); }}
         >
-          Save
+          {t("poetryNote.save")}
         </button>
       </span>
     </span>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "@/lib/i18n/LocaleContext";
 
 export type ClearCategory =
   | "paragraphBreaks"
@@ -51,6 +52,7 @@ export default function ClearAnnotationsDialog({
   onClose,
   onCleared,
 }: Props) {
+  const { t } = useTranslation();
   const categories = availableCategories
     ? CATEGORY_META.filter((m) => availableCategories.includes(m.key))
     : CATEGORY_META;
@@ -102,7 +104,7 @@ export default function ClearAnnotationsDialog({
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        setError((data as { error?: string }).error ?? "Clear failed.");
+        setError((data as { error?: string }).error ?? t("clearDialog.clearFailed"));
         return;
       }
       const { cleared } = await res.json() as { cleared: ClearCategory[] };
@@ -131,13 +133,13 @@ export default function ClearAnnotationsDialog({
           style={{ borderColor: "var(--border)" }}
         >
           <h2 className="text-base font-semibold" style={{ color: "var(--foreground)" }}>
-            Clear annotations
+            {t("clearDialog.title")}
           </h2>
           <button
             onClick={onClose}
             className="text-xl leading-none opacity-50 hover:opacity-100 transition-opacity"
             style={{ color: "var(--foreground)" }}
-            aria-label="Close"
+            aria-label={t("clearDialog.close")}
           >×</button>
         </div>
 
@@ -145,17 +147,17 @@ export default function ClearAnnotationsDialog({
         <div className="px-5 py-4 space-y-4">
           {/* Warning */}
           <p className="text-sm" style={{ color: "var(--text-muted)" }}>
-            Permanently delete the selected annotations for{" "}
+            {t("clearDialog.warnBefore")}{" "}
             <span className="font-semibold" style={{ color: "var(--foreground)" }}>
               {scopeLabel}
             </span>
-            . This cannot be undone.
+            {t("clearDialog.warnAfter")}
           </p>
 
           {/* Select all / none */}
           <div className="flex items-center gap-3">
             <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>
-              Categories
+              {t("clearDialog.categories")}
             </span>
             <button
               onClick={selectAll}
@@ -163,7 +165,7 @@ export default function ClearAnnotationsDialog({
               style={{ color: "var(--accent)" }}
               type="button"
             >
-              all
+              {t("clearDialog.all")}
             </button>
             <button
               onClick={selectNone}
@@ -171,13 +173,13 @@ export default function ClearAnnotationsDialog({
               style={{ color: "var(--accent)" }}
               type="button"
             >
-              none
+              {t("clearDialog.none")}
             </button>
           </div>
 
           {/* Checkboxes */}
           <div className="space-y-2">
-            {categories.map(({ key, label, icon }) => (
+            {categories.map(({ key, icon }) => (
               <label
                 key={key}
                 className="flex items-center gap-3 cursor-pointer select-none group"
@@ -195,7 +197,7 @@ export default function ClearAnnotationsDialog({
                   {icon}
                 </span>
                 <span className="text-sm" style={{ color: "var(--foreground)" }}>
-                  {label}
+                  {t(`clearDialog.${key}`)}
                 </span>
               </label>
             ))}
@@ -218,7 +220,7 @@ export default function ClearAnnotationsDialog({
             style={{ color: "var(--text-muted)" }}
             type="button"
           >
-            Cancel
+            {t("clearDialog.cancel")}
           </button>
           <button
             onClick={handleClear}
@@ -226,7 +228,7 @@ export default function ClearAnnotationsDialog({
             className="px-4 py-1.5 rounded text-sm font-medium bg-red-600 text-white hover:bg-red-700 transition-colors disabled:opacity-40"
             type="button"
           >
-            {loading ? "Clearing…" : `Clear ${checked.size === categories.length ? "all" : checked.size}`}
+            {loading ? t("clearDialog.clearing") : t("clearDialog.clearN", { n: checked.size === categories.length ? t("clearDialog.all") : checked.size })}
           </button>
         </div>
       </div>

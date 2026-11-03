@@ -10,6 +10,7 @@ import {
   type RuleConditions,
   type FieldDef,
 } from "@/lib/morphology/colorRules";
+import { useTranslation } from "@/lib/i18n/LocaleContext";
 
 interface ColorRulePanelProps {
   rules: ColorRule[];
@@ -20,6 +21,7 @@ interface ColorRulePanelProps {
 const EMPTY_DRAFT: RuleConditions = {};
 
 export default function ColorRulePanel({ rules, onChange, isHebrew }: ColorRulePanelProps) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState<RuleConditions>(EMPTY_DRAFT);
   const [draftColor, setDraftColor] = useState(RULE_PALETTE[0]);
@@ -85,7 +87,7 @@ export default function ColorRulePanel({ rules, onChange, isHebrew }: ColorRuleP
     <div className="relative" ref={containerRef}>
       {/* Trigger */}
       <button onClick={() => setOpen((o) => !o)} className={triggerClass}>
-        <span>Color Rules</span>
+        <span>{t("colorRules.title")}</span>
         {rules.length > 0 && (
           <span className="text-stone-400 dark:text-stone-500">({rules.length})</span>
         )}
@@ -115,7 +117,7 @@ export default function ColorRulePanel({ rules, onChange, isHebrew }: ColorRuleP
                     <button
                       onClick={() => removeRule(rule.id)}
                       className="text-stone-400 hover:text-red-500 text-base leading-none transition-colors"
-                      title="Remove rule"
+                      title={t("colorRules.removeRule")}
                     >
                       ×
                     </button>
@@ -128,7 +130,7 @@ export default function ColorRulePanel({ rules, onChange, isHebrew }: ColorRuleP
 
           {/* Builder header */}
           <p className="text-[10px] font-semibold text-stone-400 dark:text-stone-500 uppercase tracking-wider mb-2">
-            Build a Rule
+            {t("colorRules.buildRule")}
           </p>
 
           {/* Field groups */}
@@ -157,7 +159,7 @@ export default function ColorRulePanel({ rules, onChange, isHebrew }: ColorRuleP
           {/* Color picker */}
           <div className="flex items-center gap-1.5 mt-3 mb-3">
             <span className="text-[10px] font-semibold text-stone-400 dark:text-stone-500 uppercase tracking-wider mr-1 shrink-0">
-              Color
+              {t("colorRules.color")}
             </span>
             {RULE_PALETTE.map((c) => (
               <button
@@ -174,7 +176,7 @@ export default function ColorRulePanel({ rules, onChange, isHebrew }: ColorRuleP
               />
             ))}
             {/* Custom color input */}
-            <div className="relative ml-0.5 shrink-0" title="Custom color">
+            <div className="relative ml-0.5 shrink-0" title={t("colorRules.customColor")}>
               <div
                 className="w-5 h-5 rounded-full border border-stone-300 dark:border-stone-600 overflow-hidden cursor-pointer"
                 style={{ background: RULE_PALETTE.includes(draftColor) ? "#e7e5e4" : draftColor }}
@@ -184,7 +186,7 @@ export default function ColorRulePanel({ rules, onChange, isHebrew }: ColorRuleP
                 value={draftColor}
                 onChange={(e) => setDraftColor(e.target.value)}
                 className="absolute inset-0 opacity-0 w-full h-full cursor-pointer"
-                title="Custom color"
+                title={t("colorRules.customColor")}
               />
             </div>
           </div>
@@ -195,7 +197,7 @@ export default function ColorRulePanel({ rules, onChange, isHebrew }: ColorRuleP
             disabled={!hasConditions}
             className="w-full py-1.5 rounded text-xs font-semibold bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
           >
-            Add Rule
+            {t("colorRules.addRule")}
           </button>
         </div>
       )}

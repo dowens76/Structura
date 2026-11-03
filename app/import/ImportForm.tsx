@@ -57,6 +57,7 @@ const MARKER_LABELS: Record<string, string> = {
 };
 
 function MarkerInventory({ inv, stats }: { inv: { preserved: string[]; stripped: string[] }; stats: { chapters: number; verses: number } }) {
+  const { t } = useTranslation();
   const [expanded, setExpanded] = useState(true);
 
   return (
@@ -73,7 +74,7 @@ function MarkerInventory({ inv, stats }: { inv: { preserved: string[]; stripped:
         <div className="px-4 pb-4 pt-1 space-y-3">
           {inv.preserved.length > 0 && (
             <div>
-              <p className="text-xs font-semibold text-green-700 dark:text-green-400 mb-1.5">Preserved</p>
+              <p className="text-xs font-semibold text-green-700 dark:text-green-400 mb-1.5">{t("import2.preserved")}</p>
               <ul className="space-y-0.5">
                 {inv.preserved.map(m => (
                   <li key={m} className="flex items-start gap-2">
@@ -88,7 +89,7 @@ function MarkerInventory({ inv, stats }: { inv: { preserved: string[]; stripped:
           )}
           {inv.stripped.length > 0 && (
             <div>
-              <p className="text-xs font-semibold text-red-700 dark:text-red-400 mb-1.5">Stripped (not imported)</p>
+              <p className="text-xs font-semibold text-red-700 dark:text-red-400 mb-1.5">{t("import2.stripped")}</p>
               <ul className="space-y-0.5">
                 {inv.stripped.map(m => (
                   <li key={m} className="flex items-start gap-2">
@@ -100,7 +101,7 @@ function MarkerInventory({ inv, stats }: { inv: { preserved: string[]; stripped:
             </div>
           )}
           {inv.stripped.length === 0 && inv.preserved.length === 0 && (
-            <p className="text-xs text-stone-400">No markers detected.</p>
+            <p className="text-xs text-stone-400">{t("import2.noMarkers")}</p>
           )}
         </div>
       )}
@@ -243,7 +244,7 @@ export default function ImportForm({ books, existingTranslations }: ImportFormPr
       try {
         const text = await file.text();
         const parsed = parseUsfmFile(text);
-        results.push({ name: file.name, parsed: parsed.verses.length > 0 ? parsed : null, error: parsed.verses.length === 0 ? "No verses found" : null });
+        results.push({ name: file.name, parsed: parsed.verses.length > 0 ? parsed : null, error: parsed.verses.length === 0 ? t("import2.noVerses") : null });
       } catch (err) {
         results.push({ name: file.name, parsed: null, error: String(err) });
       }
@@ -446,10 +447,10 @@ export default function ImportForm({ books, existingTranslations }: ImportFormPr
       {/* Tab switcher */}
       <div className="flex gap-1 border-b border-[var(--border)] mb-6">
         <button type="button" className={tabBtnClass(activeTab === "paste")} onClick={() => setActiveTab("paste")}>
-          Paste Text
+          {t("import2.pasteText")}
         </button>
         <button type="button" className={tabBtnClass(activeTab === "usfm")} onClick={() => setActiveTab("usfm")}>
-          USFM File
+          {t("import2.usfmFile")}
         </button>
       </div>
 
@@ -499,7 +500,7 @@ export default function ImportForm({ books, existingTranslations }: ImportFormPr
               Psalm superscription numbering follows this translation&apos;s versification
               scheme, set on the{" "}
               <Link href="/translations" className="underline hover:text-stone-700 dark:hover:text-stone-300">
-                Manage Translations
+                {t("import2.manageTranslations")}
               </Link>{" "}
               page.
             </p>
@@ -582,10 +583,10 @@ export default function ImportForm({ books, existingTranslations }: ImportFormPr
         <div className="space-y-6">
           {/* Translation identity */}
           <div>
-            <SectionHeading size="label" className="mb-3">Translation</SectionHeading>
+            <SectionHeading size="label" className="mb-3">{t("import2.translation")}</SectionHeading>
             {existingTranslations.length > 0 && (
               <div className="mb-3">
-                <p className="text-xs text-stone-500 dark:text-stone-400 mb-2">Select an existing translation or enter a new one:</p>
+                <p className="text-xs text-stone-500 dark:text-stone-400 mb-2">{t("import2.selectOrEnter")}</p>
                 <div className="flex flex-wrap gap-2">
                   {existingTranslations.map((tr) => (
                     <button
@@ -605,13 +606,13 @@ export default function ImportForm({ books, existingTranslations }: ImportFormPr
             )}
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium mb-1 text-stone-700 dark:text-stone-300" htmlFor="usfm-name">Full Name</label>
-                <input id="usfm-name" name="name" type="text" required placeholder="e.g. English Standard Version"
+                <label className="block text-sm font-medium mb-1 text-stone-700 dark:text-stone-300" htmlFor="usfm-name">{t("import2.fullName")}</label>
+                <input id="usfm-name" name="name" type="text" required placeholder={t("import2.fullNamePlaceholder")}
                   value={usfmName} onChange={(e) => { setUsfmName(e.target.value); setUsfmSelectedId(null); }} className={inputClass} />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1 text-stone-700 dark:text-stone-300" htmlFor="usfm-abbr">Abbreviation</label>
-                <input id="usfm-abbr" name="abbreviation" type="text" required placeholder="e.g. ESV" maxLength={12}
+                <label className="block text-sm font-medium mb-1 text-stone-700 dark:text-stone-300" htmlFor="usfm-abbr">{t("import2.abbreviation")}</label>
+                <input id="usfm-abbr" name="abbreviation" type="text" required placeholder={t("import2.abbrPlaceholder")} maxLength={12}
                   value={usfmAbbr} onChange={(e) => { setUsfmAbbr(e.target.value.toUpperCase()); setUsfmSelectedId(null); }}
                   className={inputClass + " font-mono uppercase"} />
               </div>
@@ -620,7 +621,7 @@ export default function ImportForm({ books, existingTranslations }: ImportFormPr
               Psalm superscription numbering follows this translation&apos;s versification
               scheme, set on the{" "}
               <Link href="/translations" className="underline hover:text-stone-700 dark:hover:text-stone-300">
-                Manage Translations
+                {t("import2.manageTranslations")}
               </Link>{" "}
               page.
             </p>
@@ -645,7 +646,7 @@ export default function ImportForm({ books, existingTranslations }: ImportFormPr
                       : "text-stone-500 dark:text-stone-400 hover:text-stone-700 dark:hover:text-stone-200",
                   ].join(" ")}
                 >
-                  {mode === "file" ? "Single File" : "Folder"}
+                  {mode === "file" ? t("import2.singleFile") : t("import2.folder")}
                 </button>
               ))}
             </div>
@@ -654,7 +655,7 @@ export default function ImportForm({ books, existingTranslations }: ImportFormPr
             {importMode === "file" && (
               <div>
                 <label className="block text-sm font-medium mb-1 text-stone-700 dark:text-stone-300" htmlFor="usfmFile">
-                  USFM File <span className="font-normal text-stone-400">(.usfm, .sfm)</span>
+                  {t("import2.usfmFile")} <span className="font-normal text-stone-400">(.usfm, .sfm)</span>
                 </label>
                 <p className="text-xs text-stone-500 dark:text-stone-400 mb-2">
                   The entire book is imported. Book is detected from the <code className="font-mono">\id</code> marker.
@@ -690,7 +691,7 @@ export default function ImportForm({ books, existingTranslations }: ImportFormPr
             {importMode === "folder" && (
               <div>
                 <label className="block text-sm font-medium mb-1 text-stone-700 dark:text-stone-300" htmlFor="usfmFolder">
-                  USFM Folder
+                  {t("import2.usfmFolder")}
                 </label>
                 <p className="text-xs text-stone-500 dark:text-stone-400 mb-2">
                   All <code className="font-mono">.usfm</code> / <code className="font-mono">.sfm</code> files in the folder are imported as separate books. Each file must have a valid <code className="font-mono">\id</code> marker.
@@ -705,7 +706,7 @@ export default function ImportForm({ books, existingTranslations }: ImportFormPr
                   className="block w-full text-sm text-stone-600 dark:text-stone-300 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 dark:file:bg-blue-900 dark:file:text-blue-200 hover:file:bg-blue-100 dark:hover:file:bg-blue-800 transition-colors"
                 />
                 {folderParsing && (
-                  <p className="mt-2 text-sm text-stone-500 dark:text-stone-400 animate-pulse">Scanning files…</p>
+                  <p className="mt-2 text-sm text-stone-500 dark:text-stone-400 animate-pulse">{t("import2.scanning")}</p>
                 )}
                 {!folderParsing && folderPreviews.length > 0 && (
                   <div className="mt-3 space-y-3">
@@ -766,7 +767,7 @@ export default function ImportForm({ books, existingTranslations }: ImportFormPr
                 <span>
                   {folderImporting
                     ? `Importing${folderProgress.currentBook ? ` ${folderProgress.currentBook}` : ""}…`
-                    : folderImportDone ? "Import complete" : ""}
+                    : folderImportDone ? t("import2.complete") : ""}
                 </span>
                 <span>{folderProgress.done} / {folderProgress.total}</span>
               </div>
@@ -788,7 +789,7 @@ export default function ImportForm({ books, existingTranslations }: ImportFormPr
             importMode === "file" ? !!parsedFile && !fileError : folderPreviews.filter(f => f.parsed).length > 0
           ) && (
             <p className="text-xs text-amber-600 dark:text-amber-400">
-              Enter a translation name and abbreviation above to enable import.
+              {t("import2.enterNameFirst")}
             </p>
           )}
 
@@ -797,7 +798,7 @@ export default function ImportForm({ books, existingTranslations }: ImportFormPr
             <div className="rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950 overflow-hidden">
               <div className="px-4 py-3 border-b border-amber-200 dark:border-amber-800">
                 <p className="text-sm font-semibold text-amber-800 dark:text-amber-200">
-                  This translation already has text for some of these chapters
+                  {t("import2.hasText")}
                 </p>
                 <p className="text-xs text-amber-700 dark:text-amber-300 mt-1">
                   {usfmConflicts.map((c, i) => (
@@ -818,9 +819,9 @@ export default function ImportForm({ books, existingTranslations }: ImportFormPr
                       className="mt-0.5 accent-blue-600"
                     />
                     <span className="text-sm text-stone-800 dark:text-stone-100">
-                      {opt === "overwrite" && "Overwrite all existing text"}
-                      {opt === "skip" && "Import only new chapters (skip existing)"}
-                      {opt === "selective" && "Choose which chapters to overwrite"}
+                      {opt === "overwrite" && t("import2.overwriteAll")}
+                      {opt === "skip" && t("import2.onlyNew")}
+                      {opt === "selective" && t("import2.choose")}
                     </span>
                   </label>
                 ))}
@@ -866,11 +867,11 @@ export default function ImportForm({ books, existingTranslations }: ImportFormPr
                     variant="secondary"
                     onClick={() => { setUsfmConflicts(null); setPendingImportType(null); }}
                   >
-                    Cancel
+                    {t("import2.cancel")}
                   </Button>
                   <Button onClick={handleConflictConfirm}>
-                    {conflictChoice === "overwrite" ? "Overwrite & Import" :
-                     conflictChoice === "skip" ? "Import New Chapters" : "Import Selected"}
+                    {conflictChoice === "overwrite" ? t("import2.overwriteImport") :
+                     conflictChoice === "skip" ? t("import2.importNew") : t("import2.importSelected")}
                   </Button>
                 </div>
               </div>
@@ -888,12 +889,12 @@ export default function ImportForm({ books, existingTranslations }: ImportFormPr
             {folderImporting
               ? `Importing… (${folderProgress?.done ?? 0} / ${folderProgress?.total ?? 0})`
               : checkingConflicts
-                ? "Checking…"
+                ? t("import2.checking")
                 : usfmPending
-                  ? "Importing…"
+                  ? t("import2.importing")
                   : importMode === "folder"
                     ? `Import ${folderPreviews.filter(f => f.parsed).length} Book${folderPreviews.filter(f => f.parsed).length !== 1 ? "s" : ""}`
-                    : "Import USFM File"}
+                    : t("import2.importUsfm")}
           </Button>
         </div>
       )}

@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { OSIS_BOOK_NAMES, OSIS_REF_BOOK_NAMES, MORPHGNT_BOOK_MAP } from "@/lib/utils/osis";
 import type { Passage } from "@/lib/db/user-schema";
+import { useTranslation } from "@/lib/i18n/LocaleContext";
 
 const NT_OSIS_CODES = new Set(Object.values(MORPHGNT_BOOK_MAP));
 
@@ -125,6 +126,7 @@ interface AddressBarProps {
 }
 
 export default function AddressBar({ open, onClose, textSource }: AddressBarProps) {
+  const { t } = useTranslation();
   const router = useRouter();
   const [value, setValue] = useState("");
   const [labeledPassages, setLabeledPassages] = useState<Passage[]>([]);
@@ -204,7 +206,7 @@ export default function AddressBar({ open, onClose, textSource }: AddressBarProp
             value={value}
             onChange={(e) => { setValue(e.target.value); setActiveIdx(0); }}
             onKeyDown={handleKeyDown}
-            placeholder="e.g. Matt 5, Gen 3, Psalm 23"
+            placeholder={t("addressBar.placeholder")}
             className="flex-1 bg-transparent outline-none text-sm"
             style={{ color: "var(--foreground)" }}
           />
@@ -217,7 +219,7 @@ export default function AddressBar({ open, onClose, textSource }: AddressBarProp
             {hasBooks && (
               <>
                 {hasPassages && (
-                  <div className="px-4 py-1 text-[10px] font-semibold uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>Books</div>
+                  <div className="px-4 py-1 text-[10px] font-semibold uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>{t("addressBar.books")}</div>
                 )}
                 {bookMatches.map((r, i) => {
                   const isActive = i === activeIdx;
@@ -244,7 +246,7 @@ export default function AddressBar({ open, onClose, textSource }: AddressBarProp
             {hasPassages && (
               <>
                 {hasBooks && (
-                  <div className="px-4 py-1 mt-1 text-[10px] font-semibold uppercase tracking-wider border-t" style={{ color: "var(--text-muted)", borderColor: "var(--border)" }}>Passages</div>
+                  <div className="px-4 py-1 mt-1 text-[10px] font-semibold uppercase tracking-wider border-t" style={{ color: "var(--text-muted)", borderColor: "var(--border)" }}>{t("addressBar.passages")}</div>
                 )}
                 {passageMatches.map((r, i) => {
                   const idx = bookMatches.length + i;
@@ -275,9 +277,9 @@ export default function AddressBar({ open, onClose, textSource }: AddressBarProp
         ) : (
           <div className="px-4 py-3">
             {value.trim() ? (
-              <span className="text-sm" style={{ color: "var(--text-muted)" }}>No match found</span>
+              <span className="text-sm" style={{ color: "var(--text-muted)" }}>{t("addressBar.noMatch")}</span>
             ) : (
-              <span className="text-xs" style={{ color: "var(--text-muted)" }}>Type a book name and chapter number</span>
+              <span className="text-xs" style={{ color: "var(--text-muted)" }}>{t("addressBar.typeHint")}</span>
             )}
           </div>
         )}

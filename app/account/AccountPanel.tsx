@@ -332,7 +332,7 @@ export default function AccountPanel({ activeWorkspaceId: initialActiveId }: Pro
     });
     const data = (await res.json()) as { user?: User; error?: string };
     if (!res.ok) {
-      setError(data.error ?? "Failed to update user.");
+      setError(data.error ?? t("account2.updateUserFailed"));
       return;
     }
     if (data.user) setUser(data.user);
@@ -350,7 +350,7 @@ export default function AccountPanel({ activeWorkspaceId: initialActiveId }: Pro
     });
     const data = (await res.json()) as { workspace?: Workspace; error?: string };
     if (!res.ok) {
-      setError(data.error ?? "Failed to create workspace.");
+      setError(data.error ?? t("account2.createWsFailed"));
       return;
     }
     if (data.workspace) {
@@ -371,7 +371,7 @@ export default function AccountPanel({ activeWorkspaceId: initialActiveId }: Pro
     });
     const data = (await res.json()) as { workspace?: Workspace; error?: string };
     if (!res.ok) {
-      setError(data.error ?? "Failed to rename workspace.");
+      setError(data.error ?? t("account2.renameWsFailed"));
       return;
     }
     if (data.workspace) {
@@ -389,7 +389,7 @@ export default function AccountPanel({ activeWorkspaceId: initialActiveId }: Pro
     const res = await fetch(`/api/workspaces/${id}`, { method: "DELETE" });
     const data = (await res.json()) as { ok?: boolean; error?: string };
     if (!res.ok) {
-      setError(data.error ?? "Failed to delete workspace.");
+      setError(data.error ?? t("account2.deleteWsFailed"));
       setDeletingId(null);
       return;
     }
@@ -450,7 +450,7 @@ export default function AccountPanel({ activeWorkspaceId: initialActiveId }: Pro
         | { ok: true; results: ImportResult }
         | { error: string };
       if (!res.ok) {
-        setImportError("error" in data ? data.error : "Import failed.");
+        setImportError("error" in data ? data.error : t("account2.importFailed"));
       } else if ("results" in data) {
         setImportResult(data.results);
       }
@@ -559,10 +559,10 @@ export default function AccountPanel({ activeWorkspaceId: initialActiveId }: Pro
           </p>
         ) : editingUser ? (
           <div className="space-y-3">
-            <p className="text-xs" style={mutedStyle}>Name and email are optional and stored only on this device.</p>
+            <p className="text-xs" style={mutedStyle}>{t("account2.optionalNote")}</p>
             <div>
               <label className="block text-xs font-medium mb-1" style={mutedStyle}>
-                {t("account.name")} <span className="font-normal italic">— optional</span>
+                {t("account.name")} <span className="font-normal italic">{t("account2.optional")}</span>
               </label>
               <input
                 type="text"
@@ -574,7 +574,7 @@ export default function AccountPanel({ activeWorkspaceId: initialActiveId }: Pro
             </div>
             <div>
               <label className="block text-xs font-medium mb-1" style={mutedStyle}>
-                {t("account.email")} <span className="font-normal italic">— optional</span>
+                {t("account.email")} <span className="font-normal italic">{t("account2.optional")}</span>
               </label>
               <input
                 type="email"
@@ -681,7 +681,7 @@ export default function AccountPanel({ activeWorkspaceId: initialActiveId }: Pro
                           onChange={(e) => toggleTranslationOnly(ws.id, e.target.checked)}
                           className="accent-[var(--accent)]"
                         />
-                        <span className="text-xs" style={mutedStyle}>Translation text only</span>
+                        <span className="text-xs" style={mutedStyle}>{t("account2.trOnly")}</span>
                       </label>
                     </div>
                   )}

@@ -3,6 +3,8 @@
 import { useRef, useEffect, useState } from "react";
 import type { Version } from "@/lib/db/schema";
 import { VERSIONABLE_FEATURE_LABELS, FEATURES_REQUIRING_PARAGRAPH_BREAKS } from "@/lib/versions/featureLabels";
+import { useTranslation } from "@/lib/i18n/LocaleContext";
+import { useVersionDisplayName } from "./VersionSelector";
 
 interface Props {
   versions: Version[];
@@ -13,6 +15,7 @@ interface Props {
 
 export default function ManageVersionsDialog({ versions, activeVersionId, onClose, onChanged }: Props) {
   const dialogRef = useRef<HTMLDivElement>(null);
+  const { t } = useTranslation();
 
   useEffect(() => {
     function handler(e: MouseEvent) {
@@ -43,7 +46,7 @@ export default function ManageVersionsDialog({ versions, activeVersionId, onClos
         style={{ backgroundColor: "var(--surface)", borderColor: "var(--border)" }}
       >
         <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: "var(--border)" }}>
-          <h2 className="text-sm font-semibold" style={{ color: "var(--foreground)" }}>Manage versions</h2>
+          <h2 className="text-sm font-semibold" style={{ color: "var(--foreground)" }}>{t("versions.manage")}</h2>
           <button
             type="button"
             onClick={onClose}
@@ -81,8 +84,10 @@ function VersionRowEditor({
   isOnlyVersion: boolean;
   onChanged: () => void;
 }) {
-  const [name, setName] = useState(version.name);
-  const [savedName, setSavedName] = useState(version.name);
+  const { t } = useTranslation();
+  const displayName = useVersionDisplayName();
+  const [name, setName] = useState(() => displayName(version.name));
+  const [savedName, setSavedName] = useState(() => displayName(version.name));
   const [saving, setSaving] = useState(false);
   const [showCopy, setShowCopy] = useState(false);
   const [copyFromId, setCopyFromId] = useState<number | null>(
@@ -184,7 +189,7 @@ function VersionRowEditor({
           disabled={!dirty || saving || !name.trim()}
           className="text-xs font-semibold px-2 py-1 rounded bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 transition-colors"
         >
-          {saving ? "Saving…" : "Save"}
+          {saving ? t("versions.saving") : t("versions.save")}
         </button>
       </div>
 
@@ -196,7 +201,7 @@ function VersionRowEditor({
           className="text-xs px-2 py-1 rounded border transition-colors disabled:opacity-40"
           style={{ borderColor: "var(--border)", color: "var(--foreground)" }}
         >
-          Copy markup from another version…
+          {t("versions.copyFromAnother")}
         </button>
 
         {!confirmingDelete ? (
@@ -204,22 +209,22 @@ function VersionRowEditor({
             type="button"
             onClick={() => setConfirmingDelete(true)}
             disabled={isOnlyVersion}
-            title={isOnlyVersion ? "Create another version before deleting this one" : undefined}
+            title={isOnlyVersion ? t("versions.titleDeleteDisabled") : undefined}
             className="text-xs px-2 py-1 rounded border text-red-600 dark:text-red-400 transition-colors disabled:opacity-40"
             style={{ borderColor: "var(--border)" }}
           >
-            Delete
+            {t("versions.delete")}
           </button>
         ) : (
           <span className="flex items-center gap-1 text-xs">
-            <span style={{ color: "var(--text-muted)" }}>Delete this version?</span>
+            <span style={{ color: "var(--text-muted)" }}>{t("versions.deleteConfirm")}</span>
             <button
               type="button"
               onClick={handleDelete}
               disabled={deleting}
               className="px-2 py-0.5 rounded bg-red-600 text-white hover:bg-red-700 disabled:opacity-50"
             >
-              {deleting ? "Deleting…" : "Confirm"}
+              {deleting ? t("versions.deleting") : t("versions.confirm")}
             </button>
             <button
               type="button"
@@ -227,7 +232,7 @@ function VersionRowEditor({
               className="px-2 py-0.5 rounded border"
               style={{ borderColor: "var(--border)", color: "var(--foreground)" }}
             >
-              Cancel
+              {t("versions.cancel")}
             </button>
           </span>
         )}
@@ -236,7 +241,7 @@ function VersionRowEditor({
       {showCopy && (
         <div className="rounded border p-2 space-y-2" style={{ borderColor: "var(--border)" }}>
           <p className="text-xs" style={{ color: "var(--text-muted)" }}>
-            Replaces this version&rsquo;s markup for the selected features — this does not merge.
+            {t("versions.replaceWarning")}
           </p>
           <select
             value={copyFromId ?? ""}
@@ -245,7 +250,7 @@ function VersionRowEditor({
             style={{ borderColor: "var(--border)", color: "var(--foreground)" }}
           >
             {otherVersions.map((v) => (
-              <option key={v.id} value={v.id}>{v.name}</option>
+              <option key={v.id} value={v.id}>{displayName(v.name)}</option>
             ))}
           </select>
           <div className="flex items-center justify-end gap-1.5">
@@ -255,7 +260,7 @@ function VersionRowEditor({
               className="text-xs underline-offset-2 hover:underline"
               style={{ color: "var(--text-muted)" }}
             >
-              All
+              {t("versions.all")}
             </button>
             <span className="text-xs" style={{ color: "var(--text-muted)" }}>/</span>
             <button
@@ -264,11 +269,11 @@ function VersionRowEditor({
               className="text-xs underline-offset-2 hover:underline"
               style={{ color: "var(--text-muted)" }}
             >
-              None
+              {t("versions.none")}
             </button>
           </div>
           <div className="space-y-1">
-            {VERSIONABLE_FEATURE_LABELS.map(({ key, label }) => {
+            {VERSIONABLE_FEATURE_LABELS.map(({ key }) => {
               const forced = key === "paragraphBreaks" && paragraphBreaksRequired;
               return (
                 <label key={key} className="flex items-center gap-2 text-sm cursor-pointer" style={{ color: "var(--foreground)" }}>
@@ -279,10 +284,10 @@ function VersionRowEditor({
                     disabled={forced}
                     className="accent-[var(--accent)]"
                   />
-                  {label}
+                  {t(`versions.features.${key}`)}
                   {forced && (
                     <span className="text-xs" style={{ color: "var(--text-muted)" }}>
-                      (required by clause labels / scene breaks)
+                      {t("versions.requiredBy")}
                     </span>
                   )}
                 </label>
@@ -295,7 +300,7 @@ function VersionRowEditor({
             disabled={!copyFromId || checkedFeatures.size === 0 || copying}
             className="text-xs font-semibold px-2 py-1 rounded bg-amber-500 hover:bg-amber-600 text-white disabled:opacity-50 transition-colors"
           >
-            {copying ? "Applying…" : "Apply"}
+            {copying ? t("versions.applying") : t("versions.apply")}
           </button>
         </div>
       )}

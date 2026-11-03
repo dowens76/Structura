@@ -3,7 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import type { Version } from "@/lib/db/schema";
 import { VERSIONABLE_FEATURE_LABELS, FEATURES_REQUIRING_PARAGRAPH_BREAKS } from "@/lib/versions/featureLabels";
-import type { ChapterLocus } from "./VersionSelector";
+import { useVersionDisplayName, type ChapterLocus } from "./VersionSelector";
+import { useTranslation } from "@/lib/i18n/LocaleContext";
 
 interface Props {
   workspaceId: number;
@@ -30,7 +31,9 @@ export default function CreateVersionDialog({ chapters, existingVersions, onClos
   const [error, setError] = useState<string | null>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
   const locus = chapters[0];
-  const placeholder = nextAutoName(existingVersions);
+  const { t } = useTranslation();
+  const displayName = useVersionDisplayName();
+  const placeholder = displayName(nextAutoName(existingVersions));
 
   useEffect(() => {
     function handler(e: MouseEvent) {
@@ -97,7 +100,7 @@ export default function CreateVersionDialog({ chapters, existingVersions, onClos
       if (!res.ok) throw new Error("Failed to create version");
       onCreated();
     } catch {
-      setError("Could not create the version. Please try again.");
+      setError(t("versions.createError"));
       setSubmitting(false);
     }
   }
@@ -110,7 +113,7 @@ export default function CreateVersionDialog({ chapters, existingVersions, onClos
         style={{ backgroundColor: "var(--background)", borderColor: "var(--border)" }}
       >
         <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: "var(--border)" }}>
-          <h2 className="text-sm font-semibold" style={{ color: "var(--foreground)" }}>Create new version</h2>
+          <h2 className="text-sm font-semibold" style={{ color: "var(--foreground)" }}>{t("versions.createTitle")}</h2>
           <button
             type="button"
             onClick={onClose}
@@ -123,7 +126,7 @@ export default function CreateVersionDialog({ chapters, existingVersions, onClos
 
         <div className="px-4 py-4 max-h-[70vh] overflow-y-auto space-y-4">
           <div>
-            <label className="block text-xs font-medium mb-1" style={{ color: "var(--text-muted)" }}>Name</label>
+            <label className="block text-xs font-medium mb-1" style={{ color: "var(--text-muted)" }}>{t("versions.name")}</label>
             <input
               type="text"
               value={name}
@@ -138,7 +141,7 @@ export default function CreateVersionDialog({ chapters, existingVersions, onClos
             <div className="space-y-2">
               <div className="flex items-center justify-between gap-2">
                 <label className="block text-xs font-medium" style={{ color: "var(--text-muted)" }}>
-                  Copy markup from an existing version
+                  {t("versions.copyMarkupFrom")}
                 </label>
                 <span className="flex items-center gap-1.5 shrink-0">
                   <button
@@ -147,7 +150,7 @@ export default function CreateVersionDialog({ chapters, existingVersions, onClos
                     className="text-xs underline-offset-2 hover:underline"
                     style={{ color: "var(--text-muted)" }}
                   >
-                    All
+                    {t("versions.all")}
                   </button>
                   <span className="text-xs" style={{ color: "var(--text-muted)" }}>/</span>
                   <button
@@ -156,7 +159,7 @@ export default function CreateVersionDialog({ chapters, existingVersions, onClos
                     className="text-xs underline-offset-2 hover:underline"
                     style={{ color: "var(--text-muted)" }}
                   >
-                    None
+                    {t("versions.none")}
                   </button>
                 </span>
               </div>
@@ -168,18 +171,18 @@ export default function CreateVersionDialog({ chapters, existingVersions, onClos
                   style={{ borderColor: "var(--border)", color: "var(--foreground)" }}
                 >
                   {existingVersions.map((v) => (
-                    <option key={v.id} value={v.id}>{v.name}</option>
+                    <option key={v.id} value={v.id}>{displayName(v.name)}</option>
                   ))}
                 </select>
               )}
               {existingVersions.length === 1 && (
                 <p className="text-xs" style={{ color: "var(--text-muted)" }}>
-                  Copying from &ldquo;{existingVersions[0].name}&rdquo;
+                  {t("versions.copyingFrom", { name: displayName(existingVersions[0].name) })}
                 </p>
               )}
 
               <div className="space-y-1 pt-1">
-                {VERSIONABLE_FEATURE_LABELS.map(({ key, label }) => {
+                {VERSIONABLE_FEATURE_LABELS.map(({ key }) => {
                   const forced = key === "paragraphBreaks" && paragraphBreaksRequired;
                   return (
                     <label key={key} className="flex items-center gap-2 text-sm cursor-pointer" style={{ color: "var(--foreground)" }}>
@@ -190,10 +193,10 @@ export default function CreateVersionDialog({ chapters, existingVersions, onClos
                         disabled={forced}
                         className="accent-[var(--accent)]"
                       />
-                      {label}
+                      {t(`versions.features.${key}`)}
                       {forced && (
                         <span className="text-xs" style={{ color: "var(--text-muted)" }}>
-                          (required by clause labels / scene breaks)
+                          {t("versions.requiredBy")}
                         </span>
                       )}
                     </label>
@@ -212,7 +215,7 @@ export default function CreateVersionDialog({ chapters, existingVersions, onClos
               disabled={submitting}
               className="flex-1 py-2 rounded bg-amber-500 hover:bg-amber-600 text-white text-sm font-medium disabled:opacity-50"
             >
-              {submitting ? "Creating…" : "Create"}
+              {submitting ? t("versions.creating") : t("versions.create")}
             </button>
             <button
               type="button"
@@ -221,7 +224,7 @@ export default function CreateVersionDialog({ chapters, existingVersions, onClos
               className="flex-1 py-2 rounded border text-sm font-medium transition-colors"
               style={{ borderColor: "var(--border)", color: "var(--foreground)" }}
             >
-              Cancel
+              {t("versions.cancel")}
             </button>
           </div>
         </div>

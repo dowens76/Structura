@@ -160,3 +160,13 @@ export const POS_LABELS: Record<string, string> = {
   article: "Article",
   interjection: "Interjection",
 };
+
+/** Localized grammatical term (part of speech, tense, case, …); unknown values
+ *  such as stem names are returned unchanged. */
+export function morphTerm(t: (key: string) => string, value: string | null | undefined): string | null {
+  if (!value) return value ?? null;
+  const key = `morph.values.${value.toLowerCase()}`;
+  const s = t(key);
+  if (s === key) return value;
+  return value[0] === value[0].toUpperCase() ? s[0].toUpperCase() + s.slice(1) : s;
+}

@@ -5,7 +5,7 @@ import { LOCALES, LOCALE_LABELS, type Locale } from "@/lib/i18n/translations";
 import { useTranslation } from "@/lib/i18n/LocaleContext";
 
 export default function LanguagePicker() {
-  const { locale, setLocale } = useTranslation();
+  const { locale, setLocale, t } = useTranslation();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -23,7 +23,7 @@ export default function LanguagePicker() {
     <div ref={ref} className="relative shrink-0">
       <button
         onClick={() => setOpen((v) => !v)}
-        title="Interface language"
+        title={t("nav.interfaceLanguage")}
         className="flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors"
         style={{ color: "var(--nav-fg)" }}
       >

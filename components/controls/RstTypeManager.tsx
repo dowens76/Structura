@@ -3,6 +3,7 @@
 import { useState } from "react";
 import type { RstTypeEntry } from "@/lib/morphology/clauseRelationships";
 import { RELATIONSHIP_TYPES } from "@/lib/morphology/clauseRelationships";
+import { useTranslation } from "@/lib/i18n/LocaleContext";
 
 // 20-swatch palette for colour picker
 const COLOR_SWATCHES = [
@@ -79,6 +80,7 @@ function TypeForm({
   onSubmit: (v: typeof BLANK) => void;
   onCancel?: () => void;
 }) {
+  const { t: tr } = useTranslation();
   const [val, setVal] = useState(initial);
 
   function set(k: keyof typeof BLANK, v: string) {
@@ -91,7 +93,7 @@ function TypeForm({
       <div className="flex gap-2">
         <input
           type="text"
-          placeholder="Name"
+          placeholder={tr("rstTypes.name")}
           value={val.label}
           onChange={(e) => set("label", e.target.value)}
           className="flex-1 px-2 py-1 rounded border text-xs"
@@ -99,7 +101,7 @@ function TypeForm({
         />
         <input
           type="text"
-          placeholder="Abbr"
+          placeholder={tr("rstTypes.abbr")}
           value={val.abbr}
           maxLength={4}
           onChange={(e) => set("abbr", e.target.value.toUpperCase())}
@@ -110,7 +112,7 @@ function TypeForm({
 
       {/* Category */}
       <div className="flex gap-2 items-center">
-        <span className="text-stone-400 dark:text-stone-500 shrink-0">Type:</span>
+        <span className="text-stone-400 dark:text-stone-500 shrink-0">{tr("rstTypes.type")}</span>
         {(["coordinate", "subordinate"] as const).map((cat) => (
           <button
             key={cat}
@@ -123,7 +125,7 @@ function TypeForm({
                 : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-400 hover:bg-stone-200 dark:hover:bg-stone-700",
             ].join(" ")}
           >
-            {cat === "coordinate" ? "Coordinate" : "Subordinate"}
+            {cat === "coordinate" ? tr("rstTypes.coordinate") : tr("rstTypes.subordinate")}
           </button>
         ))}
       </div>
@@ -156,7 +158,7 @@ function TypeForm({
             onClick={onCancel}
             className="px-3 py-1 rounded text-xs bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700 transition-colors"
           >
-            Cancel
+            {tr("rstTypes.cancel")}
           </button>
         )}
       </div>
@@ -165,6 +167,7 @@ function TypeForm({
 }
 
 export default function RstTypeManager({ customTypes, onAdd, onUpdate, onDelete }: Props) {
+  const { t: tr } = useTranslation();
   const [editingId, setEditingId] = useState<number | null>(null);
   const [showAdd, setShowAdd] = useState(false);
 
@@ -180,14 +183,14 @@ export default function RstTypeManager({ customTypes, onAdd, onUpdate, onDelete 
     >
       <div className="flex items-center justify-between mb-2">
         <span className="font-semibold text-[11px] tracking-wide uppercase" style={{ color: "var(--nav-fg-muted)" }}>
-          RST Labels
+          {tr("rstTypes.title")}
         </span>
       </div>
 
       {/* ── Built-in types (read-only) ─────────────────────────────── */}
       <div className="mb-3">
         <p className="text-[10px] uppercase tracking-wide mb-1.5" style={{ color: "var(--nav-fg-muted)" }}>
-          Built-in
+          {tr("rstTypes.builtIn")}
         </p>
         <div className="flex flex-wrap gap-1.5">
           {RELATIONSHIP_TYPES.map((t) => (
@@ -208,7 +211,7 @@ export default function RstTypeManager({ customTypes, onAdd, onUpdate, onDelete 
       {customTypes.length > 0 && (
         <div className="mb-3">
           <p className="text-[10px] uppercase tracking-wide mb-1.5" style={{ color: "var(--nav-fg-muted)" }}>
-            Custom
+            {tr("rstTypes.custom")}
           </p>
           <div className="space-y-1">
             {customTypes.map((t) =>
@@ -216,7 +219,7 @@ export default function RstTypeManager({ customTypes, onAdd, onUpdate, onDelete 
                 <div key={t.id} className="rounded p-2" style={{ backgroundColor: "rgba(255,255,255,0.05)" }}>
                   <TypeForm
                     initial={{ label: t.label, abbr: t.abbr, color: t.color, category: t.category }}
-                    submitLabel="Save"
+                    submitLabel={tr("rstTypes.save")}
                     onSubmit={async (v) => {
                       await onUpdate(t.id, v);
                       setEditingId(null);
@@ -233,7 +236,7 @@ export default function RstTypeManager({ customTypes, onAdd, onUpdate, onDelete 
                     type="button"
                     onClick={() => setEditingId(t.id)}
                     className="opacity-0 group-hover:opacity-100 text-[10px] px-1.5 py-0.5 rounded hover:bg-white/10 transition-all"
-                    title="Edit"
+                    title={tr("rstTypes.edit")}
                   >
                     ✎
                   </button>
@@ -241,7 +244,7 @@ export default function RstTypeManager({ customTypes, onAdd, onUpdate, onDelete 
                     type="button"
                     onClick={() => onDelete(t.id)}
                     className="opacity-0 group-hover:opacity-100 text-[10px] px-1.5 py-0.5 rounded hover:bg-red-500/30 transition-all"
-                    title="Delete"
+                    title={tr("rstTypes.delete")}
                     style={{ color: "#f87171" }}
                   >
                     ×
@@ -257,10 +260,10 @@ export default function RstTypeManager({ customTypes, onAdd, onUpdate, onDelete 
       {showAdd ? (
         <div className="rounded p-2" style={{ backgroundColor: "rgba(255,255,255,0.05)" }}>
           <p className="text-[10px] uppercase tracking-wide mb-2" style={{ color: "var(--nav-fg-muted)" }}>
-            New label
+            {tr("rstTypes.newLabel")}
           </p>
           <TypeForm
-            submitLabel="Add"
+            submitLabel={tr("rstTypes.add")}
             onSubmit={async (v) => {
               await onAdd(v);
               setShowAdd(false);
@@ -278,7 +281,7 @@ export default function RstTypeManager({ customTypes, onAdd, onUpdate, onDelete 
             color: "var(--accent)",
           }}
         >
-          + New label
+          {tr("rstTypes.addNewLabel")}
         </button>
       )}
     </div>

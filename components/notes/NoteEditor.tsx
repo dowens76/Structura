@@ -203,6 +203,7 @@ export default function NoteEditor({
 
   const debouncedSave = useDebouncedSave(save, 600);
 
+  const { t } = useTranslation();
   const editor = useEditor({
     immediatelyRender: false,
     extensions: [
@@ -212,7 +213,7 @@ export default function NoteEditor({
       Highlight.configure({ multicolor: false }),
       Superscript,
       Subscript,
-      Placeholder.configure({ placeholder: "Add notes…" }),
+      Placeholder.configure({ placeholder: t("editor.placeholder") }),
       SearchHighlightExtension,
       ScriptureRefPlugin.configure({ currentBook: book, currentChapter: chapter }),
     ],
@@ -261,7 +262,6 @@ export default function NoteEditor({
   }, [editor, searchQuery]);
 
   const [showCitePicker, setShowCitePicker] = useState(false);
-  const { t } = useTranslation();
 
   // Scripture reference tooltip state
   const [tooltipRef, setTooltipRef] = useState<string | null>(null);
@@ -308,21 +308,21 @@ export default function NoteEditor({
         <ToolBtn
           onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}
           active={editor.isActive("heading", { level: 1 })}
-          title="Heading 1"
+          title={t("editor.h1")}
         >
           H1
         </ToolBtn>
         <ToolBtn
           onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
           active={editor.isActive("heading", { level: 2 })}
-          title="Heading 2"
+          title={t("editor.h2")}
         >
           H2
         </ToolBtn>
         <ToolBtn
           onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}
           active={editor.isActive("heading", { level: 3 })}
-          title="Heading 3"
+          title={t("editor.h3")}
         >
           H3
         </ToolBtn>
@@ -333,35 +333,35 @@ export default function NoteEditor({
         <ToolBtn
           onClick={() => editor.chain().focus().toggleBold().run()}
           active={editor.isActive("bold")}
-          title="Bold (Ctrl+B)"
+          title={t("editor.bold")}
         >
           <strong>B</strong>
         </ToolBtn>
         <ToolBtn
           onClick={() => editor.chain().focus().toggleItalic().run()}
           active={editor.isActive("italic")}
-          title="Italic (Ctrl+I)"
+          title={t("editor.italic")}
         >
           <em>I</em>
         </ToolBtn>
         <ToolBtn
           onClick={() => editor.chain().focus().toggleHighlight().run()}
           active={editor.isActive("highlight")}
-          title="Highlight"
+          title={t("editor.highlight")}
         >
           <span style={{ background: "rgba(250,204,21,0.6)", padding: "0 2px", borderRadius: 2 }}>H</span>
         </ToolBtn>
         <ToolBtn
           onClick={() => editor.chain().focus().toggleSuperscript().run()}
           active={editor.isActive("superscript")}
-          title="Superscript"
+          title={t("editor.superscript")}
         >
           x<sup style={{ fontSize: "0.65em" }}>2</sup>
         </ToolBtn>
         <ToolBtn
           onClick={() => editor.chain().focus().toggleSubscript().run()}
           active={editor.isActive("subscript")}
-          title="Subscript"
+          title={t("editor.subscript")}
         >
           x<sub style={{ fontSize: "0.65em" }}>2</sub>
         </ToolBtn>
@@ -372,7 +372,7 @@ export default function NoteEditor({
         <ToolBtn
           onClick={() => editor.chain().focus().toggleBulletList().run()}
           active={editor.isActive("bulletList")}
-          title="Bullet list"
+          title={t("editor.bulletList")}
         >
           <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
             <circle cx="1.5" cy="2.5" r="1"/>
@@ -386,7 +386,7 @@ export default function NoteEditor({
         <ToolBtn
           onClick={() => editor.chain().focus().toggleOrderedList().run()}
           active={editor.isActive("orderedList")}
-          title="Numbered list"
+          title={t("editor.numberedList")}
         >
           <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
             <text x="0" y="4" fontSize="4" fontFamily="monospace">1.</text>
@@ -401,14 +401,14 @@ export default function NoteEditor({
         <ToolBtn
           onClick={() => editor.chain().focus().sinkListItem("listItem").run()}
           disabled={!editor.can().sinkListItem("listItem")}
-          title="Increase list indent (Tab)"
+          title={t("editor.indentList")}
         >
           ⇥
         </ToolBtn>
         <ToolBtn
           onClick={() => editor.chain().focus().liftListItem("listItem").run()}
           disabled={!editor.can().liftListItem("listItem")}
-          title="Decrease list indent (Shift+Tab)"
+          title={t("editor.outdentList")}
         >
           ⇤
         </ToolBtn>
@@ -419,7 +419,7 @@ export default function NoteEditor({
         <ToolBtn
           onClick={() => editor.chain().focus().toggleBlockquote().run()}
           active={editor.isActive("blockquote")}
-          title="Block quote"
+          title={t("editor.blockquote")}
         >
           <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" opacity="0.9">
             <path d="M0 3h4l-2 3h2v3H0V6l2-3zm6 0h4l-2 3h2v3H6V6l2-3z"/>
@@ -432,7 +432,7 @@ export default function NoteEditor({
         <ToolBtn
           onClick={() => setShowCitePicker((v) => !v)}
           active={showCitePicker}
-          title="Insert Zotero citation"
+          title={t("editor.zotero")}
         >
           <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" opacity="0.9">
             <rect x="1" y="1" width="7" height="9" rx="1" fill="none" stroke="currentColor" strokeWidth="1.2"/>

@@ -27,6 +27,21 @@ export const PLOT_ELEMENTS = [
 
 export type PlotLabel = (typeof PLOT_ELEMENTS)[number]["label"];
 
+/** Short plot labels saved by early versions, mapped to their current full label.
+ *  Used only to localize them; English display keeps the stored abbreviation. */
+export const LEGACY_PLOT_LABEL_ALIASES: Record<string, string> = {
+  Info: "Background Information", BackInfo: "Background Information",
+  Foreshadow: "Foreshadowing",
+  IS: "Initial Situation", InitialSit: "Initial Situation",
+  IncitingInc: "Inciting Incident",
+  Con: "Conflict", Confict: "Conflict",
+  RisingTen: "Rising Tension",
+  TA: "Transforming Action", TransAct: "Transforming Action",
+  Res: "Climax/Resolution", Resolution: "Climax/Resolution",
+  Denoument: "Denouement",
+  FS: "Final Situation", FinalSit: "Final Situation",
+};
+
 export const PLOT_LABEL_SET: Set<string> = new Set(PLOT_ELEMENTS.map((p) => p.label));
 
 /** Return the PLOT_ELEMENTS entry for a given label, or undefined. */

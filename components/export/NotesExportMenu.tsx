@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { tiptapToHtml, tiptapIsEmpty } from "@/lib/export/tiptap-utils";
+import { useTranslation } from "@/lib/i18n/LocaleContext";
 
 interface Props {
   noteKeys: string[];
@@ -13,6 +14,7 @@ interface Props {
 type Status = "idle" | "loading" | "done" | "empty";
 
 export default function NotesExportMenu({ noteKeys, title, filename, metaKey }: Props) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [docxStatus, setDocxStatus] = useState<Status>("idle");
   const [odtStatus,  setOdtStatus]  = useState<Status>("idle");
@@ -133,12 +135,12 @@ export default function NotesExportMenu({ noteKeys, title, filename, metaKey }: 
       if (!m || typeof m !== "object" || m.type) return "";
       let out = "";
       if (m.mainIdea?.trim()) {
-        out += `<h2>${esc("Main Idea")}</h2><p>${esc(m.mainIdea)}</p>\n`;
+        out += `<h2>${esc(t("notes2.mainIdea"))}</h2><p>${esc(m.mainIdea)}</p>\n`;
       }
       if (Array.isArray(m.customFields)) {
         for (const f of m.customFields) {
           if (f.value?.trim()) {
-            out += `<h2>${esc(f.name || "Field")}</h2><p>${esc(f.value)}</p>\n`;
+            out += `<h2>${esc(f.name || t("notes2.field"))}</h2><p>${esc(f.value)}</p>\n`;
           }
         }
       }
@@ -150,15 +152,15 @@ export default function NotesExportMenu({ noteKeys, title, filename, metaKey }: 
     "w-full text-left px-3 py-2 text-xs font-medium rounded transition-colors hover:bg-stone-100 dark:hover:bg-stone-700 flex items-center gap-2";
 
   const triggerLabel =
-    docxStatus === "loading" ? "Exporting…" :
-    odtStatus  === "loading" ? "Exporting…" :
-    copyStatus === "loading" ? "Copying…"   :
+    docxStatus === "loading" ? t("notesExport.exporting") :
+    odtStatus  === "loading" ? t("notesExport.exporting") :
+    copyStatus === "loading" ? t("notesExport.copying")   :
     docxStatus === "done"    ? "✓ DOCX"     :
     odtStatus  === "done"    ? "✓ ODT"      :
-    copyStatus === "done"    ? "✓ Copied"   :
+    copyStatus === "done"    ? t("notesExport.copied")   :
     docxStatus === "empty" || odtStatus === "empty" || copyStatus === "empty"
-                             ? "No notes"   :
-                               "📝 Notes";
+                             ? t("notesExport.noNotes")   :
+                               t("notesExport.notes");
 
   const busy = docxStatus === "loading" || odtStatus === "loading" || copyStatus === "loading";
 
@@ -168,7 +170,7 @@ export default function NotesExportMenu({ noteKeys, title, filename, metaKey }: 
         className="px-3 py-1.5 rounded text-xs font-medium transition-colors disabled:opacity-50 bg-stone-100 dark:bg-stone-800 text-stone-700 dark:text-stone-200 hover:bg-stone-200 dark:hover:bg-stone-700"
         onClick={() => !busy && setOpen((o) => !o)}
         disabled={busy}
-        title="Export notes to Word, LibreOffice, or clipboard"
+        title={t("notesExport.title")}
       >
         {triggerLabel} {!busy && "▾"}
       </button>
@@ -204,7 +206,7 @@ export default function NotesExportMenu({ noteKeys, title, filename, metaKey }: 
             onClick={copyToClipboard}
           >
             <span>📋</span>
-            <span>Copy to clipboard</span>
+            <span>{t("notesExport.copy")}</span>
           </button>
         </div>
       )}

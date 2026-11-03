@@ -7,6 +7,7 @@ import type { FetchBibleTranslation } from "@/app/api/fetchbible/route";
 import { langLabel, readBibleLookupLangs, writeBibleLookupLangs } from "@/lib/utils/bible-lookup-langs";
 import { fetchJsonRetry } from "@/lib/utils/fetchJsonRetry";
 import { openExternal } from "@/lib/utils/openExternal";
+import { useTranslation } from "@/lib/i18n/LocaleContext";
 
 const STORAGE_KEY = "structura:bibleLookup:translation";
 
@@ -74,6 +75,7 @@ function formatRef(osisRef: string): string {
 }
 
 export default function BibleLookupPane({ onClose }: Props) {
+  const { t: tr } = useTranslation();
   const [query, setQuery]           = useState("");
   const [osisRef, setOsisRef]               = useState<string | null>(null);
   const [localTransls, setLocalTransls]     = useState<LocalTranslation[]>([]);
@@ -229,13 +231,13 @@ export default function BibleLookupPane({ onClose }: Props) {
         style={{ borderBottom: "1px solid var(--border)" }}
       >
         <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>
-          Bible Lookup
+          {tr("bible.title")}
         </span>
         <button
           onClick={onClose}
           className="flex items-center justify-center w-5 h-5 rounded hover:bg-stone-200 dark:hover:bg-stone-700"
           style={{ color: "var(--text-muted)" }}
-          title="Close"
+          title={tr("bible.close")}
         >
           <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
             <line x1="1" y1="1" x2="9" y2="9"/><line x1="9" y1="1" x2="1" y2="9"/>
@@ -252,7 +254,7 @@ export default function BibleLookupPane({ onClose }: Props) {
             type="text"
             value={query}
             onChange={(e) => { setQuery(e.target.value); setParseError(false); }}
-            placeholder="e.g. John 3:16 or Gen 1:1-3"
+            placeholder={tr("bible.refPlaceholder")}
             className="flex-1 text-sm px-2 py-1 rounded border outline-none"
             style={{
               borderColor: parseError ? "var(--color-pos-verb)" : "var(--border)",
@@ -265,7 +267,7 @@ export default function BibleLookupPane({ onClose }: Props) {
             className="px-2.5 py-1 text-xs font-medium rounded"
             style={{ background: "var(--accent)", color: "white" }}
           >
-            Go
+            {tr("bible.go")}
           </button>
         </form>
         {parseError && (
@@ -281,9 +283,9 @@ export default function BibleLookupPane({ onClose }: Props) {
           const effectiveSize = selectedLangs === null ? allLangs.length : selectedLangs.size;
           const isFiltered = selectedLangs !== null && selectedLangs.size < allLangs.length;
           const label = selectedLangs === null || selectedLangs.size >= allLangs.length
-            ? "All languages"
+            ? tr("bible.allLanguages")
             : selectedLangs.size === 0
-              ? "No languages"
+              ? tr("bible.noLanguages")
               : selectedLangs.size === 1
                 ? langLabel([...selectedLangs][0])
                 : `${selectedLangs.size} languages`;
@@ -321,7 +323,7 @@ export default function BibleLookupPane({ onClose }: Props) {
                       type="text"
                       value={langSearch}
                       onChange={(e) => setLangSearch(e.target.value)}
-                      placeholder="Search languages…"
+                      placeholder={tr("bible.searchLanguages")}
                       autoFocus
                       className="w-full text-xs px-2 py-1 rounded border outline-none"
                       style={{ borderColor: "var(--border)", background: "var(--surface)", color: "var(--foreground)" }}
@@ -333,7 +335,7 @@ export default function BibleLookupPane({ onClose }: Props) {
                         className="flex-1 text-[11px] px-2 py-0.5 rounded border transition-colors hover:bg-stone-100 dark:hover:bg-stone-700"
                         style={{ borderColor: "var(--border)", color: "var(--foreground)" }}
                       >
-                        All
+                        {tr("bible.all")}
                       </button>
                       <button
                         type="button"
@@ -341,14 +343,14 @@ export default function BibleLookupPane({ onClose }: Props) {
                         className="flex-1 text-[11px] px-2 py-0.5 rounded border transition-colors hover:bg-stone-100 dark:hover:bg-stone-700"
                         style={{ borderColor: "var(--border)", color: "var(--foreground)" }}
                       >
-                        None
+                        {tr("bible.none")}
                       </button>
                     </div>
                   </div>
                   {/* Scrollable language list */}
                   <div className="overflow-y-auto flex-1 py-1">
                     {visibleLangs.length === 0 && (
-                      <p className="text-xs px-3 py-1" style={{ color: "var(--text-muted)" }}>No matches</p>
+                      <p className="text-xs px-3 py-1" style={{ color: "var(--text-muted)" }}>{tr("bible.noMatches")}</p>
                     )}
                     {visibleLangs.map((lang) => {
                       const on = selectedLangs === null || selectedLangs.has(lang);
@@ -391,13 +393,13 @@ export default function BibleLookupPane({ onClose }: Props) {
           className="w-full text-xs px-2 py-1 rounded border outline-none"
           style={{ borderColor: "var(--border)", background: "var(--surface)", color: "var(--foreground)" }}
         >
-          <option value="">— choose translation —</option>
+          <option value="">{tr("bible.chooseTranslation")}</option>
           {(() => {
             // Local translations use user-defined language strings, not ISO codes.
             // Show them only when no fetch.bible lang filter is active.
             const filteredLocal = selectedLangs === null ? localTransls : [];
             return filteredLocal.length > 0 ? (
-              <optgroup label="Imported translations">
+              <optgroup label={tr("bible.imported")}>
                 {filteredLocal.map((tr) => (
                   <option key={tr.id} value={`local:${tr.id}`}>
                     {tr.abbreviation}{tr.name !== tr.abbreviation ? ` — ${tr.name}` : ""}
@@ -434,18 +436,18 @@ export default function BibleLookupPane({ onClose }: Props) {
       {/* ── Result area ── */}
       <div className="flex-1 overflow-y-auto px-3 py-3 min-h-0">
         {status === "loading" && (
-          <p className="text-sm" style={{ color: "var(--text-muted)" }}>Loading…</p>
+          <p className="text-sm" style={{ color: "var(--text-muted)" }}>{tr("bible.loading")}</p>
         )}
         {status === "not_found" && (
-          <p className="text-sm" style={{ color: "var(--text-muted)" }}>Verse not found.</p>
+          <p className="text-sm" style={{ color: "var(--text-muted)" }}>{tr("bible.verseNotFound")}</p>
         )}
         {status === "no_translation" && (
           <p className="text-sm" style={{ color: "var(--text-muted)" }}>
-            Select a translation above, or add an api.bible key in Settings.
+            {tr("bible.selectHint")}
           </p>
         )}
         {status === "error" && (
-          <p className="text-sm" style={{ color: "var(--text-muted)" }}>Could not load passage.</p>
+          <p className="text-sm" style={{ color: "var(--text-muted)" }}>{tr("bible.loadError")}</p>
         )}
 
         {result && (() => {
@@ -476,7 +478,7 @@ export default function BibleLookupPane({ onClose }: Props) {
                 </span>
                 <button
                   onClick={handleCopy}
-                  title={copied ? "Copied!" : "Copy passage"}
+                  title={copied ? tr("bible.copied") : tr("bible.copyPassage")}
                   className="flex items-center justify-center w-5 h-5 rounded transition-colors"
                   style={{ color: copied ? "var(--accent)" : "var(--text-muted)" }}
                 >
@@ -499,7 +501,7 @@ export default function BibleLookupPane({ onClose }: Props) {
               <div className="flex gap-1.5 mb-2">
                 <button
                   onClick={() => setShowVowels((v) => !v)}
-                  title={showVowels ? "Hide vowel points" : "Show vowel points"}
+                  title={showVowels ? tr("bible.hideVowels") : tr("bible.showVowels")}
                   className={[
                     "px-2 py-0.5 rounded text-[11px] font-medium transition-colors border",
                     showVowels
@@ -507,11 +509,11 @@ export default function BibleLookupPane({ onClose }: Props) {
                       : "border-amber-400 bg-amber-500 text-white",
                   ].join(" ")}
                 >
-                  Vowels
+                  {tr("bible.vowels")}
                 </button>
                 <button
                   onClick={() => setShowCantillation((v) => !v)}
-                  title={showCantillation ? "Hide cantillation marks" : "Show cantillation marks"}
+                  title={showCantillation ? tr("bible.hideCantillation") : tr("bible.showCantillation")}
                   className={[
                     "px-2 py-0.5 rounded text-[11px] font-medium transition-colors border",
                     showCantillation
@@ -519,7 +521,7 @@ export default function BibleLookupPane({ onClose }: Props) {
                       : "border-amber-400 bg-amber-500 text-white",
                   ].join(" ")}
                 >
-                  Cantillation
+                  {tr("bible.cantillation")}
                 </button>
               </div>
             )}
@@ -550,7 +552,7 @@ export default function BibleLookupPane({ onClose }: Props) {
 
         {status === "idle" && !result && (
           <p className="text-sm" style={{ color: "var(--text-muted)" }}>
-            Enter a reference above to look up a passage.
+            {tr("bible.enterRef")}
           </p>
         )}
       </div>

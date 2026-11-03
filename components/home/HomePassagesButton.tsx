@@ -67,7 +67,7 @@ export default function HomePassagesButton() {
         onClick={() => setDropdownOpen((v) => !v)}
         className="text-xs px-3 py-1.5 rounded border font-medium transition-colors flex items-center gap-1"
         style={{ borderColor: "var(--border)", backgroundColor: "var(--surface)", color: "var(--foreground)" }}
-        title="Jump to a saved passage"
+        title={t("passageButtons.jumpTo")}
       >
         <span>📖</span>
         <span>{t("passages.button")}</span>
@@ -113,7 +113,7 @@ export default function HomePassagesButton() {
                             onClick={() => handleDelete(p.id)}
                             className="text-[11px] px-1.5 py-0.5 rounded bg-red-600 text-white hover:bg-red-700 transition-colors"
                           >
-                            Yes
+                            {t("passageButtons.yes")}
                           </button>
                           <button
                             type="button"
@@ -121,7 +121,7 @@ export default function HomePassagesButton() {
                             className="text-[11px] px-1.5 py-0.5 rounded hover:bg-stone-200 dark:hover:bg-stone-700 transition-colors"
                             style={{ color: "var(--text-muted)" }}
                           >
-                            No
+                            {t("passageButtons.no")}
                           </button>
                         </>
                       ) : (
@@ -130,7 +130,7 @@ export default function HomePassagesButton() {
                           onClick={() => setConfirmDeleteId(p.id)}
                           className="text-[13px] opacity-30 hover:opacity-100 px-1 rounded hover:bg-stone-200 dark:hover:bg-stone-700 transition-colors"
                           style={{ color: "var(--text-muted)" }}
-                          title="Delete passage"
+                          title={t("passageButtons.deletePassage")}
                         >
                           ×
                         </button>

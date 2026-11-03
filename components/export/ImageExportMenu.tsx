@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import { useTranslation } from "@/lib/i18n/LocaleContext";
 
 export type ImagePreset = "presentation" | "hifi" | "print";
 
@@ -40,6 +41,7 @@ const PRESETS: {
 ];
 
 export default function ImageExportMenu({ onExport, status }: Props) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -56,10 +58,10 @@ export default function ImageExportMenu({ onExport, status }: Props) {
   const busy = status === "loading";
 
   const triggerLabel =
-    status === "loading" ? "Rendering…" :
-    status === "done"    ? "✓ Image"    :
-    status === "error"   ? "✗ Failed"   :
-    "🖼 Image";
+    status === "loading" ? t("imageExport.rendering") :
+    status === "done"    ? t("imageExport.imageDone")    :
+    status === "error"   ? t("imageExport.failed")   :
+    t("imageExport.image");
 
   const triggerClass = [
     "px-3 py-1.5 rounded text-xs font-medium transition-colors disabled:opacity-50",
@@ -74,7 +76,7 @@ export default function ImageExportMenu({ onExport, status }: Props) {
         className={triggerClass}
         onClick={() => !busy && setOpen(o => !o)}
         disabled={busy}
-        title="Export as image"
+        title={t("imageExport.exportImage")}
       >
         {triggerLabel} {!busy && "▾"}
       </button>
@@ -89,7 +91,7 @@ export default function ImageExportMenu({ onExport, status }: Props) {
               key={p.id}
               className="w-full text-left px-3 py-2 text-xs rounded transition-colors hover:bg-stone-100 dark:hover:bg-stone-700 flex items-start gap-2"
               style={{ color: "var(--foreground)" }}
-              title={p.title}
+              title={t(`imageExport.${p.id}_title`)}
               onClick={() => {
                 setOpen(false);
                 onExport(p.id);
@@ -97,12 +99,12 @@ export default function ImageExportMenu({ onExport, status }: Props) {
             >
               <span className="mt-0.5 text-base leading-none">{p.icon}</span>
               <span>
-                <span className="block font-semibold">{p.label}</span>
+                <span className="block font-semibold">{t(`imageExport.${p.id}_label`)}</span>
                 <span
                   className="block text-[10px] mt-0.5"
                   style={{ color: "var(--text-muted)" }}
                 >
-                  {p.sub}
+                  {t(`imageExport.${p.id}_sub`)}
                 </span>
               </span>
             </button>

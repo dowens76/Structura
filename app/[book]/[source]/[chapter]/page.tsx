@@ -34,6 +34,7 @@ import BookDropdown from "@/components/navigation/BookDropdown";
 import NavLinks from "@/components/navigation/NavLinks";
 import HistoryNav from "@/components/navigation/HistoryNav";
 import BookmarkButton from "@/components/navigation/BookmarkButton";
+import { T, BookName } from "@/components/ui/Localized";
 import ThemeToggle from "@/components/ThemeToggle";
 import SettingsButton from "@/components/SettingsButton";
 import WorkspaceSwitcher from "@/components/WorkspaceSwitcher";
@@ -378,18 +379,18 @@ export default async function ChapterPage({ params, searchParams }: PageProps) {
                 className="text-xl font-bold tracking-tight"
                 style={{ color: "var(--foreground)", fontFamily: "Georgia, 'Times New Roman', serif" }}
               >
-                {bookName}{" "}
+                <BookName code={osisBook} refForm />{" "}
                 <span style={{ color: "var(--accent)" }}>
                   {parallelGroup && parallelGroup.mtChapters.length > 1
                     ? `${parallelGroup.mtChapters[0]}–${parallelGroup.mtChapters[parallelGroup.mtChapters.length - 1]}`
                     : chapter}
                 </span>
                 <span className="text-sm font-normal ml-3" style={{ color: "var(--text-muted)" }}>
-                  Hebrew ‖ Septuagint
+                  <T k="ui.hebrewParallelSeptuagint" />
                 </span>
               </h1>
               <p className="text-xs mt-0.5">
-                {`${words.length.toLocaleString()} Hebrew + ${lxxWords.length.toLocaleString()} Greek words`}
+                <T k="ui.parallelWords" params={{ h: words.length.toLocaleString(), g: lxxWords.length.toLocaleString() }} />
               </p>
             </div>
             <div className="flex-1 min-h-0">
@@ -456,10 +457,10 @@ export default async function ChapterPage({ params, searchParams }: PageProps) {
                   className="text-xl font-bold tracking-tight"
                   style={{ color: "var(--foreground)", fontFamily: "Georgia, 'Times New Roman', serif" }}
                 >
-                  {bookName} <span style={{ color: "var(--accent)" }}>{chapter}</span>
+                  <BookName code={osisBook} refForm /> <span style={{ color: "var(--accent)" }}>{chapter}</span>
                 </h1>
                 <p className="text-xs mt-0.5">
-                  {`${words.length.toLocaleString()} words`}
+                  <T k="ui.words" params={{ n: words.length.toLocaleString() }} />
                 </p>
               </div>
             }

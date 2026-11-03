@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, RefObject } from "react";
+import { useTranslation } from "@/lib/i18n/LocaleContext";
 
 export interface ToolbarVisibility {
   tooltips: boolean;
@@ -142,6 +143,7 @@ const SECTIONS: { label: string; items: { key: keyof ToolbarVisibility; label: s
 
 export default function ToolbarCustomizer({ visibility, onChange, onClose, anchorRef, defaultVisibility = DEFAULT_TOOLBAR_VIS }: Props) {
   const panelRef = useRef<HTMLDivElement>(null);
+  const { t } = useTranslation();
   const [pos, setPos] = useState<{ top?: number; bottom?: number; right: number; maxHeight: number } | null>(null);
 
   useEffect(() => {
@@ -197,7 +199,7 @@ export default function ToolbarCustomizer({ visibility, onChange, onClose, ancho
       {/* Header */}
       <div className="flex items-center justify-between px-3 py-2 border-b border-[var(--border)] shrink-0">
         <span className="text-[12px] font-semibold text-stone-500 dark:text-stone-400 uppercase tracking-wide">
-          Toolbar
+          {t("toolbarCustomizer.title")}
         </span>
         <button
           onClick={() => {
@@ -205,9 +207,9 @@ export default function ToolbarCustomizer({ visibility, onChange, onClose, ancho
             keys.forEach(k => onChange(k, defaultVisibility[k]));
           }}
           className="text-[11px] text-stone-400 hover:text-stone-600 dark:hover:text-stone-200 transition-colors"
-          title="Restore defaults"
+          title={t("toolbarCustomizer.restoreDefaults")}
         >
-          Reset
+          {t("toolbarCustomizer.reset")}
         </button>
       </div>
 
@@ -216,9 +218,9 @@ export default function ToolbarCustomizer({ visibility, onChange, onClose, ancho
         {SECTIONS.map((section) => (
           <div key={section.label}>
             <div className="px-3 pt-2 pb-0.5 text-[10px] font-semibold uppercase tracking-wider text-stone-400 dark:text-stone-500">
-              {section.label}
+              {t(`toolbarCustomizer.sections.${section.label}`)}
             </div>
-            {section.items.map(({ key, label, hebrew }) => {
+            {section.items.map(({ key, hebrew }) => {
               const on = visibility[key];
               return (
                 <label
@@ -226,9 +228,9 @@ export default function ToolbarCustomizer({ visibility, onChange, onClose, ancho
                   className="flex items-center justify-between px-3 py-1 cursor-pointer hover:bg-stone-50 dark:hover:bg-stone-800/60 select-none"
                 >
                   <span className="text-[13px] text-stone-700 dark:text-stone-300 flex items-center gap-1.5">
-                    {label}
+                    {t(`toolbarCustomizer.items.${key}`)}
                     {hebrew && (
-                      <span className="text-[9px] text-stone-400 dark:text-stone-500 font-normal">Heb</span>
+                      <span className="text-[9px] text-stone-400 dark:text-stone-500 font-normal">{t("toolbar.sourceLabel")}</span>
                     )}
                   </span>
                   {/* Toggle switch */}
@@ -264,7 +266,7 @@ export default function ToolbarCustomizer({ visibility, onChange, onClose, ancho
           }}
           className="text-[11px] text-stone-400 hover:text-stone-600 dark:hover:text-stone-200 transition-colors"
         >
-          Hide all
+          {t("toolbarCustomizer.hideAll")}
         </button>
         <button
           onClick={() => {
@@ -277,7 +279,7 @@ export default function ToolbarCustomizer({ visibility, onChange, onClose, ancho
           ].join(" ")}
           disabled={allOn}
         >
-          Show all
+          {t("toolbarCustomizer.showAll")}
         </button>
       </div>
     </div>

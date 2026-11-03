@@ -3,7 +3,7 @@
 import { useRef, useState } from "react";
 import type { Word, CharacterRef, Character, WordTag, WordTagRef } from "@/lib/db/schema";
 import type { DisplayMode, GrammarFilterState, InterlinearSubMode } from "@/lib/morphology/types";
-import { POS_COLORS, CONSTITUENT_LABELS } from "@/lib/morphology/types";
+import { POS_COLORS, CONSTITUENT_LABELS, morphTerm } from "@/lib/morphology/types";
 import { getPosKey, matchesColorRule, type ColorRule } from "@/lib/morphology/colorRules";
 import ParseTooltip from "./ParseTooltip";
 import hebrewLemmas from "@/lib/data/hebrew-lemmas.json";
@@ -13,6 +13,7 @@ import { renderClickableGraphemes, renderGraphemesWithSimilarityHighlight } from
 import PoetryNotePopover from "./PoetryNotePopover";
 import SimilarityNotePopover from "./SimilarityNotePopover";
 import PoetryArrowIcon from "./PoetryArrowIcon";
+import { useTranslation } from "@/lib/i18n/LocaleContext";
 
 interface WordTokenProps {
   word: Word;
@@ -206,6 +207,7 @@ function InterlinearLabel({
   onToggleDatasetGroupMember,
   suppressDatasetValueDisplay,
 }: InterlinearLabelProps) {
+  const { t } = useTranslation();
   const [popoverOpen, setPopoverOpen] = useState(false);
   const [draftValue,  setDraftValue]  = useState("");
   const editableRef = useRef<HTMLSpanElement>(null);
@@ -335,11 +337,11 @@ function InterlinearLabel({
         onClick={handleLabelClick}
         title={
           isLemmaSearchable
-            ? "Search this lemma"
+            ? t("wordToken.searchLemma")
             : datasetGroupingActive
-              ? "Click to add/remove from grouping"
+              ? t("wordToken.toggleGrouping")
               : isEditable
-                ? "Click to edit"
+                ? t("wordToken.clickToEdit")
                 : undefined
         }
       >
@@ -379,7 +381,7 @@ function InterlinearLabel({
               onClick={() => handleConstituentSelect(null)}
               className="text-[10px] px-1.5 py-0.5 rounded border border-red-300 dark:border-red-800 text-red-500 hover:bg-red-50 dark:hover:bg-red-950 transition-colors w-full mt-0.5"
             >
-              Clear
+              {t("wordToken.clear")}
             </button>
           )}
         </span>
@@ -396,20 +398,20 @@ function InterlinearLabel({
           }}
           onClick={(e) => e.stopPropagation()}
         >
-          <span className="text-[9px] font-mono" style={{ color: "var(--text-muted)" }}>Format letters</span>
+          <span className="text-[9px] font-mono" style={{ color: "var(--text-muted)" }}>{t("wordToken.formatLetters")}</span>
           {/* Toolbar */}
           <span className="flex gap-1">
             <button
               onMouseDown={(e) => { e.preventDefault(); applyTranslitFormat("bold"); }}
               className="font-bold text-xs px-2 py-0.5 rounded border border-stone-200 dark:border-stone-700 hover:bg-stone-100 dark:hover:bg-stone-700"
               style={{ color: "var(--foreground)" }}
-              title="Bold selected letters"
+              title={t("wordToken.boldLetters")}
             >B</button>
             <button
               onMouseDown={(e) => { e.preventDefault(); applyTranslitFormat("italic"); }}
               className="italic text-xs px-2 py-0.5 rounded border border-stone-200 dark:border-stone-700 hover:bg-stone-100 dark:hover:bg-stone-700"
               style={{ color: "var(--foreground)" }}
-              title="Italic selected letters"
+              title={t("wordToken.italicLetters")}
             >I</button>
           </span>
           {/* Contenteditable field showing transliteration */}
@@ -432,11 +434,11 @@ function InterlinearLabel({
               onClick={() => { onSaveTransliterationFormat?.(word.wordId, null); setPopoverOpen(false); }}
               className="text-[10px] px-1.5 py-0.5 rounded border border-stone-200 dark:border-stone-700 hover:bg-stone-100 dark:hover:bg-stone-700"
               style={{ color: "var(--text-muted)" }}
-            >Clear</button>
+            >{t("wordToken.clear")}</button>
             <button
               onClick={saveTranslitFormat}
               className="text-[10px] px-2 py-0.5 rounded bg-blue-600 text-white"
-            >Save</button>
+            >{t("wordToken.save")}</button>
           </span>
         </span>
       )}
@@ -463,7 +465,7 @@ function InterlinearLabel({
               if (e.key === "Enter") handleDatasetSave();
               if (e.key === "Escape") setPopoverOpen(false);
             }}
-            placeholder="Enter value…"
+            placeholder={t("wordToken.enterValue")}
             className="rounded border px-1.5 py-0.5 text-xs outline-none w-full"
             style={{
               borderColor: "var(--border)",
@@ -477,13 +479,13 @@ function InterlinearLabel({
               className="text-[10px] px-1.5 py-0.5 rounded border border-stone-200 dark:border-stone-700 hover:bg-stone-100 dark:hover:bg-stone-700"
               style={{ color: "var(--text-muted)" }}
             >
-              Clear
+              {t("wordToken.clear")}
             </button>
             <button
               onClick={handleDatasetSave}
               className="text-[10px] px-2 py-0.5 rounded bg-blue-600 text-white"
             >
-              Save
+              {t("wordToken.save")}
             </button>
           </span>
         </span>
@@ -558,6 +560,7 @@ export default function WordToken({
   similarityMark,
   onClickSimilarityMark,
 }: WordTokenProps) {
+  const { t } = useTranslation();
   const [hovering, setHovering] = useState(false);
   const [tooltipBelow, setTooltipBelow] = useState(false);
   const wordRef = useRef<HTMLSpanElement>(null);
@@ -834,7 +837,7 @@ export default function WordToken({
         onClick={(e) => onSelect(word, e.shiftKey)}
         onMouseEnter={handleMouseEnter}
         onMouseLeave={() => setHovering(false)}
-        title={isEditing ? undefined : `${word.lemma ?? word.surfaceText} — ${word.partOfSpeech ?? "unknown"}`}
+        title={isEditing ? undefined : `${word.lemma ?? word.surfaceText} — ${morphTerm(t, word.partOfSpeech) ?? t("wordToken.unknown")}`}
       >
         {coreContent}
         {showTooltip && !isEditing && <ParseTooltip word={word} flipped={tooltipBelow} useLinguisticTerms={useLinguisticTerms} />}

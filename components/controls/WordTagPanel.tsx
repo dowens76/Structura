@@ -10,6 +10,7 @@ import type { LemmaSuggestion } from "@/app/api/search/lemma-suggest/route";
 import { RULE_PALETTE } from "@/lib/morphology/colorRules";
 import { OSIS_BOOKS_OT, OSIS_BOOKS_NT, OSIS_BOOKS_LXX, OSIS_BOOK_NAMES } from "@/lib/utils/osis";
 import { formatVerseRange } from "@/lib/utils/sectionRanges";
+import { useTranslation } from "@/lib/i18n/LocaleContext";
 
 const HEBREW_FONT: React.CSSProperties = { fontFamily: '"Ezra SIL", "SBL Hebrew", serif' };
 function isHebrew(s: string): boolean { return /[א-ת]/.test(s); }
@@ -44,6 +45,7 @@ export interface CorpusPassageOption {
 
 /** Palette + custom-color swatch row shared by every tag color picker. */
 export function ColorSwatches({ selected, onPick }: { selected: string; onPick: (c: string) => void }) {
+  const { t: tr } = useTranslation();
   return (
     <div className="flex flex-wrap gap-1" style={{ maxWidth: "10rem" }}>
       {TAG_PALETTE.map((col) => (
@@ -52,7 +54,7 @@ export function ColorSwatches({ selected, onPick }: { selected: string; onPick: 
           style={{ backgroundColor: col, outline: selected === col ? `2px solid ${col}` : "none", outlineOffset: "1px" }} />
       ))}
       <input type="color" value={selected} onChange={(e) => onPick(e.target.value)}
-        className="w-4 h-4 rounded-full cursor-pointer border-0 p-0 bg-transparent" title="Custom color" />
+        className="w-4 h-4 rounded-full cursor-pointer border-0 p-0 bg-transparent" title={tr("wordTagPanel.customColor")} />
     </div>
   );
 }
@@ -91,6 +93,7 @@ interface NewGroupingFormProps {
 }
 
 function NewGroupingForm({ currentBook, style, menuRef, onSave, onCancel }: NewGroupingFormProps) {
+  const { t: tr } = useTranslation();
   const [name, setName] = useState("");
   const [selectedBooks, setSelectedBooks] = useState<Set<string>>(new Set([currentBook]));
   const [saving, setSaving] = useState(false);
@@ -124,7 +127,7 @@ function NewGroupingForm({ currentBook, style, menuRef, onSave, onCancel }: NewG
             all ? codes.forEach((c) => next.delete(c)) : codes.forEach((c) => next.add(c));
             setSelectedBooks(next);
           }} className="text-[9px] px-1 py-0.5 rounded border transition-colors" style={{ borderColor: "var(--border)", color: "var(--text-muted)" }}>
-            {all ? "None" : "All"}
+            {all ? tr("wordTagPanel.none") : tr("wordTagPanel.all")}
           </button>
         </div>
         <div className="flex flex-wrap gap-1">
@@ -151,12 +154,12 @@ function NewGroupingForm({ currentBook, style, menuRef, onSave, onCancel }: NewG
     <div ref={menuRef} className="fixed z-[10010] rounded-lg border shadow-xl p-3 w-80"
       style={{ borderColor: "var(--border)", backgroundColor: "var(--surface)", ...style }}>
       <div className="flex items-center justify-between mb-2">
-        <span className="text-xs font-semibold" style={{ color: "var(--foreground)" }}>New Book Grouping</span>
+        <span className="text-xs font-semibold" style={{ color: "var(--foreground)" }}>{tr("wordTagPanel.newBookGrouping")}</span>
         <button type="button" onClick={onCancel} className="text-xs opacity-50 hover:opacity-100 leading-none" style={{ color: "var(--foreground)" }}>×</button>
       </div>
       <input ref={nameRef} type="text" value={name} onChange={(e) => setName(e.target.value)}
         onKeyDown={(e) => { if (e.key === "Enter") handleSave(); if (e.key === "Escape") onCancel(); }}
-        placeholder="Grouping name" className="w-full px-2 py-1 text-xs rounded border mb-2"
+        placeholder={tr("wordTagPanel.groupingName")} className="w-full px-2 py-1 text-xs rounded border mb-2"
         style={{ borderColor: "var(--border)", backgroundColor: "var(--background)", color: "var(--foreground)" }} />
       <div className="max-h-44 overflow-y-auto border rounded p-2 mb-2" style={{ borderColor: "var(--border)" }}>
         <BookRow codes={OSIS_BOOKS_OT} label="OT" />
@@ -165,10 +168,10 @@ function NewGroupingForm({ currentBook, style, menuRef, onSave, onCancel }: NewG
       </div>
       <p className="text-[10px] mb-2" style={{ color: "var(--text-muted)" }}>{selectedBooks.size} book{selectedBooks.size !== 1 ? "s" : ""} selected</p>
       <div className="flex justify-end gap-2">
-        <button type="button" onClick={onCancel} className="text-xs px-2 py-0.5 rounded" style={{ color: "var(--text-muted)" }}>Cancel</button>
+        <button type="button" onClick={onCancel} className="text-xs px-2 py-0.5 rounded" style={{ color: "var(--text-muted)" }}>{tr("wordTagPanel.cancel")}</button>
         <button type="button" onClick={handleSave} disabled={saving || !name.trim() || selectedBooks.size === 0}
           className="text-xs font-semibold px-2.5 py-0.5 rounded bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 transition-colors">
-          {saving ? "Creating…" : "Create"}
+          {saving ? tr("wordTagPanel.creating") : tr("wordTagPanel.create")}
         </button>
       </div>
     </div>
@@ -201,6 +204,7 @@ export function CorpusSelector({
   corpusMode, corpusGroupingId, corpusChapter, corpusPassageId,
   onSelect, onCreateGrouping,
 }: CorpusSelectorProps) {
+  const { t: tr } = useTranslation();
   const [open, setOpen] = useState(false);
   const [showNewForm, setShowNewForm] = useState(false);
   const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null);
@@ -225,8 +229,8 @@ export function CorpusSelector({
   const label =
     corpusMode === "book"    ? currentBook :
     corpusMode === "chapter" ? `${currentBook} ${corpusChapter ?? currentChapter ?? "?"}` :
-    corpusMode === "passage" ? (selectedPassage?.label || "Passage") :
-    (selectedGrouping?.name ?? "Grouping");
+    corpusMode === "passage" ? (selectedPassage?.label || tr("wordTagPanel.passage")) :
+    (selectedGrouping?.name ?? tr("wordTagPanel.grouping"));
 
   function choose(mode: CorpusAssignment["mode"], overrides: Partial<CorpusAssignment> = {}) {
     onSelect({ mode, groupingId: null, chapter: null, passageId: null, ...overrides });
@@ -252,7 +256,7 @@ export function CorpusSelector({
 
   return (
     <div className="relative flex items-center gap-1 shrink-0" ref={ref}>
-      <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>Corpus:</span>
+      <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>{tr("wordTagPanel.corpus")}</span>
       <button ref={buttonRef} type="button" onClick={toggleOpen}
         className="text-[10px] px-1.5 py-0.5 rounded border flex items-center gap-0.5 transition-colors hover:border-blue-400"
         style={{ borderColor: "var(--border)", color: "var(--foreground)" }}>
@@ -285,7 +289,7 @@ export function CorpusSelector({
               style={{ color: "var(--foreground)" }}>
               {corpusMode === "passage" && corpusPassageId === p.id ? <span className="text-blue-500 text-xs">✓</span> : <span className="w-3" />}
               <span className="truncate">
-                {p.label || "Untitled passage"} {formatVerseRange(p.startChapter, p.startVerse, p.endChapter, p.endVerse, currentBook)}
+                {p.label || tr("wordTagPanel.untitledPassage")} {formatVerseRange(p.startChapter, p.startVerse, p.endChapter, p.endVerse, currentBook)}
               </span>
             </button>
           ))}
@@ -309,7 +313,7 @@ export function CorpusSelector({
           <button type="button" onClick={() => { setShowNewForm(true); setOpen(false); }}
             className="w-full text-left text-xs px-3 py-1.5 transition-colors hover:bg-stone-100 dark:hover:bg-stone-800"
             style={{ color: "var(--accent)" }}>
-            + New grouping…
+            {tr("wordTagPanel.newGrouping")}
           </button>
         </div>,
         document.body
@@ -341,6 +345,7 @@ export interface LemmaPickerInputProps {
 }
 
 export function LemmaPickerInput({ color, lemmas, pickingActive, externalDisplayLabels, onAdd, onRemove, onRequestWordClick, onCancelWordClick }: LemmaPickerInputProps) {
+  const { t: tr } = useTranslation();
   const [inputVal, setInputVal] = useState("");
   const [suggestions, setSuggestions] = useState<LemmaSuggestion[]>([]);
   const [displayLabels, setDisplayLabels] = useState<Map<string, string>>(new Map());
@@ -429,7 +434,7 @@ export function LemmaPickerInput({ color, lemmas, pickingActive, externalDisplay
 
   return (
     <div className="space-y-1">
-      <span className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>Lemmas</span>
+      <span className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>{tr("wordTagPanel.lemmas")}</span>
       {lemmas.length > 0 && (
         <div className="flex flex-wrap gap-1">
           {lemmas.map((l) => {
@@ -453,7 +458,7 @@ export function LemmaPickerInput({ color, lemmas, pickingActive, externalDisplay
             onChange={(e) => handleInput(e.target.value)}
             onKeyDown={handleKeyDown}
             onFocus={() => suggestions.length > 0 && setShowSuggestions(true)}
-            placeholder="Type lemma or H/G1234…"
+            placeholder={tr("wordTagPanel.lemmaPlaceholder")}
             className="w-full text-[10px] px-1.5 py-0.5 rounded border bg-transparent"
             style={{ borderColor: "var(--border)", color: "var(--foreground)" }}
           />
@@ -490,7 +495,7 @@ export function LemmaPickerInput({ color, lemmas, pickingActive, externalDisplay
         <button
           type="button"
           onClick={handlePickFromText}
-          title={pickingActive ? "Cancel picking" : "Click a word in the text to add its lemma"}
+          title={pickingActive ? tr("wordTagPanel.cancelPicking") : tr("wordTagPanel.clickWordToAdd")}
           className={`text-[10px] px-1.5 py-0.5 rounded border transition-colors shrink-0 ${pickingActive ? "border-amber-400 text-amber-600 dark:text-amber-400" : "border-transparent hover:border-blue-400 hover:text-blue-500"}`}
           style={{ color: pickingActive ? undefined : "var(--text-muted)" }}>
           {pickingActive ? "↑ Cancel" : "↑ Text"}
@@ -498,7 +503,7 @@ export function LemmaPickerInput({ color, lemmas, pickingActive, externalDisplay
       </div>
       {pickingActive && (
         <p className="text-[9px] italic animate-pulse" style={{ color: "var(--accent)" }}>
-          Click any source word to add its lemma…
+          {tr("wordTagPanel.clickAnyWord")}
         </p>
       )}
     </div>
@@ -529,6 +534,7 @@ export default function WordTagPanel({
   onRequestWordClick,
   onCancelWordClick,
 }: WordTagPanelProps) {
+  const { t: tr } = useTranslation();
   const router = useRouter();
   const [showNew, setShowNew] = useState(false);
   const [newType, setNewType] = useState<TagType>("concept");
@@ -660,11 +666,11 @@ export default function WordTagPanel({
       <div className="flex items-center gap-2 px-4 py-2 overflow-x-auto">
 
         {/* Mode label */}
-        <span className="text-[10px] font-semibold uppercase tracking-wider shrink-0" style={{ color: "var(--text-muted)" }}>Tags</span>
+        <span className="text-[10px] font-semibold uppercase tracking-wider shrink-0" style={{ color: "var(--text-muted)" }}>{tr("wordTagPanel.tags")}</span>
         <div className="w-px h-4 shrink-0" style={{ backgroundColor: "var(--border)" }} />
 
         {/* Reorder button */}
-        <button type="button" onClick={openReorder} title="Reorder tags"
+        <button type="button" onClick={openReorder} title={tr("wordTagPanel.reorderTags")}
           className="shrink-0 p-1 rounded text-xs transition-colors hover:bg-stone-100 dark:hover:bg-stone-800"
           style={{ color: "var(--text-muted)" }}>⇅</button>
 
@@ -714,10 +720,10 @@ export default function WordTagPanel({
 
                 <div className="flex gap-2">
                   <button type="button" onClick={handleSaveEdit} disabled={!editName.trim()}
-                    className="text-xs font-semibold px-1.5 py-0.5 rounded bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 transition-colors">Save</button>
+                    className="text-xs font-semibold px-1.5 py-0.5 rounded bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 transition-colors">{tr("wordTagPanel.save")}</button>
                   <button type="button" onClick={() => setEditingTagId(null)}
                     className="text-xs px-1 py-0.5 rounded hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors"
-                    style={{ color: "var(--text-muted)" }}>Cancel</button>
+                    style={{ color: "var(--text-muted)" }}>{tr("wordTagPanel.cancel")}</button>
                 </div>
               </div>
             );
@@ -739,7 +745,7 @@ export default function WordTagPanel({
               }}>
               {isPendingDel ? (
                 <>
-                  <span className="text-xs font-medium text-red-600 dark:text-red-400 shrink-0">Delete?</span>
+                  <span className="text-xs font-medium text-red-600 dark:text-red-400 shrink-0">{tr("wordTagPanel.deleteQ")}</span>
                   <span role="button" className="text-green-600 dark:text-green-400 hover:text-green-700 font-bold text-sm leading-none px-0.5 transition-colors"
                     onClick={(e) => { e.stopPropagation(); onDeleteTag(t.id); setConfirmDeleteId(null); }}>✓</span>
                   <span role="button" className="text-stone-400 hover:text-stone-600 dark:hover:text-stone-300 text-sm leading-none px-0.5 transition-colors"
@@ -764,14 +770,14 @@ export default function WordTagPanel({
                   {(isHovered || isHighlighted) && (
                     <span className={`ml-0.5 text-sm leading-none cursor-pointer transition-colors ${isHighlighted ? "text-amber-400 hover:text-amber-500" : "text-stone-300 hover:text-amber-400"}`}
                       onClick={(e) => { e.stopPropagation(); onToggleHighlight(t.id); }}
-                      title={isHighlighted ? "Remove highlight" : "Highlight all occurrences"}>✦</span>
+                      title={isHighlighted ? tr("wordTagPanel.removeHighlight") : tr("wordTagPanel.highlightAll")}>✦</span>
                   )}
                   {/* edit tag (same inline editor as double-click) */}
                   {isHovered && (
                     <span role="button"
                       onClick={(e) => { e.stopPropagation(); handleStartEdit(t); }}
                       className="ml-0.5 text-stone-400 hover:text-blue-500 transition-colors cursor-pointer leading-none"
-                      title="Edit this tag">✎</span>
+                      title={tr("wordTagPanel.editTag")}>✎</span>
                   )}
                   {/* list of occurrences (opens the Word/Concept Editor in a new tab —
                       or, in the Tauri app where there's no tab to open, in place).
@@ -791,7 +797,7 @@ export default function WordTagPanel({
                           }
                         }}
                         className="ml-0.5 text-stone-400 hover:text-blue-500 transition-colors leading-none inline-flex items-center"
-                        title="View list of occurrences">
+                        title={tr("wordTagPanel.viewList")}>
                         <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                           <line x1="9" y1="6" x2="20" y2="6" /><line x1="9" y1="12" x2="20" y2="12" /><line x1="9" y1="18" x2="20" y2="18" />
                           <circle cx="4.5" cy="6" r="1" /><circle cx="4.5" cy="12" r="1" /><circle cx="4.5" cy="18" r="1" />
@@ -814,7 +820,7 @@ export default function WordTagPanel({
         {!showNew ? (
           <button type="button" onClick={() => setShowNew(true)}
             className="flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium border border-dashed transition-colors shrink-0 hover:border-blue-400 hover:text-blue-500"
-            style={{ borderColor: "var(--border)", color: "var(--text-muted)" }}>+ New</button>
+            style={{ borderColor: "var(--border)", color: "var(--text-muted)" }}>{tr("wordTagPanel.new")}</button>
         ) : (
           <div className="flex flex-col gap-2 px-3 py-2 rounded-lg border shrink-0"
             style={{ borderColor: "var(--border)", backgroundColor: "var(--surface-muted, var(--surface))", minWidth: "22rem" }}>
@@ -826,7 +832,7 @@ export default function WordTagPanel({
                   <button key={tp} type="button" onClick={() => { setNewType(tp); setNewLemmas([]); setNewName(""); setNewNameAutoFilled(false); }}
                     className="px-2 py-0.5 capitalize transition-colors"
                     style={{ backgroundColor: newType === tp ? "var(--accent)" : "transparent", color: newType === tp ? "#fff" : "var(--text-muted)" }}>
-                    {tp === "lemma" ? "Lemma" : "Concept"}
+                    {tp === "lemma" ? tr("wordTagPanel.lemma") : tr("wordTagPanel.concept")}
                   </button>
                 ))}
               </div>
@@ -839,7 +845,7 @@ export default function WordTagPanel({
               value={newName}
               onChange={(e) => { setNewName(e.target.value); setNewNameAutoFilled(false); }}
               onKeyDown={(e) => { if (e.key === "Enter" && newType === "concept") handleCreate(); if (e.key === "Escape") { setShowNew(false); resetNew(); } }}
-              placeholder={newType === "lemma" ? "Tag name" : "Label"}
+              placeholder={newType === "lemma" ? tr("wordTagPanel.tagName") : tr("wordTagPanel.label")}
               className="w-full text-xs bg-transparent outline-none border-b pb-0.5"
               style={{ borderColor: "var(--border)", color: "var(--foreground)" }}
             />
@@ -895,13 +901,13 @@ export default function WordTagPanel({
               <button type="button" onClick={handleCreate}
                 disabled={(newType === "concept" && !newName.trim()) || (newType === "lemma" && (!newName.trim() || newLemmas.length === 0))}
                 className="text-xs font-semibold px-2 py-0.5 rounded bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 transition-colors">
-                Create
+                {tr("wordTagPanel.create")}
               </button>
               <button type="button" onClick={() => { setShowNew(false); resetNew(); onCancelWordClick(); }}
                 className="text-xs px-1.5 py-0.5 rounded hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors"
-                style={{ color: "var(--text-muted)" }}>Cancel</button>
+                style={{ color: "var(--text-muted)" }}>{tr("wordTagPanel.cancel")}</button>
               {newType === "lemma" && newLemmas.length === 0 && (
-                <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>Add at least one lemma</span>
+                <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>{tr("wordTagPanel.addOneLemma")}</span>
               )}
             </div>
           </div>
@@ -913,7 +919,7 @@ export default function WordTagPanel({
         <div className="absolute top-full left-0 mt-1 z-50 rounded-lg border shadow-lg p-3 min-w-[200px]"
           style={{ borderColor: "var(--border)", backgroundColor: "var(--surface)" }}>
           <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-semibold" style={{ color: "var(--foreground)" }}>Reorder Tags</span>
+            <span className="text-xs font-semibold" style={{ color: "var(--foreground)" }}>{tr("wordTagPanel.reorderTagsTitle")}</span>
             <button type="button" onClick={() => setShowReorder(false)}
               className="text-xs px-1 rounded hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors leading-none"
               style={{ color: "var(--text-muted)" }}>✕</button>
@@ -936,9 +942,9 @@ export default function WordTagPanel({
           <div className="flex justify-end gap-2 mt-3 pt-2 border-t" style={{ borderColor: "var(--border)" }}>
             <button type="button" onClick={() => setShowReorder(false)}
               className="text-xs px-2 py-1 rounded hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors"
-              style={{ color: "var(--text-muted)" }}>Cancel</button>
+              style={{ color: "var(--text-muted)" }}>{tr("wordTagPanel.cancel")}</button>
             <button type="button" onClick={handleSaveReorder}
-              className="text-xs font-semibold px-2.5 py-1 rounded bg-blue-600 text-white hover:bg-blue-700 transition-colors">Save order</button>
+              className="text-xs font-semibold px-2.5 py-1 rounded bg-blue-600 text-white hover:bg-blue-700 transition-colors">{tr("wordTagPanel.saveOrder")}</button>
           </div>
         </div>
       )}

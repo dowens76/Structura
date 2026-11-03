@@ -166,13 +166,13 @@ export default function ChapterSummarySection({
     const sections: Array<{ label: string; text: string; html: string }> = [];
 
     if (meta.mainIdea.trim()) {
-      sections.push({ label: "Main Idea", text: meta.mainIdea.trim(), html: `<p>${meta.mainIdea.trim()}</p>` });
+      sections.push({ label: t("notes2.mainIdea"), text: meta.mainIdea.trim(), html: `<p>${meta.mainIdea.trim()}</p>` });
     }
 
     const outlineText = extractTextFromTipTap(latestSermon);
     const outlineHtml = tiptapToHtml(latestSermon);
     if (outlineText) {
-      sections.push({ label: "Teaching Outline", text: outlineText, html: outlineHtml });
+      sections.push({ label: t("notes2.teachingOutline"), text: outlineText, html: outlineHtml });
     }
 
     for (const field of meta.customFields) {
@@ -230,7 +230,7 @@ export default function ChapterSummarySection({
             className="text-xs font-bold tracking-wide uppercase"
             style={{ color: "var(--accent)" }}
           >
-            Overview
+            {t("notes2.overview")}
           </span>
           <span className="text-stone-400 dark:text-stone-500 text-xs">
             {collapsed ? "▶" : "▼"}
@@ -239,11 +239,11 @@ export default function ChapterSummarySection({
         {loaded && (
           <button
             onClick={copyOverview}
-            title="Copy overview to clipboard"
+            title={t("notes2.copyOverview")}
             className="text-[10px] px-1.5 py-0.5 rounded transition-colors"
             style={{ color: copied ? "var(--accent)" : "var(--text-muted)" }}
           >
-            {copied ? "✓ Copied" : "Copy all overview fields"}
+            {copied ? t("notes2.copiedCheck") : t("notes2.copyAllOverview")}
           </button>
         )}
       </div>
@@ -251,18 +251,18 @@ export default function ChapterSummarySection({
       {!collapsed && (
         <div className="px-4 pb-4 space-y-4">
           {!loaded ? (
-            <p className="text-xs text-stone-400 dark:text-stone-500">Loading…</p>
+            <p className="text-xs text-stone-400 dark:text-stone-500">{t("notes.loading")}</p>
           ) : (
             <>
               {/* Main Idea */}
               <div>
                 <div className="flex items-center justify-between mb-1">
                   <label className="block text-xs font-semibold" style={{ color: "var(--text-muted)" }}>
-                    Main Idea
+                    {t("notes2.mainIdea")}
                   </label>
                   <CopyButton
                     className="!w-5 !h-5"
-                    label={t("notes.copyField", { name: "Main Idea" })}
+                    label={t("notes.copyField", { name: t("notes2.mainIdea") })}
                     getPayload={() => plainPayload(meta.mainIdea)}
                   />
                 </div>
@@ -270,7 +270,7 @@ export default function ChapterSummarySection({
                   type="text"
                   value={meta.mainIdea}
                   onChange={(e) => updateMainIdea(e.target.value)}
-                  placeholder="Summarize the main idea…"
+                  placeholder={t("notes2.mainIdeaPlaceholder")}
                   className={inputCls}
                 />
               </div>
@@ -278,7 +278,7 @@ export default function ChapterSummarySection({
               {/* Sermon Outline */}
               <div>
                 <label className="block text-xs font-semibold mb-1" style={{ color: "var(--text-muted)" }}>
-                  Teaching Outline
+                  {t("notes2.teachingOutline")}
                 </label>
                 {/* overflow-clip (not hidden) so NoteEditor's sticky toolbar still works */}
                 <div className="rounded border border-[var(--border)] overflow-clip">
@@ -308,12 +308,12 @@ export default function ChapterSummarySection({
                         />
                         <CopyButton
                           className="!w-5 !h-5"
-                          label={t("notes.copyField", { name: field.name || "Field" })}
+                          label={t("notes.copyField", { name: field.name || t("notes2.field") })}
                           getPayload={() => plainPayload(field.value)}
                         />
                         <button
                           onClick={() => removeField(field.id)}
-                          title="Remove field"
+                          title={t("notes2.removeField")}
                           className="w-5 h-5 flex items-center justify-center rounded text-stone-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950 transition-colors text-xs shrink-0"
                         >
                           ×
@@ -337,7 +337,7 @@ export default function ChapterSummarySection({
                 className="flex items-center gap-1 text-xs text-stone-400 hover:text-stone-600 dark:hover:text-stone-300 transition-colors"
               >
                 <span className="text-base leading-none">+</span>
-                <span>Add custom field</span>
+                <span>{t("notes2.addCustomField")}</span>
               </button>
             </>
           )}

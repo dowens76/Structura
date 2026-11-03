@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "@/lib/i18n/LocaleContext";
+
 interface Props {
   /** Number of rows to show — the deepest nesting level currently in use,
    *  floored at 3 so the user can pre-configure colors before nesting that
@@ -11,6 +13,7 @@ interface Props {
 }
 
 export default function LineGroupColorPanel({ levelCount, getColor, onChange, onClose }: Props) {
+  const { t } = useTranslation();
   const levels = Array.from({ length: levelCount }, (_, i) => i + 1);
 
   return (
@@ -40,7 +43,7 @@ export default function LineGroupColorPanel({ levelCount, getColor, onChange, on
         className="ml-auto text-xs text-stone-400 hover:text-stone-600 dark:hover:text-stone-200"
         type="button"
       >
-        Done
+        {t("lineGroupColor.done")}
       </button>
     </div>
   );

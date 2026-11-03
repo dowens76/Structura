@@ -4,6 +4,7 @@ import { useState, useCallback, useEffect, useRef } from "react";
 import type { SearchResult } from "@/app/api/search/words/route";
 import type { LemmaSuggestion } from "@/app/api/search/lemma-suggest/route";
 import { useTranslation } from "@/lib/i18n/LocaleContext";
+import { morphTerm } from "@/lib/morphology/types";
 
 const SOURCES = ["OSHB", "SBLGNT", "STEPBIBLE_LXX"] as const;
 type Source = typeof SOURCES[number];
@@ -116,6 +117,7 @@ function SelectFilter({
   options: string[];
   onChange: (v: string) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="flex items-center gap-1.5">
       <label className="text-xs text-stone-500 dark:text-stone-400 w-16 shrink-0">{label}</label>
@@ -124,9 +126,9 @@ function SelectFilter({
         onChange={(e) => onChange(e.target.value)}
         className="flex-1 text-xs rounded border border-[var(--border)] bg-[var(--surface)] text-[var(--foreground)] px-1.5 py-0.5"
       >
-        <option value="">Any</option>
+        <option value="">{t("search.any")}</option>
         {options.map((o) => (
-          <option key={o} value={o}>{o}</option>
+          <option key={o} value={o}>{morphTerm(t, o)}</option>
         ))}
       </select>
     </div>
@@ -134,7 +136,7 @@ function SelectFilter({
 }
 
 export default function SearchPane({ book, textSource, onClose, onResultsChange, onSaveComplete, searchRequest }: SearchPaneProps) {
-  const { refBookName } = useTranslation();
+  const { t, refBookName } = useTranslation();
 
   // ── Restore from sessionStorage on mount ───────────────────────────────────
   const restored = useRef(false);
@@ -288,7 +290,7 @@ export default function SearchPane({ book, textSource, onClose, onResultsChange,
       const res = await fetch(`/api/search/words?${params}`);
       if (!res.ok) {
         const j = await res.json().catch(() => ({}));
-        setError((j as { error?: string }).error ?? "Search failed.");
+        setError((j as { error?: string }).error ?? t("search.searchFailed"));
         return;
       }
       const data = await res.json() as { results: SearchResult[]; total: number; truncated: boolean };
@@ -301,7 +303,7 @@ export default function SearchPane({ book, textSource, onClose, onResultsChange,
     } finally {
       setLoading(false);
     }
-  }, [persistResults]);
+  }, [persistResults, t]);
 
   const handleSearch = useCallback(async () => {
     await runSearch(searchType, query, activeSources, filters, morphPattern);
@@ -345,11 +347,11 @@ export default function SearchPane({ book, textSource, onClose, onResultsChange,
         body: JSON.stringify({ name: listName.trim(), color: listColor, wordRefs }),
       });
       const data = await res.json() as { tagId?: number; tagged?: number; skipped?: number; error?: string };
-      if (!res.ok || !data.tagId) { setSaveMsg(`Error: ${data.error ?? "Failed"}`); return; }
+      if (!res.ok || !data.tagId) { setSaveMsg(`Error: ${data.error ?? t("search.failed")}`); return; }
       setSaveMsg(
         data.skipped && data.skipped > 0
-          ? `Saved ${data.tagged} words (${data.skipped} already tagged, skipped)`
-          : `Saved ${data.tagged} words as "${listName.trim()}"`
+          ? t("search.savedSkipped", { n: data.tagged ?? 0, skipped: data.skipped ?? 0 })
+          : t("search.savedAs", { n: data.tagged ?? 0, name: listName.trim() })
       );
       setShowSaveForm(false);
       // Notify parent so it can switch from temp highlights to tag highlights
@@ -392,11 +394,11 @@ export default function SearchPane({ book, textSource, onClose, onResultsChange,
 
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border)] shrink-0">
-        <h2 className="text-sm font-semibold text-stone-700 dark:text-stone-300">Search</h2>
+        <h2 className="text-sm font-semibold text-stone-700 dark:text-stone-300">{t("search.search")}</h2>
         <button
           onClick={handleClose}
           className="text-stone-400 hover:text-stone-600 dark:hover:text-stone-200 text-lg leading-none"
-          aria-label="Close"
+          aria-label={t("search.close")}
         >
           ×
         </button>
@@ -425,18 +427,18 @@ export default function SearchPane({ book, textSource, onClose, onResultsChange,
 
         {/* Search type */}
         <div className="flex rounded-md overflow-hidden border border-[var(--border)] text-xs">
-          {(["surface", "lemma", "morph"] as SearchType[]).map((t) => (
+          {(["surface", "lemma", "morph"] as SearchType[]).map((st) => (
             <button
-              key={t}
-              onClick={() => setSearchType(t)}
+              key={st}
+              onClick={() => setSearchType(st)}
               className={[
                 "flex-1 py-1 font-medium transition-colors",
-                searchType === t
+                searchType === st
                   ? "bg-stone-700 dark:bg-stone-200 text-white dark:text-stone-900"
                   : "bg-[var(--surface)] text-stone-500 dark:text-stone-400 hover:bg-stone-100 dark:hover:bg-stone-800",
               ].join(" ")}
             >
-              {t === "surface" ? "Surface" : t === "lemma" ? "Lemma" : "Morph Only"}
+              {st === "surface" ? t("search.surface") : st === "lemma" ? t("search.lemma") : t("search.morphOnly")}
             </button>
           ))}
         </div>
@@ -451,7 +453,7 @@ export default function SearchPane({ book, textSource, onClose, onResultsChange,
               onKeyDown={handleKeyDown}
               onFocus={() => suggestions.length > 0 && setShowSuggestions(true)}
               onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
-              placeholder={searchType === "surface" ? "Surface text…" : hasHebrew && !hasGreek ? "Hebrew word or Strong's number…" : "Lemma or Strong's number…"}
+              placeholder={searchType === "surface" ? t("search.surfacePlaceholder") : hasHebrew && !hasGreek ? t("search.hebrewPlaceholder") : t("search.lemmaPlaceholder")}
               className="w-full text-sm rounded border border-[var(--border)] bg-[var(--surface)] text-[var(--foreground)] px-2.5 py-1.5 focus:outline-none focus:border-amber-400"
               dir={searchType === "surface" && hasHebrew && !hasGreek ? "rtl" : searchType === "lemma" && hasHebrew ? "auto" : "ltr"}
             />
@@ -485,48 +487,48 @@ export default function SearchPane({ book, textSource, onClose, onResultsChange,
         {/* Morphology filters */}
         <div className="space-y-1.5">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-stone-500 dark:text-stone-400">Morphology</span>
+            <span className="text-xs font-medium text-stone-500 dark:text-stone-400">{t("search.morphology")}</span>
             {hasFilters && (
               <button onClick={clearFilters} className="text-xs text-stone-400 hover:text-stone-600 dark:hover:text-stone-300">
-                Clear
+                {t("search.clear")}
               </button>
             )}
           </div>
 
           {/* Morph code pattern input */}
           <div className="flex items-center gap-1.5">
-            <label className="text-xs text-stone-500 dark:text-stone-400 w-16 shrink-0">Pattern</label>
+            <label className="text-xs text-stone-500 dark:text-stone-400 w-16 shrink-0">{t("search.pattern")}</label>
             <input
               type="text"
               value={morphPattern}
               onChange={(e) => { setMorphPattern(e.target.value); if (e.target.value) setFilters(EMPTY_FILTERS); }}
               onKeyDown={handleKeyDown}
-              placeholder="e.g. HC/Nc--- or V- *PAI*"
+              placeholder={t("search.patternPlaceholder")}
               className="flex-1 text-xs font-mono rounded border border-[var(--border)] bg-[var(--surface)] text-[var(--foreground)] px-1.5 py-0.5 focus:outline-none focus:border-amber-400 placeholder:font-sans placeholder:text-stone-400"
             />
           </div>
 
           {/* POS always shown */}
-          <SelectFilter label="POS" value={filters.partOfSpeech} options={POS_OPTIONS} onChange={setFilter("partOfSpeech")} />
+          <SelectFilter label={t("morph.pos")} value={filters.partOfSpeech} options={POS_OPTIONS} onChange={setFilter("partOfSpeech")} />
 
           {showAnything && (<>
             {/* Verbal fields: Stem, Aspect/Tense, Person, Gender, Number */}
-            {showStem      && <SelectFilter label="Stem"   value={filters.stem}    options={STEM_OPTIONS}      onChange={setFilter("stem")} />}
-            {showAspect    && <SelectFilter label="Aspect" value={filters.tense}   options={HEB_TENSE_OPTIONS} onChange={setFilter("tense")} />}
-            {showGreekTense && <SelectFilter label="Tense" value={filters.tense}   options={GRK_TENSE_OPTIONS} onChange={setFilter("tense")} />}
-            {showPerson    && <SelectFilter label="Person" value={filters.person}  options={PERSON_OPTIONS}    onChange={setFilter("person")} />}
+            {showStem      && <SelectFilter label={t("morph.stem")}   value={filters.stem}    options={STEM_OPTIONS}      onChange={setFilter("stem")} />}
+            {showAspect    && <SelectFilter label={t("morph.aspect")} value={filters.tense}   options={HEB_TENSE_OPTIONS} onChange={setFilter("tense")} />}
+            {showGreekTense && <SelectFilter label={t("morph.tense")} value={filters.tense}   options={GRK_TENSE_OPTIONS} onChange={setFilter("tense")} />}
+            {showPerson    && <SelectFilter label={t("morph.person")} value={filters.person}  options={PERSON_OPTIONS}    onChange={setFilter("person")} />}
 
             {/* Shared: Gender, Number */}
-            {showGender    && <SelectFilter label="Gender" value={filters.gender}  options={GENDER_OPTIONS}    onChange={setFilter("gender")} />}
-            {showNumber    && <SelectFilter label="Number" value={filters.number}  options={NUMBER_OPTIONS}    onChange={setFilter("number")} />}
+            {showGender    && <SelectFilter label={t("morph.gender")} value={filters.gender}  options={GENDER_OPTIONS}    onChange={setFilter("gender")} />}
+            {showNumber    && <SelectFilter label={t("morph.number")} value={filters.number}  options={NUMBER_OPTIONS}    onChange={setFilter("number")} />}
 
             {/* Nominal / particle fields */}
-            {showState     && <SelectFilter label="State"  value={filters.state}   options={STATE_OPTIONS}     onChange={setFilter("state")} />}
+            {showState     && <SelectFilter label={t("morph.state")}  value={filters.state}   options={STATE_OPTIONS}     onChange={setFilter("state")} />}
 
             {/* Greek-only verbal */}
-            {showVoice     && <SelectFilter label="Voice"  value={filters.voice}   options={VOICE_OPTIONS}     onChange={setFilter("voice")} />}
-            {showMood      && <SelectFilter label="Mood"   value={filters.mood}    options={MOOD_OPTIONS}      onChange={setFilter("mood")} />}
-            {showCase      && <SelectFilter label="Case"   value={filters.verbCase} options={CASE_OPTIONS}     onChange={setFilter("verbCase")} />}
+            {showVoice     && <SelectFilter label={t("morph.voice")}  value={filters.voice}   options={VOICE_OPTIONS}     onChange={setFilter("voice")} />}
+            {showMood      && <SelectFilter label={t("morph.mood")}   value={filters.mood}    options={MOOD_OPTIONS}      onChange={setFilter("mood")} />}
+            {showCase      && <SelectFilter label={t("morph.case")}   value={filters.verbCase} options={CASE_OPTIONS}     onChange={setFilter("verbCase")} />}
 
             {/* Hebrew verb suffix */}
             {hasHebrew && isVerbal && (
@@ -540,13 +542,13 @@ export default function SearchPane({ book, textSource, onClose, onResultsChange,
                     className={`w-3 h-3 transition-transform ${showSuffix ? "rotate-90" : ""}`}>
                     <path fillRule="evenodd" d="M6.22 4.22a.75.75 0 0 1 1.06 0l3.25 3.25a.75.75 0 0 1 0 1.06l-3.25 3.25a.75.75 0 0 1-1.06-1.06L9.19 8 6.22 5.03a.75.75 0 0 1 0-1.06Z" clipRule="evenodd"/>
                   </svg>
-                  Suffix
+                  {t("search.suffix")}
                 </button>
                 {showSuffix && (
                   <div className="mt-1.5 pl-3 space-y-1.5 border-l-2 border-stone-200 dark:border-stone-700">
-                    <SelectFilter label="Person" value={filters.suffixPerson} options={PERSON_OPTIONS} onChange={setFilter("suffixPerson")} />
-                    <SelectFilter label="Gender" value={filters.suffixGender} options={GENDER_OPTIONS} onChange={setFilter("suffixGender")} />
-                    <SelectFilter label="Number" value={filters.suffixNumber} options={NUMBER_OPTIONS} onChange={setFilter("suffixNumber")} />
+                    <SelectFilter label={t("morph.person")} value={filters.suffixPerson} options={PERSON_OPTIONS} onChange={setFilter("suffixPerson")} />
+                    <SelectFilter label={t("morph.gender")} value={filters.suffixGender} options={GENDER_OPTIONS} onChange={setFilter("suffixGender")} />
+                    <SelectFilter label={t("morph.number")} value={filters.suffixNumber} options={NUMBER_OPTIONS} onChange={setFilter("suffixNumber")} />
                   </div>
                 )}
               </div>
@@ -560,7 +562,7 @@ export default function SearchPane({ book, textSource, onClose, onResultsChange,
           disabled={loading}
           className="w-full py-1.5 rounded text-xs font-semibold transition-colors bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white"
         >
-          {loading ? "Searching…" : "Search"}
+          {loading ? t("search.searching") : t("search.search")}
         </button>
 
         {error && (
@@ -572,15 +574,15 @@ export default function SearchPane({ book, textSource, onClose, onResultsChange,
       {results !== null && (
         <div className="shrink-0 flex items-center justify-between px-3 py-2 border-b border-[var(--border)] bg-stone-50 dark:bg-stone-900">
           <span className="text-xs text-stone-500 dark:text-stone-400">
-            {total === 0 ? "No results" : truncated ? `First ${total} results` : `${total} result${total === 1 ? "" : "s"}`}
-            {truncated && <span className="ml-1 text-amber-600 dark:text-amber-400">(limit reached)</span>}
+            {total === 0 ? t("search.noResults") : truncated ? `First ${total} results` : `${total} result${total === 1 ? "" : "s"}`}
+            {truncated && <span className="ml-1 text-amber-600 dark:text-amber-400">{t("search.limitReached")}</span>}
           </span>
           {total > 0 && (
             <button
               onClick={() => { setShowSaveForm((v) => !v); setSaveMsg(null); }}
               className="text-xs px-2 py-0.5 rounded border border-[var(--border)] hover:bg-stone-100 dark:hover:bg-stone-800 text-stone-600 dark:text-stone-300 transition-colors"
             >
-              Save as List
+              {t("search.saveAsList")}
             </button>
           )}
         </div>
@@ -594,7 +596,7 @@ export default function SearchPane({ book, textSource, onClose, onResultsChange,
             type="text"
             value={listName}
             onChange={(e) => setListName(e.target.value)}
-            placeholder="List name…"
+            placeholder={t("search.listName")}
             className="w-full text-xs rounded border border-[var(--border)] bg-[var(--surface)] text-[var(--foreground)] px-2 py-1 focus:outline-none focus:border-amber-400"
             onKeyDown={(e) => e.key === "Enter" && handleSave()}
           />
@@ -615,13 +617,13 @@ export default function SearchPane({ book, textSource, onClose, onResultsChange,
               disabled={saving || !listName.trim()}
               className="flex-1 py-1 rounded text-xs font-semibold bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white transition-colors"
             >
-              {saving ? "Saving…" : "Save"}
+              {saving ? t("search.saving") : t("search.save")}
             </button>
             <button
               onClick={() => setShowSaveForm(false)}
               className="px-3 py-1 rounded text-xs border border-[var(--border)] hover:bg-stone-100 dark:hover:bg-stone-800 text-stone-600 dark:text-stone-300 transition-colors"
             >
-              Cancel
+              {t("search.cancel")}
             </button>
           </div>
         </div>
@@ -637,12 +639,12 @@ export default function SearchPane({ book, textSource, onClose, onResultsChange,
       <div className="flex-1 overflow-y-auto">
         {loading && (
           <div className="flex items-center justify-center h-20">
-            <span className="text-xs text-stone-400">Searching…</span>
+            <span className="text-xs text-stone-400">{t("search.searching")}</span>
           </div>
         )}
         {!loading && results !== null && results.length === 0 && (
           <div className="flex items-center justify-center h-20">
-            <span className="text-xs text-stone-400">No results found.</span>
+            <span className="text-xs text-stone-400">{t("search.noResultsFound")}</span>
           </div>
         )}
         {!loading && results && results.length > 0 && (

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { PoetryNotation } from "@/lib/db/schema";
+import { useTranslation } from "@/lib/i18n/LocaleContext";
 
 /** Small inline note editor shown under/over a poetry-notation glyph — same
  *  click-to-toggle-popover mechanism as InterlinearLabel's editable popovers.
@@ -25,6 +26,7 @@ export default function PoetryNotePopover({
    *  requirement. Omitted for every other principle. */
   onSelectResolvingPhrase?: () => void;
 }) {
+  const { t } = useTranslation();
   const [draft, setDraft] = useState(mark.note ?? "");
   const isRequirednessArrow = mark.principle === "requiredness" && mark.subtype !== "underline";
   const hasResolvedRange = !!(mark.resolvedStartWordId && mark.resolvedEndWordId);
@@ -40,13 +42,13 @@ export default function PoetryNotePopover({
           style={{ color }}
           onClick={onSelectResolvingPhrase}
         >
-          {hasResolvedRange ? "↺ Change required word/phrase" : "Select required word/phrase"}
+          {hasResolvedRange ? "↺ Change required word/phrase" : t("poetryNote.selectRequired")}
         </button>
       )}
       <textarea
         className="w-full text-xs rounded border border-stone-300 dark:border-stone-600 bg-transparent p-1 resize-none"
         rows={2}
-        placeholder="Note"
+        placeholder={t("poetryNote.note")}
         value={draft}
         onChange={(e) => setDraft(e.target.value)}
         autoFocus
@@ -56,16 +58,16 @@ export default function PoetryNotePopover({
           className="text-[10px] text-red-600 hover:underline"
           onClick={() => onDelete(mark.id)}
         >
-          Delete
+          {t("poetryNote.delete")}
         </button>
         <span className="flex gap-1">
-          <button className="text-[10px] text-stone-500 hover:underline" onClick={onClose}>Cancel</button>
+          <button className="text-[10px] text-stone-500 hover:underline" onClick={onClose}>{t("poetryNote.cancel")}</button>
           <button
             className="text-[10px] font-semibold hover:underline"
             style={{ color }}
             onClick={() => { onSave(mark.id, draft.trim() || null); onClose(); }}
           >
-            Save
+            {t("poetryNote.save")}
           </button>
         </span>
       </span>

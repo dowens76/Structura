@@ -3,7 +3,8 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { Word } from "@/lib/db/schema";
 import { getMorphology } from "@/lib/morphology/decode";
-import { formatTense } from "@/lib/morphology/types";
+import { formatTense, morphTerm } from "@/lib/morphology/types";
+import { useTranslation } from "@/lib/i18n/LocaleContext";
 import { getGreekLexicon, getHebrewLexicon } from "@/components/SettingsButton";
 
 // Module-level cache: "G2316:AbbottSmith" → "a god, God"
@@ -32,6 +33,8 @@ function Row({ label, value }: { label: string; value: string | null | undefined
 }
 
 export default function ParseTooltip({ word, flipped = false, useLinguisticTerms = false, containerRef }: ParseTooltipProps) {
+  const { t } = useTranslation();
+  const tm = (v: string | null | undefined) => morphTerm(t, v);
   const isHebrew = word.language === "hebrew";
   const morph = getMorphology(word);
   const displaySurface = (word.surfaceText ?? "").replace(/\//g, "");
@@ -223,19 +226,19 @@ export default function ParseTooltip({ word, flipped = false, useLinguisticTerms
       <table className="w-full">
         <tbody>
           {morph.partOfSpeech && (
-            <Row label="POS" value={morph.partOfSpeech} />
+            <Row label={t("morph.pos")} value={tm(morph.partOfSpeech)} />
           )}
-          {isHebrew && <Row label="Stem" value={morph.stem} />}
+          {isHebrew && <Row label={t("morph.stem")} value={morph.stem} />}
           {isHebrew
-            ? <Row label="Aspect" value={formatTense(morph.tense, useLinguisticTerms)} />
-            : <Row label="Tense" value={morph.tense} />}
-          <Row label="Voice" value={morph.voice} />
-          <Row label="Mood" value={morph.mood} />
-          <Row label="Person" value={morph.person} />
-          <Row label="Number" value={morph.wordNumber} />
-          <Row label="Gender" value={morph.gender} />
-          <Row label="Case" value={morph.verbCase} />
-          {isHebrew && <Row label="State" value={morph.state} />}
+            ? <Row label={t("morph.aspect")} value={useLinguisticTerms ? formatTense(morph.tense, true) : tm(morph.tense)} />
+            : <Row label={t("morph.tense")} value={tm(morph.tense)} />}
+          <Row label={t("morph.voice")} value={tm(morph.voice)} />
+          <Row label={t("morph.mood")} value={tm(morph.mood)} />
+          <Row label={t("morph.person")} value={morph.person} />
+          <Row label={t("morph.number")} value={tm(morph.wordNumber)} />
+          <Row label={t("morph.gender")} value={tm(morph.gender)} />
+          <Row label={t("morph.case")} value={tm(morph.verbCase)} />
+          {isHebrew && <Row label={t("morph.state")} value={tm(morph.state)} />}
         </tbody>
       </table>
 

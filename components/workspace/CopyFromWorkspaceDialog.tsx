@@ -235,7 +235,7 @@ export default function CopyFromWorkspaceDialog({ activeWorkspaceId, scope }: Pr
       });
       const data = (await res.json()) as { ok: true; results: ImportResult } | { error: string };
       if (!res.ok) {
-        setImportError("error" in data ? data.error : "Import failed.");
+        setImportError("error" in data ? data.error : t("copyWs.importFailed"));
       } else if ("results" in data) {
         setImportResult(data.results);
         setDidImport(true);

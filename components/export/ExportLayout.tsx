@@ -5,6 +5,7 @@ import { useRef, useState, useEffect, type ReactNode } from "react";
 import NotesExportMenu from "./NotesExportMenu";
 import ImageExportMenu, { type ImagePreset } from "./ImageExportMenu";
 import { rgbaCanvasToTiff } from "@/lib/export/tiff-encoder";
+import { useTranslation } from "@/lib/i18n/LocaleContext";
 
 // ── Export size ─────────────────────────────────────────────────────────────
 // L (13pt) has been intentionally excluded: its 1.5rem screen font creates
@@ -156,6 +157,7 @@ interface Props {
 }
 
 export default function ExportLayout({ children, revealHref, filename, backHref, noteContext, printHeader }: Props) {
+  const { t } = useTranslation();
   const textRef = useRef<HTMLDivElement>(null);
   const [pdfStatus, setPdfStatus] = useState<"idle" | "loading" | "done" | "error">("idle");
   const [imgStatus, setImgStatus] = useState<"idle" | "loading" | "done" | "error">("idle");
@@ -196,9 +198,9 @@ export default function ExportLayout({ children, revealHref, filename, backHref,
   // Fields that actually have content — only these appear as checkboxes.
   const headerFields: Array<{ id: string; label: string }> = printHeader
     ? [
-        ...(printHeader.authorName  ? [{ id: "__author__",   label: "Author name" }] : []),
-        ...(printHeader.mainIdea    ? [{ id: "__mainidea__", label: "Main idea"   }] : []),
-        ...(printHeader.outlineHtml ? [{ id: "__outline__",  label: "Outline"     }] : []),
+        ...(printHeader.authorName  ? [{ id: "__author__",   label: t("exportUi.authorName") }] : []),
+        ...(printHeader.mainIdea    ? [{ id: "__mainidea__", label: t("exportUi.mainIdea")   }] : []),
+        ...(printHeader.outlineHtml ? [{ id: "__outline__",  label: t("exportUi.outline")     }] : []),
         ...(printHeader.customFields ?? [])
           .filter(f => !!f.value)
           .map(f => ({ id: f.id, label: f.name })),
@@ -870,9 +872,9 @@ export default function ExportLayout({ children, revealHref, filename, backHref,
             borderColor: "var(--border)",
             color: "var(--text-muted)",
           }}
-          title="Go back"
+          title={t("exportUi.goBack")}
         >
-          ← Back
+          {t("exportUi.back")}
         </Link>
         <div
           className="pointer-events-auto flex items-center gap-2 px-4 py-2 rounded-xl shadow-lg border text-sm"
@@ -882,13 +884,13 @@ export default function ExportLayout({ children, revealHref, filename, backHref,
           }}
         >
           <span className="text-xs font-medium mr-1" style={{ color: "var(--text-muted)" }}>
-            Export:
+            {t("exportUi.export")}
           </span>
 
           {/* Dark / light export toggle */}
           <button
             onClick={() => setExportDark(v => !v)}
-            title={exportDark ? "Switch to light export" : "Switch to dark export"}
+            title={exportDark ? t("exportUi.toLight") : t("exportUi.toDark")}
             className={[
               btnBase,
               "w-[2.1rem] text-center",
@@ -904,13 +906,13 @@ export default function ExportLayout({ children, revealHref, filename, backHref,
           <div
             className="flex rounded overflow-hidden border"
             style={{ borderColor: "var(--border)" }}
-            title="Font size"
+            title={t("exportUi.fontSize")}
           >
             {(["sm", "md"] as ExportSize[]).map((sz, i) => (
               <button
                 key={sz}
                 onClick={() => setExportSize(sz)}
-                title={sz === "sm" ? "Small font (9 pt)" : "Medium font (11 pt)"}
+                title={sz === "sm" ? t("exportUi.small") : t("exportUi.medium")}
                 className={[
                   "px-2 py-1 text-xs font-medium transition-colors leading-none",
                   i > 0 ? "border-l" : "",
@@ -929,13 +931,13 @@ export default function ExportLayout({ children, revealHref, filename, backHref,
           <div
             className="flex rounded overflow-hidden border"
             style={{ borderColor: "var(--border)" }}
-            title="Export background"
+            title={t("exportUi.background")}
           >
             {(["transparent", "white", "black"] as ExportBg[]).map((bg, i) => (
               <button
                 key={bg}
                 onClick={() => setExportBg(bg)}
-                title={bg === "transparent" ? "Transparent background" : bg === "white" ? "White background" : "Black background"}
+                title={bg === "transparent" ? t("exportUi.transparent") : bg === "white" ? t("exportUi.white") : t("exportUi.black")}
                 className={[
                   "px-2 py-1 transition-colors leading-none flex items-center justify-center",
                   i > 0 ? "border-l" : "",
@@ -958,13 +960,13 @@ export default function ExportLayout({ children, revealHref, filename, backHref,
           <div
             className="flex rounded overflow-hidden border"
             style={{ borderColor: "var(--border)" }}
-            title="Paper size"
+            title={t("exportUi.paperSize")}
           >
             {(["letter", "a4"] as PaperSize[]).map((ps, i) => (
               <button
                 key={ps}
                 onClick={() => setPaperSize(ps)}
-                title={ps === "letter" ? "US Letter (8.5×11 in)" : "A4 (210×297 mm)"}
+                title={ps === "letter" ? t("exportUi.letter") : t("exportUi.a4")}
                 className={[
                   "px-2 py-1 text-xs font-medium transition-colors leading-none",
                   i > 0 ? "border-l" : "",
@@ -974,7 +976,7 @@ export default function ExportLayout({ children, revealHref, filename, backHref,
                 ].join(" ")}
                 style={i > 0 ? { borderColor: "var(--border)" } : undefined}
               >
-                {ps === "letter" ? "Ltr" : "A4"}
+                {ps === "letter" ? t("exportUi.ltr") : "A4"}
               </button>
             ))}
           </div>
@@ -985,14 +987,14 @@ export default function ExportLayout({ children, revealHref, filename, backHref,
             className={pdfStatus === "error" ? `${btnBase} bg-red-600 text-white` : btnPrimary}
             onClick={handlePdf}
             disabled={pdfStatus === "loading"}
-            title="Open print dialog — choose 'Save as PDF' in the destination"
+            title={t("exportUi.pdfTitle")}
           >
             {pdfStatus === "loading"
-              ? "Opening…"
+              ? t("exportUi.opening")
               : pdfStatus === "done"
                 ? "✓ PDF"
                 : pdfStatus === "error"
-                  ? "✗ PDF failed"
+                  ? t("exportUi.pdfFailed")
                   : "📄 PDF"}
           </button>
           <ImageExportMenu status={imgStatus} onExport={handleImageExport} />
@@ -1030,9 +1032,9 @@ export default function ExportLayout({ children, revealHref, filename, backHref,
                 <button
                   className={btnSecondary}
                   onClick={() => setContentOpen(o => !o)}
-                  title="Choose which header fields appear in the PDF"
+                  title={t("exportUi.contentTitle")}
                 >
-                  Content {contentOpen ? "▴" : "▾"}
+                  {t("exportUi.content")} {contentOpen ? "▴" : "▾"}
                 </button>
                 {contentOpen && (
                   <div
@@ -1040,7 +1042,7 @@ export default function ExportLayout({ children, revealHref, filename, backHref,
                     style={{ backgroundColor: "var(--surface)", borderColor: "var(--border)" }}
                   >
                     <p className="text-[10px] font-semibold uppercase tracking-wide mb-2" style={{ color: "var(--text-muted)" }}>
-                      Include in PDF header
+                      {t("exportUi.includeHeader")}
                     </p>
                     {headerFields.map(field => (
                       <label key={field.id} className="flex items-center gap-2 cursor-pointer select-none">
@@ -1094,7 +1096,7 @@ export default function ExportLayout({ children, revealHref, filename, backHref,
             )}
             {printHeader.outlineHtml && !hiddenFields.has("__outline__") && (
               <div style={{ marginTop: "0.75em" }}>
-                <p style={{ fontSize: "0.67em", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", color: "#9c8b78" }}>Outline</p>
+                <p style={{ fontSize: "0.67em", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", color: "#9c8b78" }}>{t("exportUi.outline")}</p>
                 <div style={{ fontSize: "1em", color: "#3d3530", marginTop: "0.125em" }} dangerouslySetInnerHTML={{ __html: printHeader.outlineHtml }} />
               </div>
             )}

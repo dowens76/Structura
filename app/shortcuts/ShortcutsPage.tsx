@@ -1,6 +1,7 @@
 "use client";
 
 import PageShell from "@/components/ui/PageShell";
+import { useTranslation, translateText } from "@/lib/i18n/LocaleContext";
 
 // Detect Mac at runtime for display only — SSR-safe (defaults to showing both)
 function useIsMac() {
@@ -165,13 +166,15 @@ const SECTIONS: Section[] = [
 
 function ShortcutTable({ section }: { section: Section }) {
   const isMac = useIsMac();
+  const { t } = useTranslation();
+  const tx = (text: string) => translateText(t, "shortcuts", text);
   return (
     <section className="mb-10">
       <h2
         className="text-base font-semibold mb-3 pb-2 border-b"
         style={{ color: "var(--foreground)", borderColor: "var(--border)" }}
       >
-        {section.title}
+        {tx(section.title)}
       </h2>
       <div className="flex flex-col gap-1">
         {section.shortcuts.map((s, i) => {
@@ -184,11 +187,11 @@ function ShortcutTable({ section }: { section: Section }) {
             >
               <div className="min-w-0">
                 <span className="text-sm" style={{ color: "var(--foreground)" }}>
-                  {s.description}
+                  {tx(s.description)}
                 </span>
                 {s.context && (
                   <span className="ml-2 text-xs" style={{ color: "var(--text-muted)" }}>
-                    — {s.context}
+                    — {tx(s.context)}
                   </span>
                 )}
               </div>
@@ -211,13 +214,14 @@ function ShortcutTable({ section }: { section: Section }) {
 }
 
 export default function ShortcutsPage() {
+  const { t } = useTranslation();
   return (
     <PageShell
-      title="Keyboard Shortcuts"
+      title={translateText(t, "shortcuts", "Keyboard Shortcuts")}
       subtitle={
         <>
-          Shortcuts use <kbd className="text-xs px-1 py-0.5 rounded border" style={{ borderColor: "var(--border)" }}>⌘</kbd> on Mac
-          and <kbd className="text-xs px-1 py-0.5 rounded border" style={{ borderColor: "var(--border)" }}>Ctrl</kbd> on Windows / Linux.
+          {translateText(t, "shortcuts", "Shortcuts use")} <kbd className="text-xs px-1 py-0.5 rounded border" style={{ borderColor: "var(--border)" }}>⌘</kbd> {translateText(t, "shortcuts", "on Mac")}{" "}
+          {translateText(t, "shortcuts", "and")} <kbd className="text-xs px-1 py-0.5 rounded border" style={{ borderColor: "var(--border)" }}>Ctrl</kbd> {translateText(t, "shortcuts", "on Windows / Linux")}.
         </>
       }
     >

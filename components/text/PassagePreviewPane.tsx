@@ -8,6 +8,7 @@ import { pickPassageSource, type LexiconSourceKind } from "@/lib/utils/lexiconRe
 import type { FetchBibleTranslation } from "@/app/api/fetchbible/route";
 import { fetchJsonRetry } from "@/lib/utils/fetchJsonRetry";
 import ParseTooltip from "./ParseTooltip";
+import { useTranslation } from "@/lib/i18n/LocaleContext";
 
 interface Props {
   osisRef: string;       // "Book.Chapter.Verse" — already validated by the click handler
@@ -89,6 +90,7 @@ function PreviewWord({
 }
 
 export default function PassagePreviewPane({ osisRef, lexiconSource, useLinguisticTerms = false, onClose }: Props) {
+  const { t: tr } = useTranslation();
   const router = useRouter();
   const [status, setStatus] = useState<Status>("loading");
   const [words, setWords] = useState<Word[]>([]);
@@ -222,7 +224,7 @@ export default function PassagePreviewPane({ osisRef, lexiconSource, useLinguist
           onClick={onClose}
           className="flex items-center justify-center w-5 h-5 rounded hover:bg-stone-200 dark:hover:bg-stone-700"
           style={{ color: "var(--text-muted)" }}
-          title="Close"
+          title={tr("preview.close")}
         >
           <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
             <line x1="1" y1="1" x2="9" y2="9"/><line x1="9" y1="1" x2="1" y2="9"/>
@@ -238,9 +240,9 @@ export default function PassagePreviewPane({ osisRef, lexiconSource, useLinguist
           className="w-full text-xs px-2 py-1 rounded border outline-none"
           style={{ borderColor: "var(--border)", background: "var(--surface)", color: "var(--foreground)" }}
         >
-          <option value="">No translation</option>
+          <option value="">{tr("preview.noTranslation")}</option>
           {localTransls.length > 0 && (
-            <optgroup label="Imported translations">
+            <optgroup label={tr("preview.imported")}>
               {localTransls.map((tr) => (
                 <option key={tr.id} value={`local:${tr.id}`}>
                   {tr.abbreviation}{tr.name !== tr.abbreviation ? ` — ${tr.name}` : ""}
@@ -268,7 +270,7 @@ export default function PassagePreviewPane({ osisRef, lexiconSource, useLinguist
       {/* Body */}
       <div className="flex-1 overflow-y-auto px-3 py-3 min-h-0">
         {!parsed && (
-          <p className="text-sm" style={{ color: "var(--text-muted)" }}>Couldn&apos;t read this reference.</p>
+          <p className="text-sm" style={{ color: "var(--text-muted)" }}>{tr("preview.badRef")}</p>
         )}
         {parsed && !source && (
           <p className="text-sm" style={{ color: "var(--text-muted)" }}>
@@ -276,13 +278,13 @@ export default function PassagePreviewPane({ osisRef, lexiconSource, useLinguist
           </p>
         )}
         {parsed && source && status === "loading" && (
-          <p className="text-sm" style={{ color: "var(--text-muted)" }}>Loading…</p>
+          <p className="text-sm" style={{ color: "var(--text-muted)" }}>{tr("preview.loading")}</p>
         )}
         {parsed && source && status === "error" && (
-          <p className="text-sm" style={{ color: "var(--text-muted)" }}>Could not load passage.</p>
+          <p className="text-sm" style={{ color: "var(--text-muted)" }}>{tr("preview.loadError")}</p>
         )}
         {parsed && source && status === "empty" && (
-          <p className="text-sm" style={{ color: "var(--text-muted)" }}>Verse not found in this text.</p>
+          <p className="text-sm" style={{ color: "var(--text-muted)" }}>{tr("preview.verseNotFound")}</p>
         )}
         {parsed && source && status === "ready" && (
           <>
@@ -311,18 +313,18 @@ export default function PassagePreviewPane({ osisRef, lexiconSource, useLinguist
             {selectedTranslation && (
               <div className="mt-3 pt-3" style={{ borderTop: "1px solid var(--border)" }}>
                 {translationStatus === "loading" && (
-                  <p className="text-xs" style={{ color: "var(--text-muted)" }}>Loading translation…</p>
+                  <p className="text-xs" style={{ color: "var(--text-muted)" }}>{tr("preview.loadingTranslation")}</p>
                 )}
                 {translationStatus === "not_found" && (
-                  <p className="text-xs" style={{ color: "var(--text-muted)" }}>Translation has no text for this verse.</p>
+                  <p className="text-xs" style={{ color: "var(--text-muted)" }}>{tr("preview.noTextForVerse")}</p>
                 )}
                 {translationStatus === "no_translation" && (
                   <p className="text-xs" style={{ color: "var(--text-muted)" }}>
-                    Add an api.bible key in Settings to use this translation.
+                    {tr("preview.needApiKey")}
                   </p>
                 )}
                 {translationStatus === "error" && (
-                  <p className="text-xs" style={{ color: "var(--text-muted)" }}>Could not load translation.</p>
+                  <p className="text-xs" style={{ color: "var(--text-muted)" }}>{tr("preview.trLoadError")}</p>
                 )}
                 {translationStatus === "ready" && translationResult && (
                   <p className="text-sm leading-relaxed" style={{ color: "var(--foreground)" }}>
@@ -346,7 +348,7 @@ export default function PassagePreviewPane({ osisRef, lexiconSource, useLinguist
             className="w-full text-xs font-medium px-2.5 py-1.5 rounded"
             style={{ background: "var(--accent)", color: "white" }}
           >
-            Open in main view
+            {tr("preview.openMain")}
           </button>
         </div>
       )}

@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import type { Word } from "@/lib/db/schema";
-import { POS_COLORS, POS_LABELS, formatTense } from "@/lib/morphology/types";
+import { POS_COLORS, formatTense, morphTerm } from "@/lib/morphology/types";
+import { useTranslation } from "@/lib/i18n/LocaleContext";
 import { getMorphology } from "@/lib/morphology/decode";
 import LexiconPane from "./LexiconPane";
 
@@ -25,6 +26,9 @@ function Field({ label, value }: { label: string; value: string | null | undefin
 
 export default function MorphologyPanel({ word, useLinguisticTerms = false, onSearchRequest, onScriptureRefClick }: MorphologyPanelProps) {
   const [prefixLookup, setPrefixLookup] = useState<string | null>(null);
+  const { t } = useTranslation();
+  const tm = (v: string | null | undefined) => morphTerm(t, v);
+  const ord = (p: string | null | undefined) => (p === "1" || p === "2" || p === "3" ? t(`morph.person${p}`) : p ?? null);
 
   useEffect(() => {
     setPrefixLookup(null);
@@ -33,7 +37,7 @@ export default function MorphologyPanel({ word, useLinguisticTerms = false, onSe
   if (!word) {
     return (
       <div className="h-full flex items-center justify-center text-stone-400 dark:text-stone-600 text-sm">
-        Click a word to see its analysis
+        {t("morph.clickWord")}
       </div>
     );
   }
@@ -43,7 +47,7 @@ export default function MorphologyPanel({ word, useLinguisticTerms = false, onSe
 
   const posKey = morph.partOfSpeech ?? word.partOfSpeech ?? null;
   const posColor = posKey ? (POS_COLORS[posKey] ?? "#6b7280") : "#6b7280";
-  const posLabel = posKey ? (POS_LABELS[posKey] ?? posKey) : null;
+  const posLabel = posKey ? tm(posKey) : null;
 
   const refLabel = `${word.chapter}:${word.verse}`;
 
@@ -79,7 +83,7 @@ export default function MorphologyPanel({ word, useLinguisticTerms = false, onSe
           {onSearchRequest && (
             <button
               onClick={() => onSearchRequest(word.lemma!, word.textSource)}
-              title="Search for this lemma"
+              title={t("morph.searchLemma")}
               className="shrink-0 text-stone-300 hover:text-amber-500 dark:text-stone-600 dark:hover:text-amber-400 transition-colors"
             >
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
@@ -99,7 +103,7 @@ export default function MorphologyPanel({ word, useLinguisticTerms = false, onSe
           {onSearchRequest && (
             <button
               onClick={() => onSearchRequest(word.strongNumber!, word.textSource)}
-              title="Search for this Strong's number"
+              title={t("morph.searchStrong")}
               className="shrink-0 text-stone-300 hover:text-amber-500 dark:text-stone-600 dark:hover:text-amber-400 transition-colors"
             >
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
@@ -126,10 +130,10 @@ export default function MorphologyPanel({ word, useLinguisticTerms = false, onSe
           the root chip switches back to the word's own entry. */}
       {isHebrew && morph.prefixes && morph.prefixes.length > 0 && (
         <div className="mb-3 flex flex-wrap items-center gap-1.5 text-xs">
-          <span className="font-medium text-stone-600 dark:text-stone-300">Lexicon: </span>
+          <span className="font-medium text-stone-600 dark:text-stone-300">{t("morph.lexicon")} </span>
           <button
             onClick={() => setPrefixLookup(null)}
-            title="Show this word's own entry"
+            title={t("morph.ownEntry")}
             className={[
               "px-1.5 py-0.5 rounded-full border transition-colors lexicon-hebrew",
               prefixLookup === null
@@ -145,7 +149,7 @@ export default function MorphologyPanel({ word, useLinguisticTerms = false, onSe
               <button
                 key={idx}
                 onClick={() => setPrefixLookup(p.lexiconKey)}
-                title="Look up this prefix in BDB"
+                title={t("morph.prefixBdb")}
                 className={[
                   "px-1.5 py-0.5 rounded-full border transition-colors",
                   prefixLookup === p.lexiconKey
@@ -164,30 +168,30 @@ export default function MorphologyPanel({ word, useLinguisticTerms = false, onSe
 
       {/* Parsing fields */}
       <div className="divide-y divide-stone-100 dark:divide-stone-800">
-        {isHebrew && <Field label="Stem" value={morph.stem} />}
+        {isHebrew && <Field label={t("morph.stem")} value={morph.stem} />}
         {isHebrew
-          ? <Field label="Aspect" value={formatTense(morph.tense, useLinguisticTerms)} />
-          : <Field label="Tense" value={morph.tense} />}
-        <Field label="Voice" value={morph.voice} />
-        <Field label="Mood" value={morph.mood} />
-        <Field label="Person" value={morph.person ? `${morph.person}${morph.person === "1" ? "st" : morph.person === "2" ? "nd" : "rd"}` : null} />
-        <Field label="Number" value={morph.wordNumber} />
-        <Field label="Gender" value={morph.gender} />
-        <Field label="Case" value={morph.verbCase} />
-        {isHebrew && <Field label="State" value={morph.state} />}
+          ? <Field label={t("morph.aspect")} value={useLinguisticTerms ? formatTense(morph.tense, true) : tm(morph.tense)} />
+          : <Field label={t("morph.tense")} value={tm(morph.tense)} />}
+        <Field label={t("morph.voice")} value={tm(morph.voice)} />
+        <Field label={t("morph.mood")} value={tm(morph.mood)} />
+        <Field label={t("morph.person")} value={ord(morph.person)} />
+        <Field label={t("morph.number")} value={tm(morph.wordNumber)} />
+        <Field label={t("morph.gender")} value={tm(morph.gender)} />
+        <Field label={t("morph.case")} value={tm(morph.verbCase)} />
+        {isHebrew && <Field label={t("morph.state")} value={tm(morph.state)} />}
       </div>
 
       {/* Pronominal / directional suffix (Hebrew) */}
       {isHebrew && morph.suffixType && (
         <div className="mt-4">
           <div className="text-xs font-semibold text-stone-500 dark:text-stone-400 uppercase tracking-wide mb-1">
-            Suffix
+            {t("morph.suffix")}
           </div>
           <div className="divide-y divide-stone-100 dark:divide-stone-800">
-            <Field label="Type" value={morph.suffixType} />
-            <Field label="Person" value={morph.suffixPerson ? `${morph.suffixPerson}${morph.suffixPerson === "1" ? "st" : morph.suffixPerson === "2" ? "nd" : "rd"}` : null} />
-            <Field label="Gender" value={morph.suffixGender} />
-            <Field label="Number" value={morph.suffixNumber} />
+            <Field label={t("morph.type")} value={tm(morph.suffixType)} />
+            <Field label={t("morph.person")} value={ord(morph.suffixPerson)} />
+            <Field label={t("morph.gender")} value={tm(morph.suffixGender)} />
+            <Field label={t("morph.number")} value={tm(morph.suffixNumber)} />
           </div>
         </div>
       )}

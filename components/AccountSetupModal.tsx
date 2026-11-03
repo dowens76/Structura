@@ -1,12 +1,14 @@
 "use client";
 
 import { useState } from "react";
+import { useTranslation } from "@/lib/i18n/LocaleContext";
 
 interface Props {
   onComplete: (workspaceId: number) => void;
 }
 
 export default function AccountSetupModal({ onComplete }: Props) {
+  const { t } = useTranslation();
   const [name, setName]   = useState("");
   const [email, setEmail] = useState("");
   const [error, setError] = useState("");
@@ -29,7 +31,7 @@ export default function AccountSetupModal({ onComplete }: Props) {
       });
       if (!res.ok) {
         const data = await res.json();
-        setError(data.error ?? "Something went wrong.");
+        setError(data.error ?? t("accountSetup.error"));
         return;
       }
       const { workspace } = await res.json();
@@ -55,23 +57,23 @@ export default function AccountSetupModal({ onComplete }: Props) {
         {/* Logo / title */}
         <div className="mb-6 text-center">
           <h1 className="text-2xl font-bold mb-1" style={{ color: "var(--foreground)" }}>
-            Welcome to Structura
+            {t("accountSetup.welcome")}
           </h1>
           <p className="text-sm" style={{ color: "var(--text-muted)" }}>
-            Create your account to get started.
+            {t("accountSetup.createPrompt")}
           </p>
         </div>
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           <div className="flex flex-col gap-1">
             <label className="text-sm font-medium" style={{ color: "var(--foreground)" }}>
-              Name
+              {t("accountSetup.name")}
             </label>
             <input
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="Your name"
+              placeholder={t("accountSetup.namePlaceholder")}
               autoFocus
               className="px-3 py-2 rounded-lg text-sm outline-none"
               style={{
@@ -84,7 +86,7 @@ export default function AccountSetupModal({ onComplete }: Props) {
 
           <div className="flex flex-col gap-1">
             <label className="text-sm font-medium" style={{ color: "var(--foreground)" }}>
-              Email
+              {t("accountSetup.email")}
             </label>
             <input
               type="email"
@@ -110,12 +112,12 @@ export default function AccountSetupModal({ onComplete }: Props) {
             className="mt-2 px-4 py-2 rounded-lg text-sm font-semibold transition-opacity disabled:opacity-50"
             style={{ backgroundColor: "var(--accent)", color: "#fff" }}
           >
-            {loading ? "Creating account…" : "Get Started"}
+            {loading ? t("accountSetup.creating") : t("accountSetup.getStarted")}
           </button>
         </form>
 
         <p className="mt-4 text-xs text-center" style={{ color: "var(--text-muted)" }}>
-          Your data is stored locally on this device.
+          {t("accountSetup.localNote")}
         </p>
       </div>
     </div>

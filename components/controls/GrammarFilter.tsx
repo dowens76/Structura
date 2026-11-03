@@ -2,7 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { GrammarFilterState } from "@/lib/morphology/types";
-import { POS_COLORS, POS_LABELS } from "@/lib/morphology/types";
+import { POS_COLORS, POS_LABELS, morphTerm } from "@/lib/morphology/types";
+import { useTranslation } from "@/lib/i18n/LocaleContext";
 
 interface GrammarFilterProps {
   filter: GrammarFilterState;
@@ -10,6 +11,7 @@ interface GrammarFilterProps {
 }
 
 export default function GrammarFilter({ filter, onChange }: GrammarFilterProps) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -37,7 +39,7 @@ export default function GrammarFilter({ filter, onChange }: GrammarFilterProps) 
         onClick={() => setOpen((o) => !o)}
         className="flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700 transition-colors"
       >
-        <span>Filter POS</span>
+        <span>{t("grammarFilter.filterPos")}</span>
         <span className="text-stone-400 dark:text-stone-500">
           ({enabledCount}/{totalCount})
         </span>
@@ -61,7 +63,7 @@ export default function GrammarFilter({ filter, onChange }: GrammarFilterProps) 
                 className="text-xs font-medium"
                 style={{ color: POS_COLORS[key] ?? "inherit" }}
               >
-                {POS_LABELS[key] ?? key}
+                {morphTerm(t, POS_LABELS[key] ?? key)}
               </span>
             </label>
           ))}
@@ -76,7 +78,7 @@ export default function GrammarFilter({ filter, onChange }: GrammarFilterProps) 
               }
               className="flex-1 text-[10px] text-stone-500 hover:text-stone-700 dark:hover:text-stone-300"
             >
-              All
+              {t("grammarFilter.all")}
             </button>
             <button
               onClick={() =>
@@ -88,7 +90,7 @@ export default function GrammarFilter({ filter, onChange }: GrammarFilterProps) 
               }
               className="flex-1 text-[10px] text-stone-500 hover:text-stone-700 dark:hover:text-stone-300"
             >
-              None
+              {t("grammarFilter.none")}
             </button>
           </div>
         </div>

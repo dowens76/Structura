@@ -153,7 +153,7 @@ export default function PassageNavButtons({
                               onClick={() => handleDelete(p.id)}
                               className="text-[11px] px-1.5 py-0.5 rounded bg-red-600 text-white hover:bg-red-700 transition-colors"
                             >
-                              Yes
+                              {t("passageButtons.yes")}
                             </button>
                             <button
                               type="button"
@@ -161,7 +161,7 @@ export default function PassageNavButtons({
                               className="text-[11px] px-1.5 py-0.5 rounded hover:bg-stone-200 dark:hover:bg-stone-700 transition-colors"
                               style={{ color: "var(--text-muted)" }}
                             >
-                              No
+                              {t("passageButtons.no")}
                             </button>
                           </>
                         ) : (
@@ -170,7 +170,7 @@ export default function PassageNavButtons({
                             onClick={() => setConfirmDeleteId(p.id)}
                             className="text-[13px] opacity-30 hover:opacity-100 px-1 rounded hover:bg-stone-200 dark:hover:bg-stone-700 transition-colors"
                             style={{ color: "var(--text-muted)" }}
-                            title="Delete passage"
+                            title={t("passageButtons.deletePassage")}
                           >
                             ×
                           </button>
@@ -182,7 +182,7 @@ export default function PassageNavButtons({
               )}
             </div>
 
-            {/* "Define New Passage" button */}
+            {/* t("passageButtons.defineNew") button */}
             <div
               className="border-t px-4 py-2.5"
               style={{ borderColor: "var(--border)" }}

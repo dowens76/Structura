@@ -4,7 +4,6 @@ import React, { useState, useMemo, useEffect, useRef } from "react";
 import Link from "next/link";
 import type { SectionRangeForOutline } from "@/lib/utils/outlineExport";
 import { generateOutline } from "@/lib/utils/outlineExport";
-import { OSIS_REF_BOOK_NAMES } from "@/lib/utils/osis";
 import NoteEditor from "@/components/notes/NoteEditor";
 import { useTranslation } from "@/lib/i18n/LocaleContext";
 
@@ -154,7 +153,7 @@ export default function OutlinePane({
   onTogglePredecessorShown,
   loadingPredecessor = false,
 }: OutlinePaneProps) {
-  const { t } = useTranslation();
+  const { t, refBookName } = useTranslation();
   const [editKey, setEditKey]       = useState<string | null>(null); // `${wordId}:${level}`
   const [editDraft, setEditDraft]   = useState("");
   // Local edits (heading text, level, delete) for headings from other chapters/books —
@@ -653,16 +652,16 @@ export default function OutlinePane({
             style={selectMode
               ? { color: "#fff", backgroundColor: "var(--accent)" }
               : { color: "var(--nav-fg-muted)", backgroundColor: "var(--nav-bg)" }}
-            title="Select headings to change their level (like Tab / Shift-Tab)"
+            title={t("outline2.selectTitle")}
           >
-            {selectMode ? "Done" : "Select"}
+            {selectMode ? t("outline2.done") : t("outline2.select")}
           </button>
           <button
             onClick={copyOutline}
             disabled={items.length === 0}
             className="text-xs px-2 py-1 rounded transition-colors disabled:opacity-40"
             style={{ color: "var(--nav-fg-muted)", backgroundColor: "var(--nav-bg)" }}
-            title="Copy outline as plain text"
+            title={t("outline2.copyPlain")}
           >
             {copied ? t("outlinePane.copied") : t("outlinePane.copy")}
           </button>
@@ -670,7 +669,7 @@ export default function OutlinePane({
             onClick={onClose}
             className="text-lg leading-none px-1 hover:opacity-60 transition-opacity"
             style={{ color: "var(--text-muted)" }}
-            title="Close outline"
+            title={t("outline2.closeOutline")}
           >
             ×
           </button>
@@ -685,9 +684,9 @@ export default function OutlinePane({
         >
           <span className="text-xs" style={{ color: "var(--text-muted)" }}>
             {applyingIndent
-              ? "Applying…"
+              ? t("outline2.applying")
               : selectedKeys.size === 0
-              ? "Select headings below…"
+              ? t("outline2.selectBelow")
               : `${selectedKeys.size} selected`}
           </span>
           <div className="flex items-center gap-1 ml-auto">
@@ -696,18 +695,18 @@ export default function OutlinePane({
               disabled={selectedKeys.size === 0 || applyingIndent}
               className="text-xs px-2 py-1 rounded transition-colors disabled:opacity-30"
               style={{ color: "var(--nav-fg-muted)", backgroundColor: "var(--nav-bg)" }}
-              title="Decrease indent (promote toward level 1)"
+              title={t("outline2.decreaseTitle")}
             >
-              ⇤ Decrease
+              {t("outline2.decrease")}
             </button>
             <button
               onClick={() => handleIndent(1)}
               disabled={selectedKeys.size === 0 || applyingIndent}
               className="text-xs px-2 py-1 rounded transition-colors disabled:opacity-30"
               style={{ color: "var(--nav-fg-muted)", backgroundColor: "var(--nav-bg)" }}
-              title="Increase indent (demote toward level 6)"
+              title={t("outline2.increaseTitle")}
             >
-              Increase ⇥
+              {t("outline2.increase")}
             </button>
           </div>
         </div>
@@ -726,8 +725,8 @@ export default function OutlinePane({
               onChange={(e) => onTogglePredecessorShown(e.target.checked)}
               className="rounded"
             />
-            Include{" "}
-            <span style={{ color: "var(--foreground)" }}>{predecessorBookName}</span>
+            {t("outline2.include")}{" "}
+            <span style={{ color: "var(--foreground)" }}>{predecessorBook ? refBookName(predecessorBook) : predecessorBookName}</span>
             {loadingPredecessor && <span className="opacity-50">…</span>}
           </label>
         </div>
@@ -746,8 +745,8 @@ export default function OutlinePane({
               onChange={(e) => onToggleExtended(e.target.checked)}
               className="rounded"
             />
-            Extend into{" "}
-            <span style={{ color: "var(--foreground)" }}>{continuationBookName}</span>
+            {t("outline2.extendInto")}{" "}
+            <span style={{ color: "var(--foreground)" }}>{continuationBook ? refBookName(continuationBook) : continuationBookName}</span>
             {loadingContinuation && <span className="opacity-50">…</span>}
           </label>
         </div>
@@ -815,7 +814,7 @@ export default function OutlinePane({
                           if (e.key === "Enter") { e.preventDefault(); commitEdit(item); }
                           if (e.key === "Escape") cancelEdit();
                         }}
-                        placeholder="Heading…"
+                        placeholder={t("outline2.headingPlaceholder")}
                         className="flex-1 text-sm border-b bg-transparent outline-none py-0.5"
                         style={{
                           borderColor: "var(--accent)",
@@ -838,7 +837,7 @@ export default function OutlinePane({
                             onChange={() => toggleSelected(item.key)}
                             onClick={(e) => e.stopPropagation()}
                             className="rounded"
-                            title="Select this heading"
+                            title={t("outline2.selectHeading")}
                           />
                         </span>
                       )}
@@ -846,16 +845,16 @@ export default function OutlinePane({
                         {item.prefix}
                       </span>
                       {item.transitional && (
-                        <span className="shrink-0 text-[10px] text-sky-500 dark:text-sky-400" title="Transitional (janus)">⇔</span>
+                        <span className="shrink-0 text-[10px] text-sky-500 dark:text-sky-400" title={t("outlinePane.transitionalJanus")}>⇔</span>
                       )}
                       {/* Heading text — click to edit (or, in select mode, click anywhere in the row to select); wraps instead of truncating when the pane is narrow */}
                       <span
                         className={`flex-1 min-w-0 break-words ${selectMode ? "" : "cursor-pointer"} ${textSize}`}
                         style={{ color: "var(--foreground)", fontFamily: "Georgia, 'Times New Roman', serif" }}
-                        title={selectMode ? undefined : "Click to edit heading"}
+                        title={selectMode ? undefined : t("outline2.clickToEdit")}
                         onClick={selectMode ? undefined : () => startEdit(item.key, item.heading)}
                       >
-                        {item.heading ?? <em style={{ color: "var(--text-muted)" }}>untitled</em>}
+                        {item.heading ?? <em style={{ color: "var(--text-muted)" }}>{t("outline2.untitled")}</em>}
                       </span>
                       {/* Verse range — clicking navigates */}
                       {item.isCurrent ? (
@@ -872,7 +871,7 @@ export default function OutlinePane({
                           href={`/${encodeURIComponent(item.bookCode ?? book)}/${textSource}/${item.chapter}`}
                           className="shrink-0 text-[10px] hover:underline"
                           style={{ color: "var(--text-muted)" }}
-                          title={`Go to ${item.bookCode ? (OSIS_REF_BOOK_NAMES[item.bookCode] ?? item.bookCode) + " " : ""}chapter ${item.chapter}, verse ${item.verse}`}
+                          title={t("outline2.goTo", { book: item.bookCode ? refBookName(item.bookCode) + " " : "", chapter: item.chapter, verse: item.verse })}
                           onClick={(e) => e.stopPropagation()}
                         >
                           {item.rangeStr}
@@ -883,7 +882,7 @@ export default function OutlinePane({
                         onClick={(e) => { e.stopPropagation(); handleDelete(item); }}
                         className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity rounded p-0.5 hover:bg-red-100 dark:hover:bg-red-900/40 hover:text-red-600 dark:hover:text-red-400"
                         style={{ color: "var(--text-muted)" }}
-                        title="Delete section heading"
+                        title={t("outline2.deleteHeading")}
                       >
                         <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />

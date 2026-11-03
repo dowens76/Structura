@@ -39,6 +39,7 @@ import { getActiveWorkspaceId } from "@/lib/workspace";
 import { getActiveVersionId } from "@/lib/versions/activeVersion";
 import { tiptapToHtml } from "@/lib/utils/tiptap-text";
 import { parseExportViewParams, getInterlinearExportData } from "@/lib/export/interlinearExportData";
+import { T, LocalizedRef } from "@/components/ui/Localized";
 
 interface PageProps {
   params: Promise<{ id: string }>;
@@ -295,10 +296,10 @@ export default async function ExportPassagePage({ params, searchParams }: PagePr
               color: "var(--foreground)",
             }}
           >
-            {passageLabel}
+            <LocalizedRef label={passageLabel} />
           </h1>
           <p style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginTop: "0.125rem" }}>
-            {words.length.toLocaleString()} words · {textSource}
+            <T k="ui.words" params={{ n: words.length.toLocaleString() }} /> · {textSource}
           </p>
         </div>
 

@@ -5,6 +5,7 @@ import Link from "next/link";
 import HomeLink from "@/components/ui/HomeLink";
 import { OSIS_BOOKS_NT } from "@/lib/utils/osis";
 import { tokenizeTranslationText, decodeUsfmToken } from "@/lib/utils/translationTokens";
+import { useTranslation } from "@/lib/i18n/LocaleContext";
 
 const HEBREW_FONT: React.CSSProperties = { fontFamily: '"Ezra SIL", "SBL Hebrew", serif' };
 function isHebrew(s: string): boolean { return /[א-ת]/.test(s); }
@@ -50,6 +51,7 @@ function typeBadge(type: string): string {
 }
 
 export default function ConceptEditorPanel({ tagName, returnTo = null }: { tagName: string; returnTo?: string | null }) {
+  const { t: tr } = useTranslation();
   const [data, setData] = useState<OccurrencesData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -226,7 +228,7 @@ export default function ConceptEditorPanel({ tagName, returnTo = null }: { tagNa
   }
 
   if (loading) {
-    return <div className="text-sm" style={{ color: "var(--text-muted)" }}>Loading…</div>;
+    return <div className="text-sm" style={{ color: "var(--text-muted)" }}>{tr("conceptEditor.loading")}</div>;
   }
   if (error) {
     return <div className="text-sm text-red-500">{error}</div>;
@@ -252,7 +254,7 @@ export default function ConceptEditorPanel({ tagName, returnTo = null }: { tagNa
             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <polyline points="15 18 9 12 15 6" />
             </svg>
-            Back to Manage Lists
+            {tr("conceptEditor.backToLists")}
           </Link>
           {returnTo && (
             <Link
@@ -283,14 +285,14 @@ export default function ConceptEditorPanel({ tagName, returnTo = null }: { tagNa
 
       <div className="flex items-center gap-4 flex-wrap">
         <div className="flex items-center gap-2">
-          <span className="text-xs font-medium" style={{ color: "var(--text-muted)" }}>Translation:</span>
+          <span className="text-xs font-medium" style={{ color: "var(--text-muted)" }}>{tr("conceptEditor.translation")}</span>
           <select
             value={translationId ?? ""}
             onChange={(e) => handleTranslationChange(parseInt(e.target.value))}
             className="text-xs px-2 py-1 rounded border"
             style={{ borderColor: "var(--border)", backgroundColor: "var(--surface)", color: "var(--foreground)" }}
           >
-            {data.translations.length === 0 && <option value="">No translations imported</option>}
+            {data.translations.length === 0 && <option value="">{tr("conceptEditor.noTranslations")}</option>}
             {data.translations.map((t) => (
               <option key={t.id} value={t.id}>{t.abbreviation} — {t.name}</option>
             ))}
@@ -298,15 +300,15 @@ export default function ConceptEditorPanel({ tagName, returnTo = null }: { tagNa
         </div>
         <label className="flex items-center gap-1.5 text-xs cursor-pointer" style={{ color: "var(--text-muted)" }}>
           <input type="checkbox" checked={!hideSourceText} onChange={toggleSourceText} />
-          Show source text
+          {tr("conceptEditor.showSource")}
         </label>
         <label
           className="flex items-center gap-1.5 text-xs cursor-pointer"
           style={{ color: "var(--text-muted)" }}
-          title="Highlight this tag's occurrences when reading the chapter"
+          title={tr("conceptEditor.highlightTitle")}
         >
           <input type="checkbox" checked={data.tag.highlighted} onChange={handleToggleHighlight} />
-          Highlight in reading view
+          {tr("conceptEditor.highlightInReading")}
         </label>
       </div>
 
@@ -570,6 +572,7 @@ function ClickableTokens({ tokens, phraseNumberByWordId, showBadges, color, onTo
   onToggle: (wordId: string, isMember: boolean) => void;
   hebrew?: boolean;
 }) {
+  const { t: tr } = useTranslation();
   return (
     <span>
       {tokens.map((tok, i) => {
@@ -580,7 +583,7 @@ function ClickableTokens({ tokens, phraseNumberByWordId, showBadges, color, onTo
             {i > 0 && " "}
             <span
               role="button"
-              title={isMember ? "Remove from this list" : "Add to this list"}
+              title={isMember ? tr("conceptEditor.removeFromList") : tr("conceptEditor.addToList")}
               onClick={() => onToggle(tok.wordId, isMember)}
               className={[
                 "rounded px-0.5 inline-flex items-center gap-0.5 cursor-pointer transition-colors",
@@ -601,6 +604,7 @@ function ClickableTokens({ tokens, phraseNumberByWordId, showBadges, color, onTo
 function OccurrenceTable({
   data, showSourceText, translationAbbr, onAddColumn, onRenameColumn, onDeleteColumn, onReorderColumns, onToggleOption, onCreateOption, onSetText, onToggleWord,
 }: OccurrenceTableProps) {
+  const { t: tr } = useTranslation();
   const [showAddColumn, setShowAddColumn] = useState(false);
   const dragIdx = useRef<number | null>(null);
   const [dragOrder, setDragOrder] = useState<number[] | null>(null);
@@ -635,11 +639,11 @@ function OccurrenceTable({
       <table className="min-w-full text-xs border-collapse">
         <thead>
           <tr style={{ backgroundColor: "var(--surface-muted, var(--surface))" }}>
-            <th className="text-left px-3 py-2 font-semibold whitespace-nowrap" style={{ color: "var(--foreground)" }}>Reference</th>
+            <th className="text-left px-3 py-2 font-semibold whitespace-nowrap" style={{ color: "var(--foreground)" }}>{tr("conceptEditor.reference")}</th>
             {showSourceText && (
-              <th className="text-left px-3 py-2 font-semibold whitespace-nowrap" style={{ color: "var(--foreground)" }}>Source Text</th>
+              <th className="text-left px-3 py-2 font-semibold whitespace-nowrap" style={{ color: "var(--foreground)" }}>{tr("conceptEditor.sourceText")}</th>
             )}
-            <th className="text-left px-3 py-2 font-semibold whitespace-nowrap" style={{ color: "var(--foreground)" }}>Translation Text</th>
+            <th className="text-left px-3 py-2 font-semibold whitespace-nowrap" style={{ color: "var(--foreground)" }}>{tr("conceptEditor.translationText")}</th>
             {columns.map((col, idx) => (
               <th
                 key={col.id}
@@ -658,7 +662,7 @@ function OccurrenceTable({
                 <button type="button" onClick={() => setShowAddColumn(true)}
                   className="text-xs px-2 py-1 rounded border border-dashed transition-colors hover:border-blue-400 hover:text-blue-500"
                   style={{ borderColor: "var(--border)", color: "var(--text-muted)" }}>
-                  + Column
+                  {tr("conceptEditor.addColumn")}
                 </button>
               ) : (
                 <AddColumnForm
@@ -679,7 +683,7 @@ function OccurrenceTable({
                     href={`/${encodeURIComponent(group.book)}/${readingSourceFor(group)}/${group.chapter}?v=${group.verse}`}
                     className="hover:underline hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
                     style={{ color: "var(--foreground)" }}
-                    title="Go to this verse"
+                    title={tr("conceptEditor.goToVerse")}
                   >{group.reference}</Link>
                 </td>
                 {showSourceText && (
@@ -756,7 +760,7 @@ function OccurrenceTable({
           {verseGroups.length === 0 && (
             <tr>
               <td colSpan={(showSourceText ? 3 : 2) + columns.length + 1} className="px-3 py-6 text-center" style={{ color: "var(--text-muted)" }}>
-                No occurrences found for this list.
+                {tr("conceptEditor.noOccurrences")}
               </td>
             </tr>
           )}
@@ -771,6 +775,7 @@ function OccurrenceTable({
 function ColumnHeader({
   column, onRename, onDelete,
 }: { column: Column; onRename: (id: number, name: string) => Promise<void>; onDelete: (id: number) => Promise<void> }) {
+  const { t: tr } = useTranslation();
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(column.name);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -795,7 +800,7 @@ function ColumnHeader({
 
   return (
     <div className="flex items-center gap-1 group">
-      <span onDoubleClick={() => setEditing(true)} title="Double-click to rename">{column.name}</span>
+      <span onDoubleClick={() => setEditing(true)} title={tr("conceptEditor.renameHint")}>{column.name}</span>
       {confirmDelete ? (
         <>
           <span role="button" className="text-green-600 dark:text-green-400 font-bold text-xs px-0.5" onClick={() => onDelete(column.id)}>✓</span>
@@ -806,7 +811,7 @@ function ColumnHeader({
           role="button"
           onClick={() => setConfirmDelete(true)}
           className="opacity-0 group-hover:opacity-60 hover:!opacity-100 text-stone-400 hover:text-red-500 transition-opacity leading-none"
-          title="Delete column"
+          title={tr("conceptEditor.deleteColumn")}
         >
           ×
         </span>
@@ -818,6 +823,7 @@ function ColumnHeader({
 // ─── Add column form ─────────────────────────────────────────────────────────
 
 function AddColumnForm({ onSave, onCancel }: { onSave: (name: string, type: "text" | "list") => Promise<void>; onCancel: () => void }) {
+  const { t: tr } = useTranslation();
   const [name, setName] = useState("");
   const [type, setType] = useState<"text" | "list">("list");
   const [saving, setSaving] = useState(false);
@@ -837,7 +843,7 @@ function AddColumnForm({ onSave, onCancel }: { onSave: (name: string, type: "tex
         value={name}
         onChange={(e) => setName(e.target.value)}
         onKeyDown={(e) => { if (e.key === "Enter") handleSave(); if (e.key === "Escape") onCancel(); }}
-        placeholder="Column name"
+        placeholder={tr("conceptEditor.columnName")}
         className="w-full text-xs px-2 py-1 rounded border mb-2"
         style={{ borderColor: "var(--border)", backgroundColor: "var(--background)", color: "var(--foreground)" }}
       />
@@ -846,15 +852,15 @@ function AddColumnForm({ onSave, onCancel }: { onSave: (name: string, type: "tex
           <button key={tp} type="button" onClick={() => setType(tp)}
             className="flex-1 px-2 py-1 capitalize transition-colors"
             style={{ backgroundColor: type === tp ? "var(--accent)" : "transparent", color: type === tp ? "#fff" : "var(--text-muted)" }}>
-            {tp === "list" ? "List" : "Text"}
+            {tp === "list" ? tr("conceptEditor.list") : tr("conceptEditor.text")}
           </button>
         ))}
       </div>
       <div className="flex justify-end gap-2">
-        <button type="button" onClick={onCancel} className="text-xs px-2 py-0.5 rounded" style={{ color: "var(--text-muted)" }}>Cancel</button>
+        <button type="button" onClick={onCancel} className="text-xs px-2 py-0.5 rounded" style={{ color: "var(--text-muted)" }}>{tr("conceptEditor.cancel")}</button>
         <button type="button" onClick={handleSave} disabled={saving || !name.trim()}
           className="text-xs font-semibold px-2 py-0.5 rounded bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 transition-colors">
-          {saving ? "Adding…" : "Add"}
+          {saving ? tr("conceptEditor.adding") : tr("conceptEditor.add")}
         </button>
       </div>
     </div>
@@ -871,6 +877,7 @@ function ListCell({
   onToggleOption: (optionId: number, currentlySelected: boolean) => Promise<void>;
   onCreateOption: (value: string) => Promise<void>;
 }) {
+  const { t: tr } = useTranslation();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [busy, setBusy] = useState(false);
@@ -927,7 +934,7 @@ function ListCell({
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter" && !exactMatch) handleCreate(); }}
-            placeholder="Search or create…"
+            placeholder={tr("conceptEditor.searchOrCreate")}
             className="w-full text-xs px-1.5 py-1 rounded border mb-1.5"
             style={{ borderColor: "var(--border)", backgroundColor: "var(--background)", color: "var(--foreground)" }}
           />

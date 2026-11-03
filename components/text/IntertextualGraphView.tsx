@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { LINK_TYPES, getLinkTypeColor } from "@/lib/utils/annotations";
 import { OSIS_REF_BOOK_NAMES } from "@/lib/utils/osis";
 import type { IntertextualLink } from "@/lib/db/schema";
+import { useTranslation } from "@/lib/i18n/LocaleContext";
 
 type Scope = "chapter" | "book" | "workspace";
 
@@ -79,12 +80,13 @@ function EdgeTooltip({
 }: {
   link: IntertextualLink; x: number; y: number; onClose: () => void;
 }) {
-  const typeLabel = LINK_TYPES.find((t) => t.value === link.linkType)?.label ?? link.linkType;
+  const { t: tr, refBookName } = useTranslation();
+  const typeLabel = LINK_TYPES.some((t) => t.value === link.linkType) ? tr(`linkTypes.${link.linkType}`) : link.linkType;
   const color = getLinkTypeColor(link.linkType);
   const srcV = link.sourceEndVerse && link.sourceEndVerse !== link.sourceVerse ? `${link.sourceVerse}–${link.sourceEndVerse}` : `${link.sourceVerse}`;
   const tgtV = link.targetEndVerse && link.targetEndVerse !== link.targetVerse ? `${link.targetVerse}–${link.targetEndVerse}` : `${link.targetVerse}`;
-  const srcLabel = `${OSIS_REF_BOOK_NAMES[link.sourceBook] ?? link.sourceBook} ${link.sourceChapter}:${srcV}`;
-  const tgtLabel = `${OSIS_REF_BOOK_NAMES[link.targetBook] ?? link.targetBook} ${link.targetChapter}:${tgtV}`;
+  const srcLabel = `${refBookName(link.sourceBook)} ${link.sourceChapter}:${srcV}`;
+  const tgtLabel = `${refBookName(link.targetBook)} ${link.targetChapter}:${tgtV}`;
 
   return (
     <div
@@ -138,6 +140,7 @@ interface Props {
 }
 
 export default function IntertextualGraphView({ book, chapter, textSource, workspaceId }: Props) {
+  const { t: tr } = useTranslation();
   const [scope, setScope] = useState<Scope>(chapter !== null ? "chapter" : "book");
   const [links, setLinks] = useState<IntertextualLink[]>([]);
   const [loading, setLoading] = useState(true);
@@ -191,7 +194,7 @@ export default function IntertextualGraphView({ book, chapter, textSource, works
         className="shrink-0 flex items-center gap-3 px-4 py-2 border-b text-sm"
         style={{ borderColor: "var(--border)", backgroundColor: "var(--nav-bg)" }}
       >
-        <span className="text-xs text-[var(--text-muted)]">Scope:</span>
+        <span className="text-xs text-[var(--text-muted)]">{tr("graph.scope")}</span>
         {(["chapter","book","workspace"] as Scope[]).map((s) => (
           <button
             key={s}
@@ -204,7 +207,7 @@ export default function IntertextualGraphView({ book, chapter, textSource, works
             ].join(" ")}
             disabled={s === "chapter" && chapter === null}
           >
-            {s === "chapter" ? `Chapter ${chapter ?? "—"}` : s === "book" ? "Book" : "Workspace"}
+            {s === "chapter" ? `Chapter ${chapter ?? "—"}` : s === "book" ? tr("graph.book") : tr("graph.workspace")}
           </button>
         ))}
 
@@ -213,7 +216,7 @@ export default function IntertextualGraphView({ book, chapter, textSource, works
           {LINK_TYPES.filter((t) => presentTypes.includes(t.value)).map((t) => (
             <span key={t.value} className="flex items-center gap-1 text-xs" style={{ color: "var(--text-muted)" }}>
               <span style={{ width: 10, height: 3, backgroundColor: t.color, display: "inline-block", borderRadius: 2 }} />
-              {t.label}
+              {tr(`linkTypes.${t.value}`)}
             </span>
           ))}
         </div>
@@ -223,11 +226,11 @@ export default function IntertextualGraphView({ book, chapter, textSource, works
       <div className="flex-1 relative min-h-0 overflow-hidden">
         {loading ? (
           <div className="absolute inset-0 flex items-center justify-center text-sm text-[var(--text-muted)]">
-            Loading…
+            {tr("graph.loading")}
           </div>
         ) : links.length === 0 ? (
           <div className="absolute inset-0 flex items-center justify-center text-sm text-[var(--text-muted)]">
-            No intertextual links in this scope.
+            {tr("graph.noLinks")}
           </div>
         ) : (
           <svg

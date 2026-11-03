@@ -11,7 +11,7 @@ import IntertextualWebIcon from "./IntertextualWebIcon";
 import { renderUsfmText } from "@/lib/utils/usfm-renderer";
 import type { DisplayMode, GrammarFilterState, TranslationTextEntry, InterlinearSubMode } from "@/lib/morphology/types";
 import type { ColorRule } from "@/lib/morphology/colorRules";
-import { PLOT_ELEMENTS, ANNOTATION_PALETTE, getPlotElement, getAnnotationColor } from "@/lib/utils/annotations";
+import { PLOT_ELEMENTS, ANNOTATION_PALETTE, LEGACY_PLOT_LABEL_ALIASES, getPlotElement, getAnnotationColor } from "@/lib/utils/annotations";
 import { resolvedDatasetColor } from "@/lib/utils/datasetColors";
 import { encodeUsfmTokens, decodeUsfmToken, tokenizeTranslationText, TEXT_COLOR_EXCLUDED_PUNCTUATION } from "@/lib/utils/translationTokens";
 import { wordFallsInPassageRange } from "@/lib/utils/passageRange";
@@ -81,6 +81,15 @@ import WordToken from "./WordToken";
 import TranslationDatasetLabel from "./TranslationDatasetLabel";
 import ParseTooltip from "./ParseTooltip";
 import { useTranslation } from "@/lib/i18n/LocaleContext";
+
+/** Localized name of a plot element; stored labels stay English. */
+function plotName(t: (key: string) => string, label: string): string {
+  const full = LEGACY_PLOT_LABEL_ALIASES[label] ?? label;
+  const key = `plotElements.${full}`;
+  const s = t(key);
+  // Legacy abbreviations stay as stored unless the locale actually translates them.
+  return s === key || (full !== label && s === full) ? label : s;
+}
 
 /**
  * Renders a single LXX word token in the translation column with the same
@@ -449,7 +458,7 @@ interface VerseDisplayProps {
  * 20-swatch colour picker for Theme and Desc annotations.
  * Uses onMouseDown + preventDefault so clicking a swatch never blurs an active
  * text input (preventing premature commitEdit calls in AnnotBadge editing mode).
- * When `locked` is true, shows only the current colour with a "Matches label" hint.
+ * When `locked` is true, shows only the current colour with a t("verse.matchesLabel") hint.
  */
 function ColorPalette({
   value,
@@ -460,6 +469,7 @@ function ColorPalette({
   onChange: (color: string) => void;
   locked?: boolean;
 }) {
+  const { t } = useTranslation();
   if (locked) {
     return (
       <div className="flex items-center gap-1.5">
@@ -468,7 +478,7 @@ function ColorPalette({
           style={{ backgroundColor: value }}
           title={`Color locked to label: ${value}`}
         />
-        <span className="text-[9px] text-stone-400 dark:text-stone-500">Matches label</span>
+        <span className="text-[9px] text-stone-400 dark:text-stone-500">{t("verse.matchesLabel")}</span>
       </div>
     );
   }
@@ -685,7 +695,7 @@ function AnnotBadge({
   // Safety net: if the editor is closed by something other than the explicit
   // commit paths below (e.g. the annotation-editing toolbar toggle being
   // switched off while this badge is mid-edit), still persist any pending
-  // change instead of silently discarding it. A no-op cancel via the "Cancel"
+  // change instead of silently discarding it. A no-op cancel via the t("verse.cancel")
   // button first resets every draft to match `annotation`, so this finds no
   // diff and stays a true cancel in that case.
   //
@@ -751,13 +761,13 @@ function AnnotBadge({
           <div className="flex items-center justify-end gap-0.5 mt-auto pb-0.5 pr-0.5" onClick={(e) => e.stopPropagation()}>
             <button
               type="button"
-              title="Shrink: remove this last segment"
+              title={t("verse.shrinkLast")}
               onClick={() => onAdjustRange?.(annotation.id, "shrink-end")}
               className="text-[9px] px-1 py-0 rounded bg-white/70 dark:bg-stone-900/70 text-stone-500 dark:text-stone-400 hover:bg-white dark:hover:bg-stone-900 leading-4"
             >−</button>
             <button
               type="button"
-              title="Expand: include the next segment"
+              title={t("verse.expandNext")}
               onClick={() => onAdjustRange?.(annotation.id, "expand-end")}
               className="text-[9px] px-1 py-0 rounded bg-white/70 dark:bg-stone-900/70 text-stone-500 dark:text-stone-400 hover:bg-white dark:hover:bg-stone-900 leading-4"
             >+</button>
@@ -819,9 +829,9 @@ function AnnotBadge({
   if (isEditing) {
     const editColor = draftAnnotType === "plot" ? (getPlotElement(draftPlotLabel)?.color ?? draftColor) : draftColor;
     const typeTabs: { key: "plot" | "theme" | "desc"; display: string }[] = [
-      { key: "plot",  display: "Plot"  },
-      { key: "theme", display: "Theme" },
-      { key: "desc",  display: "Desc"  },
+      { key: "plot",  display: t("verse.plot")  },
+      { key: "theme", display: t("verse.theme") },
+      { key: "desc",  display: t("verse.desc")  },
     ];
     return (
       <div
@@ -836,9 +846,9 @@ function AnnotBadge({
             <span
               className="shrink-0 text-[10px] font-bold px-1 py-0.5 rounded text-white leading-none"
               style={{ backgroundColor: editColor }}
-              title={getPlotElement(draftPlotLabel)?.fullName}
+              title={plotName(t, getPlotElement(draftPlotLabel)?.fullName ?? draftPlotLabel)}
             >
-              {draftPlotLabel}
+              {plotName(t, draftPlotLabel)}
             </span>
           )}
           {draftAnnotType === "theme" && (
@@ -854,7 +864,7 @@ function AnnotBadge({
               className="shrink-0 text-[10px] font-bold px-1 py-0.5 rounded text-white leading-none"
               style={{ backgroundColor: editColor }}
             >
-              {getCommFunctionLeafLabel(draftCommFunction, customCommFunctions)}
+              {getCommFunctionLeafLabel(draftCommFunction, customCommFunctions, t)}
             </span>
           )}
           {draftAnnotType === "desc" && draftCommFunction && (
@@ -862,7 +872,7 @@ function AnnotBadge({
               className="shrink-0 text-[10px] font-bold px-1 py-0.5 rounded text-white leading-none"
               style={{ backgroundColor: editColor }}
             >
-              {getCommFunctionLeafLabel(draftCommFunction, customCommFunctions)}
+              {getCommFunctionLeafLabel(draftCommFunction, customCommFunctions, t)}
             </span>
           )}
           <div className="shrink-0 ml-auto flex items-center gap-1.5">
@@ -870,7 +880,7 @@ function AnnotBadge({
               type="button"
               onClick={commitEdit}
               className="text-indigo-500 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300 text-xs leading-none"
-              title="Save"
+              title={t("verse.save")}
             >
               ✓
             </button>
@@ -878,7 +888,7 @@ function AnnotBadge({
               type="button"
               onClick={() => { resetDrafts(); onSetEditing(false); }}
               className="text-stone-400 hover:text-stone-600 text-xs leading-none"
-              title="Cancel"
+              title={t("verse.cancel")}
             >
               ✕
             </button>
@@ -916,9 +926,9 @@ function AnnotBadge({
                 onClick={() => { setDraftPlotLabel(el.label); setDraftColor(el.color); }}
                 className="px-1.5 py-0.5 rounded text-[10px] text-white font-bold transition-opacity leading-none"
                 style={{ backgroundColor: el.color, opacity: draftPlotLabel === el.label ? 1 : 0.35 }}
-                title={el.fullName}
+                title={plotName(t, el.fullName)}
               >
-                {el.label}
+                {plotName(t, el.label)}
               </button>
             ))}
           </div>
@@ -951,7 +961,7 @@ function AnnotBadge({
               if (e.key === "Escape") { resetDrafts(); onSetEditing(false); }
               e.stopPropagation();
             }}
-            placeholder="Description (optional)"
+            placeholder={t("verse.descOptional")}
             className="w-full px-1 py-0.5 border border-stone-300 dark:border-stone-600 rounded bg-white dark:bg-stone-900 text-[10px] placeholder:text-stone-400 dark:placeholder:text-stone-600"
           />
         </div>
@@ -989,7 +999,7 @@ function AnnotBadge({
             onChange={(e) => setDraftOos(e.target.checked)}
             className="w-3 h-3 accent-amber-500 cursor-pointer shrink-0"
           />
-          <span className="text-[9px] text-stone-400 dark:text-stone-500">↩ Out of chronological sequence</span>
+          <span className="text-[9px] text-stone-400 dark:text-stone-500">{t("verse.outOfChrono")}</span>
         </label>
 
         {/* Transitional (janus) toggle */}
@@ -1009,30 +1019,30 @@ function AnnotBadge({
         {/* Range controls */}
         {onAdjustRange && (
           <div className="px-1.5 pb-1.5 flex items-center gap-1">
-            <span className="text-[9px] text-stone-400 dark:text-stone-500 shrink-0">Range:</span>
+            <span className="text-[9px] text-stone-400 dark:text-stone-500 shrink-0">{t("verse.range")}</span>
             <div className="flex gap-0.5">
-              <button type="button" title="Expand: include segment above start"
+              <button type="button" title={t("verse.expandAbove")}
                 onClick={() => onAdjustRange(annotation.id, "expand-start")}
                 className="text-[9px] w-5 h-4 rounded bg-stone-200 dark:bg-stone-700 text-stone-500 dark:text-stone-400 hover:bg-stone-300 dark:hover:bg-stone-600 flex items-center justify-center">▲</button>
-              <button type="button" title="Shrink: remove first segment"
+              <button type="button" title={t("verse.shrinkFirst")}
                 onClick={() => onAdjustRange(annotation.id, "shrink-start")}
                 className="text-[9px] w-5 h-4 rounded bg-stone-200 dark:bg-stone-700 text-stone-500 dark:text-stone-400 hover:bg-stone-300 dark:hover:bg-stone-600 flex items-center justify-center">▼</button>
             </div>
             <span className="text-[9px] text-stone-300 dark:text-stone-600 select-none">·</span>
             <div className="flex gap-0.5">
-              <button type="button" title="Shrink: remove last segment"
+              <button type="button" title={t("verse.shrinkLastSeg")}
                 onClick={() => onAdjustRange(annotation.id, "shrink-end")}
                 className="text-[9px] w-5 h-4 rounded bg-stone-200 dark:bg-stone-700 text-stone-500 dark:text-stone-400 hover:bg-stone-300 dark:hover:bg-stone-600 flex items-center justify-center">▲</button>
-              <button type="button" title="Expand: include segment below end"
+              <button type="button" title={t("verse.expandBelow")}
                 onClick={() => onAdjustRange(annotation.id, "expand-end")}
                 className="text-[9px] w-5 h-4 rounded bg-stone-200 dark:bg-stone-700 text-stone-500 dark:text-stone-400 hover:bg-stone-300 dark:hover:bg-stone-600 flex items-center justify-center">▼</button>
             </div>
             {onDelete && (
               <>
                 <span className="text-[9px] text-stone-300 dark:text-stone-600 select-none ml-auto">·</span>
-                <button type="button" title="Delete this annotation"
+                <button type="button" title={t("verse.deleteThis")}
                   onClick={() => onDelete(annotation.id)}
-                  className="text-[9px] px-1 h-4 rounded bg-red-100 dark:bg-red-900/30 text-red-500 hover:bg-red-200 dark:hover:bg-red-900/60 transition-colors">del</button>
+                  className="text-[9px] px-1 h-4 rounded bg-red-100 dark:bg-red-900/30 text-red-500 hover:bg-red-200 dark:hover:bg-red-900/60 transition-colors">{t("verse.del")}</button>
               </>
             )}
           </div>
@@ -1052,7 +1062,7 @@ function AnnotBadge({
       ].join(" ")}
       style={{ borderLeft: `3px solid ${color}`, backgroundColor: `${color}18` }}
       onClick={editingAnnotations ? (e) => { e.stopPropagation(); onSetEditing(true); } : undefined}
-      title={editingAnnotations ? "Click to edit" : undefined}
+      title={editingAnnotations ? t("verse.clickToEdit") : undefined}
     >
       {/* position:relative here so the multi-segment description's top:"100%"
           is relative to just this label-row area, not the full flex-1 badge height. */}
@@ -1061,7 +1071,7 @@ function AnnotBadge({
         {(annotation.outOfSequence || annotation.transitional || hasLabel || (editingAnnotations && !!onDelete)) && (
           <div className="flex items-center gap-1">
             {annotation.outOfSequence && (
-              <span className={`shrink-0 ${badgeTextCls} font-bold text-amber-500 dark:text-amber-400 leading-none`} title="Out of chronological sequence">↩</span>
+              <span className={`shrink-0 ${badgeTextCls} font-bold text-amber-500 dark:text-amber-400 leading-none`} title={t("verse.outOfChronoTitle")}>↩</span>
             )}
             {annotation.transitional && (
               <span className={`shrink-0 ${badgeTextCls} font-bold text-sky-500 dark:text-sky-400 leading-none`} title={t("outlinePane.transitionalJanus")}>⇔</span>
@@ -1070,9 +1080,9 @@ function AnnotBadge({
               <span
                 className={`shrink-0 ${badgeTextCls} font-bold px-1 py-0.5 rounded text-white leading-none`}
                 style={{ backgroundColor: color }}
-                title={annotation.annotType === "plot" ? getPlotElement(annotation.label)?.fullName : undefined}
+                title={annotation.annotType === "plot" ? plotName(t, getPlotElement(annotation.label)?.fullName ?? annotation.label) : undefined}
               >
-                {getCommFunctionLeafLabel(annotation.label, customCommFunctions)}{thematicSubscript != null ? toSubscript(thematicSubscript) : ""}
+                {annotation.annotType === "plot" ? plotName(t, annotation.label) : getCommFunctionLeafLabel(annotation.label, customCommFunctions, t)}{thematicSubscript != null ? toSubscript(thematicSubscript) : ""}
               </span>
             )}
             {annotation.annotType === "theme" && annotation.commFunction && (
@@ -1080,7 +1090,7 @@ function AnnotBadge({
                 className={`shrink-0 ${badgeTextCls} font-bold px-1 py-0.5 rounded text-white leading-none`}
                 style={{ backgroundColor: color }}
               >
-                {getCommFunctionLeafLabel(annotation.commFunction, customCommFunctions)}
+                {getCommFunctionLeafLabel(annotation.commFunction, customCommFunctions, t)}
               </span>
             )}
             {editingAnnotations && onDelete && (
@@ -1088,7 +1098,7 @@ function AnnotBadge({
                 type="button"
                 onClick={(e) => { e.stopPropagation(); onDelete(annotation.id); }}
                 className="shrink-0 ml-auto text-stone-300 dark:text-stone-600 hover:text-red-500 dark:hover:text-red-400 text-sm leading-none transition-colors"
-                title="Delete annotation"
+                title={t("verse.deleteAnnotation")}
               >
                 ×
               </button>
@@ -1144,8 +1154,8 @@ function AnnotBadge({
           firing for a click that missed the tiny "+" target. */}
       {editingAnnotations && isEnd && onAdjustRange && (
         <div className="flex items-center gap-0.5 px-1.5 pb-1">
-          <span className="text-[9px] text-stone-400 dark:text-stone-500 mr-0.5">end:</span>
-          <button type="button" title="Expand: include the next segment"
+          <span className="text-[9px] text-stone-400 dark:text-stone-500 mr-0.5">{t("verse.end")}</span>
+          <button type="button" title={t("verse.expandNext")}
             onClick={(e) => { e.stopPropagation(); onAdjustRange(annotation.id, "expand-end"); }}
             className="text-[9px] px-1 py-0 rounded bg-stone-200 dark:bg-stone-700 text-stone-500 dark:text-stone-400 hover:bg-stone-300 dark:hover:bg-stone-600 leading-4">+</button>
         </div>
@@ -1218,9 +1228,9 @@ function AnnotCreationForm({
   }
 
   const tabs: { key: "plot" | "theme" | "desc"; display: string }[] = [
-    { key: "plot",  display: "Plot"  },
-    { key: "theme", display: "Theme" },
-    { key: "desc",  display: "Desc"  },
+    { key: "plot",  display: t("verse.plot")  },
+    { key: "theme", display: t("verse.theme") },
+    { key: "desc",  display: t("verse.desc")  },
   ];
 
   return (
@@ -1257,9 +1267,9 @@ function AnnotCreationForm({
               onClick={() => setPlotLabel(el.label)}
               className="px-1.5 py-0.5 rounded text-[10px] text-white font-bold transition-opacity leading-none"
               style={{ backgroundColor: el.color, opacity: plotLabel === el.label ? 1 : 0.35 }}
-              title={el.fullName}
+              title={plotName(t, el.fullName)}
             >
-              {el.label}
+              {plotName(t, el.label)}
             </button>
           ))}
         </div>
@@ -1299,7 +1309,7 @@ function AnnotCreationForm({
         type="text"
         value={description}
         onChange={(e) => setDescription(e.target.value)}
-        placeholder={annotType === "desc" ? "Description" : "Description (optional)"}
+        placeholder={annotType === "desc" ? t("verse.description") : t("verse.descOptional")}
         className="w-full px-1.5 py-0.5 border border-stone-300 dark:border-stone-600 rounded bg-transparent text-[10px] mb-2 placeholder:text-stone-400 dark:placeholder:text-stone-600"
         onKeyDown={(e) => {
           if (e.key === "Enter") handleSave();
@@ -1316,7 +1326,7 @@ function AnnotCreationForm({
           onChange={(e) => setOutOfSequence(e.target.checked)}
           className="w-3 h-3 rounded accent-amber-500 cursor-pointer"
         />
-        <span className="text-[10px] text-stone-500 dark:text-stone-400">↩ Out of chronological sequence</span>
+        <span className="text-[10px] text-stone-500 dark:text-stone-400">{t("verse.outOfChrono")}</span>
       </label>
 
       {/* Transitional (janus) checkbox */}
@@ -1338,7 +1348,7 @@ function AnnotCreationForm({
           onClick={handleSave}
           className="flex-1 px-1.5 py-0.5 rounded bg-indigo-600 text-white text-[10px] font-medium hover:bg-indigo-700 transition-colors disabled:opacity-60"
         >
-          {saving ? "Saving…" : "Save"}
+          {saving ? t("verse.saving") : t("verse.save")}
         </button>
         <button
           type="button"
@@ -1380,6 +1390,7 @@ interface TranslationTextareaProps {
   sourceMode?: boolean;
 }
 function TranslationTextarea({ initialText, abbr, book, chapter, verseNum, onSave, onCancel, sourceMode }: TranslationTextareaProps) {
+  const { t } = useTranslation();
   const [value, setValue] = useState(initialText);
   const savedRef = useRef(false);
   const valueRef = useRef(value);
@@ -1463,7 +1474,7 @@ function TranslationTextarea({ initialText, abbr, book, chapter, verseNum, onSav
         }}
         className="mt-0.5 text-xs text-stone-400 hover:text-stone-600 dark:hover:text-stone-300 underline"
       >
-        Cancel
+        {t("verse.cancel")}
       </button>
     </div>
   );
@@ -2055,7 +2066,7 @@ export default function VerseDisplay({
                     key={`${wordId}-${br.level}`}
                     className="flex-1 min-w-0 text-xs font-semibold tracking-widest text-stone-500 dark:text-stone-400 bg-transparent border-none outline-none focus:ring-0 px-0 placeholder:text-stone-300 dark:placeholder:text-stone-600"
                     defaultValue={br.heading ?? ""}
-                    placeholder="Section label"
+                    placeholder={t("verse.sectionLabel")}
                     onChange={(e) => onChangeSceneHeading?.(wordId, br.level, e.target.value)}
                     onBlur={(e) => onUpdateSceneHeading?.(wordId, br.level, e.target.value)}
                     onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); e.stopPropagation(); }}
@@ -2074,7 +2085,7 @@ export default function VerseDisplay({
                     onChange={(e) => onUpdateSceneOutOfSequence?.(wordId, br.level, e.target.checked)}
                     className="w-3 h-3 rounded accent-amber-500 cursor-pointer"
                   />
-                  <span className="text-[10px] text-stone-400 dark:text-stone-500">Out of sequence</span>
+                  <span className="text-[10px] text-stone-400 dark:text-stone-500">{t("verse.outOfSequence")}</span>
                 </label>
                 <div className="flex items-center gap-1.5 ml-10">
                   <label className="flex items-center gap-1.5 cursor-pointer select-none">
@@ -2084,7 +2095,7 @@ export default function VerseDisplay({
                       onChange={(e) => onUpdateSceneThematic?.(wordId, br.level, e.target.checked, br.thematicLetter ?? "A")}
                       className="w-3 h-3 rounded accent-amber-500 cursor-pointer"
                     />
-                    <span className="text-[10px] text-stone-400 dark:text-stone-500">Thematic</span>
+                    <span className="text-[10px] text-stone-400 dark:text-stone-500">{t("verse.thematic")}</span>
                   </label>
                   {br.thematic && (
                     <select
@@ -2109,7 +2120,7 @@ export default function VerseDisplay({
                 </label>
                 {book === "Ps" && (
                   <div className="flex items-center gap-1.5 ml-10">
-                    <span className="text-[10px] text-stone-400 dark:text-stone-500 shrink-0">Group through Ps:</span>
+                    <span className="text-[10px] text-stone-400 dark:text-stone-500 shrink-0">{t("verse.groupThroughPs")}</span>
                     <input
                       type="number"
                       min={chapter}
@@ -2121,14 +2132,14 @@ export default function VerseDisplay({
                         onUpdateSceneExtendedThrough?.(wordId, br.level, next);
                       }}
                       className="w-12 text-[10px] text-stone-500 dark:text-stone-400 bg-transparent border-b border-stone-300 dark:border-stone-600 outline-none text-center"
-                      title="Extend range through this psalm number (e.g. enter 10 to group Ps 9+10)"
+                      title={t("verse.psRangeTitle")}
                     />
                   </div>
                 )}
                 {/* Change level buttons — move this break to a different level */}
                 {([1, 2, 3, 4, 5, 6] as const).filter(l => l !== br.level && !existingLevels.has(l)).length > 0 && (
                   <div className="flex items-center gap-1 ml-10">
-                    <span className="text-[10px] text-stone-400 dark:text-stone-500">Change level:</span>
+                    <span className="text-[10px] text-stone-400 dark:text-stone-500">{t("verse.changeLevel")}</span>
                     {([1, 2, 3, 4, 5, 6] as const)
                       .filter(l => l !== br.level && !existingLevels.has(l))
                       .map(l => (
@@ -2148,7 +2159,7 @@ export default function VerseDisplay({
             ) : (br.heading || br.outOfSequence || br.transitional) ? (
               <div className="flex items-center gap-1.5 pb-0.5 select-none">
                 {br.outOfSequence && (
-                  <span className="text-[10px] font-bold text-amber-500 dark:text-amber-400 shrink-0" title="Out of chronological sequence">↩</span>
+                  <span className="text-[10px] font-bold text-amber-500 dark:text-amber-400 shrink-0" title={t("verse.outOfChronoTitle")}>↩</span>
                 )}
                 {br.transitional && (
                   <span className="text-[10px] font-bold text-sky-500 dark:text-sky-400 shrink-0" title={t("outlinePane.transitionalJanus")}>⇔</span>
@@ -2174,7 +2185,7 @@ export default function VerseDisplay({
         {/* Add level row — shown in editing mode when fewer than 6 levels present */}
         {editingScenes && missingLevels.length > 0 && (
           <div className="flex items-center gap-1 mt-1.5">
-            <span className="text-[10px] text-stone-400 dark:text-stone-500">Add level:</span>
+            <span className="text-[10px] text-stone-400 dark:text-stone-500">{t("verse.addLevel")}</span>
             {missingLevels.map((l) => (
               <button
                 key={l}
@@ -2243,7 +2254,7 @@ export default function VerseDisplay({
         {/* Hint while waiting for the range end */}
         {showHint && (
           <div className="text-[10px] text-indigo-500 dark:text-indigo-400 italic leading-tight py-0.5">
-            Click end segment →
+            {t("verse.clickEndSegment")}
           </div>
         )}
 
@@ -2325,7 +2336,7 @@ export default function VerseDisplay({
               onBlur={commit}
               onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); e.stopPropagation(); }}
               className={inputClass}
-              title="Stresses"
+              title={t("verse.stresses")}
             />
             <span className="opacity-50 text-sm">/</span>
             <input
@@ -2336,13 +2347,13 @@ export default function VerseDisplay({
               onBlur={commit}
               onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); e.stopPropagation(); }}
               className={inputClass}
-              title="Syllables"
+              title={t("verse.syllables")}
             />
             {override && (
               <button
                 type="button"
                 onClick={() => onResetSyllableStressOverride?.(segWordId)}
-                title="Reset to the computed count"
+                title={t("verse.resetCount")}
                 className="text-stone-400 hover:text-red-500 dark:hover:text-red-400 text-xs leading-none ml-0.5 shrink-0"
               >↺</button>
             )}
@@ -2384,7 +2395,7 @@ export default function VerseDisplay({
             <button
               type="button"
               onClick={(e) => { e.stopPropagation(); onSelectWord(breakWord); }}
-              title={hasHorizontalLine ? "Remove horizontal line" : "Add horizontal line here"}
+              title={hasHorizontalLine ? t("verse.removeHLine") : t("verse.addHLine")}
               className={[
                 "mx-1 flex items-center justify-center w-4 h-4 rounded-full text-white text-[11px] leading-none shrink-0",
                 hasHorizontalLine ? "bg-sky-500 hover:bg-sky-600" : "bg-stone-300 dark:bg-stone-600 hover:bg-sky-400",
@@ -2414,7 +2425,7 @@ export default function VerseDisplay({
             <button
               type="button"
               onClick={(e) => { e.stopPropagation(); onSelectWord(breakWord); }}
-              title="Remove paragraph break"
+              title={t("verse.removeParaBreak")}
               className="mx-1 flex items-center justify-center w-4 h-4 rounded-full bg-amber-400 text-white text-[11px] leading-none hover:bg-amber-500 shrink-0"
             >
               ×
@@ -2780,7 +2791,7 @@ export default function VerseDisplay({
                 const wrapper = (e.currentTarget as HTMLElement).parentElement;
                 wrapper?.querySelector<HTMLElement>(".word-parse")?.click();
               }}
-              title={datasetGroupingActive ? "Click to add/remove from grouping" : "Click to edit"}
+              title={datasetGroupingActive ? t("verse.toggleGrouping") : t("verse.clickToEdit")}
               className={[
                 "absolute left-0 right-0 bottom-0 text-center cursor-pointer rounded px-0.5",
                 datasetGroupingActive
@@ -2892,7 +2903,7 @@ export default function VerseDisplay({
                 onClick={(e) => { e.stopPropagation(); onSetSegmentIndent(paraStartId, Math.max(0, indentLevel - 1)); }}
                 disabled={indentLevel === 0}
                 className="w-5 h-5 flex items-center justify-center text-xs rounded text-stone-500 dark:text-stone-400 hover:bg-stone-200 dark:hover:bg-stone-600 disabled:opacity-25 transition-colors"
-                title="Decrease indent"
+                title={t("verse.decreaseIndent")}
               >−</button>
               <span className="text-teal-600 dark:text-teal-400 text-[10px] font-mono w-4 text-center select-none">
                 {indentLevel > 0 ? indentLevel : "·"}
@@ -2902,7 +2913,7 @@ export default function VerseDisplay({
                 onClick={(e) => { e.stopPropagation(); onSetSegmentIndent(paraStartId, Math.min(6, indentLevel + 1)); }}
                 disabled={indentLevel >= 6}
                 className="w-5 h-5 flex items-center justify-center text-xs rounded text-stone-500 dark:text-stone-400 hover:bg-stone-200 dark:hover:bg-stone-600 disabled:opacity-25 transition-colors"
-                title="Increase indent"
+                title={t("verse.increaseIndent")}
               >+</button>
             </div>
           ) : (
@@ -2917,7 +2928,7 @@ export default function VerseDisplay({
               data-osis-ref={`${book}.${chapter}.${verseNum}`}
               style={{ minWidth: verseLabelMinWidth, textAlign: isHebrew ? "right" : "left", paddingTop: labelPaddingTop }}
               onClick={si === 0 && onVerseClick ? () => onVerseClick(verseNum) : undefined}
-              title={si === 0 && onVerseClick ? "Scroll notes to this verse" : undefined}
+              title={si === 0 && onVerseClick ? t("verse.scrollNotes") : undefined}
             >
               {paraLabels[si]}
               {si === 0 && hasIntertextualLink && onOpenIntertextual && (
@@ -2925,7 +2936,7 @@ export default function VerseDisplay({
                   type="button"
                   onClick={(e) => { e.stopPropagation(); onOpenIntertextual(verseNum); }}
                   className="block mx-auto mt-0.5 text-stone-400 hover:text-amber-500 dark:text-stone-600 dark:hover:text-amber-400 transition-colors"
-                  title="View intertextual connections for this verse"
+                  title={t("verse.viewIntertextual")}
                 >
                   <IntertextualWebIcon size={9} />
                 </button>
@@ -3156,7 +3167,7 @@ export default function VerseDisplay({
                 )}
                 {editingTranslationSource && translationTexts.length === 1 && (
                   <span className="block text-[10px] font-mono font-semibold text-amber-500 dark:text-amber-400 uppercase tracking-wider mb-0.5">
-                    USFM source
+                    {t("verse.usfmSource")}
                   </span>
                 )}
                 <TranslationTextarea
@@ -3185,7 +3196,7 @@ export default function VerseDisplay({
                     <button
                       type="button"
                       onClick={(e) => { e.stopPropagation(); onToggleTranslationHorizontalLine(`tv:${abbr}:${book}.${chapter}.${verseNum}.0`, abbr); }}
-                      title={tvHasHorizontalLine ? "Remove horizontal line" : "Add horizontal line here"}
+                      title={tvHasHorizontalLine ? t("verse.removeHLine") : t("verse.addHLine")}
                       className={[
                         "mx-1 flex items-center justify-center w-4 h-4 rounded-full text-white text-[11px] leading-none shrink-0",
                         tvHasHorizontalLine ? "bg-sky-500 hover:bg-sky-600" : "bg-stone-300 dark:bg-stone-600 hover:bg-sky-400",
@@ -3203,7 +3214,7 @@ export default function VerseDisplay({
                     <button
                       type="button"
                       onClick={(e) => { e.stopPropagation(); onToggleTranslationParagraphBreak(`tv:${abbr}:${book}.${chapter}.${verseNum}.0`, abbr); }}
-                      title="Remove paragraph break"
+                      title={t("verse.removeParaBreak")}
                       className="mx-1 flex items-center justify-center w-4 h-4 rounded-full bg-amber-400 text-white text-[11px] leading-none hover:bg-amber-500 shrink-0"
                     >
                       ×
@@ -3392,7 +3403,7 @@ export default function VerseDisplay({
                                   <button
                                     type="button"
                                     onClick={(e) => { e.stopPropagation(); onToggleTranslationHorizontalLine(tvWordId, abbr); }}
-                                    title={hasHorizontalLine ? "Remove horizontal line" : "Add horizontal line here"}
+                                    title={hasHorizontalLine ? t("verse.removeHLine") : t("verse.addHLine")}
                                     className={[
                                       "mx-1 flex items-center justify-center w-4 h-4 rounded-full text-white text-[11px] leading-none shrink-0",
                                       hasHorizontalLine ? "bg-sky-500 hover:bg-sky-600" : "bg-stone-300 dark:bg-stone-600 hover:bg-sky-400",
@@ -3406,7 +3417,7 @@ export default function VerseDisplay({
                                 <button
                                   type="button"
                                   onClick={(e) => { e.stopPropagation(); onToggleTranslationParagraphBreak(tvWordId, abbr); }}
-                                  title="Remove paragraph break"
+                                  title={t("verse.removeParaBreak")}
                                   className="mx-1 flex items-center justify-center w-4 h-4 rounded-full bg-amber-400 text-white text-[11px] leading-none hover:bg-amber-500 shrink-0 inline-flex"
                                 >×</button>
                               )}
@@ -3444,7 +3455,7 @@ export default function VerseDisplay({
                     textIndent: compactVerseLabels ? undefined : (`${HANG_PX}px hanging` as React.CSSProperties["textIndent"]),
                   }}
                   onClick={editingScenes && firstWordId ? (e) => { e.stopPropagation(); if (!(sceneBreakMap.get(firstWordId)?.length)) onToggleSceneBreak?.(firstWordId, 1, verseNum); } : undefined}
-                  title={editingScenes ? "Click to add a section heading above this verse" : undefined}
+                  title={editingScenes ? t("verse.addHeadingAbove") : undefined}
                 >
                   {rowSegs.flatMap((tvSeg, segIdx) => {
                     // Renders one token's full <span key={globalWi}>...</span> —
@@ -3848,7 +3859,7 @@ export default function VerseDisplay({
                                 <button
                                   type="button"
                                   onClick={(e) => { e.stopPropagation(); onToggleTranslationHorizontalLine(wordId, abbr); }}
-                                  title={hasHorizontalLine ? "Remove horizontal line" : "Add horizontal line here"}
+                                  title={hasHorizontalLine ? t("verse.removeHLine") : t("verse.addHLine")}
                                   className={`text-xs font-mono mr-1 cursor-pointer ${hasHorizontalLine ? "text-sky-500 hover:text-sky-600" : "text-stone-400 hover:text-sky-400"}`}
                                 >
                                   ―{hasHorizontalLine ? "×" : "+"}
@@ -3866,7 +3877,7 @@ export default function VerseDisplay({
                                 <button
                                   type="button"
                                   onClick={(e) => { e.stopPropagation(); onToggleTranslationParagraphBreak(wordId, abbr); }}
-                                  title="Remove paragraph break"
+                                  title={t("verse.removeParaBreak")}
                                   className="text-xs font-mono mr-1 text-amber-500 hover:text-amber-600 cursor-pointer"
                                 >
                                   ¶×
@@ -3929,7 +3940,7 @@ export default function VerseDisplay({
                                 onClick={isAnchorMoveTarget
                                   ? (e) => { e.stopPropagation(); onMoveFootnoteAnchor?.(anchorMoveFootnote!.id, globalWi); }
                                   : handleClick}
-                                title={isAnchorMoveTarget ? "Click to place footnote anchor here" : undefined}
+                                title={isAnchorMoveTarget ? t("verse.placeFootnote") : undefined}
                               >
                                 {tvCoreContent}
                                 {tvPoetryContinuation && tvPoetryRequiredness ? (
@@ -4189,7 +4200,7 @@ export default function VerseDisplay({
                                   const wrapper = (e.currentTarget as HTMLElement).parentElement;
                                   wrapper?.querySelector<HTMLElement>(".word-parse")?.click();
                                 }}
-                                title={datasetGroupingActive ? "Click to add/remove from grouping" : "Click to edit"}
+                                title={datasetGroupingActive ? t("verse.toggleGrouping") : t("verse.clickToEdit")}
                                 className={[
                                   "absolute left-0 right-0 bottom-0 text-center cursor-pointer rounded px-0.5",
                                   datasetGroupingActive
@@ -4298,7 +4309,7 @@ export default function VerseDisplay({
                       onClick={(e) => { e.stopPropagation(); onSetSegmentIndent(paraStartId, Math.max(0, indentLevel - 1)); }}
                       disabled={indentLevel === 0}
                       className="w-5 h-5 flex items-center justify-center text-xs rounded text-stone-500 dark:text-stone-400 hover:bg-stone-200 dark:hover:bg-stone-600 disabled:opacity-25 transition-colors"
-                      title="Decrease source indent"
+                      title={t("verse.decreaseSrcIndent")}
                     >−</button>
                     <span className="text-teal-600 dark:text-teal-400 text-[10px] font-mono w-4 text-center select-none">
                       {indentLevel > 0 ? indentLevel : "·"}
@@ -4308,7 +4319,7 @@ export default function VerseDisplay({
                       onClick={(e) => { e.stopPropagation(); onSetSegmentIndent(paraStartId, Math.min(6, indentLevel + 1)); }}
                       disabled={indentLevel >= 6}
                       className="w-5 h-5 flex items-center justify-center text-xs rounded text-stone-500 dark:text-stone-400 hover:bg-stone-200 dark:hover:bg-stone-600 disabled:opacity-25 transition-colors"
-                      title="Increase source indent"
+                      title={t("verse.increaseSrcIndent")}
                     >+</button>
                   </div>
                   {/* Translation indent row — only when decoupled */}
@@ -4320,7 +4331,7 @@ export default function VerseDisplay({
                         onClick={(e) => { e.stopPropagation(); onSetSegmentTvIndent?.(paraStartId, Math.max(0, tvIndentLevel - 1)); }}
                         disabled={tvIndentLevel === 0}
                         className="w-5 h-5 flex items-center justify-center text-xs rounded text-stone-500 dark:text-stone-400 hover:bg-stone-200 dark:hover:bg-stone-600 disabled:opacity-25 transition-colors"
-                        title="Decrease translation indent"
+                        title={t("verse.decreaseTrIndent")}
                       >−</button>
                       <span className="text-teal-600 dark:text-teal-400 text-[10px] font-mono w-4 text-center select-none">
                         {tvIndentLevel > 0 ? tvIndentLevel : "·"}
@@ -4330,7 +4341,7 @@ export default function VerseDisplay({
                         onClick={(e) => { e.stopPropagation(); onSetSegmentTvIndent?.(paraStartId, Math.min(6, tvIndentLevel + 1)); }}
                         disabled={tvIndentLevel >= 6}
                         className="w-5 h-5 flex items-center justify-center text-xs rounded text-stone-500 dark:text-stone-400 hover:bg-stone-200 dark:hover:bg-stone-600 disabled:opacity-25 transition-colors"
-                        title="Increase translation indent"
+                        title={t("verse.increaseTrIndent")}
                       >+</button>
                     </div>
                   )}
@@ -4374,7 +4385,7 @@ export default function VerseDisplay({
                       type="button"
                       onClick={(e) => { e.stopPropagation(); onOpenIntertextual(verseNum); }}
                       className="block mx-auto mt-0.5 text-stone-400 hover:text-amber-500 dark:text-stone-600 dark:hover:text-amber-400 transition-colors"
-                      title="View intertextual connections for this verse"
+                      title={t("verse.viewIntertextual")}
                     >
                       <IntertextualWebIcon size={9} />
                     </button>
@@ -4415,7 +4426,7 @@ export default function VerseDisplay({
                   by the offset (e.g. MT Ps 3:1 when ULT starts at MT verse 2). */
                !(translationVerseOffset > 0 && verseNum <= translationVerseOffset) && (
                 <p className="text-xs italic select-none" style={{ color: "var(--text-muted)" }}>
-                  Enable editing to translate
+                  {t("toolbar2.enableEditingToTranslate")}
                 </p>
               )}
               {/* Footnotes appear under the translation text, in the last source row only */}
@@ -4434,7 +4445,7 @@ export default function VerseDisplay({
                             type="button"
                             onClick={() => onEditFootnote(fn)}
                             className="text-stone-500 hover:text-sky-500 dark:text-stone-400 dark:hover:text-sky-400 text-xs leading-none mt-0.5 shrink-0"
-                            title="Edit footnote"
+                            title={t("verse.editFootnote")}
                           >✎</button>
                         )}
                         {editingFootnotes && onDeleteFootnote && (
@@ -4442,7 +4453,7 @@ export default function VerseDisplay({
                             type="button"
                             onClick={() => onDeleteFootnote(fn.translationId, fn.id)}
                             className="text-amber-400 hover:text-red-500 dark:text-amber-500 dark:hover:text-red-400 text-xs leading-none mt-0.5 shrink-0"
-                            title="Delete footnote (removes anchor from text)"
+                            title={t("verse.deleteFootnote")}
                           >×</button>
                         )}
                       </div>

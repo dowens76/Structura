@@ -10,6 +10,7 @@ import {
   DEFAULT_VERSIFICATION_SCHEME,
   type VersificationScheme,
 } from "@/lib/versification/schemes";
+import { useTranslation, languageName } from "@/lib/i18n/LocaleContext";
 
 interface TranslationRow {
   id: number;
@@ -20,7 +21,7 @@ interface TranslationRow {
 }
 
 const LANGUAGES: { code: string; label: string }[] = [
-  { code: "", label: "— unset —" },
+  { code: "", label: "— unset —" }, // label localized at render (translationsPage.unset)
   { code: "trl", label: "Transliteration" },
   { code: "af", label: "Afrikaans" },
   { code: "sq", label: "Albanian" },
@@ -97,6 +98,7 @@ const LANGUAGES: { code: string; label: string }[] = [
 ];
 
 export default function TranslationsPanel() {
+  const { t } = useTranslation();
   const [rows, setRows] = useState<TranslationRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<number | null>(null);
@@ -128,7 +130,7 @@ export default function TranslationsPanel() {
       setRows((prev) => prev.map((r) => r.id === id ? { ...r, ...patch } : r));
     } else {
       const { error: msg } = await res.json();
-      setError(msg ?? "Failed to update translation.");
+      setError(msg ?? t("translationsPage.updateFailed"));
     }
     setSaving(null);
   }
@@ -154,7 +156,7 @@ export default function TranslationsPanel() {
     });
     if (!res.ok) {
       const { error: msg } = await res.json();
-      setError(msg ?? "Failed to create translation.");
+      setError(msg ?? t("translationsPage.createFailed"));
     } else {
       const { id } = await res.json();
       setRows((prev) => [...prev, { id, name, abbreviation, language: newLang || null, versificationScheme: newScheme }]);
@@ -208,16 +210,16 @@ export default function TranslationsPanel() {
   const labelCls = "text-[10px] font-semibold uppercase tracking-wider text-stone-400 dark:text-stone-500 mb-0.5 block";
 
   return (
-    <PageShell title="Manage Translations">
+    <PageShell title={t("translationsPage.title")}>
       <div className="space-y-6">
         <div className="space-y-4">
-          {loading && <p className="text-sm text-stone-400">Loading…</p>}
+          {loading && <p className="text-sm text-stone-400">{t("translationsPage.loading")}</p>}
           {!loading && rows.length === 0 && (
-            <p className="text-sm text-stone-400 dark:text-stone-500">No translations yet. Create one below.</p>
+            <p className="text-sm text-stone-400 dark:text-stone-500">{t("translationsPage.none")}</p>
           )}
           {rows.length > 1 && (
             <p className="text-xs text-stone-400 dark:text-stone-500">
-              Drag <span className="text-stone-300 dark:text-stone-600">⠿</span> to reorder. This controls the order translations appear when more than one is displayed.
+              {t("translationsPage.dragBefore")} <span className="text-stone-300 dark:text-stone-600">⠿</span> {t("translationsPage.dragAfter")}
             </p>
           )}
           {rows.map((row, idx) => (
@@ -234,7 +236,7 @@ export default function TranslationsPanel() {
               {rows.length > 1 && (
                 <span
                   className="mt-3 cursor-grab active:cursor-grabbing select-none text-stone-300 dark:text-stone-600 text-sm leading-none shrink-0"
-                  title="Drag to reorder"
+                  title={t("translationsPage.drag")}
                 >
                   ⠿
                 </span>
@@ -257,23 +259,23 @@ export default function TranslationsPanel() {
 
         {/* Create new */}
         <div className="border-t pt-4 space-y-3" style={{ borderColor: "var(--border)" }}>
-          <SectionHeading size="label">New Translation</SectionHeading>
+          <SectionHeading size="label">{t("translationsPage.newTranslation")}</SectionHeading>
           <div className="grid grid-cols-4 gap-3">
             <div>
-              <label className={labelCls}>Name</label>
+              <label className={labelCls}>{t("translationsPage.name")}</label>
               <input
                 className={inputCls}
-                placeholder="e.g. My Translation"
+                placeholder={t("translationsPage.namePlaceholder")}
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}
                 onKeyDown={(e) => { if (e.key === "Enter") handleCreate(); }}
               />
             </div>
             <div>
-              <label className={labelCls}>Abbreviation</label>
+              <label className={labelCls}>{t("translationsPage.abbreviation")}</label>
               <input
                 className={inputCls}
-                placeholder="e.g. MT"
+                placeholder={t("translationsPage.abbrPlaceholder")}
                 maxLength={12}
                 value={newAbbr}
                 onChange={(e) => setNewAbbr(e.target.value.toUpperCase())}
@@ -281,20 +283,20 @@ export default function TranslationsPanel() {
               />
             </div>
             <div>
-              <label className={labelCls}>Language</label>
+              <label className={labelCls}>{t("translationsPage.language")}</label>
               <select
                 className={inputCls}
                 value={newLang}
                 onChange={(e) => setNewLang(e.target.value)}
               >
                 {LANGUAGES.map((l) => (
-                  <option key={l.code} value={l.code}>{l.label}</option>
+                  <option key={l.code} value={l.code}>{l.code ? languageName(t, l.label) : t("translationsPage.unset")}</option>
                 ))}
               </select>
             </div>
             <div>
-              <label className={labelCls} title="Whether this translation counts a Psalm's descriptive title as verse 1">
-                Versification
+              <label className={labelCls} title={t("translationsPage.versificationTitle")}>
+                {t("translationsPage.versification")}
               </label>
               <select
                 className={inputCls}
@@ -302,14 +304,14 @@ export default function TranslationsPanel() {
                 onChange={(e) => setNewScheme(e.target.value as VersificationScheme)}
               >
                 {VERSIFICATION_SCHEMES.map((s) => (
-                  <option key={s} value={s}>{VERSIFICATION_SCHEME_LABELS[s]}</option>
+                  <option key={s} value={s}>{s === "vietnamese" ? t("translationsPage.vietnameseScheme") : VERSIFICATION_SCHEME_LABELS[s]}</option>
                 ))}
               </select>
             </div>
           </div>
           {error && <p className="text-xs text-red-500">{error}</p>}
           <Button onClick={handleCreate} disabled={creating}>
-            {creating ? "Creating…" : "+ Create Translation"}
+            {creating ? t("translationsPage.creating") : t("translationsPage.create")}
           </Button>
         </div>
       </div>
@@ -336,6 +338,7 @@ function TranslationEditor({
   onCancelDelete: () => void;
   onConfirmDelete: () => void;
 }) {
+  const { t } = useTranslation();
   const [name, setName] = useState(row.name);
   const [abbr, setAbbr] = useState(row.abbreviation);
   const [lang, setLang] = useState(row.language ?? "");
@@ -348,7 +351,7 @@ function TranslationEditor({
     <div className="rounded-lg border p-3 space-y-2" style={{ borderColor: confirmingDelete ? "var(--color-pos-verb)" : "var(--border)" }}>
       <div className="grid grid-cols-4 gap-3">
         <div>
-          <label className={labelCls}>Name</label>
+          <label className={labelCls}>{t("translationsPage.name")}</label>
           <input
             className={inputCls}
             value={name}
@@ -357,7 +360,7 @@ function TranslationEditor({
           />
         </div>
         <div>
-          <label className={labelCls}>Abbreviation</label>
+          <label className={labelCls}>{t("translationsPage.abbreviation")}</label>
           <input
             className={inputCls}
             value={abbr}
@@ -367,20 +370,20 @@ function TranslationEditor({
           />
         </div>
         <div>
-          <label className={labelCls}>Language</label>
+          <label className={labelCls}>{t("translationsPage.language")}</label>
           <select
             className={inputCls}
             value={lang}
             onChange={(e) => { setLang(e.target.value); onSave({ language: e.target.value || null }); }}
           >
             {LANGUAGES.map((l) => (
-              <option key={l.code} value={l.code}>{l.label}</option>
+              <option key={l.code} value={l.code}>{l.code ? languageName(t, l.label) : t("translationsPage.unset")}</option>
             ))}
           </select>
         </div>
         <div>
-          <label className={labelCls} title="Whether this translation counts a Psalm's descriptive title as verse 1">
-            Versification
+          <label className={labelCls} title={t("translationsPage.versificationTitle")}>
+            {t("translationsPage.versification")}
           </label>
           <select
             className={inputCls}
@@ -388,7 +391,7 @@ function TranslationEditor({
             onChange={(e) => { const v = e.target.value as VersificationScheme; setScheme(v); onSave({ versificationScheme: v }); }}
           >
             {VERSIFICATION_SCHEMES.map((s) => (
-              <option key={s} value={s}>{VERSIFICATION_SCHEME_LABELS[s]}</option>
+              <option key={s} value={s}>{s === "vietnamese" ? t("translationsPage.vietnameseScheme") : VERSIFICATION_SCHEME_LABELS[s]}</option>
             ))}
           </select>
         </div>
@@ -396,14 +399,14 @@ function TranslationEditor({
 
       <div className="flex items-center justify-between">
         <div>
-          {saving && <p className="text-[10px] text-stone-400">Saving…</p>}
+          {saving && <p className="text-[10px] text-stone-400">{t("translationsPage.saving")}</p>}
         </div>
         {!confirmingDelete ? (
           <button
             onClick={onRequestDelete}
             className="text-[11px] text-stone-400 hover:text-red-500 dark:hover:text-red-400 transition-colors"
           >
-            Remove
+            {t("translationsPage.remove")}
           </button>
         ) : (
           <div className="flex items-center gap-2">
@@ -414,14 +417,14 @@ function TranslationEditor({
               onClick={onCancelDelete}
               className="text-[11px] px-2 py-0.5 rounded border border-stone-300 dark:border-stone-600 text-stone-500 hover:text-stone-700 dark:hover:text-stone-300 transition-colors"
             >
-              Cancel
+              {t("translationsPage.cancel")}
             </button>
             <button
               onClick={onConfirmDelete}
               disabled={deleting}
               className="text-[11px] px-2 py-0.5 rounded bg-red-600 hover:bg-red-700 text-white disabled:opacity-50 transition-colors"
             >
-              {deleting ? "Deleting…" : "Delete"}
+              {deleting ? t("translationsPage.deleting") : t("translationsPage.delete")}
             </button>
           </div>
         )}

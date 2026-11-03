@@ -9,8 +9,9 @@ import {
 } from "@/app/import/actions";
 import { parseUsfmFile } from "@/lib/utils/usfm-full-parser";
 import type { ParsedUsfmFile } from "@/lib/utils/usfm-full-parser";
-import { OSIS_BOOKS_OT, OSIS_BOOKS_NT, OSIS_REF_BOOK_NAMES } from "@/lib/utils/osis";
+import { OSIS_BOOKS_OT, OSIS_BOOKS_NT } from "@/lib/utils/osis";
 import type { Translation } from "@/lib/db/schema";
+import { useTranslation } from "@/lib/i18n/LocaleContext";
 
 interface Props {
   /** OSIS book code for the current view — pre-populates the paste tab. */
@@ -28,13 +29,6 @@ const inputClass = "w-full px-2 py-1.5 rounded border text-sm bg-[var(--surface,
 
 const BUILTIN_ABBREVIATIONS = new Set(["ULT", "VCB", "LXX"]);
 
-function allBooks() {
-  return [
-    ...OSIS_BOOKS_OT.map(b => ({ osis: b, group: "Old Testament" })),
-    ...OSIS_BOOKS_NT.map(b => ({ osis: b, group: "New Testament" })),
-  ];
-}
-
 // ── TranslationSelector ───────────────────────────────────────────────────────
 
 function TranslationSelector({
@@ -46,6 +40,7 @@ function TranslationSelector({
   name: string; setName: (v: string) => void;
   abbr: string; setAbbr: (v: string) => void;
 }) {
+  const { t: tr } = useTranslation();
   const userTranslations = translations.filter(t => !BUILTIN_ABBREVIATIONS.has(t.abbreviation));
   const [mode, setMode] = useState<"existing" | "new">("new");
   const modeInitialized = useRef(false);
@@ -70,14 +65,14 @@ function TranslationSelector({
           disabled={userTranslations.length === 0}
           className={`px-2 py-1 rounded border transition-colors ${mode === "existing" ? "bg-amber-500 text-white border-amber-500" : "border-[var(--border)] text-[var(--foreground)]"}`}
         >
-          Existing
+          {tr("importDialog.existing")}
         </button>
         <button
           type="button"
           onClick={() => setMode("new")}
           className={`px-2 py-1 rounded border transition-colors ${mode === "new" ? "bg-amber-500 text-white border-amber-500" : "border-[var(--border)] text-[var(--foreground)]"}`}
         >
-          New
+          {tr("importDialog.new")}
         </button>
       </div>
 
@@ -90,7 +85,7 @@ function TranslationSelector({
             if (t) pickExisting(t);
           }}
         >
-          <option value="">— select —</option>
+          <option value="">{tr("importDialog.select")}</option>
           {userTranslations.map(t => (
             <option key={t.id} value={t.abbreviation}>{t.abbreviation} — {t.name}</option>
           ))}
@@ -98,11 +93,11 @@ function TranslationSelector({
       ) : (
         <div className="flex gap-2">
           <div className="flex-1">
-            <label className="block text-xs text-[var(--text-muted)] mb-0.5">Full name</label>
-            <input className={inputClass} placeholder="e.g. English Standard Version" value={name} onChange={e => setName(e.target.value)} />
+            <label className="block text-xs text-[var(--text-muted)] mb-0.5">{tr("importDialog.fullName")}</label>
+            <input className={inputClass} placeholder={tr("importDialog.fullNamePlaceholder")} value={name} onChange={e => setName(e.target.value)} />
           </div>
           <div className="w-24">
-            <label className="block text-xs text-[var(--text-muted)] mb-0.5">Abbreviation</label>
+            <label className="block text-xs text-[var(--text-muted)] mb-0.5">{tr("importDialog.abbreviation")}</label>
             <input className={inputClass} placeholder="ESV" value={abbr} onChange={e => setAbbr(e.target.value.toUpperCase().slice(0, 12))} />
           </div>
         </div>
@@ -132,6 +127,7 @@ function PasteTab({
   const [conflictCount, setConflictCount] = useState(0);
 
   const [state, action, pending] = useActionState(importTranslationAction, INITIAL_PASTE);
+  const { t, refBookName } = useTranslation();
 
   useEffect(() => {
     if (state.success) onSuccess();
@@ -144,44 +140,42 @@ function PasteTab({
     setOverwrite(count === 0);
   }
 
-  const books = allBooks();
-
   return (
     <form action={action} className="flex flex-col gap-3">
       <TranslationSelector translations={translations} name={name} setName={setName} abbr={abbr} setAbbr={setAbbr} />
 
       <div className="flex gap-2">
         <div className="flex-1">
-          <label className="block text-xs text-[var(--text-muted)] mb-0.5">Book</label>
+          <label className="block text-xs text-[var(--text-muted)] mb-0.5">{t("importDialog.book")}</label>
           <select className={inputClass} name="osisBook" value={book} onChange={e => { setBook(e.target.value); setOverwrite(false); setConflictCount(0); }}>
-            <optgroup label="Old Testament">
-              {OSIS_BOOKS_OT.map(b => <option key={b} value={b}>{OSIS_REF_BOOK_NAMES[b] ?? b}</option>)}
+            <optgroup label={t("importDialog.oldTestament")}>
+              {OSIS_BOOKS_OT.map(b => <option key={b} value={b}>{refBookName(b)}</option>)}
             </optgroup>
-            <optgroup label="New Testament">
-              {OSIS_BOOKS_NT.map(b => <option key={b} value={b}>{OSIS_REF_BOOK_NAMES[b] ?? b}</option>)}
+            <optgroup label={t("importDialog.newTestament")}>
+              {OSIS_BOOKS_NT.map(b => <option key={b} value={b}>{refBookName(b)}</option>)}
             </optgroup>
           </select>
         </div>
         <div className="w-20">
-          <label className="block text-xs text-[var(--text-muted)] mb-0.5">Chapter</label>
+          <label className="block text-xs text-[var(--text-muted)] mb-0.5">{t("importDialog.chapter")}</label>
           <input className={inputClass} name="chapter" type="number" min="1" value={ch} onChange={e => { setCh(e.target.value); setOverwrite(false); setConflictCount(0); }} />
         </div>
       </div>
 
       <div>
-        <label className="block text-xs text-[var(--text-muted)] mb-0.5">Paste text</label>
+        <label className="block text-xs text-[var(--text-muted)] mb-0.5">{t("importDialog.pasteText")}</label>
         <textarea
           className={`${inputClass} resize-none`}
           name="pastedText"
           rows={8}
-          placeholder={"Paste Bible text here.\nVerse numbers required: \"1 In the beginning…\""}
+          placeholder={t("importDialog.pastePlaceholder")}
         />
       </div>
 
       {conflictCount > 0 && !overwrite && (
         <div className="rounded border border-amber-300 bg-amber-50 dark:bg-amber-950 px-3 py-2 text-xs text-amber-800 dark:text-amber-300">
-          <p className="font-semibold mb-1">{conflictCount} verses already exist for this chapter.</p>
-          <button type="button" onClick={() => setOverwrite(true)} className="underline">Click to confirm overwrite</button>
+          <p className="font-semibold mb-1">{t("importDialog.versesExist", { n: conflictCount })}</p>
+          <button type="button" onClick={() => setOverwrite(true)} className="underline">{t("importDialog.confirmOverwrite")}</button>
         </div>
       )}
 
@@ -195,7 +189,7 @@ function PasteTab({
           disabled={pending || !name || !abbr}
           className="w-full py-2 rounded bg-amber-500 hover:bg-amber-600 text-white text-sm font-medium disabled:opacity-50"
         >
-          {pending ? "Importing…" : "Import"}
+          {pending ? t("importDialog.importing") : t("importDialog.import")}
         </button>
       ) : (
         <button
@@ -204,7 +198,7 @@ function PasteTab({
           disabled={!name || !abbr || !book || !ch}
           className="w-full py-2 rounded bg-amber-500 hover:bg-amber-600 text-white text-sm font-medium disabled:opacity-50"
         >
-          Check & Import
+          {t("importDialog.checkImport")}
         </button>
       )}
     </form>
@@ -228,6 +222,7 @@ function UsfmTab({ translations, onSuccess }: { translations: Translation[]; onS
   const fileRef = useRef<HTMLInputElement>(null);
 
   const [state, action, pending] = useActionState(importUsfmFileAction, INITIAL_USFM);
+  const { t } = useTranslation();
 
   useEffect(() => {
     if (state.success) onSuccess();
@@ -242,7 +237,7 @@ function UsfmTab({ translations, onSuccess }: { translations: Translation[]; onS
       const text = await file.text();
       setParsed(parseUsfmFile(text));
     } catch (err) {
-      setFileError(`Parse error: ${String(err)}`);
+      setFileError(t("importDialog.parseError", { msg: String(err) }));
     }
   }
 
@@ -251,7 +246,7 @@ function UsfmTab({ translations, onSuccess }: { translations: Translation[]; onS
       <TranslationSelector translations={translations} name={name} setName={setName} abbr={abbr} setAbbr={setAbbr} />
 
       <div>
-        <label className="block text-xs text-[var(--text-muted)] mb-0.5">USFM file</label>
+        <label className="block text-xs text-[var(--text-muted)] mb-0.5">{t("importDialog.usfmFile")}</label>
         <input
           ref={fileRef}
           type="file"
@@ -266,11 +261,11 @@ function UsfmTab({ translations, onSuccess }: { translations: Translation[]; onS
 
       {parsed && (
         <div className="rounded border border-[var(--border)] p-3 text-xs space-y-1.5">
-          <p><span className="text-[var(--text-muted)]">Detected book:</span> <strong>{parsed.detectedBook ?? "unknown"}</strong></p>
-          <p><span className="text-[var(--text-muted)]">Verses:</span> {parsed.stats.verses} across {parsed.stats.chapters} chapter{parsed.stats.chapters !== 1 ? "s" : ""}</p>
+          <p><span className="text-[var(--text-muted)]">{t("importDialog.detectedBook")}</span> <strong>{parsed.detectedBook ?? t("importDialog.unknown")}</strong></p>
+          <p><span className="text-[var(--text-muted)]">{t("importDialog.verses")}</span> {t("importDialog.versesAcross", { v: parsed.stats.verses, c: parsed.stats.chapters })}</p>
           {parsed.markerInventory.preserved.length > 0 && (
             <div>
-              <p className="text-green-700 dark:text-green-400 font-semibold mt-1.5">Preserved:</p>
+              <p className="text-green-700 dark:text-green-400 font-semibold mt-1.5">{t("importDialog.preserved")}</p>
               <ul className="mt-0.5 space-y-0.5">
                 {parsed.markerInventory.preserved.map(m => (
                   <li key={m} className="flex items-center gap-1.5">
@@ -283,7 +278,7 @@ function UsfmTab({ translations, onSuccess }: { translations: Translation[]; onS
           )}
           {parsed.markerInventory.stripped.length > 0 && (
             <div>
-              <p className="text-red-600 dark:text-red-400 font-semibold mt-1.5">Stripped:</p>
+              <p className="text-red-600 dark:text-red-400 font-semibold mt-1.5">{t("importDialog.stripped")}</p>
               <ul className="mt-0.5 space-y-0.5">
                 {parsed.markerInventory.stripped.map(m => (
                   <li key={m} className="flex items-center gap-1.5">
@@ -304,7 +299,7 @@ function UsfmTab({ translations, onSuccess }: { translations: Translation[]; onS
         disabled={pending || !name || !abbr || !parsed}
         className="w-full py-2 rounded bg-amber-500 hover:bg-amber-600 text-white text-sm font-medium disabled:opacity-50"
       >
-        {pending ? "Importing…" : "Import"}
+        {pending ? t("importDialog.importing") : t("importDialog.import")}
       </button>
     </form>
   );
@@ -314,6 +309,7 @@ function UsfmTab({ translations, onSuccess }: { translations: Translation[]; onS
 
 export default function ImportTranslationDialog({ osisBook, chapter }: Props) {
   const router = useRouter();
+  const { t: tr } = useTranslation();
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState<"paste" | "usfm">("paste");
   const [translations, setTranslations] = useState<Translation[]>([]);
@@ -357,7 +353,7 @@ export default function ImportTranslationDialog({ osisBook, chapter }: Props) {
         className="text-xs px-2 py-1 rounded transition-colors"
         style={{ color: "var(--nav-fg)" }}
       >
-        + Import
+        {tr("nav.import")}
       </button>
 
       {open && (
@@ -369,14 +365,14 @@ export default function ImportTranslationDialog({ osisBook, chapter }: Props) {
           >
             {/* Header */}
             <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: "var(--border)" }}>
-              <h2 className="text-sm font-semibold" style={{ color: "var(--foreground)" }}>Import Translation</h2>
+              <h2 className="text-sm font-semibold" style={{ color: "var(--foreground)" }}>{tr("importDialog.title")}</h2>
               <button onClick={() => setOpen(false)} className="text-xs px-2 py-1 rounded hover:bg-stone-100 dark:hover:bg-stone-800" style={{ color: "var(--text-muted)" }}>✕</button>
             </div>
 
             {success ? (
               <div className="px-4 py-8 text-center text-green-600 dark:text-green-400">
                 <p className="text-2xl mb-2">✓</p>
-                <p className="text-sm font-medium">Import complete</p>
+                <p className="text-sm font-medium">{tr("importDialog.complete")}</p>
               </div>
             ) : (
               <>
@@ -393,7 +389,7 @@ export default function ImportTranslationDialog({ osisBook, chapter }: Props) {
                         borderBottom: tab === t ? "2px solid var(--accent)" : "2px solid transparent",
                       }}
                     >
-                      {t === "paste" ? "Paste text" : "USFM file"}
+                      {t === "paste" ? tr("importDialog.pasteText") : tr("importDialog.usfmFile")}
                     </button>
                   ))}
                 </div>

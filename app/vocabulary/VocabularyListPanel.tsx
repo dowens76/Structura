@@ -5,7 +5,8 @@ import PageShell from "@/components/ui/PageShell";
 import SectionHeading from "@/components/ui/SectionHeading";
 import Button from "@/components/ui/Button";
 import type { Book } from "@/lib/db/schema";
-import { POS_COLORS, POS_LABELS } from "@/lib/morphology/types";
+import { POS_COLORS, POS_LABELS, morphTerm } from "@/lib/morphology/types";
+import { useTranslation } from "@/lib/i18n/LocaleContext";
 
 type Corpus = "OSHB" | "SBLGNT" | "STEPBIBLE_LXX";
 
@@ -40,6 +41,7 @@ function scopeLabel(osisBooks: string[], chapterStart: number | null, chapterEnd
 }
 
 export default function VocabularyListPanel({ otBooks, ntBooks, lxxBooks }: VocabularyListPanelProps) {
+  const { t } = useTranslation();
   const [corpus, setCorpus] = useState<Corpus>("OSHB");
   const [selectedBooks, setSelectedBooks] = useState<Set<string>>(new Set());
   const [chapterStart, setChapterStart] = useState<string>("");
@@ -121,14 +123,14 @@ export default function VocabularyListPanel({ otBooks, ntBooks, lxxBooks }: Voca
       });
       if (!res.ok) {
         const data = await res.json().catch(() => null);
-        setPreviewError(data?.error ?? "Failed to load preview");
+        setPreviewError(data?.error ?? t("vocab.previewFailed"));
         setPreview(null);
         return;
       }
       const data: { words: VocabWord[] } = await res.json();
       setPreview(data.words);
     } catch {
-      setPreviewError("Failed to load preview");
+      setPreviewError(t("vocab.previewFailed"));
       setPreview(null);
     } finally {
       setLoadingPreview(false);
@@ -162,14 +164,14 @@ export default function VocabularyListPanel({ otBooks, ntBooks, lxxBooks }: Voca
 
   return (
     <PageShell
-      title="Vocabulary List Creator"
-      subtitle="Pick a scope of books (and optionally a chapter range within one book), filter by how many times each word occurs across the whole corpus, then export the resulting word list as a CSV file or an Anki deck."
+      title={t("vocab.title")}
+      subtitle={t("vocab.intro")}
       maxWidth="max-w-4xl"
     >
       <div className="space-y-8">
       {/* Corpus tabs */}
       <section>
-        <SectionHeading className="mb-2">Corpus</SectionHeading>
+        <SectionHeading className="mb-2">{t("vocab.corpus")}</SectionHeading>
         <div className="flex gap-2">
           {CORPUS_TABS.map((tab) => (
             <button
@@ -182,7 +184,7 @@ export default function VocabularyListPanel({ otBooks, ntBooks, lxxBooks }: Voca
                 color: corpus === tab.value ? "white" : "var(--foreground)",
               }}
             >
-              {tab.label}
+              {t(`vocab.tab_${tab.value}`)}
             </button>
           ))}
         </div>
@@ -191,12 +193,12 @@ export default function VocabularyListPanel({ otBooks, ntBooks, lxxBooks }: Voca
       {/* Book picker */}
       <section>
         <div className="flex items-center gap-3 mb-2">
-          <SectionHeading>Books</SectionHeading>
+          <SectionHeading>{t("vocab.books")}</SectionHeading>
           <button onClick={selectAllBooks} className="text-xs px-2 py-0.5 rounded transition-colors" style={{ color: "var(--text-muted)" }}>
-            All
+            {t("vocab.all")}
           </button>
           <button onClick={clearBooks} className="text-xs px-2 py-0.5 rounded transition-colors" style={{ color: "var(--text-muted)" }}>
-            None
+            {t("vocab.none")}
           </button>
         </div>
         <div className="flex flex-wrap gap-1.5">
@@ -253,9 +255,9 @@ export default function VocabularyListPanel({ otBooks, ntBooks, lxxBooks }: Voca
 
       {/* Occurrence filter */}
       <section>
-        <SectionHeading className="mb-2">Corpus-wide occurrence count</SectionHeading>
+        <SectionHeading className="mb-2">{t("vocab.occurrence")}</SectionHeading>
         <div className="flex items-center gap-2">
-          <span className="text-sm" style={{ color: "var(--text-muted)" }}>Min</span>
+          <span className="text-sm" style={{ color: "var(--text-muted)" }}>{t("vocab.min")}</span>
           <input
             type="number"
             min={0}
@@ -264,13 +266,13 @@ export default function VocabularyListPanel({ otBooks, ntBooks, lxxBooks }: Voca
             className="w-20 text-sm px-2 py-1 rounded border"
             style={{ borderColor: "var(--border)", backgroundColor: "var(--surface)", color: "var(--foreground)" }}
           />
-          <span className="text-sm" style={{ color: "var(--text-muted)" }}>Max</span>
+          <span className="text-sm" style={{ color: "var(--text-muted)" }}>{t("vocab.max")}</span>
           <input
             type="number"
             min={0}
             value={maxOccurrences}
             onChange={(e) => { setMaxOccurrences(e.target.value); setPreview(null); }}
-            placeholder="unbounded"
+            placeholder={t("vocab.unbounded")}
             className="w-24 text-sm px-2 py-1 rounded border"
             style={{ borderColor: "var(--border)", backgroundColor: "var(--surface)", color: "var(--foreground)" }}
           />
@@ -280,7 +282,7 @@ export default function VocabularyListPanel({ otBooks, ntBooks, lxxBooks }: Voca
       {/* Preview button */}
       <div className="flex items-center gap-4">
         <Button onClick={handlePreview} disabled={!canPreview || loadingPreview}>
-          {loadingPreview ? "Loading…" : "Preview"}
+          {loadingPreview ? t("vocab.loading") : t("vocab.preview")}
         </Button>
         {previewError && <span className="text-sm text-red-500">{previewError}</span>}
       </div>
@@ -297,7 +299,7 @@ export default function VocabularyListPanel({ otBooks, ntBooks, lxxBooks }: Voca
                 onClick={() => handleExport("csv")}
                 disabled={exporting || preview.length === 0}
               >
-                Export CSV
+                {t("vocab.exportCsv")}
               </Button>
               <Button
                 variant="secondary"
@@ -305,7 +307,7 @@ export default function VocabularyListPanel({ otBooks, ntBooks, lxxBooks }: Voca
                 onClick={() => handleExport("apkg")}
                 disabled={exporting || preview.length === 0}
               >
-                Export Anki Deck
+                {t("vocab.exportAnki")}
               </Button>
             </div>
           </div>
@@ -315,18 +317,18 @@ export default function VocabularyListPanel({ otBooks, ntBooks, lxxBooks }: Voca
               className="rounded-lg border px-4 py-6 text-center text-sm"
               style={{ borderColor: "var(--border)", color: "var(--text-muted)" }}
             >
-              No words match this scope and occurrence range.
+              {t("vocab.noWords")}
             </div>
           ) : (
             <div className="rounded-lg border overflow-hidden overflow-x-auto" style={{ borderColor: "var(--border)" }}>
               <table className="w-full text-sm">
                 <thead>
                   <tr style={{ backgroundColor: "var(--surface-muted)" }}>
-                    <th className="text-left px-3 py-2 font-medium" style={{ color: "var(--text-muted)" }}>Word</th>
-                    <th className="text-left px-3 py-2 font-medium" style={{ color: "var(--text-muted)" }}>Strong&apos;s #</th>
-                    <th className="text-left px-3 py-2 font-medium" style={{ color: "var(--text-muted)" }}>POS</th>
-                    <th className="text-left px-3 py-2 font-medium" style={{ color: "var(--text-muted)" }}>Gloss</th>
-                    <th className="text-right px-3 py-2 font-medium" style={{ color: "var(--text-muted)" }}>Corpus count</th>
+                    <th className="text-left px-3 py-2 font-medium" style={{ color: "var(--text-muted)" }}>{t("vocab.word")}</th>
+                    <th className="text-left px-3 py-2 font-medium" style={{ color: "var(--text-muted)" }}>{t("vocab.strongs")}</th>
+                    <th className="text-left px-3 py-2 font-medium" style={{ color: "var(--text-muted)" }}>{t("morph.pos")}</th>
+                    <th className="text-left px-3 py-2 font-medium" style={{ color: "var(--text-muted)" }}>{t("vocab.gloss")}</th>
+                    <th className="text-right px-3 py-2 font-medium" style={{ color: "var(--text-muted)" }}>{t("vocab.corpusCount")}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y" style={{ borderColor: "var(--border)" }}>
@@ -351,7 +353,7 @@ export default function VocabularyListPanel({ otBooks, ntBooks, lxxBooks }: Voca
                               color: POS_COLORS[w.partOfSpeech] ?? "#6b7280",
                             }}
                           >
-                            {POS_LABELS[w.partOfSpeech] ?? w.partOfSpeech}
+                            {morphTerm(t, POS_LABELS[w.partOfSpeech] ?? w.partOfSpeech)}
                           </span>
                         )}
                       </td>

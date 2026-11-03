@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { OSIS_BOOKS_OT, OSIS_BOOKS_NT, OSIS_BOOK_NAMES } from "@/lib/utils/osis";
 import type { SynopticSetWithColumns } from "@/lib/db/queries";
+import { useTranslation } from "@/lib/i18n/LocaleContext";
 
 interface ColumnDraft {
   book: string;
@@ -42,6 +43,7 @@ interface Props {
 }
 
 export default function DefineSynopticSetDialog({ existingSet, onClose, onSaved }: Props) {
+  const { t, bookName } = useTranslation();
   const router = useRouter();
   const isEdit = !!existingSet;
 
@@ -160,7 +162,7 @@ export default function DefineSynopticSetDialog({ existingSet, onClose, onSaved 
 
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        setError((data as { error?: string }).error ?? "Failed to save — please try again.");
+        setError((data as { error?: string }).error ?? t("synoptic.saveFailed"));
         return;
       }
 
@@ -196,14 +198,14 @@ export default function DefineSynopticSetDialog({ existingSet, onClose, onSaved 
       >
         <div className="shrink-0 flex items-center justify-between px-5 py-4 border-b" style={{ borderColor: "var(--border)" }}>
           <h2 className="text-base font-semibold" style={{ color: "var(--foreground)" }}>
-            {isEdit ? "Edit Synoptic Set" : "New Synoptic Set"}
+            {isEdit ? t("synoptic.editSet") : t("synoptic.newSet")}
           </h2>
           <button
             type="button"
             onClick={onClose}
             className="text-xl leading-none opacity-50 hover:opacity-100 transition-opacity"
             style={{ color: "var(--foreground)" }}
-            aria-label="Close"
+            aria-label={t("synoptic.close")}
           >
             ×
           </button>
@@ -212,30 +214,30 @@ export default function DefineSynopticSetDialog({ existingSet, onClose, onSaved 
         <form onSubmit={handleSubmit} className="flex-1 min-h-0 overflow-y-auto px-5 py-5 space-y-4">
           <div className="flex items-center gap-3">
             <div className="flex-1">
-              <label className="block text-xs mb-1" style={{ color: "var(--text-muted)" }}>Title</label>
+              <label className="block text-xs mb-1" style={{ color: "var(--text-muted)" }}>{t("synoptic.title")}</label>
               <input
                 type="text"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                placeholder="e.g. The Feeding of the 5000"
+                placeholder={t("synoptic.titlePlaceholder")}
                 className="w-full px-2 py-1 rounded border text-sm"
                 style={inputStyle}
               />
             </div>
             <div>
-              <label className="block text-xs mb-1" style={{ color: "var(--text-muted)" }}>Corpus</label>
+              <label className="block text-xs mb-1" style={{ color: "var(--text-muted)" }}>{t("synoptic.corpus")}</label>
               <select value={corpus} onChange={(e) => setCorpus(e.target.value)} className="px-2 py-1 rounded border text-sm" style={selectStyle}>
-                <option value="gospels">Gospels</option>
-                <option value="historical">Historical</option>
-                <option value="psalms">Psalms</option>
-                <option value="custom">Custom</option>
+                <option value="gospels">{t("synoptic.gospels")}</option>
+                <option value="historical">{t("synoptic.historical")}</option>
+                <option value="psalms">{t("synoptic.psalms")}</option>
+                <option value="custom">{t("synoptic.custom")}</option>
               </select>
             </div>
           </div>
 
           <div className="space-y-2">
             <div className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>
-              Columns
+              {t("synoptic.columns")}
             </div>
             {columns.map((col, i) => (
               <div
@@ -249,14 +251,14 @@ export default function DefineSynopticSetDialog({ existingSet, onClose, onSaved 
                   className="px-1.5 py-1 rounded border text-sm"
                   style={selectStyle}
                 >
-                  <optgroup label="Old Testament">
+                  <optgroup label={t("synoptic.ot")}>
                     {OSIS_BOOKS_OT.map((b) => (
-                      <option key={b} value={b}>{OSIS_BOOK_NAMES[b] ?? b}</option>
+                      <option key={b} value={b}>{bookName(b)}</option>
                     ))}
                   </optgroup>
-                  <optgroup label="New Testament">
+                  <optgroup label={t("synoptic.nt")}>
                     {OSIS_BOOKS_NT.map((b) => (
-                      <option key={b} value={b}>{OSIS_BOOK_NAMES[b] ?? b}</option>
+                      <option key={b} value={b}>{bookName(b)}</option>
                     ))}
                   </optgroup>
                 </select>
@@ -278,7 +280,7 @@ export default function DefineSynopticSetDialog({ existingSet, onClose, onSaved 
                   type="text"
                   value={col.columnLabel}
                   onChange={(e) => updateColumn(i, { columnLabel: e.target.value })}
-                  placeholder="Column label"
+                  placeholder={t("synoptic.columnLabel")}
                   className="w-28 px-1.5 py-1 rounded border text-sm"
                   style={inputStyle}
                 />
@@ -319,7 +321,7 @@ export default function DefineSynopticSetDialog({ existingSet, onClose, onSaved 
                     type="button"
                     onClick={() => removeColumn(i)}
                     className="ml-auto text-red-500 hover:text-red-700 text-sm leading-none"
-                    title="Remove column"
+                    title={t("synoptic.removeColumn")}
                   >
                     ×
                   </button>
@@ -331,7 +333,7 @@ export default function DefineSynopticSetDialog({ existingSet, onClose, onSaved 
               onClick={addColumn}
               className="text-xs text-indigo-500 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 transition-colors"
             >
-              + Add column
+              {t("synoptic.addColumn")}
             </button>
           </div>
 
@@ -344,7 +346,7 @@ export default function DefineSynopticSetDialog({ existingSet, onClose, onSaved 
               className="px-3 py-1.5 rounded text-sm transition-colors"
               style={{ color: "var(--text-muted)" }}
             >
-              Cancel
+              {t("synoptic.cancel")}
             </button>
             <button
               type="submit"
@@ -352,7 +354,7 @@ export default function DefineSynopticSetDialog({ existingSet, onClose, onSaved 
               className="px-4 py-1.5 rounded text-sm font-medium transition-colors disabled:opacity-50"
               style={{ backgroundColor: "var(--accent)", color: "#fff" }}
             >
-              {isSubmitting ? "Saving…" : isEdit ? "Save Changes" : "Create Synoptic Set"}
+              {isSubmitting ? t("synoptic.saving") : isEdit ? t("synoptic.saveChanges") : t("synoptic.create")}
             </button>
           </div>
         </form>

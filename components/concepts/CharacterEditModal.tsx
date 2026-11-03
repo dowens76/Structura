@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import type { Character, BookGrouping } from "@/lib/db/schema";
 import { ColorSwatches, CorpusSelector, type CorpusAssignment } from "@/components/controls/WordTagPanel";
+import { useTranslation } from "@/lib/i18n/LocaleContext";
 
 /**
  * The same name/color/corpus editor the chapter reading view's Characters
@@ -22,6 +23,7 @@ export default function CharacterEditModal({
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const { t } = useTranslation();
   const [chars, setChars] = useState<Character[] | null>(null);
   const [bookGroupings, setBookGroupings] = useState<BookGrouping[]>([]);
   const [loading, setLoading] = useState(true);
@@ -76,9 +78,9 @@ export default function CharacterEditModal({
         </div>
 
         <div className="p-4 space-y-3">
-          {loading && <p className="text-sm" style={{ color: "var(--text-muted)" }}>Loading…</p>}
+          {loading && <p className="text-sm" style={{ color: "var(--text-muted)" }}>{t("editModal.loading")}</p>}
           {!loading && chars?.length === 0 && (
-            <p className="text-sm" style={{ color: "var(--text-muted)" }}>Character not found.</p>
+            <p className="text-sm" style={{ color: "var(--text-muted)" }}>{t("editModal.characterNotFound")}</p>
           )}
           {!loading && (chars?.length ?? 0) > 1 && (
             <p className="text-xs" style={{ color: "var(--text-muted)" }}>
@@ -111,6 +113,7 @@ function CharacterRowEditor({
   onCreateGrouping: (name: string, books: string[]) => Promise<BookGrouping>;
   onSaved: () => void;
 }) {
+  const { t } = useTranslation();
   const [name, setName] = useState(character.name);
   const [color, setColor] = useState(character.color);
   const initialCorpus: CorpusAssignment = {
@@ -122,7 +125,7 @@ function CharacterRowEditor({
   const [corpus, setCorpus] = useState<CorpusAssignment>(initialCorpus);
   const [saving, setSaving] = useState(false);
   const [justSaved, setJustSaved] = useState(false);
-  // Tracks the last-saved values so "dirty"/"Saved" reflect this save, not
+  // Tracks the last-saved values so "dirty"/t("editModal.saved") reflect this save, not
   // the modal's original snapshot (which never changes after it's fetched).
   const [savedSnapshot, setSavedSnapshot] = useState({ name: character.name, color: character.color, corpus: initialCorpus });
 
@@ -196,10 +199,10 @@ function CharacterRowEditor({
           disabled={!dirty || saving || !name.trim()}
           className="text-xs font-semibold px-2 py-1 rounded bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 transition-colors"
         >
-          {saving ? "Saving…" : "Save"}
+          {saving ? t("editModal.saving") : t("editModal.save")}
         </button>
         {justSaved && !dirty && (
-          <span className="text-xs text-green-600 dark:text-green-400">Saved</span>
+          <span className="text-xs text-green-600 dark:text-green-400">{t("editModal.saved")}</span>
         )}
       </div>
     </div>

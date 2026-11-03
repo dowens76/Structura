@@ -8,6 +8,7 @@ import Button from "@/components/ui/Button";
 import DefineSynopticSetDialog from "@/components/synoptic/DefineSynopticSetDialog";
 import { OSIS_BOOK_NAMES } from "@/lib/utils/osis";
 import type { SynopticSetWithColumns } from "@/lib/db/queries";
+import { useTranslation } from "@/lib/i18n/LocaleContext";
 
 const CORPUS_SECTIONS: { key: string; label: string }[] = [
   { key: "gospels",    label: "Gospels" },
@@ -26,6 +27,7 @@ function refText(col: SynopticSetWithColumns["columns"][number]): string {
 }
 
 export default function SynopticSetsPanel() {
+  const { t, localizeRef } = useTranslation();
   const router = useRouter();
   const [sets, setSets] = useState<SynopticSetWithColumns[]>([]);
   const [loading, setLoading] = useState(true);
@@ -55,19 +57,19 @@ export default function SynopticSetsPanel() {
 
   return (
     <PageShell
-      title="Synoptic View"
-      subtitle="Compare parallel accounts — Gospel pericopes, Kings/Chronicles, Psalm 18 / 2 Samuel 22 — side by side, with full editing and a Synoptic-comparison annotation tool."
+      title={t("synopticSets.title")}
+      subtitle={t("synopticSets.intro")}
     >
       {loading ? (
-        <p className="text-sm" style={{ color: "var(--text-muted)" }}>Loading…</p>
+        <p className="text-sm" style={{ color: "var(--text-muted)" }}>{t("synopticSets.loading")}</p>
       ) : (
         <div className="space-y-8">
-          {CORPUS_SECTIONS.map(({ key, label }) => {
+          {CORPUS_SECTIONS.map(({ key }) => {
             const inSection = sets.filter((s) => s.corpus === key);
             if (inSection.length === 0) return null;
             return (
               <div key={key}>
-                <SectionHeading size="label" className="mb-2">{label}</SectionHeading>
+                <SectionHeading size="label" className="mb-2">{t(`synopticSets.sec_${key}`)}</SectionHeading>
                 <div className="space-y-2">
                   {inSection.map((set) => (
                     <div
@@ -86,11 +88,11 @@ export default function SynopticSetsPanel() {
                               color: set.source === "seed" ? "#3b82f6" : "var(--text-muted)",
                             }}
                           >
-                            {set.source === "seed" ? "Built-in" : "Custom"}
+                            {set.source === "seed" ? t("synopticSets.builtIn") : "Custom"}
                           </span>
                         </div>
                         <p className="text-[11px] mt-0.5 truncate" style={{ color: "var(--text-muted)" }}>
-                          {set.columns.map((c) => `${c.columnLabel ?? c.label} (${refText(c)})`).join(" · ")}
+                          {set.columns.map((c) => `${c.columnLabel ?? c.label} (${localizeRef(refText(c))})`).join(" · ")}
                         </p>
                       </div>
                       <div className="shrink-0 flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
@@ -100,7 +102,7 @@ export default function SynopticSetsPanel() {
                           className="text-xs px-2 py-1 rounded transition-colors hover:opacity-80"
                           style={{ color: "var(--text-muted)" }}
                         >
-                          Edit scope
+                          {t("synopticSets.editScope")}
                         </button>
                         <button
                           type="button"
@@ -108,7 +110,7 @@ export default function SynopticSetsPanel() {
                           className="text-xs px-2 py-1 rounded transition-colors hover:text-red-500"
                           style={{ color: "var(--text-muted)" }}
                         >
-                          Delete
+                          {t("synopticSets.delete")}
                         </button>
                       </div>
                     </div>
@@ -120,12 +122,12 @@ export default function SynopticSetsPanel() {
 
           {sets.length === 0 && (
             <div className="text-center py-8" style={{ color: "var(--text-muted)" }}>
-              <p className="text-sm mb-4">No synoptic sets yet.</p>
+              <p className="text-sm mb-4">{t("synopticSets.none")}</p>
             </div>
           )}
 
           <div className="pt-2">
-            <Button onClick={() => setShowCreate(true)}>+ New Synoptic Set</Button>
+            <Button onClick={() => setShowCreate(true)}>{t("synopticSets.newSet")}</Button>
           </div>
         </div>
       )}

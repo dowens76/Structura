@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { useTranslation } from "@/lib/i18n/LocaleContext";
 
 interface TranslationDatasetLabelProps {
   /** `tv:ABBR:Book.Ch.V.wi` — a translation word's token-position id. */
@@ -37,6 +38,7 @@ export default function TranslationDatasetLabel({
   onToggleGroupMember,
   suppressValueDisplay = false,
 }: TranslationDatasetLabelProps) {
+  const { t } = useTranslation();
   const [popoverOpen, setPopoverOpen] = useState(false);
   const [draftValue, setDraftValue] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
@@ -79,7 +81,7 @@ export default function TranslationDatasetLabel({
         }
         dir={direction}
         onClick={handleLabelClick}
-        title={groupingActive ? "Click to add/remove from grouping" : "Click to edit"}
+        title={groupingActive ? t("datasetLabel.toggleGrouping") : t("datasetLabel.clickToEdit")}
       >
         {suppressValueDisplay ? "" : (value ?? "·")}
       </span>
@@ -101,7 +103,7 @@ export default function TranslationDatasetLabel({
               if (e.key === "Enter") handleSave();
               if (e.key === "Escape") setPopoverOpen(false);
             }}
-            placeholder="Enter value…"
+            placeholder={t("datasetLabel.enterValue")}
             className="rounded border px-1.5 py-0.5 text-xs outline-none w-full"
             style={{ borderColor: "var(--border)", backgroundColor: "var(--surface)", color: "var(--foreground)" }}
           />
@@ -111,13 +113,13 @@ export default function TranslationDatasetLabel({
               className="text-[10px] px-1.5 py-0.5 rounded border border-stone-200 dark:border-stone-700 hover:bg-stone-100 dark:hover:bg-stone-700"
               style={{ color: "var(--text-muted)" }}
             >
-              Clear
+              {t("datasetLabel.clear")}
             </button>
             <button
               onClick={handleSave}
               className="text-[10px] px-2 py-0.5 rounded bg-blue-600 text-white"
             >
-              Save
+              {t("datasetLabel.save")}
             </button>
           </span>
         </span>

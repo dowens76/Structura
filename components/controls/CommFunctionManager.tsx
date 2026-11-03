@@ -6,6 +6,7 @@ import {
   useCommFunctionCustoms,
   type CommFunctionCategoryKey,
 } from "@/components/text/CommunicativeFunctionPicker";
+import { useTranslation } from "@/lib/i18n/LocaleContext";
 
 /** Inline rename form for an existing custom entry. */
 function RenameForm({
@@ -17,6 +18,7 @@ function RenameForm({
   onSubmit: (label: string) => Promise<void>;
   onCancel: () => void;
 }) {
+  const { t } = useTranslation();
   const [label, setLabel] = useState(initial);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -28,7 +30,7 @@ function RenameForm({
     try {
       await onSubmit(label.trim());
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to save — please try again.");
+      setError(e instanceof Error ? e.message : t("commManager.saveFailed"));
     } finally {
       setSaving(false);
     }
@@ -55,14 +57,14 @@ function RenameForm({
           onClick={submit}
           className="text-[11px] px-1.5 py-0.5 rounded bg-indigo-600 text-white disabled:opacity-40"
         >
-          {saving ? "Saving…" : "Save"}
+          {saving ? t("commManager.saving") : t("commManager.save")}
         </button>
         <button
           type="button"
           onClick={onCancel}
           className="text-[11px] px-1.5 py-0.5 rounded bg-stone-200 dark:bg-stone-700 text-stone-600 dark:text-stone-300"
         >
-          Cancel
+          {t("commManager.cancel")}
         </button>
       </div>
       {error && <p className="text-[10px] text-red-500">{error}</p>}
@@ -78,6 +80,7 @@ function AddForm({
   onSubmit: (label: string) => Promise<void>;
   onCancel: () => void;
 }) {
+  const { t } = useTranslation();
   const [label, setLabel] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -89,7 +92,7 @@ function AddForm({
     try {
       await onSubmit(label.trim());
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to add — please try again.");
+      setError(e instanceof Error ? e.message : t("commManager.addFailed"));
     } finally {
       setSaving(false);
     }
@@ -101,7 +104,7 @@ function AddForm({
         <input
           autoFocus
           type="text"
-          placeholder="New function name"
+          placeholder={t("commManager.newName")}
           value={label}
           onChange={(e) => setLabel(e.target.value)}
           onKeyDown={(e) => {
@@ -117,14 +120,14 @@ function AddForm({
           onClick={submit}
           className="text-[11px] px-1.5 py-0.5 rounded bg-indigo-600 text-white disabled:opacity-40"
         >
-          {saving ? "Adding…" : "Add"}
+          {saving ? t("commManager.adding") : t("commManager.add")}
         </button>
         <button
           type="button"
           onClick={onCancel}
           className="text-[11px] px-1.5 py-0.5 rounded bg-stone-200 dark:bg-stone-700 text-stone-600 dark:text-stone-300"
         >
-          Cancel
+          {t("commManager.cancel")}
         </button>
       </div>
       {error && <p className="text-[10px] text-red-500">{error}</p>}
@@ -133,6 +136,7 @@ function AddForm({
 }
 
 export default function CommFunctionManager({ onClose }: { onClose: () => void }) {
+  const { t } = useTranslation();
   const { entries, addCustom, updateCustom, deleteCustom } = useCommFunctionCustoms();
   const [editingId, setEditingId] = useState<number | null>(null);
   const [addingCat, setAddingCat] = useState<CommFunctionCategoryKey | null>(null);
@@ -149,7 +153,7 @@ export default function CommFunctionManager({ onClose }: { onClose: () => void }
     try {
       await deleteCustom(id);
     } catch (e) {
-      setDeleteError(e instanceof Error ? e.message : "Failed to delete — please try again.");
+      setDeleteError(e instanceof Error ? e.message : t("commManager.deleteFailed"));
     }
   }
 
@@ -172,14 +176,14 @@ export default function CommFunctionManager({ onClose }: { onClose: () => void }
           style={{ borderColor: "var(--border)" }}
         >
           <h2 className="text-base font-semibold" style={{ color: "var(--foreground)" }}>
-            Manage Communicative Functions
+            {t("commManager.title")}
           </h2>
           <button
             type="button"
             onClick={onClose}
             className="text-xl leading-none opacity-50 hover:opacity-100 transition-opacity"
             style={{ color: "var(--foreground)" }}
-            aria-label="Close"
+            aria-label={t("commManager.close")}
           >
             ×
           </button>
@@ -197,15 +201,15 @@ export default function CommFunctionManager({ onClose }: { onClose: () => void }
                   className="text-[11px] font-semibold uppercase tracking-wide mb-1.5"
                   style={{ color: "var(--text-muted)" }}
                 >
-                  {cat.label}
+                  {t(`commFunctions.${catKey}.label`)}
                 </div>
                 <div className="flex flex-wrap gap-1.5">
-                  {Object.values(cat.children).map((label) => (
+                  {Object.keys(cat.children).map((leafKey) => (
                     <span
-                      key={label}
+                      key={leafKey}
                       className="text-[11px] px-2 py-0.5 rounded bg-stone-100 dark:bg-stone-800 text-stone-500 dark:text-stone-400"
                     >
-                      {label}
+                      {t(`commFunctions.${catKey}.${leafKey}`)}
                     </span>
                   ))}
                   {customForCat.map((entry) =>
@@ -226,7 +230,7 @@ export default function CommFunctionManager({ onClose }: { onClose: () => void }
                           type="button"
                           onClick={() => setEditingId(entry.id)}
                           className="opacity-0 group-hover:opacity-100 hover:text-indigo-900 dark:hover:text-indigo-100 transition-opacity"
-                          title="Edit"
+                          title={t("commManager.edit")}
                         >
                           ✎
                         </button>
@@ -234,7 +238,7 @@ export default function CommFunctionManager({ onClose }: { onClose: () => void }
                           type="button"
                           onClick={() => handleDelete(entry.id)}
                           className="opacity-0 group-hover:opacity-100 hover:text-red-500 transition-opacity"
-                          title="Delete"
+                          title={t("commManager.delete")}
                         >
                           ×
                         </button>
@@ -254,7 +258,7 @@ export default function CommFunctionManager({ onClose }: { onClose: () => void }
                     onClick={() => { setAddingCat(catKey); setEditingId(null); }}
                     className="mt-1 text-[10px] text-indigo-500 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 transition-colors"
                   >
-                    + Add
+                    {t("commManager.addNew")}
                   </button>
                 )}
               </div>

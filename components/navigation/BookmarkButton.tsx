@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { OSIS_BOOK_ORDER, OSIS_REF_BOOK_NAMES } from "@/lib/utils/osis";
+import { useTranslation } from "@/lib/i18n/LocaleContext";
 
 export interface BookmarkView {
   translations: string[];
@@ -111,6 +112,7 @@ export default function BookmarkButton({ href, label, buttonLabel, variant = "ic
   const [sortOrder, setSortOrder] = useState<SortOrder>("time");
   const dropdownRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
+  const { t, localizeRef } = useTranslation();
 
   const refreshBookmarks = useCallback(async () => {
     const bm = await fetchBookmarks();
@@ -215,19 +217,19 @@ export default function BookmarkButton({ href, label, buttonLabel, variant = "ic
     <div className="relative" ref={dropdownRef}>
       <button
         onClick={toggleOpen}
-        title={isBookmarked ? "Bookmarks (this page is bookmarked)" : "Bookmarks"}
+        title={isBookmarked ? t("bookmarks.titleBookmarked") : t("bookmarks.title")}
         className={isBordered
           ? "text-xs px-3 py-1.5 rounded border font-medium transition-colors flex items-center gap-1"
           : "px-1.5 py-1 rounded text-sm transition-colors"}
         style={isBordered
           ? { borderColor, backgroundColor: "var(--surface)", color: isBookmarked ? "var(--accent)" : "var(--foreground)" }
           : { color: isBookmarked ? "var(--accent)" : fg }}
-        aria-label="Bookmarks"
+        aria-label={t("bookmarks.title")}
       >
         {isBordered ? (
           <>
             <span>{isBookmarked ? "★" : "☆"}</span>
-            <span>Bookmarks</span>
+            <span>{t("bookmarks.title")}</span>
             <span className="text-[10px] opacity-60">{open ? "▲" : "▼"}</span>
           </>
         ) : (
@@ -251,7 +253,7 @@ export default function BookmarkButton({ href, label, buttonLabel, variant = "ic
                   style={{ color: fg }}
                 >
                   <span style={{ color: "var(--accent)" }}>★</span>
-                  <span>Remove bookmark for this page</span>
+                  <span>{t("bookmarks.removeThisPage")}</span>
                 </button>
               ) : (
                 <button
@@ -260,7 +262,7 @@ export default function BookmarkButton({ href, label, buttonLabel, variant = "ic
                   style={{ color: fg }}
                 >
                   <span>☆</span>
-                  <span>Bookmark this page</span>
+                  <span>{t("bookmarks.addThisPage")}</span>
                 </button>
               )}
             </div>
@@ -268,7 +270,7 @@ export default function BookmarkButton({ href, label, buttonLabel, variant = "ic
 
           {bookmarks.length === 0 ? (
             <p className="px-3 py-3 text-xs" style={{ color: mutedFg }}>
-              No bookmarks yet.
+              {t("bookmarks.none")}
             </p>
           ) : (
             <>
@@ -276,23 +278,23 @@ export default function BookmarkButton({ href, label, buttonLabel, variant = "ic
                 className="flex items-center justify-end gap-1 px-3 py-1.5 border-b"
                 style={{ borderColor }}
               >
-                <span className="text-[10px]" style={{ color: mutedFg }}>Sort:</span>
+                <span className="text-[10px]" style={{ color: mutedFg }}>{t("bookmarks.sort")}</span>
                 <button
                   onClick={toggleSortOrder}
                   className="text-[10px] px-1.5 py-0.5 rounded transition-colors"
                   style={{ color: sortOrder === "time" ? "var(--accent)" : mutedFg, fontWeight: sortOrder === "time" ? 600 : 400 }}
-                  title="Sort by time added (newest first)"
+                  title={t("bookmarks.titleSortRecent")}
                 >
-                  Recent
+                  {t("bookmarks.recent")}
                 </button>
                 <span style={{ color: borderColor }}>·</span>
                 <button
                   onClick={toggleSortOrder}
                   className="text-[10px] px-1.5 py-0.5 rounded transition-colors"
                   style={{ color: sortOrder === "canonical" ? "var(--accent)" : mutedFg, fontWeight: sortOrder === "canonical" ? 600 : 400 }}
-                  title="Sort by canonical book order"
+                  title={t("bookmarks.titleSortCanonical")}
                 >
-                  Canonical
+                  {t("bookmarks.canonical")}
                 </button>
               </div>
               <ul className="max-h-72 overflow-y-auto">
@@ -302,9 +304,9 @@ export default function BookmarkButton({ href, label, buttonLabel, variant = "ic
                       onClick={() => navigateToBookmark(bm)}
                       className="flex-1 text-left px-1 py-1 rounded text-xs truncate transition-colors"
                       style={{ color: bm.href === href ? "var(--accent)" : fg }}
-                      title={bm.label + (bm.view.translations.length ? ` · ${bm.view.translations.join(", ")}` : "")}
+                      title={localizeRef(bm.label) + (bm.view.translations.length ? ` · ${bm.view.translations.join(", ")}` : "")}
                     >
-                      <span className="font-medium">{bm.label}</span>
+                      <span className="font-medium">{localizeRef(bm.label)}</span>
                       {bm.view.translations.length > 0 && (
                         <span className="ml-1.5 text-[10px]" style={{ color: mutedFg }}>
                           {bm.view.translations.join(", ")}
@@ -315,8 +317,8 @@ export default function BookmarkButton({ href, label, buttonLabel, variant = "ic
                       onClick={() => deleteBookmark(bm.id)}
                       className="opacity-0 group-hover:opacity-100 px-1 py-0.5 rounded text-xs transition-opacity"
                       style={{ color: mutedFg }}
-                      title="Remove bookmark"
-                      aria-label="Remove bookmark"
+                      title={t("bookmarks.remove")}
+                      aria-label={t("bookmarks.remove")}
                     >
                       ✕
                     </button>

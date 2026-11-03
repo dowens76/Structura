@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useSynopticCategories } from "@/lib/hooks/useSynopticCategories";
 import { ANNOTATION_PALETTE } from "@/lib/utils/annotations";
 import type { SynopticCategoryType } from "@/lib/db/schema";
+import { useTranslation } from "@/lib/i18n/LocaleContext";
 
 function SwatchGrid({ value, onChange }: { value: string; onChange: (c: string) => void }) {
   return (
@@ -42,6 +43,7 @@ function EditForm({
   onSubmit: (label: string, color: string) => Promise<void>;
   onCancel: () => void;
 }) {
+  const { t } = useTranslation();
   const [label, setLabel] = useState(initialLabel);
   const [color, setColor] = useState(initialColor);
   const [error, setError] = useState<string | null>(null);
@@ -54,7 +56,7 @@ function EditForm({
     try {
       await onSubmit(label.trim(), color);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to save — please try again.");
+      setError(e instanceof Error ? e.message : t("synopticCats.saveFailed"));
     } finally {
       setSaving(false);
     }
@@ -81,14 +83,14 @@ function EditForm({
           onClick={submit}
           className="text-[11px] px-1.5 py-0.5 rounded bg-indigo-600 text-white disabled:opacity-40"
         >
-          {saving ? "Saving…" : "Save"}
+          {saving ? t("synopticCats.saving") : t("synopticCats.save")}
         </button>
         <button
           type="button"
           onClick={onCancel}
           className="text-[11px] px-1.5 py-0.5 rounded bg-stone-200 dark:bg-stone-700 text-stone-600 dark:text-stone-300"
         >
-          Cancel
+          {t("synopticCats.cancel")}
         </button>
       </div>
       <SwatchGrid value={color} onChange={setColor} />
@@ -99,6 +101,7 @@ function EditForm({
 
 /** Inline add-new-category form. */
 function AddForm({ onSubmit, onCancel }: { onSubmit: (label: string, color: string) => Promise<void>; onCancel: () => void }) {
+  const { t } = useTranslation();
   const [label, setLabel] = useState("");
   const [color, setColor] = useState<string>(ANNOTATION_PALETTE[0]);
   const [error, setError] = useState<string | null>(null);
@@ -111,7 +114,7 @@ function AddForm({ onSubmit, onCancel }: { onSubmit: (label: string, color: stri
     try {
       await onSubmit(label.trim(), color);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to add — please try again.");
+      setError(e instanceof Error ? e.message : t("synopticCats.addFailed"));
     } finally {
       setSaving(false);
     }
@@ -123,7 +126,7 @@ function AddForm({ onSubmit, onCancel }: { onSubmit: (label: string, color: stri
         <input
           autoFocus
           type="text"
-          placeholder="New category name"
+          placeholder={t("synopticCats.newName")}
           value={label}
           onChange={(e) => setLabel(e.target.value)}
           onKeyDown={(e) => {
@@ -139,14 +142,14 @@ function AddForm({ onSubmit, onCancel }: { onSubmit: (label: string, color: stri
           onClick={submit}
           className="text-[11px] px-1.5 py-0.5 rounded bg-indigo-600 text-white disabled:opacity-40"
         >
-          {saving ? "Adding…" : "Add"}
+          {saving ? t("synopticCats.adding") : t("synopticCats.add")}
         </button>
         <button
           type="button"
           onClick={onCancel}
           className="text-[11px] px-1.5 py-0.5 rounded bg-stone-200 dark:bg-stone-700 text-stone-600 dark:text-stone-300"
         >
-          Cancel
+          {t("synopticCats.cancel")}
         </button>
       </div>
       <SwatchGrid value={color} onChange={setColor} />
@@ -163,6 +166,7 @@ function AddForm({ onSubmit, onCancel }: { onSubmit: (label: string, color: stri
  * ordinary editable DB row (see synopticCategoryTypes in lib/db/user-schema.ts).
  */
 export default function SynopticCategoryManager({ onClose }: { onClose: () => void }) {
+  const { t } = useTranslation();
   const { categories, addCategory, updateCategory, deleteCategory, reorderCategories } = useSynopticCategories();
   const [editingId, setEditingId] = useState<number | null>(null);
   const [adding, setAdding] = useState(false);
@@ -186,7 +190,7 @@ export default function SynopticCategoryManager({ onClose }: { onClose: () => vo
     try {
       await deleteCategory(id);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to delete — please try again.");
+      setError(e instanceof Error ? e.message : t("synopticCats.deleteFailed"));
     }
   }
 
@@ -214,7 +218,7 @@ export default function SynopticCategoryManager({ onClose }: { onClose: () => vo
     try {
       await reorderCategories(order.map((c) => c.id));
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to save order — please try again.");
+      setError(e instanceof Error ? e.message : t("synopticCats.orderFailed"));
     }
   }
 
@@ -231,14 +235,14 @@ export default function SynopticCategoryManager({ onClose }: { onClose: () => vo
       >
         <div className="shrink-0 flex items-center justify-between px-5 py-4 border-b" style={{ borderColor: "var(--border)" }}>
           <h2 className="text-base font-semibold" style={{ color: "var(--foreground)" }}>
-            Manage Synoptic Categories
+            {t("synopticCats.title")}
           </h2>
           <button
             type="button"
             onClick={onClose}
             className="text-xl leading-none opacity-50 hover:opacity-100 transition-opacity"
             style={{ color: "var(--foreground)" }}
-            aria-label="Close"
+            aria-label={t("synopticCats.close")}
           >
             ×
           </button>
@@ -272,7 +276,7 @@ export default function SynopticCategoryManager({ onClose }: { onClose: () => vo
                   type="button"
                   onClick={() => setEditingId(cat.id)}
                   className="opacity-0 group-hover:opacity-100 hover:text-indigo-600 dark:hover:text-indigo-400 transition-opacity text-[11px]"
-                  title="Edit"
+                  title={t("synopticCats.edit")}
                 >
                   ✎
                 </button>
@@ -280,7 +284,7 @@ export default function SynopticCategoryManager({ onClose }: { onClose: () => vo
                   type="button"
                   onClick={() => handleDelete(cat.id)}
                   className="opacity-0 group-hover:opacity-100 hover:text-red-500 transition-opacity text-[11px]"
-                  title="Delete"
+                  title={t("synopticCats.delete")}
                 >
                   ×
                 </button>
@@ -299,7 +303,7 @@ export default function SynopticCategoryManager({ onClose }: { onClose: () => vo
               onClick={() => setAdding(true)}
               className="mt-1 text-[11px] text-indigo-500 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 transition-colors"
             >
-              + Add category
+              {t("synopticCats.addCategory")}
             </button>
           )}
         </div>

@@ -6,6 +6,7 @@ import {
   TAG_PALETTE, ColorSwatches, CorpusSelector, LemmaPickerInput,
   type CorpusAssignment, type CorpusPassageOption,
 } from "./WordTagPanel";
+import { useTranslation } from "@/lib/i18n/LocaleContext";
 
 const DEFAULT_CORPUS: CorpusAssignment = { mode: "book", groupingId: null, chapter: null, passageId: null };
 
@@ -53,6 +54,7 @@ export default function CharacterPanel({
   onRequestWordClick,
   onCancelWordClick,
 }: CharacterPanelProps) {
+  const { t } = useTranslation();
   const [showNew, setShowNew] = useState(false);
   const [newName, setNewName] = useState("");
   const [newColor, setNewColor] = useState(TAG_PALETTE[0]);
@@ -174,7 +176,7 @@ export default function CharacterPanel({
         className="text-[10px] font-semibold uppercase tracking-wider shrink-0"
         style={{ color: "var(--text-muted)" }}
       >
-        {mode === "refs" ? "Refs" : "Speech"}
+        {mode === "refs" ? t("characterPanel.refs") : t("characterPanel.speech")}
       </span>
 
       <div className="w-px h-4 shrink-0" style={{ backgroundColor: "var(--border)" }} />
@@ -183,7 +185,7 @@ export default function CharacterPanel({
       <button
         type="button"
         onClick={openReorder}
-        title="Reorder characters"
+        title={t("characterPanel.reorder")}
         className="shrink-0 p-1 rounded text-xs transition-colors hover:bg-stone-100 dark:hover:bg-stone-800"
         style={{ color: "var(--text-muted)" }}
       >
@@ -250,7 +252,7 @@ export default function CharacterPanel({
                   disabled={!editName.trim()}
                   className="text-xs font-semibold px-1.5 py-0.5 rounded bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 transition-colors"
                 >
-                  Save
+                  {t("characterPanel.save")}
                 </button>
                 <button
                   type="button"
@@ -258,7 +260,7 @@ export default function CharacterPanel({
                   className="text-xs px-1 py-0.5 rounded hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors"
                   style={{ color: "var(--text-muted)" }}
                 >
-                  Cancel
+                  {t("characterPanel.cancel")}
                 </button>
               </div>
             </div>
@@ -287,12 +289,12 @@ export default function CharacterPanel({
               /* Inline delete confirmation */
               <>
                 <span className="text-xs font-medium text-red-600 dark:text-red-400 shrink-0">
-                  Delete?
+                  {t("characterPanel.deleteQ")}
                 </span>
                 <span
                   role="button"
                   className="text-green-600 dark:text-green-400 hover:text-green-700 font-bold text-sm leading-none px-0.5 transition-colors"
-                  title="Confirm delete"
+                  title={t("characterPanel.confirmDelete")}
                   onClick={(e) => { e.stopPropagation(); onDeleteCharacter(c.id); setConfirmDeleteId(null); }}
                 >
                   ✓
@@ -300,7 +302,7 @@ export default function CharacterPanel({
                 <span
                   role="button"
                   className="text-stone-400 hover:text-stone-600 dark:hover:text-stone-300 text-sm leading-none px-0.5 transition-colors"
-                  title="Cancel"
+                  title={t("characterPanel.cancel")}
                   onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(null); }}
                 >
                   ✕
@@ -331,7 +333,7 @@ export default function CharacterPanel({
                         : "text-stone-300 hover:text-amber-400",
                     ].join(" ")}
                     onClick={(e) => { e.stopPropagation(); onToggleHighlight(c.id); }}
-                    title={isHighlighted ? "Remove highlight" : "Highlight all occurrences"}
+                    title={isHighlighted ? t("characterPanel.removeHighlight") : t("characterPanel.highlightAll")}
                     aria-label={isHighlighted ? `Remove highlight for ${c.name}` : `Highlight ${c.name}`}
                   >
                     ✦
@@ -361,7 +363,7 @@ export default function CharacterPanel({
           className="flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium border border-dashed transition-colors shrink-0 hover:border-blue-400 hover:text-blue-500"
           style={{ borderColor: "var(--border)", color: "var(--text-muted)" }}
         >
-          + New
+          {t("characterPanel.new")}
         </button>
       ) : (
         <div
@@ -375,7 +377,7 @@ export default function CharacterPanel({
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") handleCreate(); if (e.key === "Escape") setShowNew(false); }}
-            placeholder="Name"
+            placeholder={t("characterPanel.name")}
             className="w-full text-xs bg-transparent outline-none border-b pb-0.5"
             style={{ borderColor: "var(--border)", color: "var(--foreground)" }}
           />
@@ -410,7 +412,7 @@ export default function CharacterPanel({
               disabled={!newName.trim()}
               className="text-xs font-semibold px-2 py-0.5 rounded bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 transition-colors"
             >
-              Create
+              {t("characterPanel.create")}
             </button>
             <button
               type="button"
@@ -418,7 +420,7 @@ export default function CharacterPanel({
               className="text-xs px-1.5 py-0.5 rounded hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors"
               style={{ color: "var(--text-muted)" }}
             >
-              Cancel
+              {t("characterPanel.cancel")}
             </button>
           </div>
         </div>
@@ -434,7 +436,7 @@ export default function CharacterPanel({
         >
           <div className="flex items-center justify-between mb-2">
             <span className="text-xs font-semibold" style={{ color: "var(--foreground)" }}>
-              Reorder Characters
+              {t("characterPanel.reorderTitle")}
             </span>
             <button
               type="button"
@@ -472,14 +474,14 @@ export default function CharacterPanel({
               className="text-xs px-2 py-1 rounded hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors"
               style={{ color: "var(--text-muted)" }}
             >
-              Cancel
+              {t("characterPanel.cancel")}
             </button>
             <button
               type="button"
               onClick={handleSaveReorder}
               className="text-xs font-semibold px-2.5 py-1 rounded bg-blue-600 text-white hover:bg-blue-700 transition-colors"
             >
-              Save order
+              {t("characterPanel.saveOrder")}
             </button>
           </div>
         </div>
