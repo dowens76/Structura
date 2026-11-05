@@ -1356,9 +1356,13 @@ export async function replaceChapterSpeechSections(
       eq(speechSections.textSource, textSource)
     )
   ));
-  if (sections.length > 0) {
+  // Only this chapter's sections belong here. A passage-view undo used to send
+  // its whole multi-chapter list, which re-inserted other chapters' boxes
+  // under THIS chapter's version_id (duplicates no view ever shows).
+  const own = sections.filter((s) => s.book === book && s.chapter === chapter && s.textSource === textSource);
+  if (own.length > 0) {
     await withWriteRetry(() => userDb.insert(speechSections).values(
-      sections.map((s) => ({
+      own.map((s) => ({
         characterId: s.characterId,
         startWordId: s.startWordId,
         endWordId: s.endWordId,
@@ -2847,13 +2851,25 @@ export async function getVersionsForLocus(workspaceId: number, book: string, cha
  * row if none exists yet (e.g. a chapter nobody has annotated before).
  */
 export async function getOrCreateDefaultVersion(workspaceId: number, book: string, chapter: number): Promise<number> {
-  const existing = await getVersionsForLocus(workspaceId, book, chapter);
-  if (existing.length > 0) return existing[0].id;
-  const [row] = await userDb
-    .insert(versions)
-    .values({ workspaceId, book, chapter, name: "Version 1", sortOrder: 0 })
-    .returning({ id: versions.id });
-  return row.id;
+  // The check and the insert MUST run as one synchronous IMMEDIATE transaction.
+  // With an `await` between them, concurrent requests for the same locus (a
+  // passage page resolves every chapter's version in parallel, and several
+  // API routes do too) each saw "no version yet" and each inserted their own
+  // "Version 1" — leaving 2–3 duplicate default versions per chapter.
+  const sqlite = getUserSqlite();
+  const getOrCreate = sqlite.transaction((): number => {
+    const existing = sqlite
+      .prepare(
+        "SELECT id FROM versions WHERE workspace_id = ? AND book = ? AND chapter = ? ORDER BY sort_order ASC, id ASC LIMIT 1"
+      )
+      .get(workspaceId, book, chapter) as { id: number } | undefined;
+    if (existing) return existing.id;
+    const info = sqlite
+      .prepare("INSERT INTO versions (workspace_id, book, chapter, name, sort_order) VALUES (?, ?, ?, 'Version 1', 0)")
+      .run(workspaceId, book, chapter);
+    return Number(info.lastInsertRowid);
+  });
+  return withWriteRetry(() => getOrCreate.immediate());
 }
 
 /** The version currently selected for a locus, or null if none has been chosen yet. */

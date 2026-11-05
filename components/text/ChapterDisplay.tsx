@@ -3764,25 +3764,47 @@ export default function ChapterDisplay({
     }
   }
 
+  // ── Speech-section helpers ───────────────────────────────────────────────
+  // Every speech-sections API response is the list for ONE chapter, but in a
+  // multi-chapter passage view `speechSections` holds every chapter's boxes.
+  // Replacing the whole state with a single-chapter response made every box
+  // in the other chapters disappear (and fed that truncated list into undo
+  // snapshots, which then wrote it back to the DB). Always splice a chapter's
+  // response into just that chapter's slice of state.
+  const inChapter = (s: SpeechSection, b: string, c: number) => s.book === b && s.chapter === c;
+  function mergeChapterSpeech(b: string, c: number, chapterSections: SpeechSection[]) {
+    setSpeechSections((prev) => [...prev.filter((s) => !inChapter(s, b, c)), ...chapterSections]);
+  }
+  /** Undo action restoring the given chapters to their state in `before`. */
+  function pushSpeechUndo(label: string, before: SpeechSection[], chapters: { book: string; chapter: number }[]) {
+    pushUndo({
+      label,
+      undo: async () => {
+        for (const { book: b, chapter: c } of chapters) {
+          const chapterBefore = before.filter((s) => inChapter(s, b, c));
+          mergeChapterSpeech(b, c, chapterBefore);
+          try {
+            const res = await fetch("/api/speech-sections", {
+              method: "PUT",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ book: b, chapter: c, source: textSource, sections: chapterBefore }),
+            });
+            const data = await res.json();
+            if (res.ok && data.sections) mergeChapterSpeech(b, c, data.sections);
+          } catch { /* best effort */ }
+        }
+      },
+    });
+  }
+
   async function handleReassignSpeechSection(sectionId: number, newCharId: number) {
     const section = speechSections.find((s) => s.id === sectionId);
     if (!section || section.characterId === newCharId) return;
-    const { book: refBook, chapter: refChapter } = getWordLocation(section.startWordId);
+    const refBook = section.book;
+    const refChapter = section.chapter;
 
     const beforeSections = [...speechSections];
-    pushUndo({
-      label: t("chapter.reassignSpeech"),
-      undo: async () => {
-        setSpeechSections(beforeSections);
-        try {
-          await fetch("/api/speech-sections", {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ book: refBook, chapter: refChapter, source: textSource, sections: beforeSections }),
-          });
-        } catch { /* best effort */ }
-      },
-    });
+    pushSpeechUndo(t("chapter.reassignSpeech"), beforeSections, [{ book: refBook, chapter: refChapter }]);
 
     // Optimistic update
     setSpeechSections((prev) =>
@@ -3795,8 +3817,10 @@ export default function ChapterDisplay({
         body: JSON.stringify({ sectionId, characterId: newCharId, book: refBook, chapter: refChapter, source: textSource }),
       });
       const data = await res.json();
-      setSpeechSections(data.sections);
-    } catch {
+      if (!res.ok || !data.sections) throw new Error(data?.error ?? `HTTP ${res.status}`);
+      mergeChapterSpeech(refBook, refChapter, data.sections);
+    } catch (e) {
+      console.error("[handleReassignSpeechSection] save failed:", e);
       setSpeechSections(beforeSections);
     }
   }
@@ -3804,22 +3828,11 @@ export default function ChapterDisplay({
   async function handleDeleteSpeechSection(sectionId: number) {
     const section = speechSections.find((s) => s.id === sectionId);
     if (!section) return;
-    const { book: refBook, chapter: refChapter } = getWordLocation(section.startWordId);
+    const refBook = section.book;
+    const refChapter = section.chapter;
 
     const beforeSections = [...speechSections];
-    pushUndo({
-      label: t("chapter.deleteSpeech"),
-      undo: async () => {
-        setSpeechSections(beforeSections);
-        try {
-          await fetch("/api/speech-sections", {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ book: refBook, chapter: refChapter, source: textSource, sections: beforeSections }),
-          });
-        } catch { /* best effort */ }
-      },
-    });
+    pushSpeechUndo(t("chapter.deleteSpeech"), beforeSections, [{ book: refBook, chapter: refChapter }]);
 
     setSpeechSections((prev) => prev.filter((s) => s.id !== sectionId));
     try {
@@ -3829,8 +3842,10 @@ export default function ChapterDisplay({
         body: JSON.stringify({ wordId: section.startWordId, book: refBook, chapter: refChapter, source: textSource }),
       });
       const data = await res.json();
-      setSpeechSections(data.sections);
-    } catch {
+      if (!res.ok || !data.sections) throw new Error(data?.error ?? `HTTP ${res.status}`);
+      mergeChapterSpeech(refBook, refChapter, data.sections);
+    } catch (e) {
+      console.error("[handleDeleteSpeechSection] save failed:", e);
       setSpeechSections(beforeSections);
     }
   }
@@ -3880,53 +3895,67 @@ export default function ChapterDisplay({
     }
 
     setSpeechRangeStart(null);
-    const { book: refBook, chapter: refChapter } = getWordLocation(orderedStart);
+
+    // A speech section is stored per chapter (the server resolves both ends
+    // against that chapter's words and silently ignored a range whose end lay
+    // in another chapter). In a passage view, split a cross-chapter range into
+    // one section per chapter so every part is actually saved.
+    const lo = posMap.get(orderedStart);
+    const hi = posMap.get(orderedEnd);
+    const pieces: { book: string; chapter: number; startWordId: string; endWordId: string }[] = [];
+    if (lo == null || hi == null) {
+      pieces.push({ ...getWordLocation(orderedStart), startWordId: orderedStart, endWordId: orderedEnd });
+    } else {
+      for (let i = lo; i <= hi; i++) {
+        const loc = getWordLocation(words[i].wordId);
+        const last = pieces[pieces.length - 1];
+        if (last && last.book === loc.book && last.chapter === loc.chapter) {
+          last.endWordId = words[i].wordId;
+        } else {
+          pieces.push({ ...loc, startWordId: words[i].wordId, endWordId: words[i].wordId });
+        }
+      }
+    }
 
     // Snapshot before create (for undo)
     const beforeSections = [...speechSections];
-    pushUndo({
-      label: t("chapter.addSpeech"),
-      undo: async () => {
-        setSpeechSections(beforeSections);
-        try {
-          await fetch("/api/speech-sections", {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ book: refBook, chapter: refChapter, source: textSource, sections: beforeSections }),
-          });
-        } catch { /* best effort */ }
-      },
-    });
+    pushSpeechUndo(t("chapter.addSpeech"), beforeSections, pieces.map(({ book: b, chapter: c }) => ({ book: b, chapter: c })));
 
-    // Optimistic: add a temporary section
-    const tempSection: SpeechSection = {
-      id: Date.now(), characterId: activeCharId,
-      startWordId: orderedStart, endWordId: orderedEnd,
-      textSource, book: refBook, chapter: refChapter, workspaceId: 0, versionId: 0,
-    };
-    setSpeechSections((prev) => [...prev, tempSection]);
+    // Optimistic: add temporary sections
+    const tempBase = Date.now();
+    setSpeechSections((prev) => [
+      ...prev,
+      ...pieces.map((p, i): SpeechSection => ({
+        id: tempBase + i, characterId: activeCharId,
+        startWordId: p.startWordId, endWordId: p.endWordId,
+        textSource, book: p.book, chapter: p.chapter, workspaceId: 0, versionId: 0,
+      })),
+    ]);
 
-    try {
-      const res = await fetch("/api/speech-sections", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          characterId: activeCharId,
-          startWordId: orderedStart,
-          endWordId: orderedEnd,
-          book: refBook, chapter: refChapter, source: textSource,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok || !data.sections) {
-        console.error("[handleToggleSpeechSection] save failed:", res.status, data?.error);
+    for (const p of pieces) {
+      try {
+        const res = await fetch("/api/speech-sections", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            characterId: activeCharId,
+            startWordId: p.startWordId,
+            endWordId: p.endWordId,
+            book: p.book, chapter: p.chapter, source: textSource,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok || !data.sections) {
+          console.error("[handleToggleSpeechSection] save failed:", res.status, data?.error);
+          setSpeechSections(beforeSections);
+          return;
+        }
+        mergeChapterSpeech(p.book, p.chapter, data.sections);
+      } catch (e) {
+        console.error("[handleToggleSpeechSection] network error:", e);
         setSpeechSections(beforeSections);
         return;
       }
-      setSpeechSections(data.sections);
-    } catch (e) {
-      console.error("[handleToggleSpeechSection] network error:", e);
-      setSpeechSections(beforeSections);
     }
   }
 

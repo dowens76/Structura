@@ -46,7 +46,11 @@ const REQUIRED_TABLES = [
 // Restored opportunistically when present, but not required — lets older
 // backups taken before this table existed still restore successfully.
 // Holds Zotero/api.bible credentials, font settings, hidden sources, etc.
-const OPTIONAL_TABLES = ["app_settings", "synoptic_sets", "synoptic_category_types", "synoptic_word_marks", "line_groups", "horizontal_lines", "translation_headings"];
+const OPTIONAL_TABLES = ["app_settings", "synoptic_sets", "synoptic_category_types", "synoptic_word_marks", "line_groups", "horizontal_lines", "translation_headings", "versions", "active_version_selections"];
+
+// Never restored: per-machine settings (e.g. the auto-backup folder path),
+// which belong to the machine doing the restore, not the one that made the backup.
+const RESTORE_EXCLUDED_TABLES = new Set(["auto_backup_settings"]);
 
 // ── POST /api/backup ───────────────────────────────────────────────────────────
 // Accepts a multipart form upload of a .db file. Validates it is a Structura
@@ -107,10 +111,21 @@ export async function POST(request: NextRequest) {
     userSqlite.exec(`ATTACH DATABASE '${safeTmpPath}' AS restore_src`);
 
     try {
-      // Only restore optional tables that actually exist in the uploaded file —
-      // lets backups taken before a given optional table existed still restore.
-      const optionalTablesPresent = OPTIONAL_TABLES.filter((t) => presentTables.has(t));
-      const tablesToRestore = [...REQUIRED_TABLES, ...optionalTablesPresent];
+      // Restore every user table present in BOTH the backup and the current
+      // schema, not just a hand-maintained list. A fixed list silently dropped
+      // any table added later (versions, active_version_selections,
+      // poetry_notations, text_critical_marks, translation_footnotes, …) —
+      // and since every annotation row carries a version_id, omitting
+      // `versions` alone orphaned ALL restored annotations, so nothing showed.
+      // Tables absent from an older backup are left untouched.
+      const currentTables = new Set(
+        (userSqlite.prepare(
+          "SELECT name FROM main.sqlite_master WHERE type = 'table'"
+        ).all() as { name: string }[]).map((r) => r.name)
+      );
+      const tablesToRestore = [...new Set([...REQUIRED_TABLES, ...OPTIONAL_TABLES, ...presentTables])]
+        .filter((t) => presentTables.has(t) && currentTables.has(t))
+        .filter((t) => !t.startsWith("sqlite_") && !t.startsWith("__") && !RESTORE_EXCLUDED_TABLES.has(t));
 
       const doRestore = userSqlite.transaction(() => {
         // Delete existing data (FK is OFF so order doesn't matter, but
