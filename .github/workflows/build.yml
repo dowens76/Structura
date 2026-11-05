@@ -29,7 +29,7 @@ jobs:
       - id: matrix
         run: |
           MAC_ARM='{"os":"macos-latest","target":"aarch64-apple-darwin","label":"macOS (Apple Silicon)","friendly":"Apple_Silicon"}'
-          MAC_INTEL='{"os":"macos-14","target":"x86_64-apple-darwin","label":"macOS (Intel)","friendly":"Apple_Intel"}'
+          MAC_INTEL='{"os":"macos-15-intel","target":"x86_64-apple-darwin","label":"macOS (Intel)","friendly":"Apple_Intel"}'
           WINDOWS='{"os":"windows-latest","target":"x86_64-pc-windows-msvc","label":"Windows (x64)","friendly":"Windows"}'
           LINUX='{"os":"ubuntu-22.04","target":"x86_64-unknown-linux-gnu","label":"Linux (x64)","friendly":"Linux"}'
           LINUX_ARM='{"os":"ubuntu-24.04-arm","target":"aarch64-unknown-linux-gnu","label":"Linux (ARM64)","friendly":"Linux_ARM64"}'
