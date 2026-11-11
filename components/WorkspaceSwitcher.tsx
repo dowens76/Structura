@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useTranslation } from "@/lib/i18n/LocaleContext";
+import { setActiveWorkspace } from "@/lib/workspace-client";
 
 interface Workspace {
   id: number;
@@ -49,9 +50,9 @@ export default function WorkspaceSwitcher({ activeWorkspaceId }: Props) {
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
-  function switchWorkspace(id: number) {
-    document.cookie = `structura_active_workspace=${id}; path=/; SameSite=Lax`;
+  async function switchWorkspace(id: number) {
     setOpen(false);
+    await setActiveWorkspace(id);
     router.refresh();
   }
 

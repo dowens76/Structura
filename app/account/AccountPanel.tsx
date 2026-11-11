@@ -6,6 +6,7 @@ import PageShell from "@/components/ui/PageShell";
 import SectionHeading from "@/components/ui/SectionHeading";
 import { useTranslation } from "@/lib/i18n/LocaleContext";
 import { OSIS_BOOKS_OT, OSIS_BOOKS_NT, OSIS_BOOKS_LXX } from "@/lib/utils/osis";
+import { setActiveWorkspace } from "@/lib/workspace-client";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -315,9 +316,9 @@ export default function AccountPanel({ activeWorkspaceId: initialActiveId }: Pro
   }, []);
 
   // ── Workspace switch ───────────────────────────────────────────────────────
-  function switchToWorkspace(id: number) {
-    document.cookie = `structura_active_workspace=${id}; path=/; SameSite=Lax`;
+  async function switchToWorkspace(id: number) {
     setActiveWorkspaceId(id);
+    await setActiveWorkspace(id);
     router.refresh();
   }
 

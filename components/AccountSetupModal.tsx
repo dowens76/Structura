@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useTranslation } from "@/lib/i18n/LocaleContext";
+import { setActiveWorkspace } from "@/lib/workspace-client";
 
 interface Props {
   onComplete: (workspaceId: number) => void;
@@ -36,7 +37,7 @@ export default function AccountSetupModal({ onComplete }: Props) {
       }
       const { workspace } = await res.json();
       // Set active workspace cookie
-      document.cookie = `structura_active_workspace=${workspace.id}; path=/; SameSite=Lax`;
+      await setActiveWorkspace(workspace.id);
       onComplete(workspace.id);
     } catch {
       setError("Network error. Please try again.");
