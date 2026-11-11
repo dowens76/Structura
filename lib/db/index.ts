@@ -1127,6 +1127,134 @@ function _migrateUserDbInner(sqlite: Database.Database): void {
       ).run();
     }
   }
+
+  // Must stay last: it rewrites unique indexes that earlier steps above
+  // (re)create in their pre-versions shape via CREATE ... IF NOT EXISTS.
+  migrateToVersions(sqlite);
+}
+
+/**
+ * The 11 chapter-scoped markup tables that carry a version_id (see
+ * VERSIONABLE_FEATURES / lib/versions/registry.ts).
+ */
+const VERSIONED_MARKUP_TABLES = [
+  "paragraph_breaks",
+  "character_refs",
+  "speech_sections",
+  "word_tag_refs",
+  "line_indents",
+  "scene_breaks",
+  "rst_relations",
+  "word_arrows",
+  "line_annotations",
+  "word_formatting",
+  "text_critical_marks",
+] as const;
+
+/**
+ * Unique indexes on versioned tables that must include version_id — otherwise
+ * the same word can't carry markup in two versions of a chapter. Pre-versions
+ * DBs have these keyed on (workspace_id, word_id[, level]) instead.
+ */
+const VERSIONED_UNIQUE_INDEXES: { name: string; table: string; cols: string[] }[] = [
+  { name: "pb_ws_word_idx",       table: "paragraph_breaks",    cols: ["workspace_id", "version_id", "word_id"] },
+  { name: "cr_ws_word_idx",       table: "character_refs",      cols: ["workspace_id", "version_id", "word_id"] },
+  { name: "wtr_ws_word_idx",      table: "word_tag_refs",       cols: ["workspace_id", "version_id", "word_id"] },
+  { name: "li_ws_word_idx",       table: "line_indents",        cols: ["workspace_id", "version_id", "word_id"] },
+  { name: "sb_ws_word_level_idx", table: "scene_breaks",        cols: ["workspace_id", "version_id", "word_id", "level"] },
+  { name: "wfmt_ws_word_idx",     table: "word_formatting",     cols: ["workspace_id", "version_id", "word_id"] },
+  { name: "tcm_ws_word_idx",      table: "text_critical_marks", cols: ["workspace_id", "version_id", "word_id"] },
+];
+
+/**
+ * Brings a pre-versions user.db (anything created before Aug 2026) up to the
+ * versions schema. This used to live only in the hand-run
+ * scripts/migrate-add-versions.ts (+ migrate-add-version-content-revision.ts,
+ * migrate-add-translations-sort-order.ts), so a packaged install upgraded from
+ * an older build crashed opening any chapter with
+ * "no such table: active_version_selections".
+ *
+ * Unlike the script, this adds version_id with ALTER TABLE rather than
+ * rebuilding each table, so it can't drop columns added to these tables by
+ * other migrations. The column is therefore nullable at the SQL level (SQLite
+ * can't ADD a NOT NULL REFERENCES column); every app write supplies it, and
+ * all existing rows are backfilled here. Idempotent.
+ */
+function migrateToVersions(sqlite: Database.Database): void {
+  const colsOf = (table: string) =>
+    (sqlite.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]).map((c) => c.name);
+
+  sqlite.exec(`
+    CREATE TABLE IF NOT EXISTS versions (
+      id               INTEGER PRIMARY KEY AUTOINCREMENT,
+      workspace_id     INTEGER NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+      book             TEXT    NOT NULL,
+      chapter          INTEGER NOT NULL,
+      name             TEXT    NOT NULL,
+      sort_order       INTEGER NOT NULL DEFAULT 0,
+      group_key        TEXT,
+      content_revision INTEGER NOT NULL DEFAULT 0,
+      created_at       TEXT    DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now'))
+    );
+    CREATE INDEX IF NOT EXISTS ver_ws_book_ch_idx ON versions(workspace_id, book, chapter);
+    CREATE INDEX IF NOT EXISTS ver_group_idx ON versions(group_key);
+
+    CREATE TABLE IF NOT EXISTS active_version_selections (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      workspace_id INTEGER NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+      book         TEXT    NOT NULL,
+      chapter      INTEGER NOT NULL,
+      version_id   INTEGER NOT NULL REFERENCES versions(id) ON DELETE CASCADE
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS avs_ws_book_ch_idx ON active_version_selections(workspace_id, book, chapter);
+  `);
+  if (!colsOf("versions").includes("content_revision"))
+    sqlite.exec("ALTER TABLE versions ADD COLUMN content_revision INTEGER NOT NULL DEFAULT 0");
+
+  if (!colsOf("translations").includes("sort_order"))
+    sqlite.exec("ALTER TABLE translations ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0");
+
+  // Add version_id where missing, then backfill every pre-existing row to its
+  // locus's first version, seeding a "Version 1" for loci that have none.
+  const added: string[] = [];
+  for (const table of VERSIONED_MARKUP_TABLES) {
+    const cols = colsOf(table);
+    if (cols.length === 0 || cols.includes("version_id")) continue;
+    sqlite.exec(`ALTER TABLE ${table} ADD COLUMN version_id INTEGER REFERENCES versions(id) ON DELETE CASCADE`);
+    added.push(table);
+  }
+  if (added.length > 0) {
+    const loci = added
+      .map((t) => `SELECT workspace_id, book, chapter FROM ${t} WHERE version_id IS NULL`)
+      .join(" UNION ");
+    sqlite.exec(`
+      INSERT INTO versions (workspace_id, book, chapter, name, sort_order)
+      SELECT l.workspace_id, l.book, l.chapter, 'Version 1', 0
+      FROM (${loci}) l
+      WHERE NOT EXISTS (
+        SELECT 1 FROM versions v
+        WHERE v.workspace_id = l.workspace_id AND v.book = l.book AND v.chapter = l.chapter
+      )
+    `);
+    for (const t of added) {
+      sqlite.exec(`
+        UPDATE ${t} SET version_id = (
+          SELECT v.id FROM versions v
+          WHERE v.workspace_id = ${t}.workspace_id AND v.book = ${t}.book AND v.chapter = ${t}.chapter
+          ORDER BY v.sort_order, v.id LIMIT 1
+        )
+        WHERE version_id IS NULL
+      `);
+    }
+  }
+
+  for (const { name, table, cols } of VERSIONED_UNIQUE_INDEXES) {
+    if (colsOf(table).length === 0) continue;
+    const current = (sqlite.prepare(`PRAGMA index_info(${name})`).all() as { name: string }[]).map((c) => c.name);
+    if (current.join(",") === cols.join(",")) continue;
+    sqlite.exec(`DROP INDEX IF EXISTS ${name}`);
+    sqlite.exec(`CREATE UNIQUE INDEX ${name} ON ${table}(${cols.join(", ")})`);
+  }
 }
 
 export function getUserDb() {
