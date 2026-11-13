@@ -5026,13 +5026,19 @@ export default function ChapterDisplay({
           }),
         });
         if (!res.ok) throw new Error(`Save failed (${res.status})`);
-        const { id } = await res.json() as { id: number };
+        const { id, bookId: savedBookId } = await res.json() as { id: number; bookId?: number };
         if (id == null) throw new Error("Save failed (no id returned)");
+        // bookId must be the book's real current id: activeTranslationVerseMap
+        // keys rows by (bookId, chapter, verse). A placeholder (formerly 0)
+        // made a newly-created verse vanish from the reading view once editing
+        // closed, and reopening the editor showed an empty textarea — so the
+        // next thing typed there silently replaced the saved text.
+        const bookId = savedBookId ?? chapterToBookId.get(vChapter) ?? startBookId;
         setLocalTranslationVerseData((prev) => ({
           ...prev,
           [translation.id]: [
             ...(prev[translation.id] ?? []),
-            { id, workspaceId: 1, translationId: translation.id, osisRef: `${vBook}.${vChapter}.${verse}`, bookId: 0, chapter: vChapter, verse, text: newText },
+            { id, workspaceId: 1, translationId: translation.id, osisRef: `${vBook}.${vChapter}.${verse}`, bookId, chapter: vChapter, verse, text: newText },
           ],
         }));
       } catch {

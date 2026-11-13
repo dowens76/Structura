@@ -74,5 +74,10 @@ export async function POST(request: NextRequest) {
     })
     .returning({ id: translationVerses.id });
 
-  return NextResponse.json({ id: result[0].id });
+  // bookId is returned so the client can key its optimistic record the same
+  // way server reads do (by the book's current id). Without it the client
+  // used a placeholder, which made the new verse invisible after editing
+  // closed — and reopening the editor then showed an empty box whose next
+  // save overwrote the real text.
+  return NextResponse.json({ id: result[0].id, bookId: bookRecord.id });
 }
