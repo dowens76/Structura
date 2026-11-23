@@ -13,7 +13,7 @@ import type { DisplayMode, GrammarFilterState, TranslationTextEntry, Interlinear
 import type { ColorRule } from "@/lib/morphology/colorRules";
 import { PLOT_ELEMENTS, ANNOTATION_PALETTE, LEGACY_PLOT_LABEL_ALIASES, getPlotElement, getAnnotationColor } from "@/lib/utils/annotations";
 import { resolvedDatasetColor } from "@/lib/utils/datasetColors";
-import { encodeUsfmTokens, decodeUsfmToken, tokenizeTranslationText, TEXT_COLOR_EXCLUDED_PUNCTUATION } from "@/lib/utils/translationTokens";
+import { encodeUsfmTokens, decodeUsfmToken, tokenizeTranslationText, translationSegmentStarts, TEXT_COLOR_EXCLUDED_PUNCTUATION } from "@/lib/utils/translationTokens";
 import { wordFallsInPassageRange } from "@/lib/utils/passageRange";
 import { analyzeHebrewLine } from "@/lib/phonology/hebrew-syllables";
 
@@ -262,6 +262,11 @@ interface VerseDisplayProps {
   onToggleDatasetGroupMember?: (wordId: string) => void;
   // Source text visibility
   hideSourceText?: boolean;
+  /** Translation-only workspaces: this translation's own paragraph breaks
+   *  define the verse's rows (and their segment keys) instead of the hidden
+   *  source text's. Row 0 keeps the verse's first source word id as its key;
+   *  later rows are keyed by the translation token that starts them. */
+  segmentTranslationAbbr?: string | null;
   // Translation text editing
   editingTranslation?: boolean;
   editingTranslationSource?: boolean;
@@ -1565,6 +1570,7 @@ export default function VerseDisplay({
   pendingGroupWordIds = new Set<string>(),
   onToggleDatasetGroupMember,
   hideSourceText = false,
+  segmentTranslationAbbr = null,
   editingTranslation = false,
   editingTranslationSource = false,
   onUpdateTranslationVerse,
@@ -1717,7 +1723,30 @@ export default function VerseDisplay({
   }, [annotationsBySegment]);
 
   // ── Paragraph segments ──────────────────────────────────────────────────
-  const sourceSegments = computeSegments(words, paragraphBreakIds);
+  // In translation-only mode the driving translation's own breaks define the
+  // rows. Every row then carries the whole (hidden) verse's source words so
+  // speech-box lookups see one continuous span across the rows.
+  const segDriver = segmentTranslationAbbr && words.length > 0
+    ? translationTexts.find((t) => t.abbr === segmentTranslationAbbr)
+    : undefined;
+  const tvRowStarts: number[] | null = !segmentTranslationAbbr || words.length === 0
+    ? null
+    : (!segDriver || editingTranslation || editingTranslationSource)
+      ? [0]
+      : translationSegmentStarts(
+          segDriver.words && segDriver.words.length > 0 ? segDriver.words.length : tokenizeTranslationText(segDriver.text).length,
+          segDriver.abbr, book, chapter, verseNum, paragraphBreakIds,
+        );
+  const sourceSegments = tvRowStarts
+    ? tvRowStarts.map(() => words)
+    : computeSegments(words, paragraphBreakIds);
+  // Segment key per row — the id every paragraph-level feature (indent, RST,
+  // line groups, annotations, separators) attaches to.
+  const segKeys = tvRowStarts
+    ? tvRowStarts.map((start, i) => i === 0
+        ? words[0].wordId
+        : `tv:${segDriver!.abbr}:${book}.${chapter}.${verseNum}.${start}`)
+    : sourceSegments.map((seg) => seg[0].wordId);
   const multiSeg = sourceSegments.length > 1;
   const paraLabels = sourceSegments.map((_, si) =>
     multiSeg ? `${verseNum}${String.fromCharCode(97 + si)}` : `${verseNum}`
@@ -2386,15 +2415,22 @@ export default function VerseDisplay({
   function renderSegSeparator(wordId: string): React.ReactNode {
     if ((sceneBreakMap.get(wordId)?.length ?? 0) > 0) return renderSceneSeparator(wordId);
     const hasHorizontalLine = horizontalLineIds.has(wordId);
+    // Rows driven by translation paragraphs are keyed by a `tv:ABBR:…` token id;
+    // their break/line toggles go through the translation handlers.
+    const tvAbbr = wordId.startsWith("tv:") ? wordId.split(":")[1] : null;
     if (editingHorizontalLines) {
       const breakWord = words.find((w) => w.wordId === wordId);
       return (
         <div className="relative flex items-center mb-2">
           <div className="flex-1 border-t-2 border-sky-400" />
-          {breakWord && (
+          {(breakWord || tvAbbr) && (
             <button
               type="button"
-              onClick={(e) => { e.stopPropagation(); onSelectWord(breakWord); }}
+              onClick={(e) => {
+                e.stopPropagation();
+                if (tvAbbr) onToggleTranslationHorizontalLine(wordId, tvAbbr);
+                else if (breakWord) onSelectWord(breakWord);
+              }}
               title={hasHorizontalLine ? t("verse.removeHLine") : t("verse.addHLine")}
               className={[
                 "mx-1 flex items-center justify-center w-4 h-4 rounded-full text-white text-[11px] leading-none shrink-0",
@@ -2421,10 +2457,14 @@ export default function VerseDisplay({
       return (
         <div className="relative flex items-center mb-2">
           <div className="flex-1 border-t border-dashed border-amber-400" />
-          {breakWord && (
+          {(breakWord || tvAbbr) && (
             <button
               type="button"
-              onClick={(e) => { e.stopPropagation(); onSelectWord(breakWord); }}
+              onClick={(e) => {
+                e.stopPropagation();
+                if (tvAbbr) onToggleTranslationParagraphBreak(wordId, tvAbbr);
+                else if (breakWord) onSelectWord(breakWord);
+              }}
               title={t("verse.removeParaBreak")}
               className="mx-1 flex items-center justify-center w-4 h-4 rounded-full bg-amber-400 text-white text-[11px] leading-none hover:bg-amber-500 shrink-0"
             >
@@ -3117,11 +3157,12 @@ export default function VerseDisplay({
       {/* Each source paragraph is its own 5-cell grid row so the speech-box
           background/border wraps the source, arc columns, label AND translation together. */}
       {sourceSegments.map((seg, si) => {
+        const segKey = segKeys[si];
         const { layers, isSegStart } = getSegSpeech(seg, si);
         const runs = computeRuns(seg, layers);
 
         // Indent level needed both for source hanging-indent and translation padding
-        const paraStartId = wordToParaStart.get(seg[0].wordId) ?? seg[0].wordId;
+        const paraStartId = wordToParaStart.get(segKey) ?? segKey;
         const indentLevel = lineIndentMap.get(paraStartId) ?? 0;
         // When linked: T mirrors S via the fallback. When unlinked: T is independent;
         // fall back to 0 (not S) so T is never implicitly constrained by S.
@@ -3470,7 +3511,7 @@ export default function VerseDisplay({
 
                       // ── Poetry notation (Gestalt) — same marks a source word can carry,
                       // anchored here by the translation token's own tv: id. Balance/Symmetry
-                      // instead key off seg[0].wordId (the SOURCE line this translation row
+                      // instead key off segKey (the paragraph row this translation text
                       // renders inside) — see onSelectPoetryWord below and renderPoetryColForSeg
                       // above. Closure (weak and complete) is anchored to whichever text was
                       // actually clicked, so it needs its own translation-side lookups: weak
@@ -3739,7 +3780,7 @@ export default function VerseDisplay({
                       const isTvRangeStart = wordId === tagRangeStartWordId || wordId === closureRangeStart || wordId === requirednessRangeStart || wordId === requirednessResolvingStart;
 
                       const handleClick = editingPoetryNotation && !editingPoetrySimilarity
-                        ? (e: React.MouseEvent) => { e.stopPropagation(); onSelectPoetryWord?.(wordId, seg[0].wordId, tvSegFirstWordId, e.shiftKey); }
+                        ? (e: React.MouseEvent) => { e.stopPropagation(); onSelectPoetryWord?.(wordId, segKey, tvSegFirstWordId, e.shiftKey); }
                         : editingArrows
                         ? () => onSelectArrowWordById?.(wordId)
                         : editingScenes
@@ -3835,7 +3876,7 @@ export default function VerseDisplay({
                               wordId,
                               tvLanguage ?? "",
                               pendingSimilarityAnchor?.wordId === wordId ? pendingSimilarityAnchor.graphemeIndex : null,
-                              (wid, idx, shiftHeld) => onGraphemeClick?.(wid, idx, shiftHeld, seg[0].wordId)
+                              (wid, idx, shiftHeld) => onGraphemeClick?.(wid, idx, shiftHeld, segKey)
                             )
                           : (editingBold || editingItalic || editingUnderline || editingTextColor)
                           ? renderClickableGraphemesWithFormatting(
@@ -4267,7 +4308,7 @@ export default function VerseDisplay({
         // Use the outermost layer to decide — if it continues from the previous segment, no gap.
         const suppressSeparator = !editingParagraphs && !editingHorizontalLines && (
           (layers.length > 0 && !isSegStart) ||
-          (annotationsBySegment?.get(seg[0].wordId) ?? []).some(e => !e.isStart)
+          (annotationsBySegment?.get(segKey) ?? []).some(e => !e.isStart)
         );
 
         // Build the grid inner content (source column + label column + translation column).
@@ -4277,7 +4318,7 @@ export default function VerseDisplay({
             {!hideSourceText && (
               <div
                 dir={isHebrew ? "rtl" : "ltr"}
-                data-rst-src-block={seg[0].wordId}
+                data-rst-src-block={segKey}
                 style={{
                   paddingLeft:  !isHebrew && indentLevel > 0 ? `${indentLevel * 2}rem` : undefined,
                   paddingRight: isHebrew  && indentLevel > 0 ? `${indentLevel * 2}rem` : undefined,
@@ -4286,7 +4327,7 @@ export default function VerseDisplay({
                 }}
               >
                 <span
-                  data-rst-text={seg[0].wordId}
+                  data-rst-text={segKey}
                   className={isHebrew ? "text-hebrew" : "text-greek"}
                   lang={isHebrew ? "he" : "grc"}
                 >
@@ -4298,9 +4339,9 @@ export default function VerseDisplay({
             {/* Paragraph label / indent controls (centre column) */}
             <div className="flex items-start justify-center">
               {editingIndents ? (
-                <div className="flex flex-col gap-0.5" data-seg-label={seg[0].wordId}>
-                  {/* Source indent row — always shown */}
-                  <div className="flex items-center gap-0.5">
+                <div className="flex flex-col gap-0.5" data-seg-label={segKey}>
+                  {/* Source indent row — hidden when translation paragraphs drive the rows */}
+                  {!tvRowStarts && <div className="flex items-center gap-0.5">
                     {!indentsLinked && (
                       <span className="text-[9px] font-bold text-stone-400 dark:text-stone-500 w-3 shrink-0 select-none">S</span>
                     )}
@@ -4321,11 +4362,11 @@ export default function VerseDisplay({
                       className="w-5 h-5 flex items-center justify-center text-xs rounded text-stone-500 dark:text-stone-400 hover:bg-stone-200 dark:hover:bg-stone-600 disabled:opacity-25 transition-colors"
                       title={t("verse.increaseSrcIndent")}
                     >+</button>
-                  </div>
-                  {/* Translation indent row — only when decoupled */}
-                  {!indentsLinked && (
+                  </div>}
+                  {/* Translation indent row — when decoupled, or when translation paragraphs drive the rows */}
+                  {(!indentsLinked || tvRowStarts) && (
                     <div className="flex items-center gap-0.5">
-                      <span className="text-[9px] font-bold text-stone-400 dark:text-stone-500 w-3 shrink-0 select-none">T</span>
+                      {!tvRowStarts && <span className="text-[9px] font-bold text-stone-400 dark:text-stone-500 w-3 shrink-0 select-none">T</span>}
                       <button
                         type="button"
                         onClick={(e) => { e.stopPropagation(); onSetSegmentTvIndent?.(paraStartId, Math.max(0, tvIndentLevel - 1)); }}
@@ -4349,7 +4390,7 @@ export default function VerseDisplay({
               ) : (
                 <span
                   className="text-stone-400 dark:text-stone-600 text-sm font-mono select-none"
-                  data-seg-label={seg[0].wordId}
+                  data-seg-label={segKey}
                   data-osis-ref={`${book}.${chapter}.${verseNum}`}
                   style={{ minWidth: verseLabelMinWidth, textAlign: "center", paddingTop: labelPaddingTop }}
                 >
@@ -4397,7 +4438,7 @@ export default function VerseDisplay({
             {/* Translation content. Hanging indent lives on each <p> element. */}
             <div
               className="flex flex-col gap-1"
-              data-seg-translation={seg[0].wordId}
+              data-seg-translation={segKey}
               style={{
                 paddingTop: tvPaddingTop,
                 marginLeft: rstSourcePad || undefined,
@@ -4470,7 +4511,7 @@ export default function VerseDisplay({
         // layout previously had no equivalent, so a mark needing extra room here
         // (e.g. a stacked Balance/Symmetry anchor) silently had nowhere to put it.
         const lineSpacingOverride = si > 0 && !suppressSeparator
-          ? lineSpacingMap?.get(seg[0].wordId)
+          ? lineSpacingMap?.get(segKey)
           : undefined;
 
         const gridStyle: React.CSSProperties = {
@@ -4481,20 +4522,20 @@ export default function VerseDisplay({
 
         return (
           // data-rst-seg is used by RstRelationOverlay to measure segment position
-          <div key={si} data-rst-seg={seg[0].wordId}>
+          <div key={si} data-rst-seg={segKey}>
             {/* Separator (scene or regular paragraph break) on a within-verse segment */}
-            {si > 0 && !suppressSeparator && renderSegSeparator(seg[0].wordId)}
+            {si > 0 && !suppressSeparator && renderSegSeparator(segKey)}
             {/* Flex wrapper: syllable/stress column on the left, the annotation
                 column on the right of the text grid */}
             <div className="flex items-stretch">
-              {renderSyllableStressColForSeg(seg)}
+              {!tvRowStarts && renderSyllableStressColForSeg(seg)}
               <div className="flex-1 min-w-0">
                 {/* Grid layout: nested speech-box divs wrap from the outside in.
                     The innermost div carries the grid styles; outer divs are borders only. */}
                 {wrapInSpeechLayers(layers, gridContent, gridStyle, gridClass)}
               </div>
-              {renderAnnotationColForSeg(seg[0].wordId)}
-              {renderPoetryColForSeg(seg[0].wordId)}
+              {renderAnnotationColForSeg(segKey)}
+              {renderPoetryColForSeg(segKey)}
             </div>
           </div>
         );

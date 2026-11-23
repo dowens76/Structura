@@ -53,3 +53,24 @@ export function tokenizeTranslationText(rawText: string): string[] {
   const encoded = encodeUsfmTokens(rawText);
   return encoded.split(/\s+/).filter(Boolean).flatMap((t) => t.split(/(?<=—)(?=.)/));
 }
+
+/** Start indices of a translation verse's own paragraph segments, from its
+ *  `tv:ABBR:Book.Ch.V.wi` paragraph-break ids. Always begins with 0 (a break
+ *  at wi 0 is the verse-level break, not a mid-verse split). Used in
+ *  translation-only workspaces, where these segments — not the source
+ *  text's — define the paragraph rows that indents, RST relations, line
+ *  groups and annotations attach to. */
+export function translationSegmentStarts(
+  tokenCount: number,
+  abbr: string,
+  book: string,
+  chapter: number,
+  verse: number,
+  paragraphBreakIds: Set<string>,
+): number[] {
+  const starts = [0];
+  for (let wi = 1; wi < tokenCount; wi++) {
+    if (paragraphBreakIds.has(`tv:${abbr}:${book}.${chapter}.${verse}.${wi}`)) starts.push(wi);
+  }
+  return starts;
+}

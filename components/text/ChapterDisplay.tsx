@@ -13,7 +13,7 @@ import { useSynopticCategories } from "@/lib/hooks/useSynopticCategories";
 import SynopticCategoryManager from "@/components/synoptic/SynopticCategoryManager";
 import type { Translation, TranslationVerse, TranslationFootnote } from "@/lib/db/schema";
 import type { DisplayMode, GrammarFilterState, TranslationTextEntry, InterlinearSubMode } from "@/lib/morphology/types";
-import { TEXT_COLOR_EXCLUDED_PUNCTUATION } from "@/lib/utils/translationTokens";
+import { TEXT_COLOR_EXCLUDED_PUNCTUATION, tokenizeTranslationText, translationSegmentStarts } from "@/lib/utils/translationTokens";
 import VerseDisplay from "./VerseDisplay";
 import FindBar from "./FindBar";
 import MorphologyPanel from "./MorphologyPanel";
@@ -1117,6 +1117,76 @@ export default function ChapterDisplay({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Merge ULT and VCB into availableTranslations.  Normally they're included only
+  // when they have base verses for this chapter.  In translationOnly mode we include
+  // them whenever they're imported (even for empty chapters) so the placeholder column
+  // is still visible and the user knows to start translating.
+  const allAvailableTranslations = useMemo(() => {
+    let list = availableTranslations;
+    const includeUlt = ultTranslation && (translationOnly || ultBaseVerses.length > 0);
+    if (includeUlt && !list.some((t) => t.id === ultTranslation!.id)) {
+      list = [ultTranslation!, ...list];
+    }
+    const includeVcb = vcbTranslation && (translationOnly || vcbBaseVerses.length > 0);
+    if (includeVcb && !list.some((t) => t.id === vcbTranslation!.id)) {
+      list = [...list, vcbTranslation!];
+    }
+    const includeLxx = lxxTranslation && lxxBaseVerses.length > 0;
+    if (includeLxx && !list.some((t) => t.id === lxxTranslation!.id)) {
+      list = [...list, lxxTranslation!];
+    }
+    return list;
+  }, [availableTranslations, ultTranslation, ultBaseVerses.length, vcbTranslation, vcbBaseVerses.length, lxxTranslation, lxxBaseVerses.length, translationOnly]);
+
+  const bookIdToOsis = useMemo(() => {
+    const m = new Map<number, string>();
+    m.set(startBookId, book);
+    if (endBookId != null && endBook) m.set(endBookId, endBook);
+    return m;
+  }, [startBookId, endBookId, book, endBook]);
+
+  // ── Translation-only paragraph segments ────────────────────────────────────
+  // In a translation-only workspace (source hidden) the first active
+  // translation's own paragraph breaks define the paragraph segments that
+  // indents, RST relations, line groups and annotations attach to — they no
+  // longer depend on (invisible) manual breaks in the source text. Within a
+  // verse, segment 0 keeps the verse's first source word id as its key (so
+  // existing verse-level data still lines up); later segments are keyed by
+  // the `tv:ABBR:Book.Ch.V.wi` token that starts them. Must match the row
+  // keys VerseDisplay builds from `segmentTranslationAbbr`.
+  const segmentTranslation = useMemo(() => {
+    if (!translationOnly || !hideSourceText) return null;
+    return allAvailableTranslations.find((t) => activeTranslationAbbrs.has(t.abbreviation)) ?? null;
+  }, [translationOnly, hideSourceText, allAvailableTranslations, activeTranslationAbbrs]);
+
+  // verse-first source wordId → ordered segment keys for that verse, or null
+  // when source-text breaks drive the segments as usual.
+  const tvSegKeysByVerseStart = useMemo(() => {
+    if (!segmentTranslation || !words.length) return null;
+    const abbr = segmentTranslation.abbreviation;
+    const collapse = editingTranslation || editingTranslationSource;
+    // Latest text per (bookId, chapter, verse) — DB has no unique constraint.
+    const textByVerse = new Map<string, { id: number; text: string }>();
+    for (const tv of localTranslationVerseData[segmentTranslation.id] ?? []) {
+      const key = `${chapterKey(tv.bookId, tv.chapter)}:${tv.verse}`;
+      const prev = textByVerse.get(key);
+      if (!prev || tv.id > prev.id) textByVerse.set(key, { id: tv.id, text: tv.text });
+    }
+    const map = new Map<string, string[]>();
+    for (let i = 0; i < words.length; i++) {
+      const w = words[i];
+      if (i > 0 && words[i - 1].verse === w.verse && words[i - 1].chapter === w.chapter && words[i - 1].bookId === w.bookId) continue;
+      const vBook = bookIdToOsis.get(w.bookId) ?? book;
+      const text = collapse ? "" : textByVerse.get(`${chapterKey(w.bookId, w.chapter)}:${w.verse}`)?.text ?? "";
+      const tokenCount = abbr === "LXX" && lxxVerseWords?.get(w.verse)?.length
+        ? lxxVerseWords.get(w.verse)!.length
+        : tokenizeTranslationText(text).length;
+      const starts = translationSegmentStarts(tokenCount, abbr, vBook, w.chapter, w.verse, paragraphBreakIds);
+      map.set(w.wordId, starts.map((st, si) => si === 0 ? w.wordId : `tv:${abbr}:${vBook}.${w.chapter}.${w.verse}.${st}`));
+    }
+    return map;
+  }, [segmentTranslation, words, editingTranslation, editingTranslationSource, localTranslationVerseData, bookIdToOsis, book, lxxVerseWords, paragraphBreakIds]);
+
   // Maps every word in the chapter to the first word of its paragraph.
   // Used by VerseDisplay to look up indent levels for paragraph continuations.
   // Verse boundaries always reset the paragraph start so that indent levels from
@@ -1138,6 +1208,9 @@ export default function ChapterDisplay({
   // so that the implicit "first paragraph" within each verse always has a selector dot.
   const paragraphFirstWordIds = useMemo(() => {
     if (!words.length) return [];
+    if (tvSegKeysByVerseStart) {
+      return words.flatMap((w) => tvSegKeysByVerseStart.get(w.wordId) ?? []);
+    }
     const breakSet = new Set(paragraphBreakIds);
     return words
       .filter((w, i) =>
@@ -1146,7 +1219,7 @@ export default function ChapterDisplay({
         words[i - 1].verse !== w.verse
       )
       .map((w) => w.wordId);
-  }, [words, paragraphBreakIds]);
+  }, [words, paragraphBreakIds, tvSegKeysByVerseStart]);
 
   // ── Line annotations (hook) ──────────────────────────────────────────────
   // Called here (after paragraphFirstWordIds) so the hook always closes over the
@@ -1962,12 +2035,6 @@ export default function ChapterDisplay({
     () => new Map(words.map((w) => [w.wordId, w.bookId])),
     [words]
   );
-  const bookIdToOsis = useMemo(() => {
-    const m = new Map<number, string>();
-    m.set(startBookId, book);
-    if (endBookId != null && endBook) m.set(endBookId, endBook);
-    return m;
-  }, [startBookId, endBookId, book, endBook]);
 
   // Resolves the actual (book, chapter) a given wordId lives in, falling back
   // to the outer `book`/`chapter` props for ids not present in `words` (e.g.
@@ -1976,6 +2043,12 @@ export default function ChapterDisplay({
   // the "current" chapter — wrong for any other chapter/book once `words`
   // spans more than one (e.g. a passage).
   function getWordLocation(wordId: string): { book: string; chapter: number } {
+    // Translation token ids (`tv:ABBR:Book.Ch.V.wi`) carry their own location.
+    if (wordId.startsWith("tv:")) {
+      const parts = wordId.split(":")[2]?.split(".") ?? [];
+      const ch = parseInt(parts[1] ?? "", 10);
+      if (parts.length === 4 && parts[0] && !isNaN(ch)) return { book: parts[0], chapter: ch };
+    }
     const bId = wordToBookId.get(wordId) ?? startBookId;
     return {
       book: bookIdToOsis.get(bId) ?? book,
@@ -2394,26 +2467,6 @@ export default function ChapterDisplay({
     [characters]
   );
 
-  // Merge ULT and VCB into availableTranslations.  Normally they're included only
-  // when they have base verses for this chapter.  In translationOnly mode we include
-  // them whenever they're imported (even for empty chapters) so the placeholder column
-  // is still visible and the user knows to start translating.
-  const allAvailableTranslations = useMemo(() => {
-    let list = availableTranslations;
-    const includeUlt = ultTranslation && (translationOnly || ultBaseVerses.length > 0);
-    if (includeUlt && !list.some((t) => t.id === ultTranslation!.id)) {
-      list = [ultTranslation!, ...list];
-    }
-    const includeVcb = vcbTranslation && (translationOnly || vcbBaseVerses.length > 0);
-    if (includeVcb && !list.some((t) => t.id === vcbTranslation!.id)) {
-      list = [...list, vcbTranslation!];
-    }
-    const includeLxx = lxxTranslation && lxxBaseVerses.length > 0;
-    if (includeLxx && !list.some((t) => t.id === lxxTranslation!.id)) {
-      list = [...list, lxxTranslation!];
-    }
-    return list;
-  }, [availableTranslations, ultTranslation, ultBaseVerses.length, vcbTranslation, vcbBaseVerses.length, lxxTranslation, lxxBaseVerses.length, translationOnly]);
 
   // Set of system translation IDs — shown with a "built-in" badge in the picker
   const systemTranslationIds = useMemo(
@@ -7459,6 +7512,7 @@ export default function ChapterDisplay({
                 pendingGroupWordIds={pendingGroupWordIds}
                 onToggleDatasetGroupMember={handleToggleDatasetGroupMember}
                 hideSourceText={hideSourceText}
+                segmentTranslationAbbr={segmentTranslation?.abbreviation ?? null}
                 editingTranslation={editingTranslation}
                 editingTranslationSource={editingTranslationSource}
                 onUpdateTranslationVerse={handleUpdateTranslationVerse}
