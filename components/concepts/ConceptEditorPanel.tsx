@@ -523,7 +523,7 @@ function groupOccurrencesByVerse(occurrences: Occurrence[], translationAbbr: str
     }
 
     const translationTokens = translationAbbr
-      ? tokenizeTranslationText(group.translationText).map((t) => decodeUsfmToken(t).display)
+      ? tokenizeTranslationText(group.translationText).map((t) => { const d = decodeUsfmToken(t); return d.lead + d.display; })
       : null;
 
     const sourcePhrases = mergeIntoPhrases(sourceBucket, (p) => group.sourceTokens?.[p]?.text);
@@ -710,7 +710,7 @@ function OccurrenceTable({
                     <ClickableTokens
                       tokens={tokenizeTranslationText(group.translationText).map((tok, wi) => ({
                         key: `${wi}`,
-                        text: decodeUsfmToken(tok).display,
+                        text: (({ lead, display }) => lead + display)(decodeUsfmToken(tok)),
                         wordId: `tv:${translationAbbr}:${group.book}.${group.chapter}.${group.verse}.${wi}`,
                       }))}
                       phraseNumberByWordId={group.phraseNumberByWordId}

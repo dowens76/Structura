@@ -3866,11 +3866,13 @@ export default function VerseDisplay({
                       // order, decodeUsfmToken("'ND:LORD") fails to recognise the ND:
                       // prefix and the small-caps Divine Name styling is lost.
                       const { leading: tokLeadOuter, core: rawCore, trailing: tokTrailOuter } = splitTokenPunctuation(token);
-                      const { display: decodedDisplay, marker: usfmMarker } = decodeUsfmToken(rawCore);
+                      const { lead: decodedLead, display: decodedDisplay, marker: usfmMarker } = decodeUsfmToken(rawCore);
                       // A second pass handles punctuation embedded in the decoded display
                       // (e.g. ND:"Lord" → leading ", core Lord, trailing ").
                       const { leading: tokLeadInner, core: tokCore, trailing: tokTrailInner } = splitTokenPunctuation(decodedDisplay);
-                      const tokLead  = tokLeadOuter  + tokLeadInner;
+                      // decodedLead: a word glued in front of the marker ("theND:Lord") —
+                      // rendered unstyled ahead of the marked word.
+                      const tokLead  = tokLeadOuter  + decodedLead + tokLeadInner;
                       const tokTrail = tokTrailInner + tokTrailOuter;
 
                       // USFM inline marker styling

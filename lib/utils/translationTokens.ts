@@ -37,12 +37,23 @@ export function encodeUsfmTokens(raw: string): string {
   return s;
 }
 
-export function decodeUsfmToken(token: string): { display: string; marker: "nd" | "add" | "wj" | "fn" | null } {
-  if (token.startsWith("ND:"))  return { display: token.slice(3),  marker: "nd"  };
-  if (token.startsWith("ADD:")) return { display: token.slice(4), marker: "add" };
-  if (token.startsWith("WJ:"))  return { display: token.slice(3),  marker: "wj"  };
-  if (token.endsWith("«fn»"))   return { display: token.slice(0, -4), marker: "fn" };
-  return { display: token, marker: null };
+/** Decodes one token from `tokenizeTranslationText`. `lead` is unmarked text
+ *  the source glued directly in front of a marker — e.g. "the\\nd Lord\\nd*"
+ *  (no space before \\nd) tokenizes as "theND:Lord" → lead "the ", display
+ *  "Lord", marker "nd". The glued word gets its space back so it reads as its
+ *  own word, but stays one token so `tv:` word ids don't shift. Render `lead`
+ *  unstyled before `display`. */
+export function decodeUsfmToken(token: string): { lead: string; display: string; marker: "nd" | "add" | "wj" | "fn" | null } {
+  // The char before the prefix must not be A–Z, so all-caps words ending in
+  // "ND:"/"ADD:" (e.g. "LAND:") are not mistaken for markers.
+  const m = /^(.*?[^A-Z]|)(ND|ADD|WJ):(.*)$/.exec(token);
+  if (m) {
+    const lead = m[1].replace(/[\p{L}\p{N}]$/u, "$& ");
+    const marker = m[2] === "ND" ? "nd" : m[2] === "ADD" ? "add" : "wj";
+    return { lead, display: m[3], marker };
+  }
+  if (token.endsWith("«fn»"))   return { lead: "", display: token.slice(0, -4), marker: "fn" };
+  return { lead: "", display: token, marker: null };
 }
 
 /** Splits a translation verse's raw text into the same flat, globally-indexed

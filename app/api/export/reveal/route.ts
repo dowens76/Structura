@@ -20,6 +20,7 @@ import {
 import { getActiveWorkspaceId } from "@/lib/workspace";
 import { getActiveVersionId } from "@/lib/versions/activeVersion";
 import { OSIS_BOOK_NAMES } from "@/lib/utils/osis";
+import { tokenizeTranslationText, decodeUsfmToken } from "@/lib/utils/translationTokens";
 import type {
   Word, Character, CharacterRef, SpeechSection,
   WordTag, WordTagRef, WordArrow, Translation,
@@ -79,8 +80,20 @@ function tvTokenToSpan(
   const tag    = tagRef ? wordTagMap.get(tagRef.tagId) : undefined;
   if (tag) styles.push(`outline:1.5px solid ${esc(tag.color)}`, "border-radius:2px");
 
+  // USFM inline markers, decoded the way VerseDisplay does. `lead` is a word
+  // the source glued in front of a marker ("theND:Lord") — left unstyled.
+  const { lead, display, marker } = decodeUsfmToken(tokenText);
+  const markerStyle =
+    marker === "nd"  ? "font-variant:small-caps" :
+    marker === "add" ? "font-style:italic" :
+    marker === "wj"  ? "color:#dc2626" : "";
+  // Footnote markers ("«fn»") are dropped: the deck carries no footnote text.
+  const inner = markerStyle
+    ? `${esc(lead)}<span style="${markerStyle}">${esc(display)}</span>`
+    : esc(lead + display);
+
   const styleAttr = styles.length > 0 ? ` style="${styles.join(";")}"` : "";
-  return `<span data-word-id="${esc(wordId)}"${styleAttr}>${esc(tokenText)}</span>`;
+  return `<span data-word-id="${esc(wordId)}"${styleAttr}>${inner}</span>`;
 }
 
 // ── Word → inline span ────────────────────────────────────────────────────────
@@ -355,7 +368,9 @@ function renderWords(
     // Pre-compute translation paragraph segments per translation entry
     type TvSeg = { tokens: string[]; startWi: number };
     const tvSegsPerEntry = tvEntries.map((tv) => {
-      const tokens = tv.text.split(/\s+/).filter(Boolean);
+      // Same tokenization as VerseDisplay, so tv: word ids line up with the
+      // app's tags/character refs and USFM markers become per-token prefixes.
+      const tokens = tokenizeTranslationText(tv.text);
       const tvSegs: TvSeg[] = [];
       let curTokens: string[] = [];
       let curStart  = 0;
