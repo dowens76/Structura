@@ -724,6 +724,31 @@ export default function WordToken({
     if (!showVowels)       displayText = displayText.replace(/[ְ-ׇֽֿׁׂׅׄ]/g, "");
   }
   const { leading, core, trailing } = splitPunctuation(displayText);
+
+  // Masoretic Qere for a Ketiv word, shown small beneath it. Same vowel /
+  // cantillation toggles as the word itself. A Qere wela Ketiv (read but not
+  // written) hangs under the preceding word, marked "+".
+  let qereNode: React.ReactNode = null;
+  if (word.qere?.length) {
+    const qereOnly = word.qere[0].kind === "qere-only";
+    let qereText = word.qere.map((q) => q.surfaceText.replace(/\//g, "")).join(" ");
+    if (!showCantillation) qereText = qereText.replace(/[֑-֯]/g, "");
+    if (!showVowels)       qereText = qereText.replace(/[ְ-ׇֽֿׁׂׅׄ]/g, "");
+    const qereTitle = `${qereOnly ? t("wordToken.qereOnly") : t("wordToken.qere")}: ${word.qere
+      .map((q) => [q.strongNumber, q.morphCode].filter(Boolean).join(" "))
+      .join(" · ")}`;
+    qereNode = (
+      <span
+        className="word-qere"
+        dir="rtl"
+        lang="he"
+        title={qereTitle}
+        data-qere-kind={qereOnly ? "qere-only" : "qere"}
+      >
+        {qereOnly ? "+" : ""}{qereText}
+      </span>
+    );
+  }
   // A saved mark takes priority over the clickable-graphemes editing UI —
   // otherwise a word that already carries a Similarity mark goes invisible
   // (renders as plain hover-only letters) the moment Similarity edit mode is
@@ -840,6 +865,7 @@ export default function WordToken({
         title={isEditing ? undefined : `${word.lemma ?? word.surfaceText} — ${morphTerm(t, word.partOfSpeech) ?? t("wordToken.unknown")}`}
       >
         {coreContent}
+        {qereNode}
         {showTooltip && !isEditing && <ParseTooltip word={word} flipped={tooltipBelow} useLinguisticTerms={useLinguisticTerms} />}
         {poetryGlyphs}
       </span>
@@ -883,6 +909,7 @@ export default function WordToken({
           onMouseLeave={() => setHovering(false)}
         >
           <span className="word-surface">{coreContent}</span>
+          {qereNode}
           {showTooltip && !isEditing && <ParseTooltip word={word} flipped={tooltipBelow} useLinguisticTerms={useLinguisticTerms} />}
         </span>
         <InterlinearLabel

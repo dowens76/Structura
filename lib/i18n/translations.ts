@@ -1023,6 +1023,8 @@ const en = {
     save: "Save",
     enterValue: "Enter value…",
     unknown: "unknown",
+    qere: "Qere (read)",
+    qereOnly: "Qere wela Ketiv (read, not written)",
   },
   characterPanel: {
     refs: "Refs",
@@ -2947,6 +2949,8 @@ const vi: Translations = {
     save: "Lưu",
     enterValue: "Nhập giá trị…",
     unknown: "không rõ",
+    qere: "Qere (cách đọc)",
+    qereOnly: "Qere wela Ketiv (đọc nhưng không viết)",
   },
   characterPanel: {
     refs: "Tham chiếu",

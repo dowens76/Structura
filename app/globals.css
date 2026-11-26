@@ -196,6 +196,30 @@ body {
   margin-top: 2px;
 }
 
+/* Masoretic Qere shown beneath its Ketiv. In running text it hangs in the
+   line's leading (absolute, so line spacing is unchanged); in interlinear
+   mode it takes its own row between the word and its label. */
+.word-qere {
+  position: absolute;
+  left: 50%;
+  top: 100%;
+  transform: translate(-50%, -0.3em);
+  font-size: 0.62em;
+  line-height: 1;
+  white-space: nowrap;
+  color: var(--text-muted);
+  pointer-events: auto;
+  cursor: help;
+}
+.word-interlinear .word-qere {
+  position: static;
+  display: block;
+  text-align: center;
+  transform: none;
+  font-size: 0.55em;
+  margin-top: -0.2em;
+}
+
 /* ── Lexicon font helpers ─────────────────────────────────────────────────── */
 /*
  * Narrow font-only classes for the LexiconPane.  Unlike .text-hebrew/.text-greek

@@ -167,4 +167,37 @@ export interface Word {
   verbCase:        string | null;
   language:        string;
   textSource:      string;
+  /** OSHB only: the Masoretic Qere for this (Ketiv) word, when there is one. */
+  qere?:           QereWord[];
+}
+
+// ── Qere readings (OSHB only) ─────────────────────────────────────────────────
+//
+// The Masoretic Qere ("read") for a Ketiv ("written") word. Lives only in
+// oshb.db, filled by scripts/import-oshb-qere.ts — kept out of `words`
+// (shared with sblgnt.db/lxx.db, and which would make every Qere a separate
+// running-text word). Older oshb.db files may lack the table; readers check.
+
+export const qereReadings = sqliteTable("qere_readings", {
+  id:           integer("id").primaryKey({ autoIncrement: true }),
+  /** The Ketiv word the Qere is shown under (for "qere-only", the preceding word). */
+  ketivWordId:  text("ketiv_word_id").notNull(),
+  /** Order within a multi-word Qere. */
+  seq:          integer("seq").notNull(),
+  wordId:       text("word_id").notNull(),
+  surfaceText:  text("surface_text").notNull(),
+  lemma:        text("lemma"),
+  strongNumber: text("strong_number"),
+  morphCode:    text("morph_code"),
+  /** "qere" = replaces the Ketiv; "qere-only" = Qere wela Ketiv (no written word). */
+  kind:         text("kind").notNull(),
+}, (t) => [index("qere_ketiv_idx").on(t.ketivWordId)]);
+
+export interface QereWord {
+  wordId:       string;
+  surfaceText:  string;
+  lemma:        string | null;
+  strongNumber: string | null;
+  morphCode:    string | null;
+  kind:         "qere" | "qere-only";
 }

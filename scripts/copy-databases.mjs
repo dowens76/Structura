@@ -52,7 +52,7 @@ for (const name of DBS) {
     const hint = ["bdb.db","dodson.db","abbott-smith.db","lsj.db","ubs-hebrew.db","ubs-greek.db"].includes(name)
       ? " Run the import scripts (npm run import:lexicon) or split the legacy DB (npm run db:split:lexica)."
       : ["oshb.db","sblgnt.db"].includes(name)
-        ? " Run: npm run import:oshb && npm run import:morphgnt && npm run generate:transliterations && npm run db:split-source"
+        ? " Run: npm run import:oshb && npm run import:morphgnt && npm run generate:transliterations && npm run db:split-source && npm run import:oshb-qere"
         : " Run the import scripts first.";
     console.error(`ERROR: ${src} not found.${hint}`);
     process.exit(1);
