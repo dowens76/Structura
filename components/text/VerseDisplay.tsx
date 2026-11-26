@@ -2671,6 +2671,88 @@ export default function VerseDisplay({
       const activeLabelColors = isDatasetMode ? datasetLabelColors : new Map<string, string>();
       const isGroupingCapableMode = isDatasetMode || isConstituentGroupMode;
 
+      // One word token with every per-word markup prop resolved for `word`.
+      // Used for each running-text word and, nested beneath it, for each of
+      // its OSHB Qere words — so a Qere carries the same markup as any word.
+      function renderToken(word: Word, o: {
+        charRef: CharacterRef | null;
+        wtr: WordTagRef | null;
+        highlightBg: string | undefined;
+        isQere?: boolean;
+        renderQere?: (q: Word) => React.ReactNode;
+      }): React.ReactNode {
+        return (
+          <WordToken
+            word={word}
+            isQere={o.isQere}
+            renderQere={o.renderQere}
+            displayMode={displayMode}
+            grammarFilter={grammarFilter}
+            colorRules={colorRules}
+            onSelect={onSelectWord}
+            selectedWordId={selectedWordId}
+            showTooltip={showTooltips}
+            useLinguisticTerms={useLinguisticTerms}
+            editingParagraphs={editingParagraphs}
+            editingHorizontalLines={editingHorizontalLines}
+            characterRef={o.charRef}
+            characterMap={characterMap}
+            editingRefs={editingRefs}
+            editingSpeech={editingSpeech}
+            isRangeStart={word.wordId === speechRangeStartWordId || word.wordId === tagRangeStartWordId || word.wordId === wordCompareRangeStartWordId || word.wordId === closureRangeStart || word.wordId === requirednessRangeStart || word.wordId === requirednessResolvingStart}
+            highlightCharIds={highlightCharIds}
+            synopticMarkColor={synopticWordMarkColorMap?.get(word.wordId) ?? null}
+            editingWordCompare={editingWordCompare}
+            wordTagRef={o.wtr}
+            wordTagMap={wordTagMap}
+            editingWordTags={editingWordTags}
+            highlightWordTagIds={highlightWordTagIds}
+            wordFormatting={wordFormattingMap.get(word.wordId) ?? null}
+            editingFormatting={editingFormatting}
+            tcMark={tcMarkMap?.get(word.wordId) ?? null}
+            interlinearSubMode={interlinearSubMode}
+            constituentLabel={constituentLabelMap.get(word.wordId)}
+            datasetValue={datasetEntryMap.get(word.wordId)}
+            datasetDirection={datasetDirection}
+            suppressDatasetValueDisplay={!!activeGroupMap?.get(word.wordId)}
+            transliterationFormat={transliterationFormatMap.get(word.wordId)}
+            onSaveConstituentLabel={onSaveConstituentLabel}
+            onSaveDatasetEntry={onSaveDatasetEntry}
+            onSaveTransliterationFormat={onSaveTransliterationFormat}
+            onLemmaClick={onLemmaClick}
+            showVowels={showVowels}
+            showCantillation={showCantillation}
+            wordHighlightBg={o.highlightBg}
+            datasetGroupingActive={isGroupingCapableMode && datasetGroupingActive}
+            isPendingGroupMember={isGroupingCapableMode && pendingGroupWordIds.has(word.wordId)}
+            onToggleDatasetGroupMember={onToggleDatasetGroupMember}
+            poetryMarkContinuation={poetryWordMarkMap?.get(word.wordId)?.continuation ?? null}
+            poetryMarkRequiredness={poetryWordMarkMap?.get(word.wordId)?.requiredness ?? null}
+            poetryRequirednessUnderline={poetryRequirednessUnderlineSet?.has(word.wordId) ?? false}
+            poetryClosureWeak={poetryClosureWeakSet?.has(word.wordId) ?? false}
+            poetryClosureComplete={poetryClosureCompleteSet?.has(word.wordId) ?? false}
+            showPoetryNote={showPoetryNotes && !!poetryNoteMap?.has(word.wordId)}
+            poetryNoteText={poetryNoteMap?.get(word.wordId) ?? null}
+            openPoetryNoteMark={openPoetryNoteMarkByWord?.get(word.wordId) ?? null}
+            openPoetryNoteGroupMembers={openPoetryNoteGroupMembersByWord?.get(word.wordId) ?? null}
+            openPoetryNoteHasMissingArrow={openPoetryNoteHasMissingArrowByWord?.get(word.wordId) ?? false}
+            onSavePoetryNote={onSavePoetryNote}
+            onDeletePoetryMark={onDeletePoetryMark}
+            onClosePoetryNote={onClosePoetryNote}
+            onSelectRequirednessResolving={onSelectRequirednessResolving}
+            onAddWordToSimilarityGroup={onAddWordToSimilarityGroup}
+            onSaveSimilarityGroup={onSaveSimilarityGroup}
+            onDeleteSimilarityWord={onDeleteSimilarityWord}
+            onRestoreSimilarityArrows={onRestoreSimilarityArrows}
+            editingPoetrySimilarity={editingPoetrySimilarity}
+            pendingSimilarityAnchor={pendingSimilarityAnchor}
+            onGraphemeClick={onGraphemeClick ? (wordId, idx, shiftHeld) => onGraphemeClick(wordId, idx, shiftHeld, wordToParaStart.get(wordId) ?? wordId) : undefined}
+            similarityMark={similarityMarkByWord?.get(word.wordId) ?? null}
+            onClickSimilarityMark={onClickSimilarityMark}
+          />
+        );
+      }
+
       function renderWord(word: Word, wi: number): React.ReactNode {
         // Merge in the closure-weak underline for this word's trailing space
         // when it connects to the next word of the same range — on top of
@@ -2693,14 +2775,33 @@ export default function VerseDisplay({
               ? "rgba(251, 191, 36, 0.4)"
               : undefined;
         const isLastInGroup = wi === gWords.length - 1;
-        // A Qere is tagged independently of its Ketiv — same tint rules as a
-        // group of tagged words (stronger when the tag is highlighted).
-        const qereTagBg = word.qere?.length
-          ? new Map(word.qere.map((q) => {
-              const r = wordTagRefMap.get(q.wordId);
-              const wt = r ? resolveTag(r.tagId) : null;
-              return [q.wordId, wt ? (highlightWordTagIds.has(wt.id) ? `${wt.color}55` : `${wt.color}28`) : null] as const;
-            }))
+        // Each Qere gets its own markup, resolved exactly as for a word in
+        // its own one-word group (tag tint / character highlight / search).
+        const renderQere = word.qere?.length
+          ? (q: Word) => {
+              const qCr  = characterRefMap.get(q.wordId) ?? null;
+              const qWtr = wordTagRefMap.get(q.wordId) ?? null;
+              const qWt  = qWtr ? resolveTag(qWtr.tagId) : null;
+              const qCharHi = qCr != null &&
+                ((resolveCharacter(qCr.character1Id) != null && highlightCharIds.has(qCr.character1Id)) ||
+                  (qCr.character2Id != null && resolveCharacter(qCr.character2Id) != null && highlightCharIds.has(qCr.character2Id)));
+              const qSearchBg = findFocusId === q.wordId
+                ? "rgba(251, 146, 60, 0.65)"
+                : findHits?.has(q.wordId)
+                  ? "rgba(251, 191, 36, 0.45)"
+                  : searchHits?.has(q.wordId) ? "rgba(251, 191, 36, 0.4)" : undefined;
+              const qPending = isGroupingCapableMode && pendingGroupWordIds.has(q.wordId);
+              const qSaved = activeGroupMap?.get(q.wordId);
+              const qDatasetBg = qPending
+                ? "rgba(37, 99, 235, 0.35)"
+                : qSaved ? resolvedDatasetColor(activeValueMap?.get(q.wordId) ?? qSaved, activeLabelColors) : undefined;
+              const qBg = qSearchBg
+                ?? (qCharHi ? "rgba(253, 224, 71, 0.45)"
+                  : qWt ? (highlightWordTagIds.has(qWt.id) ? `${qWt.color}55` : `${qWt.color}28`)
+                  : undefined)
+                ?? qDatasetBg;
+              return renderToken(q, { charRef: qCr, wtr: qWtr, highlightBg: qBg, isQere: true });
+            }
           : undefined;
         const isPendingGroupMember = isGroupingCapableMode && pendingGroupWordIds.has(word.wordId);
         const savedGroupId = activeGroupMap?.get(word.wordId);
@@ -2719,73 +2820,7 @@ export default function VerseDisplay({
             key={word.wordId}
             style={(!isInterlinear && wrapperBg) ? { backgroundColor: wrapperBg, borderRadius: "2px" } : undefined}
           >
-            <WordToken
-              word={word}
-              displayMode={displayMode}
-              grammarFilter={grammarFilter}
-              colorRules={colorRules}
-              onSelect={onSelectWord}
-              selectedWordId={selectedWordId}
-              showTooltip={showTooltips}
-              useLinguisticTerms={useLinguisticTerms}
-              editingParagraphs={editingParagraphs}
-              editingHorizontalLines={editingHorizontalLines}
-              characterRef={charRef}
-              characterMap={characterMap}
-              editingRefs={editingRefs}
-              editingSpeech={editingSpeech}
-              isRangeStart={word.wordId === speechRangeStartWordId || word.wordId === tagRangeStartWordId || word.wordId === wordCompareRangeStartWordId || word.wordId === closureRangeStart || word.wordId === requirednessRangeStart || word.wordId === requirednessResolvingStart}
-              highlightCharIds={highlightCharIds}
-              synopticMarkColor={synopticWordMarkColorMap?.get(word.wordId) ?? null}
-              editingWordCompare={editingWordCompare}
-              wordTagRef={groupWtr}
-              qereTagBg={qereTagBg}
-              wordTagMap={wordTagMap}
-              editingWordTags={editingWordTags}
-              highlightWordTagIds={highlightWordTagIds}
-              wordFormatting={wordFormattingMap.get(word.wordId) ?? null}
-              editingFormatting={editingFormatting}
-              tcMark={tcMarkMap?.get(word.wordId) ?? null}
-              interlinearSubMode={interlinearSubMode}
-              constituentLabel={constituentLabelMap.get(word.wordId)}
-              datasetValue={datasetEntryMap.get(word.wordId)}
-              datasetDirection={datasetDirection}
-              suppressDatasetValueDisplay={!!savedGroupId}
-              transliterationFormat={transliterationFormatMap.get(word.wordId)}
-              onSaveConstituentLabel={onSaveConstituentLabel}
-              onSaveDatasetEntry={onSaveDatasetEntry}
-              onSaveTransliterationFormat={onSaveTransliterationFormat}
-              onLemmaClick={onLemmaClick}
-              showVowels={showVowels}
-              showCantillation={showCantillation}
-              wordHighlightBg={wordHighlightBg}
-              datasetGroupingActive={isGroupingCapableMode && datasetGroupingActive}
-              isPendingGroupMember={isPendingGroupMember}
-              onToggleDatasetGroupMember={onToggleDatasetGroupMember}
-              poetryMarkContinuation={poetryWordMarkMap?.get(word.wordId)?.continuation ?? null}
-              poetryMarkRequiredness={poetryWordMarkMap?.get(word.wordId)?.requiredness ?? null}
-              poetryRequirednessUnderline={poetryRequirednessUnderlineSet?.has(word.wordId) ?? false}
-              poetryClosureWeak={poetryClosureWeakSet?.has(word.wordId) ?? false}
-              poetryClosureComplete={poetryClosureCompleteSet?.has(word.wordId) ?? false}
-              showPoetryNote={showPoetryNotes && !!poetryNoteMap?.has(word.wordId)}
-              poetryNoteText={poetryNoteMap?.get(word.wordId) ?? null}
-              openPoetryNoteMark={openPoetryNoteMarkByWord?.get(word.wordId) ?? null}
-              openPoetryNoteGroupMembers={openPoetryNoteGroupMembersByWord?.get(word.wordId) ?? null}
-              openPoetryNoteHasMissingArrow={openPoetryNoteHasMissingArrowByWord?.get(word.wordId) ?? false}
-              onSavePoetryNote={onSavePoetryNote}
-              onDeletePoetryMark={onDeletePoetryMark}
-              onClosePoetryNote={onClosePoetryNote}
-              onSelectRequirednessResolving={onSelectRequirednessResolving}
-              onAddWordToSimilarityGroup={onAddWordToSimilarityGroup}
-              onSaveSimilarityGroup={onSaveSimilarityGroup}
-              onDeleteSimilarityWord={onDeleteSimilarityWord}
-              onRestoreSimilarityArrows={onRestoreSimilarityArrows}
-              editingPoetrySimilarity={editingPoetrySimilarity}
-              pendingSimilarityAnchor={pendingSimilarityAnchor}
-              onGraphemeClick={onGraphemeClick ? (wordId, idx, shiftHeld) => onGraphemeClick(wordId, idx, shiftHeld, wordToParaStart.get(wordId) ?? wordId) : undefined}
-              similarityMark={similarityMarkByWord?.get(word.wordId) ?? null}
-              onClickSimilarityMark={onClickSimilarityMark}
-            />
+            {renderToken(word, { charRef, wtr: groupWtr, highlightBg: wordHighlightBg, renderQere })}
             {wordHasAtnach && (
               <span
                 aria-hidden="true"

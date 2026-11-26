@@ -583,10 +583,17 @@ export default function ChapterDisplay({
 
   /** Global (chapter-wide) word order index — used to order an arbitrary
    *  word-compare range regardless of which word was clicked first. */
+  // A Qere (OSHB) isn't in `words`; it takes its Ketiv's index, so any
+  // position-based range logic treats it as standing at the Ketiv.
   const wordIndexMap = useMemo(
-    () => new Map(words.map((w, i) => [w.wordId, i])),
+    () => new Map(words.flatMap((w, i) => [[w.wordId, i] as const, ...(w.qere ?? []).map((q) => [q.wordId, i] as const)])),
     [words]
   );
+  const qereToKetiv = useMemo(() => {
+    const m = new Map<string, Word>();
+    for (const w of words) for (const q of w.qere ?? []) m.set(q.wordId, w);
+    return m;
+  }, [words]);
 
   async function handleToggleWordCompareMark(word: Word) {
     if (!wordCompareCategoryKey) return;
@@ -1199,6 +1206,7 @@ export default function ChapterDisplay({
       if (i > 0 && words[i - 1].verse !== word.verse) currentStart = word.wordId;
       if (paragraphBreakIds.has(word.wordId)) currentStart = word.wordId;
       map.set(word.wordId, currentStart);
+      for (const q of word.qere ?? []) map.set(q.wordId, currentStart);
     }
     return map;
   }, [words, paragraphBreakIds]);
@@ -1651,7 +1659,7 @@ export default function ChapterDisplay({
   const navigationDisabledRef = useRef(navigationDisabled);
   useEffect(() => { navigationDisabledRef.current = navigationDisabled; }, [navigationDisabled]);
   const wordPositionMap = useMemo(
-    () => new Map(words.map((w) => [w.wordId, w.positionInVerse])),
+    () => new Map(words.flatMap((w) => [[w.wordId, w.positionInVerse] as const, ...(w.qere ?? []).map((q) => [q.wordId, w.positionInVerse] as const)])),
     [words]
   );
   // handleSelectWord is defined below; we use a ref so the listener can call it
@@ -2809,6 +2817,12 @@ export default function ChapterDisplay({
   }
 
   function handleSelectWord(word: Word, shiftHeld = false) {
+    // Markup that belongs to a word (tags, characters, formatting, TC marks,
+    // poetry marks, arrows, compare marks…) goes on the Qere itself;
+    // structural markup tied to a position in the running text (paragraph /
+    // line / scene breaks, speech sections, clause-label segments) goes on
+    // its Ketiv, since a Qere has no place of its own in that sequence.
+    const ketivOrSelf = qereToKetiv.get(word.wordId) ?? word;
     if (editingPoetryNotation) {
       handlePoetryWordSelectByIds(word.wordId, wordToParaStart.get(word.wordId) ?? word.wordId, undefined, shiftHeld);
       return;
@@ -2823,7 +2837,7 @@ export default function ChapterDisplay({
     }
     if (editingAnnotations) {
       // Map the clicked word to its paragraph-segment first-word-id
-      const segId = wordToParaStart.get(word.wordId) ?? word.wordId;
+      const segId = wordToParaStart.get(word.wordId) ?? ketivOrSelf.wordId;
       handleSelectAnnotationSegment(segId, shiftHeld);
       return;
     }
@@ -2836,14 +2850,15 @@ export default function ChapterDisplay({
       return;
     }
     if (editingParagraphs) {
-      handleToggleParagraphBreak(word.wordId);
+      handleToggleParagraphBreak(ketivOrSelf.wordId);
       return;
     }
     if (editingHorizontalLines) {
-      handleToggleHorizontalLine(word.wordId);
+      handleToggleHorizontalLine(ketivOrSelf.wordId);
       return;
     }
     if (editingScenes) {
+      word = ketivOrSelf;
       const existing = sceneBreakMap.get(word.wordId) ?? [];
       if (existing.length === 0) {
         // No break yet — add level 1
@@ -2868,7 +2883,7 @@ export default function ChapterDisplay({
     }
     if (editingSpeech) {
       if (activeCharId === null) return;
-      handleToggleSpeechSection(word, shiftHeld);
+      handleToggleSpeechSection(ketivOrSelf, shiftHeld);
       return;
     }
     if (editingTc) {
@@ -3465,7 +3480,7 @@ export default function ChapterDisplay({
     if (activeCharId === null) return;
     if (shiftHeld && refRangeStart !== null) {
       // Apply active character to all words in the range that don't already have it
-      const posMap = new Map(words.map((w, i) => [w.wordId, i]));
+      const posMap = wordIndexMap;
       const startPos = posMap.get(refRangeStart) ?? 0;
       const endPos   = posMap.get(word.wordId)   ?? 0;
       const [lo, hi] = startPos <= endPos ? [startPos, endPos] : [endPos, startPos];
@@ -3581,7 +3596,7 @@ export default function ChapterDisplay({
     if (shiftHeld && wordTagRangeStart !== null) {
       // Apply active tag to all words in the range that don't already have it
       // A Qere takes its Ketiv's position, so a range can start or end on one.
-      const posMap = new Map(words.flatMap((w, i) => [[w.wordId, i] as const, ...(w.qere ?? []).map((q) => [q.wordId, i] as const)]));
+      const posMap = wordIndexMap;
       const startPos = posMap.get(wordTagRangeStart) ?? 0;
       const endPos   = posMap.get(word.wordId)       ?? 0;
       const [lo, hi] = startPos <= endPos ? [startPos, endPos] : [endPos, startPos];

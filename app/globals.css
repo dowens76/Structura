@@ -210,8 +210,18 @@ body {
   color: var(--text-muted);
   pointer-events: auto;
 }
-.word-qere-token {
-  padding: 0 0.1em;
+/* A Qere token is a full WordToken nested inside its Ketiv's column; drop
+   the row spacing a top-level interlinear word carries. */
+.word-qere .word-interlinear {
+  margin: 0;
+}
+/* Interlinear columns are bottom-aligned, so a Ketiv column made taller by
+   its Qere (surface + label) would lift the Ketiv above its neighbours. In a
+   verse that has a Qere, top-align every column instead: surfaces stay level
+   and the extra Qere rows just extend that line downward. */
+.text-hebrew:has(.word-qere) .word-interlinear,
+.text-hebrew:has(.word-qere) .word-interlinear-group {
+  vertical-align: top;
 }
 .word-interlinear .word-qere {
   position: static;
