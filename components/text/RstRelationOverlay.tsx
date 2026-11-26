@@ -1223,7 +1223,10 @@ export default function RstRelationOverlay({
 
           const dots: React.ReactElement[] = [];
 
-          if (!hideSourceTree || editing) {
+          // Source text hidden (e.g. translation-only workspace): the source dot
+          // would float over an invisible column, so only draw it while editing
+          // when there is no translation column to put the selector dot in.
+          if (!hideSourceTree || (editing && !hasTranslation)) {
             dots.push(
               <circle
                 key={`${wordId}-src`}
