@@ -2026,14 +2026,20 @@ export default function ChapterDisplay({
   // wordId → chapter / bookId lookups (for the shared annotation hooks above,
   // and for disambiguating chapter numbers that collide across a cross-book
   // boundary — see lib/utils/chapterKey.ts).
-  const wordToChapter = useMemo(
-    () => new Map(words.map((w) => [w.wordId, w.chapter])),
+  // OSHB Qere words aren't in `words` but are selectable/taggable in their
+  // own right (located at their Ketiv), so include them in the lookups.
+  const wordsWithQere = useMemo(
+    () => words.flatMap((w) => (w.qere?.length ? [w, ...w.qere] : [w])),
     [words]
+  );
+  const wordToChapter = useMemo(
+    () => new Map(wordsWithQere.map((w) => [w.wordId, w.chapter])),
+    [wordsWithQere]
   );
   wordToChapterRef.current = wordToChapter;
   const wordToBookId = useMemo(
-    () => new Map(words.map((w) => [w.wordId, w.bookId])),
-    [words]
+    () => new Map(wordsWithQere.map((w) => [w.wordId, w.bookId])),
+    [wordsWithQere]
   );
   // Every (book, chapter) this view shows — one for a chapter page, several
   // for a passage view. Sent with lemma-driven tag/character saves so the
@@ -3574,7 +3580,8 @@ export default function ChapterDisplay({
     if (activeWordTagId === null) return;
     if (shiftHeld && wordTagRangeStart !== null) {
       // Apply active tag to all words in the range that don't already have it
-      const posMap = new Map(words.map((w, i) => [w.wordId, i]));
+      // A Qere takes its Ketiv's position, so a range can start or end on one.
+      const posMap = new Map(words.flatMap((w, i) => [[w.wordId, i] as const, ...(w.qere ?? []).map((q) => [q.wordId, i] as const)]));
       const startPos = posMap.get(wordTagRangeStart) ?? 0;
       const endPos   = posMap.get(word.wordId)       ?? 0;
       const [lo, hi] = startPos <= endPos ? [startPos, endPos] : [endPos, startPos];

@@ -2,6 +2,7 @@ import { eq, and, inArray, asc } from "drizzle-orm";
 import { userDb, sourceDb, getLxxDb, getUltSqlite, getOshbDb, getSblgntDb } from "@/lib/db";
 import { wordTagRefs, translations, translationVerses } from "@/lib/db/user-schema";
 import { books, words } from "@/lib/db/source-schema";
+import { getQereLocations, getChapterQere } from "@/lib/db/qere";
 import { OSIS_BOOKS_OT, OSIS_BOOKS_NT, OSIS_BOOKS_LXX } from "@/lib/utils/osis";
 
 /**
@@ -167,6 +168,16 @@ export async function resolveOccurrenceRefs(
     }
   }
   await resolveByWordId(getOshbDb(), oshbLookupRefs);
+  // OSHB Qere words aren't rows in `words`; locate them via their Ketiv.
+  {
+    const resolved = new Set(verseRefs.map((v) => v.wordId));
+    const pending = oshbLookupRefs.filter((r) => !resolved.has(r.wordId));
+    const locs = await getQereLocations(pending.map((r) => r.wordId));
+    for (const r of pending) {
+      const loc = locs.get(r.wordId);
+      if (loc) verseRefs.push({ wordId: r.wordId, tagId: r.tagId, book: r.book, chapter: loc.chapter, verse: loc.verse, textSource: r.textSource, osisRef: `${r.book}.${loc.chapter}.${loc.verse}` });
+    }
+  }
   await resolveByWordId(getSblgntDb(), sblgntLookupRefs);
 
   // ── Deduplicate by osisRef+wordId, then sort canonically ──────────────────
@@ -230,11 +241,23 @@ export async function resolveOccurrenceRefs(
       }
     }
 
+    // OSHB: each Ketiv's Qere follows it as its own bracketed token, so a
+    // tagged Qere can be located (and a new one tagged) in the verse text.
+    const chapterQere = kind === "oshb" && db
+      ? await (async () => {
+          const bookRows = await db.select({ id: books.id }).from(books).where(eq(books.osisCode, book));
+          return bookRows.length > 0 ? getChapterQere(bookRows[0].id, chapter) : new Map();
+        })()
+      : new Map<string, { wordId: string; surfaceText: string; kind: string }[]>();
+
     const verseWordMap = new Map<number, { text: string; wordId: string }[]>();
     for (const w of chapterWordRows) {
       const text = w.surfaceText.replace(/\//g, "");
       const arr = verseWordMap.get(w.verse) ?? [];
       arr.push({ text, wordId: w.wordId });
+      for (const q of chapterQere.get(w.wordId) ?? []) {
+        arr.push({ text: `[${q.kind === "qere-only" ? "+" : ""}${q.surfaceText.replace(/\//g, "")}]`, wordId: q.wordId });
+      }
       verseWordMap.set(w.verse, arr);
     }
     for (const [verse, tokens] of verseWordMap) {

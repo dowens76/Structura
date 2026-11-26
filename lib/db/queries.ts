@@ -3,9 +3,10 @@ import { sourceDb, userDb, sourceLookups, lxxLookups, getLxxDb, getLxxSqlite, ge
 import { getMtToKjvInstructions } from "@/lib/versification/mt-kjv-mapping";
 import { schemeUsesKjvPsalmOffset } from "@/lib/versification/schemes";
 import type { LookupMaps } from "./index";
-import { books, words, qereReadings } from "./source-schema";
+import { books, words } from "./source-schema";
+import { attachQere, getQereRefsByLemmas } from "./qere";
 import { lexiconEntries } from "./lexica-schema";
-import type { Word, WordRow, QereWord } from "./source-schema";
+import type { Word, WordRow } from "./source-schema";
 import { translations, translationVerses, paragraphBreaks, horizontalLines, paragraphHeadings, characters, characterRefs, speechSections, wordTags, wordTagRefs, lineIndents, syllableStressOverrides, sceneBreaks, passages, rstRelations, lineGroups, wordArrows, wordFormatting, lineAnnotations, poetryNotations, poetryLineBracketExclusions, bookGroupings, appSettings, translationFootnotes, translationVersions, workspaces, users, textCriticalMarks, notes, intertextualLinks, synopticSets, synopticWordMarks, constituentLabels, transliterationFormats, wordDatasets, wordDatasetEntries, wordDatasetLabelColors, versions, activeVersionSelections } from "./user-schema";
 import type { Book, Translation, TranslationVerse, Character, CharacterRef, SpeechSection, WordTag, WordTagRef, Passage, RstRelation, LineGroup, WordArrow, LineAnnotation, PoetryNotation, PoetryLineBracketExclusion, BookGrouping, TranslationFootnote, TranslationVersion, IntertextualLink, SynopticSet, SynopticWordMark, Version } from "./schema";
 import { VERSIONABLE_FEATURES } from "@/lib/versions/registry";
@@ -125,41 +126,6 @@ export async function getBook(osisCode: string): Promise<Book | undefined> {
     .where(eq(books.osisCode, osisCode))
     .limit(1);
   return results[0];
-}
-
-// ── Qere readings (OSHB) ──────────────────────────────────────────────────────
-
-let _oshbHasQere: boolean | null = null;
-
-/** Attach each Ketiv word's Masoretic Qere (from oshb.db's `qere_readings`).
- *  No-op for other sources, or an older oshb.db built without the table. */
-async function attachQere(ws: Word[], textSource: string): Promise<Word[]> {
-  if (textSource !== "OSHB" || ws.length === 0) return ws;
-  const db = getOshbDb();
-  if (_oshbHasQere === null) {
-    const rows = db.all<{ n: number }>(sql`SELECT count(*) AS n FROM sqlite_master WHERE type = 'table' AND name = 'qere_readings'`);
-    _oshbHasQere = (rows[0]?.n ?? 0) > 0;
-  }
-  if (!_oshbHasQere) return ws;
-  const byKetiv = new Map<string, QereWord[]>();
-  const ids = ws.map((w) => w.wordId);
-  const CHUNK = 500;
-  for (let i = 0; i < ids.length; i += CHUNK) {
-    const rows = await db.select().from(qereReadings)
-      .where(inArray(qereReadings.ketivWordId, ids.slice(i, i + CHUNK)))
-      .orderBy(asc(qereReadings.ketivWordId), asc(qereReadings.seq));
-    for (const r of rows) {
-      const list = byKetiv.get(r.ketivWordId) ?? [];
-      list.push({
-        wordId: r.wordId, surfaceText: r.surfaceText, lemma: r.lemma,
-        strongNumber: r.strongNumber, morphCode: r.morphCode,
-        kind: r.kind === "qere-only" ? "qere-only" : "qere",
-      });
-      byKetiv.set(r.ketivWordId, list);
-    }
-  }
-  if (byKetiv.size === 0) return ws;
-  return ws.map((w) => { const q = byKetiv.get(w.wordId); return q ? { ...w, qere: q } : w; });
 }
 
 export async function getChapterWords(
@@ -1680,6 +1646,9 @@ export async function getWordRefsByLemmas(
       const ts = _lemmaLookups.textSourceById[r.textSourceId] ?? textSourceName;
       refs.push({ wordId: r.wordId, book: r.osisCode, chapter: r.chapter, textSource: ts });
     }
+    // Qere readings carry their own lemma/Strong's and word id, so they match
+    // (and get tagged) independently of their Ketiv.
+    if (textSourceName === "OSHB") refs.push(...await getQereRefsByLemmas(dedupedLemmas, corpusBooks));
   }
 
   return refs;

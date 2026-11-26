@@ -209,7 +209,9 @@ body {
   white-space: nowrap;
   color: var(--text-muted);
   pointer-events: auto;
-  cursor: help;
+}
+.word-qere-token {
+  padding: 0 0.1em;
 }
 .word-interlinear .word-qere {
   position: static;

@@ -193,11 +193,9 @@ export const qereReadings = sqliteTable("qere_readings", {
   kind:         text("kind").notNull(),
 }, (t) => [index("qere_ketiv_idx").on(t.ketivWordId)]);
 
-export interface QereWord {
-  wordId:       string;
-  surfaceText:  string;
-  lemma:        string | null;
-  strongNumber: string | null;
-  morphCode:    string | null;
-  kind:         "qere" | "qere-only";
+/** A Qere as a full Word (own id, lemma and parsing), located at its Ketiv. */
+export interface QereWord extends Word {
+  /** "qere" = replaces the Ketiv; "qere-only" = Qere wela Ketiv (no written word). */
+  kind:        "qere" | "qere-only";
+  ketivWordId: string;
 }

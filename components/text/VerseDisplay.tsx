@@ -2693,6 +2693,15 @@ export default function VerseDisplay({
               ? "rgba(251, 191, 36, 0.4)"
               : undefined;
         const isLastInGroup = wi === gWords.length - 1;
+        // A Qere is tagged independently of its Ketiv — same tint rules as a
+        // group of tagged words (stronger when the tag is highlighted).
+        const qereTagBg = word.qere?.length
+          ? new Map(word.qere.map((q) => {
+              const r = wordTagRefMap.get(q.wordId);
+              const wt = r ? resolveTag(r.tagId) : null;
+              return [q.wordId, wt ? (highlightWordTagIds.has(wt.id) ? `${wt.color}55` : `${wt.color}28`) : null] as const;
+            }))
+          : undefined;
         const isPendingGroupMember = isGroupingCapableMode && pendingGroupWordIds.has(word.wordId);
         const savedGroupId = activeGroupMap?.get(word.wordId);
         const datasetHighlightBg = isPendingGroupMember
@@ -2730,6 +2739,7 @@ export default function VerseDisplay({
               synopticMarkColor={synopticWordMarkColorMap?.get(word.wordId) ?? null}
               editingWordCompare={editingWordCompare}
               wordTagRef={groupWtr}
+              qereTagBg={qereTagBg}
               wordTagMap={wordTagMap}
               editingWordTags={editingWordTags}
               highlightWordTagIds={highlightWordTagIds}

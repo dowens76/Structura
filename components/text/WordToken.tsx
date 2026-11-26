@@ -39,6 +39,8 @@ interface WordTokenProps {
   editingWordCompare?: boolean;
   // Word / concept tag highlighting
   wordTagRef?: WordTagRef | null;
+  /** Tag tint per Qere word id (null = untagged). */
+  qereTagBg?: Map<string, string | null>;
   wordTagMap?: Map<number, WordTag>;
   editingWordTags?: boolean;
   highlightWordTagIds?: Set<number>;
@@ -514,6 +516,7 @@ export default function WordToken({
   synopticMarkColor,
   editingWordCompare,
   wordTagRef,
+  qereTagBg,
   wordTagMap,
   editingWordTags,
   highlightWordTagIds,
@@ -563,6 +566,9 @@ export default function WordToken({
   const { t } = useTranslation();
   const [hovering, setHovering] = useState(false);
   const [tooltipBelow, setTooltipBelow] = useState(false);
+  // The Qere sits inside the Ketiv's span, so hovering it would otherwise show
+  // the Ketiv's parsing; track which Qere (if any) is hovered instead.
+  const [hoverQere, setHoverQere] = useState<Word | null>(null);
   const wordRef = useRef<HTMLSpanElement>(null);
   const showTooltip = tooltipsEnabled && hovering;
   const isSelected = selectedWordId === word.wordId;
@@ -731,21 +737,38 @@ export default function WordToken({
   let qereNode: React.ReactNode = null;
   if (word.qere?.length) {
     const qereOnly = word.qere[0].kind === "qere-only";
-    let qereText = word.qere.map((q) => q.surfaceText.replace(/\//g, "")).join(" ");
-    if (!showCantillation) qereText = qereText.replace(/[֑-֯]/g, "");
-    if (!showVowels)       qereText = qereText.replace(/[ְ-ׇֽֿׁׂׅׄ]/g, "");
-    const qereTitle = `${qereOnly ? t("wordToken.qereOnly") : t("wordToken.qere")}: ${word.qere
-      .map((q) => [q.strongNumber, q.morphCode].filter(Boolean).join(" "))
-      .join(" · ")}`;
+    const label = qereOnly ? t("wordToken.qereOnly") : t("wordToken.qere");
     qereNode = (
-      <span
-        className="word-qere"
-        dir="rtl"
-        lang="he"
-        title={qereTitle}
-        data-qere-kind={qereOnly ? "qere-only" : "qere"}
-      >
-        {qereOnly ? "+" : ""}{qereText}
+      <span className="word-qere" dir="rtl" lang="he" data-qere-kind={qereOnly ? "qere-only" : "qere"}>
+        {qereOnly ? "+" : ""}
+        {word.qere.map((q, i) => {
+          let text = q.surfaceText.replace(/\//g, "");
+          if (!showCantillation) text = text.replace(/[֑-֯]/g, "");
+          if (!showVowels)       text = text.replace(/[ְ-ׇֽֿׁׂׅׄ]/g, "");
+          const bg = qereTagBg?.get(q.wordId) ?? null;
+          // Like the Ketiv, the selection outline only shows outside editing modes.
+          const selected = !isEditing && selectedWordId === q.wordId;
+          return (
+            <span key={q.wordId}>
+              {i > 0 ? " " : ""}
+              <span
+                data-word-id={q.wordId}
+                className={[
+                  "word-qere-token rounded",
+                  isEditing ? "cursor-crosshair" : "cursor-pointer",
+                  selected ? "outline outline-2 outline-blue-400 bg-blue-100 dark:bg-blue-900" : "hover:bg-stone-200/70 dark:hover:bg-stone-700/70",
+                ].join(" ")}
+                style={bg && !selected ? { backgroundColor: bg } : undefined}
+                title={isEditing ? undefined : `${label}: ${[q.strongNumber, q.morphCode].filter(Boolean).join(" ")}`}
+                onClick={(e) => { e.stopPropagation(); onSelect(q, e.shiftKey); }}
+                onMouseEnter={() => setHoverQere(q)}
+                onMouseLeave={() => setHoverQere(null)}
+              >
+                {text}
+              </span>
+            </span>
+          );
+        })}
       </span>
     );
   }
@@ -866,7 +889,7 @@ export default function WordToken({
       >
         {coreContent}
         {qereNode}
-        {showTooltip && !isEditing && <ParseTooltip word={word} flipped={tooltipBelow} useLinguisticTerms={useLinguisticTerms} />}
+        {showTooltip && !isEditing && <ParseTooltip word={hoverQere ?? word} flipped={tooltipBelow} useLinguisticTerms={useLinguisticTerms} />}
         {poetryGlyphs}
       </span>
       {trailing}
@@ -910,7 +933,7 @@ export default function WordToken({
         >
           <span className="word-surface">{coreContent}</span>
           {qereNode}
-          {showTooltip && !isEditing && <ParseTooltip word={word} flipped={tooltipBelow} useLinguisticTerms={useLinguisticTerms} />}
+          {showTooltip && !isEditing && <ParseTooltip word={hoverQere ?? word} flipped={tooltipBelow} useLinguisticTerms={useLinguisticTerms} />}
         </span>
         <InterlinearLabel
           word={word}
