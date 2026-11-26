@@ -4,6 +4,7 @@ import {
   removeCharacterRefsForWords, getWordRefsByLemmas, bulkInsertCharacterRefs,
 } from "@/lib/db/queries";
 import { getActiveWorkspaceId } from "@/lib/workspace";
+import { filterRefsToView, type ViewLocus } from "@/lib/utils/viewLoci";
 
 export const dynamic = "force-dynamic";
 
@@ -21,14 +22,14 @@ export async function PATCH(
     name?: string; color?: string;
     lemmas?: string[] | null; prevLemmas?: string[] | null;
     corpusType?: string; corpusGroupingId?: number | null; corpusChapter?: number | null; corpusPassageId?: number | null;
-    corpusBooks?: string[]; textSource?: string; currentChapter?: number; book?: string;
+    corpusBooks?: string[]; textSource?: string; currentChapter?: number; viewLoci?: ViewLocus[]; book?: string;
   };
   try {
     body = await request.json();
   } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
-  const { name, color, lemmas, prevLemmas, corpusType, corpusGroupingId, corpusChapter, corpusPassageId, corpusBooks, textSource, currentChapter, book } = body;
+  const { name, color, lemmas, prevLemmas, corpusType, corpusGroupingId, corpusChapter, corpusPassageId, corpusBooks, textSource, currentChapter, viewLoci, book } = body;
   if (!name || !color) {
     return NextResponse.json({ error: "Missing name or color" }, { status: 400 });
   }
@@ -55,9 +56,7 @@ export async function PATCH(
       await removeCharacterRefsForWords(numId, removedWordIds);
     }
     await bulkInsertCharacterRefs(numId, allRefs, workspaceId);
-    if (currentChapter != null && book) {
-      chapterRefs = allRefs.filter((r) => r.book === book && r.chapter === currentChapter);
-    }
+    chapterRefs = filterRefsToView(allRefs, viewLoci, book, currentChapter);
   }
 
   return NextResponse.json({ character, chapterRefs, removedWordIds });

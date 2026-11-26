@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createWordTag, getWordRefsByLemmas, bulkInsertWordTagRefs } from "@/lib/db/queries";
 import { getActiveWorkspaceId } from "@/lib/workspace";
 import { canonicalPairBook } from "@/lib/utils/osis";
+import { filterRefsToView, type ViewLocus } from "@/lib/utils/viewLoci";
 
 export const dynamic = "force-dynamic";
 
@@ -20,6 +21,7 @@ export async function POST(request: NextRequest) {
     textSource?: string;
     corpusGroupingId?: number | null;
     currentChapter?: number;
+    viewLoci?: ViewLocus[];
     type?: string;
     corpusType?: string;
     corpusChapter?: number | null;
@@ -29,7 +31,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const { name, color, book, lemmas, corpusBooks, textSource, corpusGroupingId, currentChapter, corpusType, corpusChapter, corpusPassageId } = body;
+  const { name, color, book, lemmas, corpusBooks, textSource, corpusGroupingId, currentChapter, viewLoci, corpusType, corpusChapter, corpusPassageId } = body;
   const tagType = body.type === "word" ? "word" : "cluster";
   if (!name || !color || !book || !lemmas?.length || !corpusBooks?.length || !textSource) {
     return NextResponse.json({ error: "Missing fields" }, { status: 400 });
@@ -43,10 +45,9 @@ export async function POST(request: NextRequest) {
   const allRefs = await getWordRefsByLemmas(lemmas, corpusBooks, textSource);
   const { inserted } = await bulkInsertWordTagRefs(tag.id, allRefs, workspaceId);
 
-  // Return refs for the current chapter so the client can update local state immediately
-  const chapterRefs = currentChapter != null
-    ? allRefs.filter((r) => r.book === book && r.chapter === currentChapter)
-    : [];
+  // Return refs for every chapter the client is showing (a passage view can
+  // span several) so it can update local state immediately
+  const chapterRefs = filterRefsToView(allRefs, viewLoci, book, currentChapter);
 
   return NextResponse.json({ tag, tagged: inserted, chapterRefs });
 }

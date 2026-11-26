@@ -2035,6 +2035,19 @@ export default function ChapterDisplay({
     () => new Map(words.map((w) => [w.wordId, w.bookId])),
     [words]
   );
+  // Every (book, chapter) this view shows — one for a chapter page, several
+  // for a passage view. Sent with lemma-driven tag/character saves so the
+  // server returns matches for the whole view, not just its first chapter.
+  const viewLoci = useMemo(() => {
+    const seen = new Map<string, { book: string; chapter: number }>();
+    for (const w of words) {
+      const b = bookIdToOsis.get(w.bookId) ?? book;
+      const key = `${b}:${w.chapter}`;
+      if (!seen.has(key)) seen.set(key, { book: b, chapter: w.chapter });
+    }
+    if (seen.size === 0) seen.set(`${book}:${chapter}`, { book, chapter });
+    return [...seen.values()];
+  }, [words, bookIdToOsis, book, chapter]);
 
   // Resolves the actual (book, chapter) a given wordId lives in, falling back
   // to the outer `book`/`chapter` props for ids not present in `words` (e.g.
@@ -3659,7 +3672,7 @@ export default function ChapterDisplay({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name, color, book, lemmas, corpusBooks,
-          textSource, currentChapter: chapter, type,
+          textSource, currentChapter: chapter, viewLoci, type,
           corpusType: corpus.mode,
           corpusGroupingId: corpus.groupingId,
           corpusChapter: corpus.chapter,
@@ -3744,7 +3757,7 @@ export default function ChapterDisplay({
           corpusGroupingId: corpus?.groupingId,
           corpusChapter: corpus?.chapter,
           corpusPassageId: corpus?.passageId,
-          corpusBooks, textSource, currentChapter: chapter, book,
+          corpusBooks, textSource, currentChapter: chapter, viewLoci, book,
         }),
       });
       const data = await res.json();
@@ -4036,7 +4049,7 @@ export default function ChapterDisplay({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name, color, book, lemmas, corpusBooks,
-          textSource, currentChapter: chapter,
+          textSource, currentChapter: chapter, viewLoci,
           corpusType: corpus.mode,
           corpusGroupingId: corpus.groupingId,
           corpusChapter: corpus.chapter,
@@ -4279,7 +4292,7 @@ export default function ChapterDisplay({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name, color, lemmas, prevLemmas, corpusBooks,
-          textSource, currentChapter: chapter, book,
+          textSource, currentChapter: chapter, viewLoci, book,
           corpusType: corpus.mode,
           corpusGroupingId: corpus.groupingId,
           corpusChapter: corpus.chapter,

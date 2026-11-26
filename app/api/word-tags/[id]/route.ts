@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { updateWordTag, deleteWordTag, deleteWordTagRefsForWords, getWordRefsByLemmas, bulkInsertWordTagRefs } from "@/lib/db/queries";
 import { getActiveWorkspaceId } from "@/lib/workspace";
+import { filterRefsToView, type ViewLocus } from "@/lib/utils/viewLoci";
 
 export const dynamic = "force-dynamic";
 
@@ -21,6 +22,7 @@ export async function PATCH(
     corpusBooks?: string[];
     textSource?: string;
     currentChapter?: number;
+    viewLoci?: ViewLocus[];
     book?: string;
     corpusType?: string;
     corpusChapter?: number | null;
@@ -29,7 +31,7 @@ export async function PATCH(
   try { body = await request.json(); } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
-  const { name, color, corpusGroupingId, lemmas, prevLemmas, corpusBooks, textSource, currentChapter, book, corpusType, corpusChapter, corpusPassageId } = body;
+  const { name, color, corpusGroupingId, lemmas, prevLemmas, corpusBooks, textSource, currentChapter, viewLoci, book, corpusType, corpusChapter, corpusPassageId } = body;
   if (!name || !color) return NextResponse.json({ error: "Missing name or color" }, { status: 400 });
 
   const tag = await updateWordTag(numId, name, color, corpusGroupingId, lemmas, {
@@ -56,9 +58,7 @@ export async function PATCH(
       await deleteWordTagRefsForWords(numId, removedWordIds);
     }
     await bulkInsertWordTagRefs(numId, allRefs, workspaceId);
-    if (currentChapter != null && book) {
-      chapterRefs = allRefs.filter((r) => r.book === book && r.chapter === currentChapter);
-    }
+    chapterRefs = filterRefsToView(allRefs, viewLoci, book, currentChapter);
   }
 
   return NextResponse.json({ tag, chapterRefs, removedWordIds });

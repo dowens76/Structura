@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getCharacters, createCharacter, getWordRefsByLemmas, bulkInsertCharacterRefs } from "@/lib/db/queries";
 import { getActiveWorkspaceId } from "@/lib/workspace";
 import { canonicalPairBook } from "@/lib/utils/osis";
+import { filterRefsToView, type ViewLocus } from "@/lib/utils/viewLoci";
 
 export const dynamic = "force-dynamic";
 
@@ -24,7 +25,7 @@ export async function POST(request: NextRequest) {
     name?: string; color?: string; book?: string;
     lemmas?: string[] | null;
     corpusType?: string; corpusGroupingId?: number | null; corpusChapter?: number | null; corpusPassageId?: number | null;
-    corpusBooks?: string[]; textSource?: string; currentChapter?: number;
+    corpusBooks?: string[]; textSource?: string; currentChapter?: number; viewLoci?: ViewLocus[];
   };
   try {
     body = await request.json();
@@ -32,7 +33,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const { name, color, book, lemmas, corpusType, corpusGroupingId, corpusChapter, corpusPassageId, corpusBooks, textSource, currentChapter } = body;
+  const { name, color, book, lemmas, corpusType, corpusGroupingId, corpusChapter, corpusPassageId, corpusBooks, textSource, currentChapter, viewLoci } = body;
   if (!name || !color || !book) {
     return NextResponse.json({ error: "Missing fields" }, { status: 400 });
   }
@@ -48,9 +49,7 @@ export async function POST(request: NextRequest) {
   if (lemmas?.length && corpusBooks?.length && textSource) {
     const allRefs = await getWordRefsByLemmas(lemmas, corpusBooks, textSource);
     await bulkInsertCharacterRefs(character.id, allRefs, workspaceId);
-    if (currentChapter != null) {
-      chapterRefs = allRefs.filter((r) => r.book === book && r.chapter === currentChapter);
-    }
+    chapterRefs = filterRefsToView(allRefs, viewLoci, book, currentChapter);
   }
 
   return NextResponse.json({ character, chapterRefs });
