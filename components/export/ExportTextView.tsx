@@ -191,6 +191,7 @@ export default function ExportTextView({
       if (i > 0 && words[i - 1].verse !== word.verse) currentStart = word.wordId;
       if (paragraphBreakIds.has(word.wordId)) currentStart = word.wordId;
       map.set(word.wordId, currentStart);
+      for (const q of word.qere ?? []) map.set(q.wordId, currentStart);
     }
     return map;
   }, [words, paragraphBreakIds]);
@@ -205,8 +206,9 @@ export default function ExportTextView({
 
   // ── Poetry Notation (Gestalt) — chapter-wide word order + derived display
   // maps, mirroring ChapterDisplay so the export view shows every mark. ──
+  // A Qere (OSHB) takes its Ketiv's index, as in ChapterDisplay.
   const wordIndexMap = useMemo(
-    () => new Map(words.map((w, i) => [w.wordId, i])),
+    () => new Map(words.flatMap((w, i) => [[w.wordId, i] as const, ...(w.qere ?? []).map((q) => [q.wordId, i] as const)])),
     [words]
   );
   const {

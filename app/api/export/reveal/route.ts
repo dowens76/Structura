@@ -248,7 +248,19 @@ function renderWords(
         const ref       = characterRefMap.get(w.wordId);
         const tagRef    = wordTagRefMap.get(w.wordId);
         const tag       = tagRef ? wordTagMap.get(tagRef.tagId) : undefined;
-        return wordToSpan(w, formattingMap.get(w.wordId), speechChr, ref, characterMap, tag);
+        const ketivHtml = wordToSpan(w, formattingMap.get(w.wordId), speechChr, ref, characterMap, tag);
+        if (!w.qere?.length || !ketivHtml) return ketivHtml;
+        // OSHB Qere: shown beneath its Ketiv (ruby, positioned under), each a
+        // span of its own carrying its own formatting/character/tag markup.
+        const qereHtml = w.qere
+          .map((q) => {
+            const qTagRef = wordTagRefMap.get(q.wordId);
+            const qTag    = qTagRef ? wordTagMap.get(qTagRef.tagId) : undefined;
+            return wordToSpan(q, formattingMap.get(q.wordId), speechChr, characterRefMap.get(q.wordId), characterMap, qTag);
+          })
+          .join(" ");
+        const plus = w.qere[0].kind === "qere-only" ? "+" : "";
+        return `<ruby class="kq">${ketivHtml}<rt class="qere">${plus}${qereHtml}</rt></ruby>`;
       })
       .filter(Boolean)
       .join(" ");
@@ -634,6 +646,16 @@ function buildRevealHtml(
       vertical-align: super;
       margin-${isHebrew ? "left" : "right"}: 0.25em;
       font-family: Georgia, 'Times New Roman', serif;
+    }
+
+    /* Masoretic Qere beneath its Ketiv */
+    ruby.kq {
+      ruby-position: under;
+      -webkit-ruby-position: after;
+    }
+    ruby.kq rt.qere {
+      font-size: 0.55em;
+      color: #78716c;
     }
 
     /* Paragraph segment block */
