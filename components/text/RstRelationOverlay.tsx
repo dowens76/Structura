@@ -662,6 +662,15 @@ export default function RstRelationOverlay({
 
   const groupNodes = layoutNodes.filter(n => n.type === "group");
 
+  // Translation-side chips/arms are normally read-only mirrors: the source-side
+  // copy (same groupId) carries the edit/delete hit targets.  When there is no
+  // visible source copy — translation-only mode (hideSourceTree), or a group
+  // that exists only on the translation side (unlinked mode) — the
+  // translation copy must be interactive or the relation can't be deleted.
+  const srcGroupIds = new Set(groupNodes.filter(n => !n.isTrans).map(n => n.id));
+  const isEditableSide = (isTrans: boolean | undefined, groupId: string) =>
+    !isTrans || hideSourceTree || !srcGroupIds.has(groupId);
+
   // Which group chip shows the selection ring.
   // • selectedNucleusGroupId (explicit): user clicked a group connector dot —
   //   show ONLY the group ring; the underlying paragraph dot is suppressed.
@@ -925,7 +934,7 @@ export default function RstRelationOverlay({
 
         const childNode = layoutNodes.find(n => n.id === lk.childId && !!n.isTrans === !!lk.isTrans);
         const childIsGroup = childNode?.type === "group";
-        const isInteractive = editing && !lk.isTrans;
+        const isInteractive = editing && isEditableSide(lk.isTrans, lk.parentId);
 
         const handleClick = isInteractive ? (e: React.MouseEvent) => {
           e.stopPropagation();
@@ -955,7 +964,7 @@ export default function RstRelationOverlay({
         // Intersect-point picker: 3 dots on the child subordinate group's vertical.
         // Shown in editing mode when this coordinate arm connects to an L-shape
         // subordinate child and onUpdateRstIntersectPoint is wired up.
-        if (editing && !lk.isTrans && childIsSubordL && childYRange && onUpdateRstIntersectPoint && lk.dbRowId) {
+        if (editing && isEditableSide(lk.isTrans, lk.parentId) && childIsSubordL && childYRange && onUpdateRstIntersectPoint && lk.dbRowId) {
           const dotCx = armX2; // = the child's spine X (corner of its L-shape path)
           const positions = [
             { ip: "start" as const, y: childYRange.minY,                                    label: "⊤" },
@@ -1001,12 +1010,13 @@ export default function RstRelationOverlay({
         const abbr          = meta?.abbr  ?? (n.relType ?? "?").slice(0, 3);
         const isHovered     = hoveredGroup === n.id;
         const isEditingThis = editingGroupId === n.id;
-        // Translation mirror chips are read-only (no edit/delete hit targets)
-        const isInteractive = editing && !n.isTrans;
+        // Translation mirror chips are read-only unless no source copy is shown
+        const canEdit       = isEditableSide(n.isTrans, n.id);
+        const isInteractive = editing && canEdit;
         const CHIP_W = 28;
         const CHIP_H = 16;
 
-        const isSelectedEndpoint = n.id === selectedGroupId && !n.isTrans;
+        const isSelectedEndpoint = n.id === selectedGroupId && canEdit;
 
         const satLink = layoutLinks.find(
           lk => lk.parentId === n.id && lk.role === "satellite" && !!lk.isTrans === !!n.isTrans
@@ -1114,7 +1124,7 @@ export default function RstRelationOverlay({
                   />
                 )}
                 {/* White ring when this group's type is being edited */}
-                {isEditingThis && !n.isTrans && (
+                {isEditingThis && canEdit && (
                   <rect
                     x={chipX - CHIP_W / 2 - 3} y={chipY - CHIP_H / 2 - 3}
                     width={CHIP_W + 6}          height={CHIP_H + 6}
@@ -1158,7 +1168,7 @@ export default function RstRelationOverlay({
             )}
 
             {/* Connector dot — anchored to primary (first) chip */}
-            {editing && !n.isTrans && onSelectGroup && (
+            {editing && canEdit && onSelectGroup && (
               <circle
                 cx={connDotX} cy={primaryChipY} r={SEG_R}
                 fill={isSelectedEndpoint ? "#7C3AED" : "transparent"}
