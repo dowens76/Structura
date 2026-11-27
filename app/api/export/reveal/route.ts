@@ -263,8 +263,9 @@ function renderWords(
         const tag       = tagRef ? wordTagMap.get(tagRef.tagId) : undefined;
         const ketivHtml = wordToSpan(w, formattingMap.get(w.wordId), speechChr, ref, characterMap, tag);
         if (!w.qere?.length || !ketivHtml) return ketivHtml;
-        // OSHB Qere: shown beneath its Ketiv (ruby, positioned under), each a
-        // span of its own carrying its own formatting/character/tag markup.
+        // OSHB Qere: shown inline after its Ketiv on the same line (no-break
+        // space), as an LTR isolate reading visually "[דָּבַר :Q]"; each Qere
+        // is a span of its own carrying its own formatting/character/tag markup.
         const qereHtml = w.qere
           .map((q) => {
             const qTagRef = wordTagRefMap.get(q.wordId);
@@ -273,7 +274,7 @@ function renderWords(
           })
           .join(" ");
         const plus = w.qere[0].kind === "qere-only" ? "+" : "";
-        return `<ruby class="kq">${ketivHtml}<rt class="qere">${plus}${qereHtml}</rt></ruby>`;
+        return `${ketivHtml}&nbsp;<span class="qere" dir="ltr"><span class="qere-mark">[</span><bdi dir="rtl" lang="he">${plus}${qereHtml}</bdi><span class="qere-mark">&nbsp;:Q</span><span class="qere-mark">]</span></span>`;
       })
       .filter(Boolean)
       .join(" ");
@@ -663,14 +664,20 @@ function buildRevealHtml(
       font-family: Georgia, 'Times New Roman', serif;
     }
 
-    /* Masoretic Qere beneath its Ketiv */
-    ruby.kq {
-      ruby-position: under;
-      -webkit-ruby-position: after;
-    }
-    ruby.kq rt.qere {
+    /* Masoretic Qere inline after its Ketiv: [… :Q] */
+    span.qere {
       font-size: 0.55em;
       color: #78716c;
+      white-space: nowrap;
+    }
+    /* The Qere's <bdi lang="he"> must not reset to full source size. */
+    span.qere > bdi {
+      font-size: inherit;
+      line-height: inherit;
+    }
+    /* Hebrew fonts can shape "Q]" to a blank glyph; use a Latin face. */
+    span.qere .qere-mark {
+      font-family: Georgia, 'Times New Roman', serif;
     }
 
     /* Paragraph segment block */

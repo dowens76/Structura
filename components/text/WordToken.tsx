@@ -731,31 +731,42 @@ export default function WordToken({
   }
   const { leading, core, trailing } = splitPunctuation(displayText);
 
-  // Masoretic Qere(s) for this Ketiv, shown small beneath it — each a full
-  // token of its own (own id, parsing, tags, formatting, poetry marks…). A
-  // Qere wela Ketiv (read but not written) hangs under the preceding word,
-  // marked "+". Clicks stop here so they never also select the Ketiv; while
-  // the pointer is over a Qere the Ketiv's own tooltip is suppressed.
+  // Masoretic Qere(s) for this Ketiv, shown inline right after it (to its
+  // left, in RTL) and on the same line, smaller and muted so it stays
+  // distinct. The group is laid out as an LTR isolate so it reads, visually,
+  // "[דָּבַר :Q]" — the "Q:" label first in RTL reading order, the Hebrew
+  // itself in its own RTL isolate. Each Qere is a full token of
+  // its own (own id, parsing, tags, formatting, poetry marks…). A Qere wela
+  // Ketiv (read but not written) follows the preceding word, marked "+".
+  // Clicks stop here so they never also select the Ketiv; while the pointer
+  // is over a Qere the Ketiv's own tooltip is suppressed.
   let qereNode: React.ReactNode = null;
   if (word.qere?.length) {
     const qereOnly = word.qere[0].kind === "qere-only";
     qereNode = (
       <span
-        className="word-qere"
-        dir="rtl"
-        lang="he"
+        className={isInterlinear ? "word-qere word-qere-interlinear" : "word-qere"}
+        dir="ltr"
         data-qere-kind={qereOnly ? "qere-only" : "qere"}
         title={qereOnly ? t("wordToken.qereOnly") : t("wordToken.qere")}
         onClick={(e) => e.stopPropagation()}
         onMouseEnter={() => setHovering(false)}
       >
-        {qereOnly ? "+" : ""}
-        {word.qere.map((q, i) => (
-          <Fragment key={q.wordId}>
-            {i > 0 ? " " : ""}
-            {renderQere ? renderQere(q) : q.surfaceText.replace(/\//g, "")}
-          </Fragment>
-        ))}
+        {/* The brackets and label get a Latin font of their own, and the
+            closing bracket its own element: in Ezra SIL "Q]" shapes to a
+            blank glyph, dropping the closing bracket. */}
+        <span className="qere-mark">[</span>
+        <bdi dir="rtl" lang="he">
+          {qereOnly ? "+" : ""}
+          {word.qere.map((q, i) => (
+            <Fragment key={q.wordId}>
+              {i > 0 ? " " : ""}
+              {renderQere ? renderQere(q) : q.surfaceText.replace(/\//g, "")}
+            </Fragment>
+          ))}
+        </bdi>
+        <span className="qere-mark">{"\u00A0:Q"}</span>
+        <span className="qere-mark">]</span>
       </span>
     );
   }
@@ -875,10 +886,11 @@ export default function WordToken({
         title={isEditing ? undefined : `${word.lemma ?? word.surfaceText} — ${morphTerm(t, word.partOfSpeech) ?? t("wordToken.unknown")}`}
       >
         {coreContent}
-        {qereNode}
         {showTooltip && !isEditing && <ParseTooltip word={word} flipped={tooltipBelow} useLinguisticTerms={useLinguisticTerms} />}
         {poetryGlyphs}
       </span>
+      {/* No-break space: the Qere never wraps away from its Ketiv's line. */}
+      {qereNode && <>{"\u00A0"}{qereNode}</>}
       {trailing}
       {showPoetryNote && poetryNoteText && (
         // Rendered in normal inline flow, right after the word (and any
@@ -903,7 +915,7 @@ export default function WordToken({
   );
 
   if (isInterlinear) {
-    return (
+    const column = (
       <span className="word-interlinear" style={colorStyle}>
         <span
           ref={wordRef}
@@ -938,9 +950,11 @@ export default function WordToken({
           suppressDatasetValueDisplay={suppressDatasetValueDisplay}
           onToggleDatasetGroupMember={onToggleDatasetGroupMember}
         />
-        {qereNode}
       </span>
     );
+    // The Qere follows its Ketiv's column on the same line, never below it:
+    // one flex unit, so a line can't break between the two columns.
+    return qereNode ? <span className="word-ketiv-qere">{column}{qereNode}</span> : column;
   }
 
   return content;

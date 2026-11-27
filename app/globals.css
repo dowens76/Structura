@@ -196,40 +196,53 @@ body {
   margin-top: 2px;
 }
 
-/* Masoretic Qere shown beneath its Ketiv. In running text it hangs in the
-   line's leading (absolute, so line spacing is unchanged); in interlinear
-   mode it takes its own row between the word and its label. */
+/* Masoretic Qere shown as "[… :Q]" right after its Ketiv, on the same line
+   (in interlinear mode, as its own small column group beside the Ketiv's
+   column). Smaller and muted so it stays distinct from the Ketiv. */
 .word-qere {
-  position: absolute;
-  left: 50%;
-  top: 100%;
-  transform: translate(-50%, -0.3em);
   font-size: 0.62em;
-  line-height: 1;
   white-space: nowrap;
   color: var(--text-muted);
-  pointer-events: auto;
 }
-/* A Qere token is a full WordToken nested inside its Ketiv's column; drop
-   the row spacing a top-level interlinear word carries. */
-.word-qere .word-interlinear {
-  margin: 0;
+/* The Hebrew sits in a <bdi lang="he">, which the global [lang="he"] rule
+   would otherwise reset to full size and the normal text colour. */
+.word-qere > bdi {
+  font-size: inherit;
+  line-height: inherit;
+  color: inherit;
 }
-/* Interlinear columns are bottom-aligned, so a Ketiv column made taller by
-   its Qere (surface + label) would lift the Ketiv above its neighbours. In a
-   verse that has a Qere, top-align every column instead: surfaces stay level
-   and the extra Qere rows just extend that line downward. */
-.text-hebrew:has(.word-qere) .word-interlinear,
-.text-hebrew:has(.word-qere) .word-interlinear-group {
+/* Ezra SIL shapes "Q]" to a blank glyph, so the marks use a Latin face. */
+.qere-mark {
+  font-family: Georgia, "Times New Roman", serif;
+}
+/* Interlinear: Ketiv column + its Qere group, kept together on one line. */
+.word-ketiv-qere {
+  display: inline-flex;
+  align-items: flex-start;
   vertical-align: top;
+  gap: 0.15em;
 }
-.word-interlinear .word-qere {
-  position: static;
-  display: block;
-  text-align: center;
-  transform: none;
-  font-size: 0.55em;
-  margin-top: -0.2em;
+.word-qere-interlinear {
+  display: inline-flex;
+  align-items: flex-start;
+}
+.word-qere-interlinear > bdi {
+  display: inline-flex;
+}
+.word-qere-interlinear .qere-mark {
+  line-height: 1.6;
+}
+/* A Qere token is a full WordToken column of its own; drop the row spacing
+   a top-level interlinear word carries. */
+.word-qere .word-interlinear {
+  margin: 0 0.15em;
+}
+/* Interlinear columns are bottom-aligned; in a verse with a Qere, top-align
+   every column so the Ketiv and its smaller Qere surfaces start level. */
+.text-hebrew:has(.word-qere) .word-interlinear,
+.text-hebrew:has(.word-qere) .word-interlinear-group,
+.text-hebrew:has(.word-qere) .word-ketiv-qere {
+  vertical-align: top;
 }
 
 /* ── Lexicon font helpers ─────────────────────────────────────────────────── */
