@@ -617,11 +617,14 @@ export default function WordToken({
   // group-wrapper approach so adjacent same-tagged words form a continuous box.)
 
   // ── Bold / italic / underline / color formatting ────────────────────────────
+  // Only keys the word actually has: a `color: undefined` here would, once
+  // spread into `style` below, wipe the Color-mode POS/rule colour (and an
+  // undefined textDecoration any underline set before it).
   const formattingStyle: React.CSSProperties = {
-    fontWeight: wordFormatting?.isBold ? "bold" : undefined,
-    fontStyle:  wordFormatting?.isItalic ? "italic" : undefined,
-    textDecoration: wordFormatting?.isUnderline ? "underline" : undefined,
-    color:      wordFormatting?.textColor ?? undefined,
+    ...(wordFormatting?.isBold      ? { fontWeight: "bold" } : {}),
+    ...(wordFormatting?.isItalic    ? { fontStyle: "italic" } : {}),
+    ...(wordFormatting?.isUnderline ? { textDecoration: "underline" } : {}),
+    ...(wordFormatting?.textColor   ? { color: wordFormatting.textColor } : {}),
   };
 
   // ── Text critical markup overline ───────────────────────────────────────────
