@@ -600,6 +600,11 @@ function renderClickableGraphemesWithFormatting(
   });
 }
 
+/** Interface scale for presentation mode — matches the label column's
+ *  w-48 → w-72 widening so the clause-label editor and creation form grow by
+ *  the same proportion as the column they sit in. */
+const PRESENTATION_UI_SCALE = 1.5;
+
 /** Displays one annotation at a segment — full badge at start, continuation bar at middle/end. */
 function toSubscript(n: number): string {
   return String(n).split("").map((c) => "₀₁₂₃₄₅₆₇₈₉"[parseInt(c)]).join("");
@@ -842,7 +847,11 @@ function AnnotBadge({
       <div
         ref={editorContainerRef}
         className={[isEnd ? "rounded" : "rounded-t", "flex-1 overflow-hidden"].join(" ")}
-        style={{ borderLeft: `3px solid ${editColor}`, backgroundColor: `${editColor}18` }}
+        style={{
+          borderLeft: `3px solid ${editColor}`,
+          backgroundColor: `${editColor}18`,
+          zoom: presentationMode ? PRESENTATION_UI_SCALE : undefined,
+        }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header row */}
@@ -989,7 +998,7 @@ function AnnotBadge({
         {/* Communicative function — theme and desc annotations only */}
         {(draftAnnotType === "theme" || draftAnnotType === "desc") && (
           <div className="px-1.5 pb-1">
-            <CommunicativeFunctionPicker value={draftCommFunction} onChange={setDraftCommFunction} />
+            <CommunicativeFunctionPicker value={draftCommFunction} onChange={setDraftCommFunction} uiScale={presentationMode ? PRESENTATION_UI_SCALE : 1} />
           </div>
         )}
 
@@ -1057,7 +1066,7 @@ function AnnotBadge({
   }
 
   // ── Normal (read / edit-hover) state ─────────────────────────────────────
-  const badgeTextCls = presentationMode ? "text-sm" : "text-[10px]";
+  const badgeTextCls = presentationMode ? "text-[15px]" : "text-[10px]"; // 10px × PRESENTATION_UI_SCALE
   return (
     <div
       className={[
@@ -1158,7 +1167,10 @@ function AnnotBadge({
           badge's own "click to edit" (its onClick sits on this same outer container) from ever
           firing for a click that missed the tiny "+" target. */}
       {editingAnnotations && isEnd && onAdjustRange && (
-        <div className="flex items-center gap-0.5 px-1.5 pb-1">
+        <div
+          className="flex items-center gap-0.5 px-1.5 pb-1"
+          style={presentationMode ? { zoom: PRESENTATION_UI_SCALE } : undefined}
+        >
           <span className="text-[9px] text-stone-400 dark:text-stone-500 mr-0.5">{t("verse.end")}</span>
           <button type="button" title={t("verse.expandNext")}
             onClick={(e) => { e.stopPropagation(); onAdjustRange(annotation.id, "expand-end"); }}
@@ -1174,8 +1186,10 @@ function AnnotCreationForm({
   themeColorsByLabel,
   onSave,
   onCancel,
+  uiScale = 1,
 }: {
   themeColorsByLabel?: Map<string, string>;
+  uiScale?: number;
   onSave: (data: { annotType: string; label: string; commFunction?: string | null; color: string; description: string | null; outOfSequence: boolean; transitional: boolean }) => Promise<string | null>;
   onCancel: () => void;
 }) {
@@ -1241,6 +1255,7 @@ function AnnotCreationForm({
   return (
     <div
       className="bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-700 rounded p-2 shadow-sm"
+      style={uiScale !== 1 ? { zoom: uiScale } : undefined}
       onClick={(e) => e.stopPropagation()}
     >
       {/* Type tabs */}
@@ -1298,14 +1313,14 @@ function AnnotCreationForm({
               locked={themeColorsByLabel?.has(themeLabel)}
             />
           </div>
-          <CommunicativeFunctionPicker value={commFunction} onChange={setCommFunction} />
+          <CommunicativeFunctionPicker value={commFunction} onChange={setCommFunction} uiScale={uiScale} />
         </div>
       )}
 
       {annotType === "desc" && (
         <div className="mb-2 flex flex-col gap-1.5">
           <ColorPalette value={color} onChange={setColor} />
-          <CommunicativeFunctionPicker value={commFunction} onChange={setCommFunction} />
+          <CommunicativeFunctionPicker value={commFunction} onChange={setCommFunction} uiScale={uiScale} />
         </div>
       )}
 
@@ -2282,7 +2297,10 @@ export default function VerseDisplay({
 
         {/* Hint while waiting for the range end */}
         {showHint && (
-          <div className="text-[10px] text-indigo-500 dark:text-indigo-400 italic leading-tight py-0.5">
+          <div
+            className="text-[10px] text-indigo-500 dark:text-indigo-400 italic leading-tight py-0.5"
+            style={presentationMode ? { zoom: PRESENTATION_UI_SCALE } : undefined}
+          >
             {t("verse.clickEndSegment")}
           </div>
         )}
@@ -2294,6 +2312,7 @@ export default function VerseDisplay({
             themeColorsByLabel={themeColorsByLabel}
             onSave={(data) => onSaveAnnotation?.(data) ?? Promise.resolve("Saving is unavailable.")}
             onCancel={() => onCancelAnnotation?.()}
+            uiScale={presentationMode ? PRESENTATION_UI_SCALE : 1}
           />
         )}
       </div>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback, useSyncExternalStore } from "react";
+import { createPortal } from "react-dom";
 import CommFunctionManager from "@/components/controls/CommFunctionManager";
 import { useTranslation } from "@/lib/i18n/LocaleContext";
 
@@ -216,11 +217,14 @@ const PINNED: { value: string; shortLabel: string }[] = [
 export function CommunicativeFunctionPicker({
   value,
   onChange,
-  presentationMode = false,
+  uiScale = 1,
 }: {
   value: string;
   onChange: (v: string) => void;
-  presentationMode?: boolean;
+  /** Interface scale (e.g. presentation mode). The trigger inherits it from a
+   *  zoomed ancestor; the dropdown and manager modal are portaled to <body>,
+   *  so they apply it themselves via CSS zoom. */
+  uiScale?: number;
 }) {
   const [open, setOpen] = useState(false);
   const [hoveredCat, setHoveredCat] = useState<CommFunctionCategoryKey | null>(null);
@@ -241,20 +245,26 @@ export function CommunicativeFunctionPicker({
   const openDropdown = useCallback(() => {
     const r = triggerRef.current?.getBoundingClientRect();
     if (!r) return;
+    // Work in the dropdown's own (zoomed) CSS pixels: the dropdown carries
+    // `zoom: uiScale`, which multiplies its top/left/maxHeight too.
+    const s = uiScale;
+    const vw = window.innerWidth / s;
+    const vh = window.innerHeight / s;
+    const rTop = r.top / s, rBottom = r.bottom / s, rLeft = r.left / s;
     // Prevent overflow off the right edge (left + 444px total panel width)
-    const left = Math.min(r.left, window.innerWidth - 444);
-    const spaceBelow = window.innerHeight - r.bottom - 8;
-    const spaceAbove = r.top - 8;
+    const left = Math.max(0, Math.min(rLeft, vw - 444));
+    const spaceBelow = vh - rBottom - 8;
+    const spaceAbove = rTop - 8;
     const cap = 360; // max dropdown height
     if (spaceBelow >= 200 || spaceBelow >= spaceAbove) {
-      setDropPos({ top: r.bottom + 4, left, maxHeight: Math.min(spaceBelow, cap) });
+      setDropPos({ top: rBottom + 4, left, maxHeight: Math.min(spaceBelow, cap) });
     } else {
       // Flip above the trigger
-      setDropPos({ bottom: window.innerHeight - r.top + 4, left, maxHeight: Math.min(spaceAbove, cap) });
+      setDropPos({ bottom: vh - rTop + 4, left, maxHeight: Math.min(spaceAbove, cap) });
     }
     setHoveredCat(null);
     setOpen(true);
-  }, []);
+  }, [uiScale]);
 
   // Close on outside click or Escape
   useEffect(() => {
@@ -277,7 +287,7 @@ export function CommunicativeFunctionPicker({
   const select = useCallback((v: string) => { onChange(v); setOpen(false); }, [onChange]);
   const clear  = useCallback((e: React.MouseEvent) => { e.stopPropagation(); onChange(""); }, [onChange]);
 
-  const textCls    = presentationMode ? "text-sm" : "text-[10px]";
+  const textCls    = "text-[10px]";
   const displayLabel = value ? getCommFunctionLeafLabel(value, customEntries, t) : null;
 
   return (
@@ -312,7 +322,7 @@ export function CommunicativeFunctionPicker({
       </button>
 
       {/* ── Dropdown (fixed, so it escapes overflow:hidden containers) ── */}
-      {open && dropPos && (
+      {open && dropPos && typeof document !== "undefined" && createPortal(
         <div
           ref={dropdownRef}
           className="flex shadow-2xl border border-stone-200 dark:border-stone-700 rounded-lg overflow-hidden"
@@ -323,6 +333,7 @@ export function CommunicativeFunctionPicker({
             left: dropPos.left,
             maxHeight: dropPos.maxHeight,
             zIndex: 9999,
+            zoom: uiScale !== 1 ? uiScale : undefined,
           }}
           onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
         >
@@ -461,11 +472,17 @@ export function CommunicativeFunctionPicker({
               })}
             </div>
           )}
-        </div>
+        </div>,
+        document.body,
       )}
 
       {/* ── Manage categories modal ── */}
-      {showManager && <CommFunctionManager onClose={() => setShowManager(false)} />}
+      {showManager && typeof document !== "undefined" && createPortal(
+        uiScale !== 1
+          ? <div style={{ zoom: uiScale }}><CommFunctionManager onClose={() => setShowManager(false)} /></div>
+          : <CommFunctionManager onClose={() => setShowManager(false)} />,
+        document.body,
+      )}
     </>
   );
 }
