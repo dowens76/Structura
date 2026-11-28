@@ -322,6 +322,23 @@ jobs:
       # Each platform job uploads its own artifacts directly to the release
       # associated with the tag that triggered this workflow.  softprops will
       # create the release if it does not yet exist, or append files if it does.
+      #
+      # The release text comes from RELEASE_NOTES_<version>.md (tag v0.8.9 →
+      # RELEASE_NOTES_0.8.9.md); GitHub's generated notes (the "Full Changelog"
+      # link) are appended after it. If the file is missing, the release falls
+      # back to the generated notes alone.
+
+      - name: Find release notes file
+        id: notes
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          file="RELEASE_NOTES_${GITHUB_REF_NAME#v}.md"
+          if [ -f "$file" ]; then
+            echo "path=$file" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::$file not found; using GitHub's generated release notes only."
+          fi
 
       - name: Release macOS DMG
         if: runner.os == 'macOS' && startsWith(github.ref, 'refs/tags/v')
@@ -329,6 +346,7 @@ jobs:
         with:
           tag_name: ${{ github.ref_name }}
           generate_release_notes: true
+          body_path: ${{ steps.notes.outputs.path }}
           files: src-tauri/target/${{ matrix.target }}/release/bundle/dmg/Structura_${{ matrix.friendly }}_${{ github.ref_name }}.dmg
           fail_on_unmatched_files: true
 
@@ -338,6 +356,7 @@ jobs:
         with:
           tag_name: ${{ github.ref_name }}
           generate_release_notes: true
+          body_path: ${{ steps.notes.outputs.path }}
           files: |
             src-tauri/target/${{ matrix.target }}/release/bundle/nsis/Structura_${{ matrix.friendly }}_${{ github.ref_name }}.exe
             src-tauri/target/${{ matrix.target }}/release/bundle/msix/Structura_${{ matrix.friendly }}_${{ github.ref_name }}.msix
@@ -350,6 +369,7 @@ jobs:
         with:
           tag_name: ${{ github.ref_name }}
           generate_release_notes: true
+          body_path: ${{ steps.notes.outputs.path }}
           files: |
             src-tauri/target/${{ matrix.target }}/release/bundle/appimage/Structura_${{ matrix.friendly }}_${{ github.ref_name }}.AppImage
             src-tauri/target/${{ matrix.target }}/release/bundle/appimage/Structura_${{ matrix.friendly }}_${{ github.ref_name }}.AppImage.asc
@@ -361,6 +381,7 @@ jobs:
         with:
           tag_name: ${{ github.ref_name }}
           generate_release_notes: true
+          body_path: ${{ steps.notes.outputs.path }}
           files: |
             src-tauri/target/${{ matrix.target }}/release/bundle/deb/Structura_${{ matrix.friendly }}_${{ github.ref_name }}.deb
             src-tauri/target/${{ matrix.target }}/release/bundle/deb/Structura_${{ matrix.friendly }}_${{ github.ref_name }}.deb.asc
