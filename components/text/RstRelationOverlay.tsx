@@ -1063,18 +1063,16 @@ export default function RstRelationOverlay({
           if (satLink) {
             const satelliteIsLower = satLink.y2 > satLink.y1;
             if (n.relType === "inference") {
-              // Inference chip: near the nucleus (premise), not the satellite (conclusion).
-              // Use the actual text-bottom/top from posMap so the chip clears the text.
+              // Inference (∴) chip belongs to the main clause (nucleus): it sits
+              // on the nucleus arm, on the side away from the satellite, so it
+              // reads as part of the main clause rather than the gap between.
               const nucLink = layoutLinks.find(
                 lk => lk.parentId === n.id && lk.role === "nucleus" && !!lk.isTrans === !!n.isTrans
               );
-              const nucPos = nucLink ? posMap.get(nucLink.childId) : undefined;
-              const refEdge = nucPos
-                ? (satelliteIsLower ? nucPos.bottom : nucPos.top)
-                : satLink.y1;
+              const nucY = nucLink ? nucLink.y2 : satLink.y1;
               return [satelliteIsLower
-                ? refEdge + CHIP_GAP_Y + CHIP_H / 2
-                : refEdge - CHIP_GAP_Y - CHIP_H / 2];
+                ? nucY - CHIP_H / 2 - CHIP_GAP_Y
+                : nucY + CHIP_H / 2 + CHIP_GAP_Y];
             }
             // All other subordinate relations: chip near the satellite arm.
             return [satelliteIsLower
@@ -1144,9 +1142,9 @@ export default function RstRelationOverlay({
                   }}
                 />
                 <text
-                  x={chipX} y={chipY + 4}
+                  x={chipX} y={chipY + (abbr === "∴" ? 4.5 : 4)}
                   textAnchor="middle" fill="white"
-                  fontSize={9} fontFamily="monospace" fontWeight="bold"
+                  fontSize={abbr === "∴" ? 13 : 9} fontFamily="monospace" fontWeight="bold"
                   style={{ pointerEvents: "none", userSelect: "none" }}
                 >{abbr}</text>
               </g>
